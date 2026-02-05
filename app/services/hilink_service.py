@@ -34,6 +34,7 @@ class HiLinkService:
     """Service for Huawei HiLink modem API interaction"""
     
     MODEM_URL = "http://192.168.8.1/"
+    CONNECTION_TIMEOUT = 5  # 5 seconds timeout for modem connection
     
     def __init__(self):
         self._connection: Optional[Connection] = None
@@ -48,7 +49,7 @@ class HiLinkService:
         
         try:
             if self._connection is None:
-                self._connection = Connection(self.MODEM_URL)
+                self._connection = Connection(self.MODEM_URL, timeout=self.CONNECTION_TIMEOUT)
                 self._client = Client(self._connection)
             return True
         except Exception as e:

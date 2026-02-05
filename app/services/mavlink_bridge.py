@@ -92,6 +92,11 @@ class MAVLinkBridge:
             "messages": []  # STATUSTEXT messages
         }
         self.max_messages = 20  # Keep last 20 messages
+        
+        # Parameter handling
+        self._param_callbacks: Dict[str, threading.Event] = {}
+        self._param_values: Dict[str, Any] = {}
+        self._param_lock = threading.Lock()
     
     def set_router(self, router: 'MAVLinkRouter'):
         """Set the router for additional outputs."""
@@ -589,6 +594,31 @@ class MAVLinkBridge:
         elif msg_type == 'GPS_RAW_INT':
             self.telemetry_data["gps"]["satellites"] = msg.satellites_visible
             self._broadcast_telemetry()
+        
+        elif msg_type == 'PARAM_VALUE':
+            # Handle parameter response
+            try:
+                param_id = msg.param_id
+                if isinstance(param_id, bytes):
+                    param_id = param_id.decode('utf-8').rstrip('\x00')
+                else:
+                    param_id = str(param_id).rstrip('\x00')
+                
+                param_value = msg.param_value
+                param_type = msg.param_type
+                
+                # Store the value and signal any waiting threads
+                with self._param_lock:
+                    if param_id in self._param_callbacks:
+                        self._param_values[param_id] = {
+                            "value": param_value,
+                            "param_type": param_type,
+                            "param_index": msg.param_index,
+                            "param_count": msg.param_count
+                        }
+                        self._param_callbacks[param_id].set()
+            except Exception as e:
+                print(f"⚠️ Error processing PARAM_VALUE: {e}")
     
     def is_connected(self) -> bool:
         return self.connected
@@ -613,6 +643,190 @@ class MAVLinkBridge:
         if not self.connected:
             return {"connected": False}
         return {"connected": True, **self.telemetry_data}
+    
+    def get_parameter(self, param_name: str, timeout: float = 3.0) -> Dict[str, Any]:
+        """
+        Request and wait for a parameter value from the flight controller.
+        
+        Args:
+            param_name: Parameter name (e.g., 'FS_THR_ENABLE')
+            timeout: Timeout in seconds
+            
+        Returns:
+            Dict with success, value, param_type, etc.
+        """
+        if not self.connected or not self.serial_port:
+            return {"success": False, "error": "Not connected"}
+        
+        # Create event for this parameter
+        event = threading.Event()
+        with self._param_lock:
+            self._param_callbacks[param_name] = event
+            self._param_values[param_name] = None
+        
+        try:
+            # Build PARAM_REQUEST_READ message
+            # Encode param name as bytes (16 chars max, null-padded)
+            param_id = param_name.encode('utf-8')[:16].ljust(16, b'\x00')
+            
+            msg = self.mav_parser.param_request_read_encode(
+                target_system=self.target_system,
+                target_component=self.target_component,
+                param_id=param_id,
+                param_index=-1  # Use name, not index
+            )
+            
+            # Send message
+            with self.serial_lock:
+                self.serial_port.write(msg.pack(self.mav_parser))
+            
+            # Wait for response
+            if event.wait(timeout):
+                with self._param_lock:
+                    result = self._param_values.get(param_name)
+                    if result is not None:
+                        return {
+                            "success": True,
+                            "param_id": param_name,
+                            "value": result["value"],
+                            "param_type": result["param_type"]
+                        }
+            
+            return {"success": False, "error": f"Timeout waiting for {param_name}"}
+            
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            # Cleanup
+            with self._param_lock:
+                self._param_callbacks.pop(param_name, None)
+    
+    def set_parameter(self, param_name: str, value: float, param_type: int = 9, timeout: float = 3.0) -> Dict[str, Any]:
+        """
+        Set a parameter on the flight controller and verify it was saved.
+        
+        Args:
+            param_name: Parameter name (e.g., 'FS_THR_ENABLE')
+            value: New value (float, will be converted as needed)
+            param_type: MAV_PARAM_TYPE (9 = REAL32 is most common)
+            timeout: Timeout in seconds
+            
+        Returns:
+            Dict with success status and verified value
+        """
+        if not self.connected or not self.serial_port:
+            return {"success": False, "error": "Not connected"}
+        
+        # Create event for this parameter
+        event = threading.Event()
+        with self._param_lock:
+            self._param_callbacks[param_name] = event
+            self._param_values[param_name] = None
+        
+        try:
+            # Encode param name as bytes (16 chars max, null-padded)
+            param_id = param_name.encode('utf-8')[:16].ljust(16, b'\x00')
+            
+            # Build PARAM_SET message
+            msg = self.mav_parser.param_set_encode(
+                target_system=self.target_system,
+                target_component=self.target_component,
+                param_id=param_id,
+                param_value=float(value),
+                param_type=param_type
+            )
+            
+            # Send message
+            with self.serial_lock:
+                self.serial_port.write(msg.pack(self.mav_parser))
+            
+            # Wait for PARAM_VALUE response (confirmation)
+            if event.wait(timeout):
+                with self._param_lock:
+                    result = self._param_values.get(param_name)
+                    if result is not None:
+                        # Verify the value was set correctly
+                        set_value = result["value"]
+                        # For integer params, compare as int
+                        if param_type in [1, 2, 3, 4, 5, 6, 7, 8]:  # Integer types
+                            success = int(set_value) == int(value)
+                        else:
+                            success = abs(set_value - value) < 0.001
+                        
+                        return {
+                            "success": success,
+                            "param_id": param_name,
+                            "requested_value": value,
+                            "actual_value": set_value,
+                            "verified": success
+                        }
+            
+            return {"success": False, "error": f"Timeout waiting for {param_name} confirmation"}
+            
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            # Cleanup
+            with self._param_lock:
+                self._param_callbacks.pop(param_name, None)
+    
+    def get_parameters_batch(self, param_names: List[str], timeout: float = 5.0) -> Dict[str, Any]:
+        """
+        Get multiple parameters in sequence.
+        
+        Args:
+            param_names: List of parameter names
+            timeout: Timeout per parameter
+            
+        Returns:
+            Dict with parameters and their values
+        """
+        results = {}
+        errors = []
+        
+        for param_name in param_names:
+            result = self.get_parameter(param_name, timeout=timeout)
+            if result["success"]:
+                results[param_name] = result["value"]
+            else:
+                errors.append(f"{param_name}: {result.get('error', 'Unknown error')}")
+        
+        return {
+            "success": len(errors) == 0,
+            "parameters": results,
+            "errors": errors if errors else None
+        }
+    
+    def set_parameters_batch(self, params: Dict[str, float], timeout: float = 3.0) -> Dict[str, Any]:
+        """
+        Set multiple parameters in sequence.
+        
+        Args:
+            params: Dict of param_name -> value
+            timeout: Timeout per parameter
+            
+        Returns:
+            Dict with results for each parameter
+        """
+        results = {}
+        errors = []
+        
+        for param_name, value in params.items():
+            result = self.set_parameter(param_name, value, timeout=timeout)
+            results[param_name] = {
+                "success": result["success"],
+                "value": result.get("actual_value", value)
+            }
+            if not result["success"]:
+                errors.append(f"{param_name}: {result.get('error', 'Failed')}")
+            else:
+                print(f"✅ Parameter {param_name} = {result.get('actual_value')}")
+        
+        return {
+            "success": len(errors) == 0,
+            "results": results,
+            "errors": errors if errors else None
+        }
     
     def _broadcast_status(self):
         """Broadcast status via WebSocket."""

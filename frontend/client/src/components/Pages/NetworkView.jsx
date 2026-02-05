@@ -41,16 +41,21 @@ const NetworkView = () => {
     }
   }, [])
 
-  // Load HiLink modem status
+  // Load HiLink modem status (with shorter timeout since modem should respond quickly)
   const loadHilinkStatus = useCallback(async () => {
     try {
-      const response = await api.get('/api/network/hilink/status')
+      const response = await api.get('/api/network/hilink/status', 10000) // 10s timeout
       if (response.ok) {
         const data = await response.json()
         setHilinkStatus(data)
+      } else {
+        // Modem not responding - set as disconnected (no error log needed)
+        setHilinkStatus({ available: false, connected: false, error: 'No response from modem' })
       }
     } catch (error) {
-      console.error('Error loading HiLink status:', error)
+      // Timeout or network error - modem is likely disconnected
+      // This is expected when modem is not connected, no need to log
+      setHilinkStatus({ available: false, connected: false, error: error.message || 'Connection error' })
     }
   }, [])
 
@@ -161,7 +166,7 @@ const NetworkView = () => {
             const checkModem = async () => {
               attempts++
               try {
-                const checkResponse = await api.get('/api/network/hilink/status')
+                const checkResponse = await api.get('/api/network/hilink/status', 5000) // 5s timeout for reboot check
                 if (checkResponse.ok) {
                   const data = await checkResponse.json()
                   if (data.available) {
