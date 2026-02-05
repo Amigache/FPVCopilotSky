@@ -18,6 +18,7 @@ function App() {
     { id: 'telemetry', label: t('tabs.telemetry') },
     { id: 'video', label: t('tabs.video') },
     { id: 'network', label: t('tabs.network') },
+    { id: 'modem', label: t('tabs.modem') },
     { id: 'vpn', label: t('tabs.vpn') },
     { id: 'flightController', label: t('tabs.flightController') },
     { id: 'system', label: t('tabs.system') },

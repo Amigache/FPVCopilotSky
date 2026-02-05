@@ -220,3 +220,263 @@ async def reboot_hilink():
     if result:
         return {"success": True, "message": "Modem is rebooting"}
     raise HTTPException(status_code=500, detail=service.last_error or "Failed to reboot modem")
+
+
+# =============================
+# LTE Band Management Endpoints
+# =============================
+
+class LTEBandRequest(BaseModel):
+    preset: Optional[str] = None  # 'all', 'orange_spain', 'urban', 'rural', etc.
+    custom_mask: Optional[int] = None  # Custom band mask
+
+
+@router.get("/hilink/band")
+async def get_current_band():
+    """Get current LTE band information"""
+    service = get_hilink_service()
+    band = await service.get_current_band()
+    if band:
+        return {"success": True, **band}
+    raise HTTPException(status_code=503, detail=service.last_error or "Could not get band info")
+
+
+@router.get("/hilink/band/presets")
+async def get_band_presets():
+    """Get available LTE band presets for Spain/Orange"""
+    service = get_hilink_service()
+    presets = service.get_band_presets()
+    return {"success": True, **presets}
+
+
+@router.post("/hilink/band")
+async def set_lte_band(request: LTEBandRequest):
+    """
+    Set LTE band configuration
+    
+    Use preset names:
+    - 'all': All bands (auto)
+    - 'orange_spain': B3+B7+B20 (Orange optimal)
+    - 'urban': B3+B7 (high speed)
+    - 'rural': B20 only (best coverage)
+    - 'balanced': B3+B20
+    - 'b3_only', 'b7_only', 'b20_only': Single band
+    
+    Or provide custom_mask as integer for custom band selection.
+    """
+    if not request.preset and request.custom_mask is None:
+        raise HTTPException(status_code=400, detail="Provide either preset or custom_mask")
+    
+    service = get_hilink_service()
+    result = await service.set_lte_band(preset=request.preset, custom_mask=request.custom_mask)
+    
+    if result.get('success'):
+        return result
+    raise HTTPException(status_code=500, detail=result.get('error', 'Failed to set band'))
+
+
+# =============================
+# Video Quality Endpoints
+# =============================
+
+@router.get("/hilink/video-quality")
+async def get_video_quality():
+    """
+    Get video streaming quality assessment based on current signal
+    
+    Returns quality rating, recommended bitrate, and streaming recommendations.
+    """
+    service = get_hilink_service()
+    assessment = await service.get_video_quality_assessment()
+    return {"success": assessment.get('available', False), **assessment}
+
+
+@router.get("/hilink/status/enhanced")
+async def get_enhanced_status():
+    """Get full modem status with video optimization data"""
+    service = get_hilink_service()
+    status = await service.get_full_status_enhanced()
+    return {"success": status.get('available', False), **status}
+
+
+# =============================
+# APN Configuration Endpoints  
+# =============================
+
+class APNRequest(BaseModel):
+    preset: Optional[str] = None  # 'orange', 'orangeworld', 'simyo', 'internet'
+    custom_apn: Optional[str] = None
+
+
+@router.get("/hilink/apn")
+async def get_apn_settings():
+    """Get current APN settings and available presets"""
+    service = get_hilink_service()
+    settings = await service.get_apn_settings()
+    return {"success": True, **settings}
+
+
+@router.post("/hilink/apn")
+async def set_apn(request: APNRequest):
+    """
+    Set APN configuration
+    
+    Presets for Spain:
+    - 'orange': Standard Orange APN
+    - 'orangeworld': Orange data APN
+    - 'simyo': Simyo (uses Orange network)
+    - 'internet': Generic APN
+    """
+    if not request.preset and not request.custom_apn:
+        raise HTTPException(status_code=400, detail="Provide either preset or custom_apn")
+    
+    service = get_hilink_service()
+    result = await service.set_apn(preset=request.preset, custom_apn=request.custom_apn)
+    
+    if result.get('success'):
+        return result
+    raise HTTPException(status_code=500, detail=result.get('error', 'Failed to set APN'))
+
+
+# =============================
+# Network Control Endpoints
+# =============================
+
+class RoamingRequest(BaseModel):
+    enabled: bool
+
+
+@router.post("/hilink/reconnect")
+async def reconnect_network():
+    """Force network reconnection to search for better cell tower"""
+    service = get_hilink_service()
+    result = await service.reconnect_network()
+    
+    if result.get('success'):
+        return result
+    raise HTTPException(status_code=500, detail=result.get('message', 'Reconnection failed'))
+
+
+@router.post("/hilink/roaming")
+async def set_roaming(request: RoamingRequest):
+    """Enable or disable roaming"""
+    service = get_hilink_service()
+    result = await service.set_roaming(request.enabled)
+    
+    if result.get('success'):
+        return result
+    raise HTTPException(status_code=500, detail=service.last_error or "Failed to set roaming")
+
+
+# =============================
+# Video Mode Profile Endpoints
+# =============================
+
+@router.get("/hilink/video-mode")
+async def get_video_mode_status():
+    """Check if video mode is currently active"""
+    service = get_hilink_service()
+    return {
+        "success": True,
+        "video_mode_active": service.video_mode_active,
+    }
+
+
+@router.post("/hilink/video-mode/enable")
+async def enable_video_mode():
+    """
+    Enable video-optimized modem settings:
+    - Forces 4G Only mode
+    - Optimizes for low latency
+    - Saves original settings for restore
+    """
+    service = get_hilink_service()
+    result = await service.enable_video_mode()
+    
+    if result.get('success'):
+        return result
+    raise HTTPException(status_code=500, detail=result.get('error', 'Failed to enable video mode'))
+
+
+@router.post("/hilink/video-mode/disable")
+async def disable_video_mode():
+    """Disable video mode and restore original settings"""
+    service = get_hilink_service()
+    result = await service.disable_video_mode()
+    
+    if result.get('success'):
+        return result
+    raise HTTPException(status_code=500, detail=result.get('error', 'Failed to disable video mode'))
+
+
+# =============================
+# Flight Session Endpoints
+# =============================
+
+@router.get("/hilink/flight-session")
+async def get_flight_session():
+    """Get current flight session status and statistics"""
+    service = get_hilink_service()
+    status = await service.get_flight_session_status()
+    return {"success": True, **status}
+
+
+@router.post("/hilink/flight-session/start")
+async def start_flight_session():
+    """Start recording flight session statistics"""
+    service = get_hilink_service()
+    result = await service.start_flight_session()
+    return result
+
+
+@router.post("/hilink/flight-session/stop")
+async def stop_flight_session():
+    """Stop recording and get session statistics summary"""
+    service = get_hilink_service()
+    result = await service.stop_flight_session()
+    
+    if result.get('success'):
+        return result
+    raise HTTPException(status_code=400, detail=result.get('error', 'No active session'))
+
+
+@router.post("/hilink/flight-session/sample")
+async def record_flight_sample():
+    """Record a signal quality sample (call periodically during flight)"""
+    service = get_hilink_service()
+    result = await service.record_flight_sample()
+    
+    if result.get('success'):
+        return result
+    raise HTTPException(status_code=400, detail=result.get('error', 'No active session'))
+
+
+# =============================
+# Latency Monitoring Endpoints
+# =============================
+
+class LatencyTestRequest(BaseModel):
+    host: Optional[str] = None  # Default: 8.8.8.8
+    count: Optional[int] = None  # Default: 3
+
+
+@router.get("/hilink/latency")
+async def measure_latency():
+    """Measure current network latency and jitter"""
+    service = get_hilink_service()
+    result = await service.measure_latency()
+    
+    if result.get('success'):
+        return result
+    raise HTTPException(status_code=500, detail=result.get('error', 'Latency test failed'))
+
+
+@router.post("/hilink/latency")
+async def measure_latency_custom(request: LatencyTestRequest):
+    """Measure latency to a custom host"""
+    service = get_hilink_service()
+    result = await service.measure_latency(host=request.host, count=request.count)
+    
+    if result.get('success'):
+        return result
+    raise HTTPException(status_code=500, detail=result.get('error', 'Latency test failed'))

@@ -4,6 +4,7 @@ import DashboardView from '../Pages/DashboardView'
 import TelemetryView from '../Pages/TelemetryView'
 import VideoView from '../Pages/VideoView'
 import NetworkView from '../Pages/NetworkView'
+import ModemView from '../Pages/ModemView'
 import VPNView from '../Pages/VPNView'
 import SystemView from '../Pages/SystemView'
 import StatusView from '../Pages/StatusView'
@@ -15,6 +16,7 @@ const Content = ({ activeTab }) => {
       {activeTab === 'telemetry' && <TelemetryView />}
       {activeTab === 'video' && <VideoView />}
       {activeTab === 'network' && <NetworkView />}
+      {activeTab === 'modem' && <ModemView />}
       {activeTab === 'vpn' && <VPNView />}
       {activeTab === 'flightController' && <FlightControllerView />}
       {activeTab === 'system' && <SystemView />}

@@ -312,6 +312,7 @@ const FlightControllerView = () => {
   // Internal load function (with toasts for manual reload after apply recommended)
   const loadParamsInternal = async (showToasts = false) => {
     setLoadingParams(true)
+    showToast('🔄 ' + t('views.flightController.loadingParams'), 'info')
     try {
       const paramNames = getParamsToLoad()
       const response = await fetchWithTimeout(`${API_MAVLINK}/params/batch/get`, {
@@ -366,6 +367,7 @@ const FlightControllerView = () => {
           const paramNames = getParamsToLoad()
           
           setLoadingParams(true)
+          showToast('🔄 ' + t('views.flightController.loadingParams'), 'info')
           const response = await fetchWithTimeout(`${API_MAVLINK}/params/batch/get`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -377,9 +379,11 @@ const FlightControllerView = () => {
           if (data.parameters) {
             setParams(data.parameters)
             setParamsModified({})
+            showToast('✅ ' + t('views.flightController.paramsLoaded'), 'success')
           }
         } catch (error) {
           console.error('Auto-load failed:', error)
+          showToast(t('views.flightController.paramsLoadError'), 'error')
         } finally {
           setLoadingParams(false)
         }
@@ -685,9 +689,6 @@ const FlightControllerView = () => {
               )}
             </div>
           </div>
-          {loadingParams && (
-            <p className="loading-params">🔄 {t('views.flightController.loadingParams')}</p>
-          )}
         </div>
 
         <div className="params-two-columns">

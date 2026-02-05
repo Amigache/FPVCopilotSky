@@ -35,22 +35,22 @@ const Header = () => {
       <div className="header-content">
         <h1 className="logo">📡 {t('header.title')}</h1>
         <div className="header-info">
-          <div className="info-item">
+          <div className="info-item-badge">
             <Badge variant={isStreaming ? "success" : "secondary"}>
               {isStreaming ? t('header.streamOnline') : t('header.streamOffline')}
             </Badge>
           </div>
-          <div className="info-item">
+          <div className="info-item-badge">
             <Badge variant={mavlinkStatus.connected ? "success" : "danger"}>
               {mavlinkStatus.connected ? t('header.fcConnected') : t('header.noFCConnection')}
             </Badge>
           </div>
-          <div className="info-item">
+          <div className="info-item-badge">
             <Badge variant={isArmed ? "warning" : "success"}>
               {isArmed ? t('header.armed') : t('header.disarmed')}
             </Badge>
           </div>
-          <div className="info-item">
+          <div className="info-item-badge">
             <Badge variant={isVpnConnected ? "success" : "secondary"}>
               {isVpnConnected ? t('header.vpnConnected') : t('header.vpnDisconnected')}
             </Badge>

@@ -20,8 +20,6 @@ const NetworkView = () => {
   const [wifiNetworks, setWifiNetworks] = useState([])
   const [wifiScanning, setWifiScanning] = useState(false)
   const [changingMode, setChangingMode] = useState(false)
-  const [changingNetworkMode, setChangingNetworkMode] = useState(false)
-  const [modemRebooting, setModemRebooting] = useState(false)
   
   // WiFi Connect Modal
   const [connectModal, setConnectModal] = useState({ open: false, ssid: '', security: '' })
@@ -127,79 +125,7 @@ const NetworkView = () => {
     setChangingMode(false)
   }
 
-  // Set modem network mode (2G/3G/4G/Auto)
-  const handleSetNetworkMode = async (mode) => {
-    setChangingNetworkMode(true)
-    try {
-      const response = await api.post('/api/network/hilink/mode', { mode })
-      if (response.ok) {
-        showToast(t('network.networkModeSet', 'Network mode changed'), 'success')
-        await loadHilinkStatus()
-      } else {
-        const data = await response.json()
-        showToast(data.detail || t('network.networkModeError', 'Error changing network mode'), 'error')
-      }
-    } catch (error) {
-      showToast(error.message, 'error')
-    }
-    setChangingNetworkMode(false)
-  }
-
-  // Reboot modem
-  const handleRebootModem = () => {
-    showModal({
-      title: t('network.rebootModem', 'Reboot Modem'),
-      message: t('network.confirmReboot', 'Are you sure you want to reboot the 4G modem? Connection will be lost temporarily.'),
-      type: 'confirm',
-      confirmText: t('network.reboot', 'Reboot'),
-      cancelText: t('common.cancel', 'Cancel'),
-      onConfirm: async () => {
-        try {
-          const response = await api.post('/api/network/hilink/reboot')
-          if (response.ok) {
-            setModemRebooting(true)
-            showToast(t('network.modemRebooting', 'Modem is rebooting...'), 'success')
-            
-            // Poll for modem to come back online (check every 5s for up to 60s)
-            let attempts = 0
-            const maxAttempts = 12
-            const checkModem = async () => {
-              attempts++
-              try {
-                const checkResponse = await api.get('/api/network/hilink/status', 5000) // 5s timeout for reboot check
-                if (checkResponse.ok) {
-                  const data = await checkResponse.json()
-                  if (data.available) {
-                    setModemRebooting(false)
-                    showToast(t('network.modemReady', 'Modem is back online'), 'success')
-                    await loadHilinkStatus()
-                    return
-                  }
-                }
-              } catch (e) {
-                // Expected during reboot
-              }
-              
-              if (attempts < maxAttempts) {
-                setTimeout(checkModem, 5000)
-              } else {
-                setModemRebooting(false)
-                showToast(t('network.modemTimeout', 'Modem did not respond. Check connection.'), 'warning')
-              }
-            }
-            
-            // Start checking after initial delay
-            setTimeout(checkModem, 10000)
-          } else {
-            const data = await response.json()
-            showToast(data.detail || 'Error', 'error')
-          }
-        } catch (error) {
-          showToast(error.message, 'error')
-        }
-      }
-    })
-  }
+  
 
   // Open WiFi connect modal
   const handleWifiClick = (network) => {
@@ -462,20 +388,9 @@ const NetworkView = () => {
 
           {/* Modem Card - Enhanced with HiLink API */}
           <div className="card modem-card">
-            {modemRebooting && (
-              <div className="modem-rebooting-overlay">
-                <div className="spinner-large" />
-                <div className="rebooting-text">
-                  {t('network.modemRebooting', 'Modem is rebooting...')}
-                </div>
-                <div className="rebooting-hint">
-                  {t('network.pleaseWait', 'Please wait...')}
-                </div>
-              </div>
-            )}
             <div className="card-header">
-              <h2>📶 {t('network.modem', '4G USB Modem')}</h2>
-              {hilinkStatus?.available && !modemRebooting && (
+              <h2>📶 MÓDEM 4G</h2>
+              {hilinkStatus?.available && (
                 <button 
                   className="btn-refresh" 
                   onClick={loadHilinkStatus}
@@ -530,28 +445,6 @@ const NetworkView = () => {
                     </div>
                   </div>
 
-                  {/* Network Mode Selection */}
-                  <div className="modem-mode-section">
-                    <div className="modem-label">{t('network.networkMode', 'Network Mode')}</div>
-                    <div className="network-mode-buttons">
-                      {[
-                        { mode: '00', label: 'Auto' },
-                        { mode: '03', label: '4G' },
-                        { mode: '02', label: '3G' },
-                        { mode: '01', label: '2G' },
-                      ].map((opt) => (
-                        <button
-                          key={opt.mode}
-                          className={`mode-btn-small ${hilinkStatus.mode?.network_mode === opt.mode ? 'active' : ''}`}
-                          onClick={() => handleSetNetworkMode(opt.mode)}
-                          disabled={changingNetworkMode || hilinkStatus.mode?.network_mode === opt.mode}
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
                   {/* Connection Details */}
                   <div className="modem-details">
                     <div className="modem-detail">
@@ -575,14 +468,6 @@ const NetworkView = () => {
                       </span>
                     </div>
                   </div>
-
-                  {/* Reboot Button */}
-                  <button 
-                    className="btn btn-modem-reboot"
-                    onClick={handleRebootModem}
-                  >
-                    🔄 {t('network.rebootModem', 'Reboot Modem')}
-                  </button>
                 </>
               ) : modem.detected ? (
                 <>

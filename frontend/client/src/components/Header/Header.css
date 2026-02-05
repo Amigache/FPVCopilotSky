@@ -36,7 +36,7 @@
   justify-content: flex-end;
 }
 
-.info-item {
+.info-item-badge {
   display: flex;
   align-items: center;
   gap: 8px;
