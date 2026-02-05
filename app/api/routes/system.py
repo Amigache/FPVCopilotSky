@@ -22,3 +22,13 @@ async def get_available_ports():
         "ports": ports,
         "count": len(ports)
     }
+
+@router.get("/services")
+async def get_services_status():
+    """Get status of monitored systemd services (fpvcopilot-sky, nginx)"""
+    services = SystemService.get_services_status()
+    
+    return {
+        "services": services,
+        "count": len(services)
+    }

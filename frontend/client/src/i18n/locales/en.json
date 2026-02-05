@@ -126,7 +126,10 @@
     },
     "system": {
       "title": "⚙️ System",
-      "waiting": "System configuration..."
+      "waiting": "System configuration...",
+      "services": "Services",
+      "running": "Running",
+      "stopped": "Stopped"
     }
   },
   "router": {

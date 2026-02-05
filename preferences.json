@@ -29,8 +29,8 @@
   },
   "video": {
     "device": "/dev/video1",
-    "width": 1920,
-    "height": 1080,
+    "width": 960,
+    "height": 720,
     "framerate": 30,
     "codec": "h264",
     "quality": 85,

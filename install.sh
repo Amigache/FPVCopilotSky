@@ -107,6 +107,22 @@ echo "🔐 Setting up serial port permissions..."
 sudo usermod -a -G dialout $USER
 sudo usermod -a -G video $USER
 
+# Disable serial-getty on ttyAML0 to prevent conflicts with MAVLink
+# The serial-getty service conflicts with MAVLink:
+# - Changes port group from dialout to tty
+# - Removes read permissions from group
+# - Consumes all serial data as console input
+if systemctl is-active --quiet serial-getty@ttyAML0.service 2>/dev/null; then
+    sudo systemctl stop serial-getty@ttyAML0.service
+fi
+sudo systemctl disable serial-getty@ttyAML0.service 2>/dev/null || true
+sudo systemctl mask serial-getty@ttyAML0.service 2>/dev/null || true
+echo "✓ Serial getty disabled on ttyAML0"
+
+# Trigger udev to apply serial port rules
+sudo udevadm trigger --action=change --subsystem-match=tty 2>/dev/null || true
+sudo udevadm settle 2>/dev/null || true
+
 # Set permissions for serial ports if they exist
 if ls /dev/ttyAML* > /dev/null 2>&1; then
     sudo chmod 666 /dev/ttyAML* || true

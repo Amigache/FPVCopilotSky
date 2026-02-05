@@ -126,7 +126,10 @@
     },
     "system": {
       "title": "⚙️ Sistema",
-      "waiting": "Configuración del sistema..."
+      "waiting": "Configuración del sistema...",
+      "services": "Servicios",
+      "running": "Ejecutando",
+      "stopped": "Detenido"
     }
   },
   "router": {

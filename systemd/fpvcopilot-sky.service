@@ -6,6 +6,8 @@ After=network.target
 Type=simple
 User=hector
 Group=hector
+# Ensure we have access to serial ports and video devices
+SupplementaryGroups=dialout video
 WorkingDirectory=/opt/FPVCopilotSky
 Environment="PATH=/opt/FPVCopilotSky/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
