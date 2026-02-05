@@ -104,11 +104,19 @@ async def root():
     }
 
 async def periodic_stats_broadcast():
-    """Periodically broadcast router stats via WebSocket."""
+    """Periodically broadcast router stats via WebSocket.
+    
+    OPTIMIZATION: Skip all processing when no WebSocket clients are connected.
+    This saves CPU for video encoding and telemetry when the UI is closed.
+    """
     counter = 0
     while True:
         await asyncio.sleep(1)
         counter += 1
+        
+        # Skip all processing if no clients connected (save CPU for video/telemetry)
+        if not websocket_manager.has_clients:
+            continue
         
         try:
             # Router status every 2 seconds

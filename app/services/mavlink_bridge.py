@@ -841,8 +841,14 @@ class MAVLinkBridge:
             pass
     
     def _broadcast_telemetry(self):
-        """Broadcast telemetry via WebSocket."""
+        """Broadcast telemetry via WebSocket.
+        
+        OPTIMIZATION: Skip if no clients connected to save CPU.
+        """
         if not self.websocket_manager or not self.event_loop:
+            return
+        # Skip broadcast if no clients (save CPU for video encoding)
+        if not self.websocket_manager.has_clients:
             return
         try:
             asyncio.run_coroutine_threadsafe(

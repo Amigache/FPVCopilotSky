@@ -11,6 +11,16 @@ from fastapi import WebSocket
 class WebSocketManager:
     def __init__(self):
         self.active_connections: List[WebSocket] = []
+    
+    @property
+    def has_clients(self) -> bool:
+        """Check if there are any connected clients (used to skip processing when idle)"""
+        return len(self.active_connections) > 0
+    
+    @property
+    def client_count(self) -> int:
+        """Get the number of connected clients"""
+        return len(self.active_connections)
         
     async def connect(self, websocket: WebSocket):
         """Accept and register a new WebSocket connection"""
