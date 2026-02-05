@@ -1,7 +1,8 @@
 {
-  "name": "client",
+  "name": "fpv-copilot-sky-webui",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "FPV Copilot Sky WebUI - Ground Station Interface",
   "type": "module",
   "scripts": {
     "dev": "vite",

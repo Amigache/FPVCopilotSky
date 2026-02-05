@@ -3,12 +3,14 @@ import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useToast } from '../../contexts/ToastContext'
 import { useModal } from '../../contexts/ModalContext'
+import { useWebSocket } from '../../contexts/WebSocketContext'
 import api from '../../services/api'
 
 const NetworkView = () => {
   const { t } = useTranslation()
   const { showToast } = useToast()
   const { showModal } = useModal()
+  const { messages } = useWebSocket()
   
   // State
   const [loading, setLoading] = useState(true)
@@ -77,14 +79,15 @@ const NetworkView = () => {
       setLoading(false)
     }
     loadAll()
-    
-    // Refresh status every 10 seconds
-    const interval = setInterval(() => {
-      loadStatus()
-      loadHilinkStatus()
-    }, 10000)
-    return () => clearInterval(interval)
   }, [loadStatus, loadHilinkStatus, loadWifiNetworks])
+
+  // Update from WebSocket - network status
+  useEffect(() => {
+    if (messages.network_status) {
+      setStatus(messages.network_status)
+      setLoading(false)
+    }
+  }, [messages.network_status])
 
   // Refresh all
   const handleRefresh = async () => {

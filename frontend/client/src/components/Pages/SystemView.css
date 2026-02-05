@@ -1,7 +1,64 @@
-/* System view specific styles */
+/* System view layout */
+.monitor-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1rem;
+  width: 100%;
+}
+
+.monitor-col {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* Info sections */
+.info-section {
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(102, 102, 102, 0.2);
+}
+
+.info-section:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+/* Info rows */
+.info-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.info-label {
+  font-weight: 500;
+  color: #9aa6c3;
+  font-size: 0.9rem;
+  flex-shrink: 0;
+}
+
+.info-value {
+  color: #e0e6ff;
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 0.9rem;
+}
+
+/* Waiting/Loading data */
 .waiting-data {
   padding: 2rem;
   text-align: center;
   color: #9aa6c3;
   font-size: 0.95rem;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .monitor-columns {
+    grid-template-columns: 1fr;
+  }
 }

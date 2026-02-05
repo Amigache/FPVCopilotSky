@@ -17,7 +17,8 @@
     "network": "🌐 Network",
     "vpn": "🔒 VPN",
     "flightController": "🎮 Flight Controller",
-    "system": "⚙️ System"
+    "system": "⚙️ System",
+    "status": "📋 Status"
   },
   "dashboard": {
     "attitude": "✈️ Attitude",
@@ -260,6 +261,53 @@
     "save": "Save",
     "apply": "Apply",
     "delete": "Delete",
-    "ok": "OK"
+    "ok": "OK",
+    "loading": "Loading..."
+  },
+  "status": {
+    "badge": {
+      "ok": "OK",
+      "warning": "Warning",
+      "error": "Error"
+    },
+    "error": {
+      "loadingStatus": "Error loading system status"
+    },
+    "sections": {
+      "system": "System Information",
+      "backend": "APP",
+      "frontend": "WebUI",
+      "permissions": "Permissions",
+      "comingSoon": "Coming Soon"
+    },
+    "system": {
+      "platform": "Platform",
+      "hostname": "Hostname",
+      "architecture": "Architecture",
+      "pythonVersion": "Python Version"
+    },
+    "backend": {
+      "version": "Version",
+      "appVersion": "Application Version",
+      "dependencies": "Dependencies",
+      "pythonDeps": "Python Dependencies",
+      "missingPackages": "Missing Packages",
+      "running": "Running Status",
+      "backendRunning": "Backend Running"
+    },
+    "frontend": {
+      "dependencies": "Dependencies",
+      "npmDeps": "NPM Dependencies"
+    },
+    "permissions": {
+      "username": "Username",
+      "uid": "User ID",
+      "gid": "Group ID",
+      "isRoot": "Root User",
+      "groups": "User Groups",
+      "filePermissions": "File Permissions",
+      "canRead": "Can read",
+      "canWrite": "Can write to"
+    }
   }
 }

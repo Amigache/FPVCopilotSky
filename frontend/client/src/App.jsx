@@ -21,6 +21,7 @@ function App() {
     { id: 'vpn', label: t('tabs.vpn') },
     { id: 'flightController', label: t('tabs.flightController') },
     { id: 'system', label: t('tabs.system') },
+    { id: 'status', label: t('tabs.status') },
   ]
 
   return (

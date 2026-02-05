@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fpv-copilot-sky"
+version = "1.0.0"
+description = "FPV Copilot Sky - Advanced drone telemetry and control platform"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+    {name = "FPV Copilot Team"}
+]
+
+[project.urls]
+Repository = "https://github.com/Amigache/FPVCopilotSky"

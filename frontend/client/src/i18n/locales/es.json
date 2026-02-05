@@ -17,7 +17,8 @@
     "network": "🌐 Red",
     "vpn": "🔒 VPN",
     "flightController": "🎮 Controladora de Vuelo",
-    "system": "⚙️ Sistema"
+    "system": "⚙️ Sistema",
+    "status": "📋 Estado"
   },
   "dashboard": {
     "attitude": "✈️ Actitud",
@@ -260,6 +261,53 @@
     "save": "Guardar",
     "apply": "Aplicar",
     "delete": "Eliminar",
-    "ok": "Aceptar"
+    "ok": "Aceptar",
+    "loading": "Cargando..."
+  },
+  "status": {
+    "badge": {
+      "ok": "OK",
+      "warning": "Advertencia",
+      "error": "Error"
+    },
+    "error": {
+      "loadingStatus": "Error al cargar el estado del sistema"
+    },
+    "sections": {
+      "system": "Información del Sistema",
+      "backend": "APP",
+      "frontend": "WebUI",
+      "permissions": "Permisos",
+      "comingSoon": "Próximamente"
+    },
+    "system": {
+      "platform": "Plataforma",
+      "hostname": "Nombre de Host",
+      "architecture": "Arquitectura",
+      "pythonVersion": "Versión de Python"
+    },
+    "backend": {
+      "version": "Versión",
+      "appVersion": "Versión de la Aplicación",
+      "dependencies": "Dependencias",
+      "pythonDeps": "Dependencias de Python",
+      "missingPackages": "Paquetes Faltantes",
+      "running": "Estado de Ejecución",
+      "backendRunning": "Backend en Ejecución"
+    },
+    "frontend": {
+      "dependencies": "Dependencias",
+      "npmDeps": "Dependencias NPM"
+    },
+    "permissions": {
+      "username": "Usuario",
+      "uid": "ID de Usuario",
+      "gid": "ID de Grupo",
+      "isRoot": "Usuario Root",
+      "groups": "Grupos del Usuario",
+      "filePermissions": "Permisos de Archivos",
+      "canRead": "Puede leer",
+      "canWrite": "Puede escribir en"
+    }
   }
 }

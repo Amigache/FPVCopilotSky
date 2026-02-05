@@ -31,6 +31,7 @@ from api.routes import router as router_routes
 from api.routes import video as video_routes
 from api.routes import network as network_routes
 from api.routes import vpn as vpn_routes
+from api.routes import status as status_routes
 
 app = FastAPI(title="FPV Copilot Sky", version="1.0.0")
 
@@ -57,6 +58,7 @@ app.include_router(router_routes.router)
 app.include_router(video_routes.router)
 app.include_router(network_routes.router)
 app.include_router(vpn_routes.router)
+app.include_router(status_routes.router)
 
 # Global WebSocket endpoint
 @app.websocket("/ws")
@@ -103,16 +105,58 @@ async def root():
 
 async def periodic_stats_broadcast():
     """Periodically broadcast router stats via WebSocket."""
+    counter = 0
     while True:
-        await asyncio.sleep(2)
+        await asyncio.sleep(1)
+        counter += 1
+        
         try:
-            if router_service:
+            # Router status every 2 seconds
+            if counter % 2 == 0 and router_service:
                 outputs = router_service.get_outputs_list()
                 await websocket_manager.broadcast("router_status", outputs)
-            # Also broadcast video stats periodically (every 2 seconds when streaming)
-            if video_service and video_service.is_streaming:
+            
+            # Video status every 2 seconds (when streaming)
+            if counter % 2 == 0 and video_service and video_service.is_streaming:
                 await websocket_manager.broadcast("video_status", video_service.get_status())
-        except:
+            
+            # Status health check every 5 seconds
+            if counter % 5 == 0:
+                from api.routes.status import (
+                    check_python_dependencies,
+                    check_npm_dependencies,
+                    check_system_info,
+                    get_app_version,
+                    get_frontend_version,
+                    get_user_permissions
+                )
+                
+                status_data = {
+                    "success": True,
+                    "backend": {
+                        "running": True,
+                        "python_deps": check_python_dependencies(),
+                        "system": check_system_info(),
+                        "app_version": get_app_version()
+                    },
+                    "frontend": {
+                        "npm_deps": check_npm_dependencies(),
+                        "frontend_version": get_frontend_version()
+                    },
+                    "permissions": get_user_permissions(),
+                    "timestamp": int(time.time())
+                }
+                await websocket_manager.broadcast("status", status_data)
+            
+            # Network status every 10 seconds
+            if counter % 10 == 0:
+                from services.network_service import get_network_service
+                network_service = get_network_service()
+                network_status = await network_service.get_status()
+                await websocket_manager.broadcast("network_status", {"success": True, **network_status})
+            
+        except Exception as e:
+            logger.error(f"Error in periodic broadcast: {e}")
             pass
 
 

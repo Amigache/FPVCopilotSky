@@ -6,6 +6,7 @@ import VideoView from '../Pages/VideoView'
 import NetworkView from '../Pages/NetworkView'
 import VPNView from '../Pages/VPNView'
 import SystemView from '../Pages/SystemView'
+import StatusView from '../Pages/StatusView'
 
 const Content = ({ activeTab }) => {
   return (
@@ -17,6 +18,7 @@ const Content = ({ activeTab }) => {
       {activeTab === 'vpn' && <VPNView />}
       {activeTab === 'flightController' && <FlightControllerView />}
       {activeTab === 'system' && <SystemView />}
+      {activeTab === 'status' && <StatusView />}
     </div>
   )
 }
