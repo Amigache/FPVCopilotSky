@@ -10,12 +10,26 @@ export const useWebSocket = () => {
   return context
 }
 
-// Get WebSocket URL - always connect to backend port 8000
+// Get WebSocket URL
+// - In production (served by nginx): use same host (nginx proxies /ws to backend)
+// - In development (Vite dev server): connect to backend port 8000 directly
 const getWebSocketUrl = () => {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   const hostname = window.location.hostname
-  // Always use port 8000 for WebSocket (FastAPI backend)
-  return `${protocol}//${hostname}:8000/ws`
+  
+  // In development (localhost:5173), use Vite's proxy or connect directly to backend
+  if (import.meta.env.DEV) {
+    // Vite proxy handles /ws, but for WebSocket we need to connect directly in some cases
+    // Check if running on dev port 5173
+    const port = window.location.port
+    if (port === '5173' || port === '3000') {
+      // Development mode - connect directly to backend
+      return `${protocol}//${hostname}:8000/ws`
+    }
+  }
+  
+  // Production mode or same origin - use relative path (nginx will proxy)
+  return `${protocol}//${hostname}${window.location.port ? ':' + window.location.port : ''}/ws`
 }
 
 export const WebSocketProvider = ({ children }) => {

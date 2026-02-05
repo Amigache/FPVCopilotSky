@@ -3,11 +3,19 @@
  * Centralized API URL configuration for connecting to FastAPI backend
  */
 
-// Get the API base URL - always use port 8000 (FastAPI backend)
+// Get the API base URL
+// - In production (served by nginx): use relative paths (nginx proxies to backend)
+// - In development (Vite dev server): use Vite's proxy configuration
 export const getApiBaseUrl = () => {
-  const protocol = window.location.protocol
-  const hostname = window.location.hostname
-  return `${protocol}//${hostname}:8000`
+  // In development mode (Vite dev server on port 5173)
+  // Use empty string to leverage Vite's proxy configuration
+  if (import.meta.env.DEV) {
+    return ''
+  }
+  
+  // In production (served by nginx)
+  // Use relative paths - nginx will proxy /api/* to backend
+  return ''
 }
 
 // API endpoints

@@ -1,0 +1,29 @@
+[Unit]
+Description=FPV Copilot Sky - Backend Service
+After=network.target
+
+[Service]
+Type=simple
+User=hector
+Group=hector
+WorkingDirectory=/opt/FPVCopilotSky
+Environment="PATH=/opt/FPVCopilotSky/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+# Use virtual environment Python
+ExecStart=/opt/FPVCopilotSky/venv/bin/python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+# Restart policy
+Restart=always
+RestartSec=10
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=fpvcopilot-sky
+
+# Security and resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+[Install]
+WantedBy=multi-user.target

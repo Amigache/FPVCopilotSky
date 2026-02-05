@@ -1,0 +1,73 @@
+# FPV Copilot Sky - Nginx Configuration
+# This serves the frontend static files and proxies API requests to the backend
+
+server {
+    listen 80;
+    listen [::]:80;
+    
+    server_name _;
+    
+    # Increase client body size for file uploads
+    client_max_body_size 100M;
+    
+    # Root directory for frontend build
+    root /opt/FPVCopilotSky/frontend/client/dist;
+    index index.html;
+    
+    # Logging
+    access_log /var/log/nginx/fpvcopilot-sky-access.log;
+    error_log /var/log/nginx/fpvcopilot-sky-error.log;
+    
+    # Compression
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css text/xml text/javascript application/javascript application/json application/xml+rss image/svg+xml;
+    
+    # API proxy to backend
+    location /api/ {
+        proxy_pass http://localhost:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+        
+        # Timeouts for long-running requests
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+    
+    # WebSocket proxy
+    location /ws {
+        proxy_pass http://localhost:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # WebSocket timeouts (keep alive)
+        proxy_connect_timeout 7d;
+        proxy_send_timeout 7d;
+        proxy_read_timeout 7d;
+    }
+    
+    # Static files with caching
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        try_files $uri =404;
+    }
+    
+    # Frontend routes (SPA fallback)
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
