@@ -1,0 +1,362 @@
+.vpn-view {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 0.5rem;
+}
+
+.provider-info {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.provider-description {
+  margin-bottom: 0.5rem;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.provider-features {
+  margin-top: 0.5rem;
+}
+
+.provider-features strong {
+  color: #7fa3ff;
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.8rem;
+}
+
+.provider-features ul {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.provider-features li {
+  margin: 0.15rem 0;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.8rem;
+}
+
+.vpn-status-container {
+  background: linear-gradient(135deg, rgba(45, 45, 63, 0.4), rgba(30, 30, 46, 0.4));
+  border: 1px solid rgba(102, 102, 102, 0.3);
+  border-radius: 4px;
+  padding: 12px 15px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  margin-top: 0.75rem;
+}
+
+.vpn-status-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.vpn-status-label {
+  font-size: 0.9em;
+  font-weight: 600;
+  color: #d5ddff;
+}
+
+.vpn-status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+  font-size: 0.85em;
+}
+
+.vpn-field-label {
+  color: #9aa6c3;
+  font-size: 0.85em;
+  margin-bottom: 2px;
+}
+
+.vpn-field-value {
+  color: #d5ddff;
+  font-weight: 600;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 3px;
+  font-size: 0.9em;
+  font-weight: 700;
+}
+
+.status-badge.connected {
+  background: rgba(76, 175, 80, 0.25);
+  color: #9fe8c2;
+  border: 1px solid rgba(76, 175, 80, 0.5);
+}
+
+.status-badge.disconnected {
+  background: rgba(244, 67, 54, 0.25);
+  color: #ffb3b8;
+  border: 1px solid rgba(244, 67, 54, 0.5);
+}
+
+.warning-box,
+.info-box,
+.auth-banner {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.875rem;
+  border-radius: 6px;
+  margin-top: 0.75rem;
+}
+
+.warning-box {
+  background: rgba(255, 152, 0, 0.08);
+  border: 1px solid rgba(255, 152, 0, 0.25);
+}
+
+.info-box {
+  background: rgba(33, 150, 243, 0.08);
+  border: 1px solid rgba(33, 150, 243, 0.25);
+}
+
+.auth-banner {
+  background: rgba(156, 39, 176, 0.08);
+  border: 1px solid rgba(156, 39, 176, 0.25);
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.warning-icon,
+.info-icon,
+.auth-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.warning-content,
+.info-content,
+.auth-content {
+  flex: 1;
+}
+
+.warning-content h3,
+.info-content h3,
+.auth-content h3 {
+  margin: 0 0 0.35rem 0;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.95rem;
+}
+
+.warning-content p,
+.info-content p,
+.auth-content p {
+  margin: 0.35rem 0;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.85rem;
+}
+
+.info-content ol {
+  text-align: left;
+  margin: 0.5rem 0 0 1.25rem;
+  padding: 0;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.85rem;
+}
+
+.info-content li {
+  margin: 0.3rem 0;
+}
+
+.auth-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+  margin-top: 0.75rem;
+}
+
+.auth-polling {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  margin-top: 0.75rem;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.8rem;
+}
+
+.spinner-small {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-top-color: #7fa3ff;
+  border-radius: 50%;
+  animation: vpn-spin 0.8s linear infinite;
+}
+
+@keyframes vpn-spin {
+  to { transform: rotate(360deg); }
+}
+
+.button-group {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.vpn-btn {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 5px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.vpn-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.vpn-btn-primary {
+  background: rgba(79, 125, 255, 0.6);
+  color: white;
+  border: 1px solid rgba(79, 125, 255, 0.4);
+}
+
+.vpn-btn-primary:hover:not(:disabled) {
+  background: rgba(79, 125, 255, 0.8);
+}
+
+.vpn-btn-secondary {
+  background: rgba(50, 55, 75, 0.6);
+  color: #a0a8c0;
+  border: 1px solid rgba(102, 102, 102, 0.3);
+}
+
+.vpn-btn-secondary:hover:not(:disabled) {
+  background: rgba(60, 65, 90, 0.8);
+}
+
+.vpn-btn-danger {
+  background: rgba(244, 67, 54, 0.15);
+  color: #ff6659;
+  border: 1px solid rgba(244, 67, 54, 0.4);
+}
+
+.vpn-btn-danger:hover:not(:disabled) {
+  background: rgba(244, 67, 54, 0.25);
+}
+
+.vpn-btn-warning {
+  background: rgba(255, 152, 0, 0.15);
+  color: #ffb74d;
+  border: 1px solid rgba(255, 152, 0, 0.4);
+}
+
+.vpn-btn-warning:hover:not(:disabled) {
+  background: rgba(255, 152, 0, 0.25);
+}
+
+.vpn-btn-link {
+  background: none;
+  color: #7fa3ff;
+  text-decoration: none;
+  padding: 4px 8px;
+  border: 1px solid rgba(79, 125, 255, 0.3);
+}
+
+.vpn-btn-link:hover {
+  background: rgba(79, 125, 255, 0.1);
+}
+
+.form-group {
+  margin-bottom: 0.75rem;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: rgba(255, 255, 255, 0.7);
+  font-weight: 500;
+  font-size: 0.85rem;
+}
+
+.form-group select {
+  width: 100%;
+  box-sizing: border-box;
+  height: 39px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 5px;
+  color: white;
+  font-size: 0.85rem;
+  line-height: normal;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='rgba(255,255,255,0.7)' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 12px;
+  padding-right: 32px;
+}
+
+.form-group select:focus {
+  outline: none;
+  border-color: #7fa3ff;
+}
+
+.form-group select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .vpn-view {
+    padding: 0.25rem;
+  }
+
+  .status-grid {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+
+  .button-group {
+    flex-direction: column;
+  }
+
+  .vpn-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .auth-actions {
+    flex-direction: column;
+    width: 100%;
+    gap: 0.35rem;
+  }
+
+  .auth-actions .vpn-btn {
+    width: 100%;
+  }
+  
+  .provider-info {
+    padding: 0.5rem;
+  }
+  
+  .info-box,
+  .warning-box,
+  .auth-banner {
+    padding: 0.625rem;
+  }
+}

@@ -1,0 +1,7 @@
+/* System view specific styles */
+.waiting-data {
+  padding: 2rem;
+  text-align: center;
+  color: #9aa6c3;
+  font-size: 0.95rem;
+}

@@ -1,0 +1,125 @@
+.connection-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 15px;
+  margin-bottom: 15px;
+}
+
+.form-group {
+  margin-bottom: 12px;
+}
+
+.form-group label {
+  display: block;
+  color: #a7b1cd;
+  font-weight: 600;
+  margin-bottom: 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.form-group input {
+  width: 100%;
+  box-sizing: border-box;
+  height: 36px;
+  padding: 9px 10px;
+  border: 1px solid rgba(120, 138, 190, 0.35);
+  border-radius: 4px;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-size: 12px;
+  line-height: normal;
+  transition: all 0.2s;
+  background: rgba(9, 13, 24, 0.9);
+  color: #d7dbea;
+}
+
+.form-group select {
+  width: 100%;
+  box-sizing: border-box;
+  height: 39px;
+  padding: 8px 10px;
+  border: 1px solid rgba(120, 138, 190, 0.35);
+  border-radius: 4px;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-size: 12px;
+  line-height: normal;
+  transition: all 0.2s;
+  background: rgba(9, 13, 24, 0.9);
+  color: #d7dbea;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23a7b1cd' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px;
+  padding-right: 30px;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+  outline: none;
+  border-color: rgba(125, 146, 230, 0.8);
+  background: rgba(12, 18, 32, 0.95);
+  box-shadow: 0 0 0 1px rgba(125, 146, 230, 0.2);
+}
+
+.form-group input:disabled,
+.form-group select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.button-group {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+button {
+  padding: 10px 16px;
+  background: linear-gradient(135deg, #4b5dbd 0%, #3d2e63 100%);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  transition: all 0.2s;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 7px rgba(70, 90, 160, 0.45);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-disconnect {
+  background: linear-gradient(135deg, #b43d3d 0%, #632e2e 100%);
+}
+
+.btn-disconnect:hover:not(:disabled) {
+  box-shadow: 0 3px 7px rgba(180, 61, 61, 0.45);
+}
+
+.info-box {
+  background: linear-gradient(135deg, rgba(52, 66, 122, 0.35) 0%, rgba(32, 26, 56, 0.35) 100%);
+  border-left: 3px solid #7c8fe6;
+  padding: 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #c7d0ea;
+  margin-bottom: 12px;
+}

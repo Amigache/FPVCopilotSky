@@ -1,0 +1,53 @@
+{
+  "serial": {
+    "port": "/dev/ttyAML0",
+    "baudrate": 115200,
+    "auto_connect": true,
+    "last_successful": true
+  },
+  "router": {
+    "outputs": [
+      {
+        "id": "ca5d26b9",
+        "type": "tcp_server",
+        "host": "0.0.0.0",
+        "port": 5760,
+        "name": "tcp_server:5760",
+        "enabled": true,
+        "auto_start": true
+      },
+      {
+        "id": "0090d567",
+        "type": "udp",
+        "host": "192.168.1.136",
+        "port": 14550,
+        "name": "udp:14550",
+        "enabled": true,
+        "auto_start": true
+      }
+    ]
+  },
+  "video": {
+    "device": "/dev/video0",
+    "width": 960,
+    "height": 720,
+    "framerate": 30,
+    "codec": "h264",
+    "quality": 85,
+    "h264_bitrate": 2000
+  },
+  "streaming": {
+    "udp_host": "192.168.1.136",
+    "udp_port": 5600,
+    "enabled": true,
+    "auto_start": true
+  },
+  "ui": {
+    "language": "es",
+    "theme": "dark"
+  },
+  "system": {
+    "version": "1.0.0",
+    "first_run": false
+  }
+}
