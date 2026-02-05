@@ -25,7 +25,8 @@ export const API_MAVLINK_ROUTER = `${API_BASE}/api/mavlink-router`
 export const API_SYSTEM = `${API_BASE}/api/system`
 
 // Helper function for fetch with timeout
-export const fetchWithTimeout = async (url, options = {}, timeout = 10000) => {
+// Default timeout is 30s to accommodate VPN/remote access latency
+export const fetchWithTimeout = async (url, options = {}, timeout = 30000) => {
   const controller = new AbortController()
   const id = setTimeout(() => controller.abort(), timeout)
   
@@ -47,17 +48,17 @@ export const fetchWithTimeout = async (url, options = {}, timeout = 10000) => {
 
 // Convenience methods for API calls
 export const api = {
-  get: (endpoint, timeout = 10000) => 
+  get: (endpoint, timeout = 30000) => 
     fetchWithTimeout(`${API_BASE}${endpoint}`, {}, timeout),
   
-  post: (endpoint, data, timeout = 10000) => 
+  post: (endpoint, data, timeout = 30000) => 
     fetchWithTimeout(`${API_BASE}${endpoint}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
     }, timeout),
   
-  delete: (endpoint, timeout = 10000) => 
+  delete: (endpoint, timeout = 30000) => 
     fetchWithTimeout(`${API_BASE}${endpoint}`, {
       method: 'DELETE'
     }, timeout)

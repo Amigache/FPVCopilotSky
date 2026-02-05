@@ -40,6 +40,9 @@ if command -v nginx &> /dev/null; then
         sudo cp /etc/nginx/sites-available/fpvcopilot-sky /etc/nginx/sites-available/fpvcopilot-sky.backup
     fi
     
+    # Copy nginx config with production optimizations:
+    # - Uses 127.0.0.1 instead of localhost (avoids IPv6 resolution issues)
+    # - Optimized timeouts for API (10s) and WebSocket (7d)
     sudo cp "$PROJECT_DIR/systemd/fpvcopilot-sky.nginx" /etc/nginx/sites-available/fpvcopilot-sky
     
     # Enable FPV site
@@ -52,7 +55,8 @@ if command -v nginx &> /dev/null; then
     fi
     
     # Fix permissions for frontend build
-    sudo chown -R www-data:www-data "$PROJECT_DIR/frontend/client/dist"
+    # dist/ is owned by hector (can rebuild) and www-data (can read)
+    sudo chown -R hector:www-data "$PROJECT_DIR/frontend/client/dist"
     sudo chmod -R 755 "$PROJECT_DIR/frontend/client/dist"
     
     # Test nginx config
@@ -74,22 +78,22 @@ echo -e "\n${BLUE}🚀 Starting service...${NC}"
 sudo systemctl enable fpvcopilot-sky.service
 sudo systemctl restart fpvcopilot-sky.service
 
-# Wait a moment for service to start
-sleep 3
+# Wait for service to fully start (backend takes ~6s to init due to serial port scanning)
+sleep 8
 
 # Step 5: Health check
 echo -e "\n${BLUE}🏥 Health check...${NC}"
 
-# Check backend
-if curl -s http://localhost:8000/api/status/health > /dev/null 2>&1; then
+# Check backend (use 127.0.0.1 to avoid IPv6 resolution issues with localhost)
+if curl -s --connect-timeout 5 http://127.0.0.1:8000/api/status/health > /dev/null 2>&1; then
     echo -e "${GREEN}✅${NC} Backend API is responding"
 else
     echo -e "${RED}❌${NC} Backend API is NOT responding"
     echo -e "   Check logs: ${BLUE}sudo journalctl -u fpvcopilot-sky -f${NC}"
 fi
 
-# Check nginx/frontend
-if curl -s http://localhost/ > /dev/null 2>&1; then
+# Check nginx/frontend (use 127.0.0.1 to avoid IPv6 resolution issues)
+if curl -s --connect-timeout 5 http://127.0.0.1/ > /dev/null 2>&1; then
     echo -e "${GREEN}✅${NC} Frontend is being served"
 else
     echo -e "${RED}❌${NC} Frontend is NOT being served"

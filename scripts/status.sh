@@ -26,7 +26,8 @@ check_service() {
 check_port() {
     local port=$1
     local name=$2
-    if lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1; then
+    # Use ss (doesn't require sudo) instead of lsof
+    if ss -tlnp 2>/dev/null | grep -q ":$port "; then
         echo -e "${GREEN}✅${NC} Port $port ($name) is listening"
         return 0
     else
@@ -59,16 +60,17 @@ else
 fi
 
 echo -e "\n${BLUE}🌐 Connectivity${NC}"
-BACKEND_URL="http://localhost:8000/api/status/health"
-if curl -s -f "$BACKEND_URL" > /dev/null 2>&1; then
+# Use 127.0.0.1 to avoid IPv6 resolution issues with localhost
+BACKEND_URL="http://127.0.0.1:8000/api/status/health"
+if curl -s -f --connect-timeout 5 "$BACKEND_URL" > /dev/null 2>&1; then
     echo -e "${GREEN}✅${NC} Backend API responding"
 else
     echo -e "${RED}❌${NC} Backend API NOT responding"
 fi
 
 if [ $NGINX_RUNNING -eq 0 ]; then
-    NGINX_URL="http://localhost/"
-    if curl -s -f "$NGINX_URL" > /dev/null 2>&1; then
+    NGINX_URL="http://127.0.0.1/"
+    if curl -s -f --connect-timeout 5 "$NGINX_URL" > /dev/null 2>&1; then
         echo -e "${GREEN}✅${NC} Nginx serving frontend"
     else
         echo -e "${YELLOW}⚠️${NC}  Nginx running but not serving correctly"

@@ -16,8 +16,8 @@ fi
 sudo systemctl reload nginx
 echo "✅ Nginx reloaded"
 
-# Verify
-if curl -s http://localhost/ | grep -q "root"; then
+# Verify (use 127.0.0.1 to avoid IPv6 resolution issues)
+if curl -s --connect-timeout 5 http://127.0.0.1/ | grep -q "root"; then
     echo "✅ Frontend is now being served"
 else
     echo "⚠️  Frontend may not be loading correctly"
