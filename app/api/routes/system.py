@@ -25,10 +25,28 @@ async def get_available_ports():
 
 @router.get("/services")
 async def get_services_status():
-    """Get status of monitored systemd services (fpvcopilot-sky, nginx)"""
+    """Get status of monitored systemd services (fpvcopilot-sky, nginx) with resource usage"""
     services = SystemService.get_services_status()
     
     return {
         "services": services,
         "count": len(services)
+    }
+
+@router.get("/memory")
+async def get_memory_info():
+    """Get RAM memory usage information"""
+    return SystemService.get_memory_info()
+
+@router.get("/cpu")
+async def get_cpu_info():
+    """Get CPU usage and information"""
+    return SystemService.get_cpu_info()
+
+@router.get("/resources")
+async def get_system_resources():
+    """Get combined CPU and memory information"""
+    return {
+        "cpu": SystemService.get_cpu_info(),
+        "memory": SystemService.get_memory_info()
     }

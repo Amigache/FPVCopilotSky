@@ -372,33 +372,38 @@ class MAVLinkBridge:
                     time.sleep(0.1)
                     continue
                 
-                # Read available data
-                if self.serial_port.in_waiting > 0:
-                    data = self.serial_port.read(self.serial_port.in_waiting)
-                    if data:
-                        buffer += data
-                        
-                        # Extract and forward complete messages
-                        while True:
-                            msg_bytes, remaining, parsed_msg = self._extract_mavlink_message(buffer)
-                            if msg_bytes is None:
-                                break
-                            
-                            buffer = remaining
-                            self.stats["serial_rx"] += 1
-                            
-                            # Forward to all TCP clients
-                            self._forward_to_tcp_clients(msg_bytes)
-                            
-                            # Process for telemetry
-                            if parsed_msg:
-                                self._process_telemetry(parsed_msg)
-                            
-                            # Log only first message
-                            if self.stats["serial_rx"] == 1:
-                                print(f"📡 First serial message ({len(msg_bytes)} bytes)")
+                # Read available data - use larger read with timeout to reduce CPU usage
+                # The serial port has timeout=0.1, so this blocks up to 100ms if no data
+                bytes_waiting = self.serial_port.in_waiting
+                if bytes_waiting > 0:
+                    # Data available, read it immediately
+                    data = self.serial_port.read(bytes_waiting)
                 else:
-                    time.sleep(0.001)
+                    # No data, do a blocking read with timeout (more CPU efficient than polling)
+                    data = self.serial_port.read(256)
+                
+                if data:
+                    buffer += data
+                    
+                    # Extract and forward complete messages
+                    while True:
+                        msg_bytes, remaining, parsed_msg = self._extract_mavlink_message(buffer)
+                        if msg_bytes is None:
+                            break
+                        
+                        buffer = remaining
+                        self.stats["serial_rx"] += 1
+                        
+                        # Forward to all TCP clients
+                        self._forward_to_tcp_clients(msg_bytes)
+                        
+                        # Process for telemetry
+                        if parsed_msg:
+                            self._process_telemetry(parsed_msg)
+                        
+                        # Log only first message
+                        if self.stats["serial_rx"] == 1:
+                            print(f"📡 First serial message ({len(msg_bytes)} bytes)")
                     
             except serial.SerialException as e:
                 print(f"⚠️ Serial error: {e}")

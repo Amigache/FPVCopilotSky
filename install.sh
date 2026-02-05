@@ -107,6 +107,12 @@ echo "🔐 Setting up serial port permissions..."
 sudo usermod -a -G dialout $USER
 sudo usermod -a -G video $USER
 
+# Create udev rule for serial ports
+if [ ! -f /etc/udev/rules.d/99-radxa-serial.rules ]; then
+    echo 'KERNEL=="ttyAML*", MODE="0660", GROUP="dialout"' | sudo tee /etc/udev/rules.d/99-radxa-serial.rules > /dev/null
+    echo "  ✓ Udev rules for serial ports created"
+fi
+
 # Disable serial-getty on ttyAML0 to prevent conflicts with MAVLink
 # The serial-getty service conflicts with MAVLink:
 # - Changes port group from dialout to tty
@@ -117,7 +123,7 @@ if systemctl is-active --quiet serial-getty@ttyAML0.service 2>/dev/null; then
 fi
 sudo systemctl disable serial-getty@ttyAML0.service 2>/dev/null || true
 sudo systemctl mask serial-getty@ttyAML0.service 2>/dev/null || true
-echo "✓ Serial getty disabled on ttyAML0"
+echo "  ✓ Serial getty disabled on ttyAML0"
 
 # Trigger udev to apply serial port rules
 sudo udevadm trigger --action=change --subsystem-match=tty 2>/dev/null || true
@@ -166,24 +172,58 @@ else
     echo "  ⚠ No cameras found"
 fi
 
-# Optimize system for video streaming
+# Optimize system for video streaming and 4G/LTE
 echo ""
-echo "⚡ Optimizing system for video streaming..."
+echo "⚡ Optimizing system for video streaming and 4G..."
 
-# Increase UDP buffer sizes
-sudo sysctl -w net.core.rmem_max=26214400 2>/dev/null || true
-sudo sysctl -w net.core.wmem_max=26214400 2>/dev/null || true
-sudo sysctl -w net.core.rmem_default=26214400 2>/dev/null || true
-sudo sysctl -w net.core.wmem_default=26214400 2>/dev/null || true
+# Create sysctl configuration for FPV streaming
+sudo tee /etc/sysctl.d/99-fpv-streaming.conf > /dev/null << 'SYSCTL_EOF'
+# FPV Streaming Optimizations for 4G/LTE
+# Optimized for video and telemetry over cellular networks
 
-# Make permanent
-if ! grep -q "net.core.rmem_max=26214400" /etc/sysctl.conf 2>/dev/null; then
-    echo "net.core.rmem_max=26214400" | sudo tee -a /etc/sysctl.conf > /dev/null
-    echo "net.core.wmem_max=26214400" | sudo tee -a /etc/sysctl.conf > /dev/null
-    echo "net.core.rmem_default=26214400" | sudo tee -a /etc/sysctl.conf > /dev/null
-    echo "net.core.wmem_default=26214400" | sudo tee -a /etc/sysctl.conf > /dev/null
-    echo "  ✓ UDP buffer sizes increased"
-fi
+# ===== TCP Buffer Sizes (for MAVLink, WebSocket) =====
+net.core.rmem_max=134217728
+net.core.wmem_max=134217728
+net.core.rmem_default=1048576
+net.core.wmem_default=1048576
+net.ipv4.tcp_rmem=4096 1048576 134217728
+net.ipv4.tcp_wmem=4096 1048576 134217728
+
+# ===== UDP Optimizations (for video streaming) =====
+net.ipv4.udp_rmem_min=65536
+net.ipv4.udp_wmem_min=65536
+
+# ===== BBR Congestion Control (best for 4G variable bandwidth) =====
+net.core.default_qdisc=fq
+net.ipv4.tcp_congestion_control=bbr
+net.ipv4.tcp_slow_start_after_idle=0
+net.ipv4.tcp_mtu_probing=1
+net.ipv4.tcp_no_metrics_save=1
+net.ipv4.tcp_fastopen=3
+
+# ===== Network Backlog (handle bursts better) =====
+net.core.netdev_max_backlog=5000
+net.core.somaxconn=4096
+
+# ===== IPv6 Disable (reduce overhead for embedded) =====
+net.ipv6.conf.all.disable_ipv6=1
+net.ipv6.conf.default.disable_ipv6=1
+
+# ===== Memory Management =====
+vm.swappiness=10
+
+# ===== Kernel Logging (reduce spam) =====
+kernel.printk=3 3 3 3
+SYSCTL_EOF
+
+# Remove old conflicting entries from sysctl.conf
+sudo sed -i '/^vm.swappiness=100$/d; /^net.core.rmem_max=26214400$/d; /^net.core.rmem_default=26214400$/d; /^net.core.wmem_max=26214400$/d; /^net.core.wmem_default=26214400$/d' /etc/sysctl.conf 2>/dev/null || true
+
+# Apply sysctl settings
+sudo sysctl --system > /dev/null 2>&1 || true
+echo "  ✓ Network buffers optimized for 4G streaming"
+echo "  ✓ BBR congestion control enabled"
+echo "  ✓ UDP/TCP tuning applied"
 
 echo ""
 echo "✅ Installation complete!"

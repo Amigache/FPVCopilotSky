@@ -221,15 +221,31 @@ class GStreamerService:
         encoder_caps = Gst.ElementFactory.make("capsfilter", "encoder_caps")
         encoder_caps.set_property("caps", Gst.Caps.from_string(encoder_caps_str))
         
-        # H.264 encoder - optimized for low latency
+        # Queue before encoder - decouple decoder and encoder threads
+        queue_pre = Gst.ElementFactory.make("queue", "queue_pre")
+        queue_pre.set_property("max-size-buffers", 2)
+        queue_pre.set_property("max-size-time", 0)
+        queue_pre.set_property("max-size-bytes", 0)
+        queue_pre.set_property("leaky", 2)  # Drop old frames if backed up
+        
+        # H.264 encoder - optimized for ultra-low latency
         encoder = Gst.ElementFactory.make("x264enc", "encoder")
         encoder.set_property("bitrate", self.video_config.h264_bitrate)
-        encoder.set_property("speed-preset", self.video_config.h264_preset)
+        encoder.set_property("speed-preset", "ultrafast")  # Force ultrafast for minimal latency
         encoder.set_property("tune", 0x00000004)  # zerolatency
-        encoder.set_property("key-int-max", self.video_config.framerate * 2)
-        encoder.set_property("bframes", 0)
-        encoder.set_property("threads", 2)
+        encoder.set_property("key-int-max", self.video_config.framerate)  # Keyframe every second for recovery
+        encoder.set_property("bframes", 0)  # No B-frames for lower latency
+        encoder.set_property("threads", 4)  # Use all cores
         encoder.set_property("sliced-threads", True)
+        encoder.set_property("rc-lookahead", 0)  # No lookahead for lower latency
+        encoder.set_property("vbv-buf-capacity", 300)  # Smaller buffer for faster response
+        
+        # Queue after encoder - prevent UDP sink from blocking encoder
+        queue_post = Gst.ElementFactory.make("queue", "queue_post")
+        queue_post.set_property("max-size-buffers", 3)
+        queue_post.set_property("max-size-time", 0)
+        queue_post.set_property("max-size-bytes", 0)
+        queue_post.set_property("leaky", 2)
         
         # H.264 parser
         h264parse = Gst.ElementFactory.make("h264parse", "h264parse")
@@ -251,7 +267,7 @@ class GStreamerService:
         # Add elements
         elements = [
             source, caps_filter, decoder, videoconvert, videoscale,
-            encoder_caps, encoder, h264parse, rtppay, udpsink
+            encoder_caps, queue_pre, encoder, queue_post, h264parse, rtppay, udpsink
         ]
         for element in elements:
             if not element:
@@ -266,8 +282,10 @@ class GStreamerService:
             (decoder, videoconvert),
             (videoconvert, videoscale),
             (videoscale, encoder_caps),
-            (encoder_caps, encoder),
-            (encoder, h264parse),
+            (encoder_caps, queue_pre),
+            (queue_pre, encoder),
+            (encoder, queue_post),
+            (queue_post, h264parse),
             (h264parse, rtppay),
             (rtppay, udpsink)
         ]

@@ -7,16 +7,199 @@ import glob
 import os
 import platform
 import subprocess
-from typing import List, Dict
+import time
+from typing import List, Dict, Any
 
 class SystemService:
     # Services to monitor
     MONITORED_SERVICES = ['fpvcopilot-sky', 'nginx']
     
+    # Cache for CPU usage calculation
+    _last_cpu_times = None
+    _last_cpu_check = 0
+    
     @staticmethod
-    def get_services_status() -> List[Dict[str, any]]:
+    def get_memory_info() -> Dict[str, Any]:
         """
-        Get status of monitored systemd services
+        Get memory (RAM) usage information.
+        
+        Returns:
+            Dictionary with memory information in MB and percentage
+        """
+        try:
+            with open('/proc/meminfo', 'r') as f:
+                lines = f.readlines()
+            
+            mem_info = {}
+            for line in lines:
+                if ':' in line:
+                    key, value = line.split(':')
+                    # Parse value (usually in kB)
+                    value = value.strip().split()[0]
+                    mem_info[key.strip()] = int(value)
+            
+            total_kb = mem_info.get('MemTotal', 0)
+            free_kb = mem_info.get('MemFree', 0)
+            available_kb = mem_info.get('MemAvailable', free_kb)
+            buffers_kb = mem_info.get('Buffers', 0)
+            cached_kb = mem_info.get('Cached', 0)
+            
+            # Calculate used (excluding buffers/cache)
+            used_kb = total_kb - available_kb
+            
+            total_mb = total_kb / 1024
+            used_mb = used_kb / 1024
+            available_mb = available_kb / 1024
+            
+            percentage = (used_kb / total_kb * 100) if total_kb > 0 else 0
+            
+            return {
+                "total_mb": round(total_mb, 1),
+                "used_mb": round(used_mb, 1),
+                "available_mb": round(available_mb, 1),
+                "percentage": round(percentage, 1),
+                "buffers_mb": round(buffers_kb / 1024, 1),
+                "cached_mb": round(cached_kb / 1024, 1)
+            }
+        except Exception as e:
+            print(f"⚠️ Error getting memory info: {e}")
+            return {
+                "total_mb": 0,
+                "used_mb": 0,
+                "available_mb": 0,
+                "percentage": 0,
+                "buffers_mb": 0,
+                "cached_mb": 0
+            }
+    
+    @staticmethod
+    def get_cpu_info() -> Dict[str, Any]:
+        """
+        Get CPU usage and information.
+        
+        Returns:
+            Dictionary with CPU usage percentage and core info
+        """
+        try:
+            # Get CPU usage from /proc/stat
+            with open('/proc/stat', 'r') as f:
+                lines = f.readlines()
+            
+            # Parse CPU line (first line)
+            cpu_line = lines[0].strip()
+            cpu_values = cpu_line.split()[1:]  # Skip 'cpu' label
+            
+            # Values: user, nice, system, idle, iowait, irq, softirq, steal, guest, guest_nice
+            user = int(cpu_values[0])
+            nice = int(cpu_values[1])
+            system = int(cpu_values[2])
+            idle = int(cpu_values[3])
+            iowait = int(cpu_values[4]) if len(cpu_values) > 4 else 0
+            
+            total = user + nice + system + idle + iowait
+            active = user + nice + system
+            
+            # Calculate usage based on delta from last check
+            current_time = time.time()
+            usage = 0.0
+            
+            if SystemService._last_cpu_times is not None:
+                last_total, last_active = SystemService._last_cpu_times
+                total_delta = total - last_total
+                active_delta = active - last_active
+                
+                if total_delta > 0:
+                    usage = (active_delta / total_delta) * 100
+            
+            SystemService._last_cpu_times = (total, active)
+            SystemService._last_cpu_check = current_time
+            
+            # Get number of cores
+            cores = 0
+            for line in lines:
+                if line.startswith('cpu') and line[3].isdigit():
+                    cores += 1
+            
+            # Get CPU temperature
+            temperature = SystemService._get_cpu_temperature()
+            
+            # Get CPU frequency
+            freq_mhz = SystemService._get_cpu_frequency()
+            
+            # Get load average
+            load_avg = [0.0, 0.0, 0.0]
+            try:
+                with open('/proc/loadavg', 'r') as f:
+                    parts = f.read().split()
+                    load_avg = [float(parts[0]), float(parts[1]), float(parts[2])]
+            except:
+                pass
+            
+            return {
+                "usage_percent": round(usage, 1),
+                "cores": cores,
+                "temperature": temperature,
+                "frequency_mhz": freq_mhz,
+                "load_avg_1m": round(load_avg[0], 2),
+                "load_avg_5m": round(load_avg[1], 2),
+                "load_avg_15m": round(load_avg[2], 2)
+            }
+        except Exception as e:
+            print(f"⚠️ Error getting CPU info: {e}")
+            return {
+                "usage_percent": 0,
+                "cores": 0,
+                "temperature": None,
+                "frequency_mhz": None,
+                "load_avg_1m": 0,
+                "load_avg_5m": 0,
+                "load_avg_15m": 0
+            }
+    
+    @staticmethod
+    def _get_cpu_temperature() -> float | None:
+        """Get CPU temperature from thermal zones."""
+        temp_paths = [
+            '/sys/class/thermal/thermal_zone0/temp',
+            '/sys/class/hwmon/hwmon0/temp1_input',
+            '/sys/devices/virtual/thermal/thermal_zone0/temp'
+        ]
+        
+        for path in temp_paths:
+            try:
+                if os.path.exists(path):
+                    with open(path, 'r') as f:
+                        temp = int(f.read().strip())
+                        # Temperature is in millidegrees
+                        return round(temp / 1000, 1)
+            except:
+                pass
+        
+        return None
+    
+    @staticmethod
+    def _get_cpu_frequency() -> int | None:
+        """Get current CPU frequency in MHz."""
+        freq_paths = [
+            '/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq',
+            '/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_cur_freq'
+        ]
+        
+        for path in freq_paths:
+            try:
+                if os.path.exists(path):
+                    with open(path, 'r') as f:
+                        freq_khz = int(f.read().strip())
+                        return freq_khz // 1000
+            except:
+                pass
+        
+        return None
+    
+    @staticmethod
+    def get_services_status() -> List[Dict[str, Any]]:
+        """
+        Get status of monitored systemd services with CPU/memory usage.
         
         Returns:
             List of dictionaries with service status information
@@ -30,7 +213,10 @@ class SystemService:
                 "status": "unknown",
                 "description": "",
                 "memory": None,
-                "uptime": None
+                "memory_bytes": 0,
+                "cpu_percent": None,
+                "uptime": None,
+                "pid": None
             }
             
             try:
@@ -44,12 +230,12 @@ class SystemService:
                 service_info["active"] = result.returncode == 0
                 service_info["status"] = result.stdout.strip()
                 
-                # Get service description and memory if active
+                # Get service description, memory, and PID if active
                 if service_info["active"]:
                     # Get service properties
                     show_result = subprocess.run(
                         ['systemctl', 'show', service_name, 
-                         '--property=Description,MemoryCurrent,ActiveEnterTimestamp'],
+                         '--property=Description,MemoryCurrent,ActiveEnterTimestamp,MainPID'],
                         capture_output=True,
                         text=True,
                         timeout=5
@@ -64,11 +250,26 @@ class SystemService:
                                 elif key == 'MemoryCurrent':
                                     try:
                                         mem_bytes = int(value)
-                                        service_info["memory"] = f"{mem_bytes // (1024*1024)} MB"
+                                        service_info["memory_bytes"] = mem_bytes
+                                        if mem_bytes >= 1024*1024*1024:
+                                            service_info["memory"] = f"{mem_bytes / (1024*1024*1024):.1f} GB"
+                                        else:
+                                            service_info["memory"] = f"{mem_bytes // (1024*1024)} MB"
                                     except:
                                         pass
                                 elif key == 'ActiveEnterTimestamp':
                                     service_info["uptime"] = value
+                                elif key == 'MainPID':
+                                    try:
+                                        service_info["pid"] = int(value)
+                                    except:
+                                        pass
+                    
+                    # Get CPU usage for the service's main process
+                    if service_info["pid"]:
+                        cpu_percent = SystemService._get_process_cpu(service_info["pid"])
+                        if cpu_percent is not None:
+                            service_info["cpu_percent"] = round(cpu_percent, 1)
                                     
             except subprocess.TimeoutExpired:
                 service_info["status"] = "timeout"
@@ -78,6 +279,40 @@ class SystemService:
             services.append(service_info)
         
         return services
+    
+    @staticmethod
+    def _get_process_cpu(pid: int) -> float | None:
+        """Get CPU usage percentage for a process."""
+        try:
+            # Read process stat
+            with open(f'/proc/{pid}/stat', 'r') as f:
+                stat = f.read().split()
+            
+            # utime (14) + stime (15) = total CPU time in jiffies
+            utime = int(stat[13])
+            stime = int(stat[14])
+            total_time = utime + stime
+            
+            # Get system uptime
+            with open('/proc/uptime', 'r') as f:
+                uptime = float(f.read().split()[0])
+            
+            # Get process start time (in jiffies since boot)
+            starttime = int(stat[21])
+            
+            # Get clock ticks per second
+            clk_tck = os.sysconf(os.sysconf_names['SC_CLK_TCK'])
+            
+            # Calculate seconds the process has been running
+            seconds = uptime - (starttime / clk_tck)
+            
+            if seconds > 0:
+                cpu_usage = ((total_time / clk_tck) / seconds) * 100
+                return cpu_usage
+            
+            return 0.0
+        except Exception:
+            return None
     
     @staticmethod
     def get_available_serial_ports() -> List[Dict[str, str]]:

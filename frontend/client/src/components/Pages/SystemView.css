@@ -126,8 +126,16 @@
   color: #9aa6c3;
 }
 
-.service-memory {
+.service-resource {
   font-family: 'Monaco', 'Menlo', monospace;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.service-pid {
+  color: #7a8299;
+  font-size: 0.8rem;
 }
 
 /* Responsive */

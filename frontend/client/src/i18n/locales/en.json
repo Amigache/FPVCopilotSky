@@ -129,7 +129,17 @@
       "waiting": "System configuration...",
       "services": "Services",
       "running": "Running",
-      "stopped": "Stopped"
+      "stopped": "Stopped",
+      "memory": "RAM Memory",
+      "cpu": "CPU",
+      "usage": "Usage",
+      "used": "Used",
+      "available": "Available",
+      "total": "Total",
+      "cores": "Cores",
+      "frequency": "Frequency",
+      "temperature": "Temp",
+      "loadAvg": "Load"
     }
   },
   "router": {

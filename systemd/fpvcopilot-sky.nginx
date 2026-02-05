@@ -1,6 +1,12 @@
 # FPV Copilot Sky - Nginx Configuration
 # This serves the frontend static files and proxies API requests to the backend
 
+# Upstream backend with keepalive connections for better performance
+upstream fpvcopilot_backend {
+    server 127.0.0.1:8000;
+    keepalive 32;  # Keep connections alive
+}
+
 server {
     listen 80;
     listen [::]:80;
@@ -10,43 +16,50 @@ server {
     # Increase client body size for file uploads
     client_max_body_size 100M;
     
+    # TCP optimizations for low latency
+    tcp_nodelay on;
+    tcp_nopush on;
+    
     # Root directory for frontend build
     root /opt/FPVCopilotSky/frontend/client/dist;
     index index.html;
     
-    # Logging
-    access_log /var/log/nginx/fpvcopilot-sky-access.log;
-    error_log /var/log/nginx/fpvcopilot-sky-error.log;
+    # Logging (reduced for performance in production)
+    access_log off;
+    error_log /var/log/nginx/fpvcopilot-sky-error.log warn;
     
     # Compression
     gzip on;
     gzip_vary on;
-    gzip_min_length 1024;
+    gzip_min_length 256;
+    gzip_comp_level 4;
     gzip_types text/plain text/css text/xml text/javascript application/javascript application/json application/xml+rss image/svg+xml;
     
-    # API proxy to backend
-    # Use 127.0.0.1 explicitly instead of localhost to avoid IPv6 resolution issues
+    # API proxy to backend with keepalive
     location /api/ {
-        proxy_pass http://127.0.0.1:8000;
+        proxy_pass http://fpvcopilot_backend;
         proxy_http_version 1.1;
+        proxy_set_header Connection "";  # Required for keepalive
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
+        
+        # Optimized buffers
+        proxy_buffering on;
+        proxy_buffer_size 4k;
+        proxy_buffers 8 4k;
         
         # Timeouts - generous for VPN/remote access with latency
-        proxy_connect_timeout 30s;
-        proxy_send_timeout 60s;
-        proxy_read_timeout 60s;
+        proxy_connect_timeout 10s;
+        proxy_send_timeout 30s;
+        proxy_read_timeout 30s;
     }
     
-    # WebSocket proxy
-    # Use 127.0.0.1 explicitly instead of localhost to avoid IPv6 resolution issues
+    # WebSocket proxy with optimized settings
     location /ws {
-        proxy_pass http://127.0.0.1:8000;
+        proxy_pass http://fpvcopilot_backend;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";

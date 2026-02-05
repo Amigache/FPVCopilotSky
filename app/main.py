@@ -155,6 +155,23 @@ async def periodic_stats_broadcast():
                 network_status = await network_service.get_status()
                 await websocket_manager.broadcast("network_status", {"success": True, **network_status})
             
+            # System resources (CPU/Memory) every 3 seconds
+            if counter % 3 == 0:
+                from services.system_service import SystemService
+                await websocket_manager.broadcast("system_resources", {
+                    "cpu": SystemService.get_cpu_info(),
+                    "memory": SystemService.get_memory_info()
+                })
+            
+            # Services status every 5 seconds
+            if counter % 5 == 0:
+                from services.system_service import SystemService
+                services = SystemService.get_services_status()
+                await websocket_manager.broadcast("system_services", {
+                    "services": services,
+                    "count": len(services)
+                })
+            
         except Exception as e:
             logger.error(f"Error in periodic broadcast: {e}")
             pass
