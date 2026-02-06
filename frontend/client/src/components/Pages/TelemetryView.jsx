@@ -5,6 +5,7 @@ import { useToast } from '../../contexts/ToastContext'
 import { useModal } from '../../contexts/ModalContext'
 import { useWebSocket } from '../../contexts/WebSocketContext'
 import { API_MAVLINK_ROUTER, fetchWithTimeout } from '../../services/api'
+import { PeerSelector } from '../PeerSelector/PeerSelector'
 
 const TelemetryView = () => {
   const { t } = useTranslation()
@@ -153,11 +154,10 @@ const TelemetryView = () => {
             </div>
             
             <div className="form-group">
-              <label>{t('router.host')}</label>
-              <input
-                type="text"
+              <PeerSelector
+                label={t('router.host')}
                 value={host}
-                onChange={(e) => setHost(e.target.value)}
+                onChange={setHost}
                 disabled={loading}
                 placeholder="0.0.0.0"
               />

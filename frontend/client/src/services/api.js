@@ -61,7 +61,16 @@ export const api = {
   delete: (endpoint, timeout = 30000) => 
     fetchWithTimeout(`${API_BASE}${endpoint}`, {
       method: 'DELETE'
-    }, timeout)
+    }, timeout),
+
+  // VPN methods
+  getVPNPeers: async () => {
+    const response = await fetchWithTimeout(`${API_BASE}/api/vpn/peers`)
+    if (!response.ok) {
+      throw new Error(`Failed to fetch VPN peers: ${response.statusText}`)
+    }
+    return await response.json()
+  }
 }
 
 export default api

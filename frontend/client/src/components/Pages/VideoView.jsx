@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useWebSocket } from '../../contexts/WebSocketContext'
 import { useToast } from '../../contexts/ToastContext'
 import api from '../../services/api'
+import { PeerSelector } from '../PeerSelector/PeerSelector'
 
 const VideoView = () => {
   const { t } = useTranslation()
@@ -445,11 +446,11 @@ const VideoView = () => {
             <h2>{t('views.video.networkUdpRtp')}</h2>
             <div className="form-row">
               <div className="form-group">
-                <label>{t('views.video.destinationIp')}</label>
-                <input 
-                  type="text" 
+                <PeerSelector
+                  label={t('views.video.destinationIp')}
                   value={config.udp_host}
-                  onChange={(e) => updateConfig(prev => ({ ...prev, udp_host: e.target.value }))}
+                  onChange={(value) => updateConfig(prev => ({ ...prev, udp_host: value }))}
+                  placeholder="192.168.1.100"
                 />
               </div>
               <div className="form-group">
