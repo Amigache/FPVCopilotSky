@@ -193,6 +193,15 @@ else
     echo "  ✓ Tailscale sudo permissions already configured"
 fi
 
+# Configure sudo permissions for system management
+echo "🔐 Configuring system management sudo permissions..."
+if [ -f "scripts/setup-system-sudoers.sh" ]; then
+    chmod +x scripts/setup-system-sudoers.sh
+    sudo bash scripts/setup-system-sudoers.sh
+else
+    echo "  ⚠ System sudoers setup script not found"
+fi
+
 # Set permissions for serial ports
 echo "🔐 Setting up serial port permissions..."
 sudo usermod -a -G dialout $USER

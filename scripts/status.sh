@@ -133,6 +133,33 @@ else
     echo -e "    ${BLUE}ℹ️${NC}  VPN functionality may require password prompts"
 fi
 
+# Check system management sudo permissions
+if [ -f "/etc/sudoers.d/fpvcopilot-system" ]; then
+    echo -e "${GREEN}✓${NC} System management sudoers file exists"
+    
+    # Test if systemctl commands work without password
+    SYSTEMCTL_TEST=$(sudo -n systemctl status fpvcopilot-sky 2>&1)
+    SYSTEMCTL_EXIT=$?
+    if [[ $SYSTEMCTL_EXIT -eq 0 ]] || [[ "$SYSTEMCTL_TEST" =~ "Active:" ]]; then
+        echo -e "${GREEN}✓${NC} systemctl commands work without password"
+    else
+        echo -e "${YELLOW}⚠️${NC}  systemctl commands may require password"
+    fi
+    
+    # Test if journalctl commands work without password
+    JOURNALCTL_TEST=$(sudo -n journalctl -u fpvcopilot-sky -n 1 2>&1)
+    JOURNALCTL_EXIT=$?
+    if [[ $JOURNALCTL_EXIT -eq 0 ]]; then
+        echo -e "${GREEN}✓${NC} journalctl commands work without password"
+    else
+        echo -e "${YELLOW}⚠️${NC}  journalctl commands may require password"
+    fi
+else
+    echo -e "${RED}❌${NC} System management sudoers file missing"
+    echo -e "    ${BLUE}ℹ️${NC}  System restart/logs functionality may require password prompts"
+    echo -e "    ${BLUE}ℹ️${NC}  Run: sudo bash scripts/setup-system-sudoers.sh"
+fi
+
 # Check general sudo access
 if sudo -n true 2>/dev/null; then
     echo -e "${GREEN}✓${NC} User has passwordless sudo access"
