@@ -138,17 +138,16 @@ const StatusView = () => {
       cancelText: t('common.cancel'),
       onConfirm: async () => {
         try {
-          showToast(t('status.restart.restarting'), 'info')
-          const data = await api.restartFrontend()
+          setIsRestarting(true)
+          setRestartingService('frontend')
+          setWasDisconnected(false)
           
-          if (data.success) {
-            showToast(t('status.restart.frontendRestarted'), 'success')
-          } else {
-            showToast(data.message || t('status.restart.restartError'), 'error')
-          }
+          await api.restartFrontend()
+          // Don't show toast here - wait for reconnection
         } catch (error) {
           console.error('Error restarting frontend:', error)
-          showToast(t('status.restart.restartError'), 'error')
+          // If request fails, still show restarting modal - nginx may be restarting
+          // The modal will close when WebSocket reconnects
         }
       }
     })

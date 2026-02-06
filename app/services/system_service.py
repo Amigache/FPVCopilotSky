@@ -430,32 +430,24 @@ class SystemService:
     def restart_frontend() -> Dict[str, Any]:
         """
         Restart nginx (frontend web server)
+        Note: This will kill active connections, so we spawn it in background
         
         Returns:
             Dictionary with success status and message
         """
         try:
-            result = subprocess.run(
+            # Use nohup and background process to ensure restart completes
+            # even after connections are lost
+            subprocess.Popen(
                 ['sudo', '-n', 'systemctl', 'restart', 'nginx'],
-                capture_output=True,
-                text=True,
-                timeout=5
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True
             )
             
-            if result.returncode == 0:
-                return {
-                    "success": True,
-                    "message": "Nginx restarted successfully."
-                }
-            else:
-                return {
-                    "success": False,
-                    "message": f"Failed to restart nginx: {result.stderr or 'Unknown error'}"
-                }
-        except subprocess.TimeoutExpired:
             return {
-                "success": False,
-                "message": "Timeout restarting nginx"
+                "success": True,
+                "message": "Nginx restart initiated. Connection will be lost momentarily."
             }
         except Exception as e:
             return {

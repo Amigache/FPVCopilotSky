@@ -419,7 +419,6 @@
   background: rgba(0, 0, 0, 0.3);
   overflow-x: auto;
   overflow-y: auto;
-  max-height: 400px;
   white-space: pre-wrap;
   word-wrap: break-word;
 }
