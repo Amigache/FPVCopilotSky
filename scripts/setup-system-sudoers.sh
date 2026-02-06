@@ -18,6 +18,11 @@ $CURRENT_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl status fpvcopilot-sky
 $CURRENT_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start fpvcopilot-sky
 $CURRENT_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop fpvcopilot-sky
 $CURRENT_USER ALL=(ALL) NOPASSWD: /usr/bin/journalctl -u fpvcopilot-sky *
+
+# Allow $CURRENT_USER to manage nginx service without password
+$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart nginx
+$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl status nginx
+$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl reload nginx
 EOF
 
 # Set proper permissions
@@ -29,6 +34,7 @@ if visudo -c -f "$SUDOERS_FILE" > /dev/null 2>&1; then
     echo ""
     echo "You can now use these commands without password:"
     echo "  - sudo systemctl restart fpvcopilot-sky"
+    echo "  - sudo systemctl restart nginx"
     echo "  - sudo systemctl status fpvcopilot-sky"
     echo "  - sudo journalctl -u fpvcopilot-sky"
 else

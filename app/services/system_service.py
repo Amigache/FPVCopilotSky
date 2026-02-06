@@ -401,30 +401,21 @@ class SystemService:
     def restart_backend() -> Dict[str, Any]:
         """
         Restart the backend service (fpvcopilot-sky)
+        Note: This will kill the current process, so we spawn it in background
         
         Returns:
             Dictionary with success status and message
         """
         try:
-            result = subprocess.run(
+            # Use nohup and background process to ensure restart completes
+            # even after our process dies
+            subprocess.Popen(
                 ['sudo', '-n', 'systemctl', 'restart', 'fpvcopilot-sky'],
-                capture_output=True,
-                text=True,
-                timeout=10
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True
             )
             
-            if result.returncode == 0:
-                return {
-                    "success": True,
-                    "message": "Backend service restart initiated. Connection will be lost momentarily."
-                }
-            else:
-                return {
-                    "success": False,
-                    "message": f"Failed to restart backend: {result.stderr or 'Unknown error'}"
-                }
-        except subprocess.TimeoutExpired:
-            # Timeout is expected since we're restarting the service we're running in
             return {
                 "success": True,
                 "message": "Backend service restart initiated. Connection will be lost momentarily."
@@ -438,23 +429,38 @@ class SystemService:
     @staticmethod
     def restart_frontend() -> Dict[str, Any]:
         """
-        Rebuild frontend (requires manual deployment)
-        Note: This actually needs to run the build script
+        Restart nginx (frontend web server)
         
         Returns:
             Dictionary with success status and message
         """
         try:
-            # Frontend is static files served by nginx
-            # To "restart" we'd need to rebuild, which is manual
+            result = subprocess.run(
+                ['sudo', '-n', 'systemctl', 'restart', 'nginx'],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            if result.returncode == 0:
+                return {
+                    "success": True,
+                    "message": "Nginx restarted successfully."
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": f"Failed to restart nginx: {result.stderr or 'Unknown error'}"
+                }
+        except subprocess.TimeoutExpired:
             return {
                 "success": False,
-                "message": "Frontend rebuild requires manual deployment. Run: sudo bash scripts/deploy.sh"
+                "message": "Timeout restarting nginx"
             }
         except Exception as e:
             return {
                 "success": False,
-                "message": f"Error: {str(e)}"
+                "message": f"Error restarting nginx: {str(e)}"
             }
     
     @staticmethod

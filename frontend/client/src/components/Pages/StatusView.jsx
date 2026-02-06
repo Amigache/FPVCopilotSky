@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useToast } from '../../contexts/ToastContext'
 import { useModal } from '../../contexts/ModalContext'
 import { useWebSocket } from '../../contexts/WebSocketContext'
+import LogsModal from '../LogsModal/LogsModal'
 import api from '../../services/api'
 
 const StatusView = () => {
@@ -17,10 +18,13 @@ const StatusView = () => {
   const [resettingPrefs, setResettingPrefs] = useState(false)
   
   // Logs state
-  const [showLogs, setShowLogs] = useState(false)
+  const [showLogsModal, setShowLogsModal] = useState(false)
   const [logsType, setLogsType] = useState('backend') // 'backend' or 'frontend'
-  const [logs, setLogs] = useState('')
-  const [loadingLogs, setLoadingLogs] = useState(false)
+  
+  // Restarting state
+  const [isRestarting, setIsRestarting] = useState(false)
+  const [restartingService, setRestartingService] = useState('') // 'backend' or 'frontend'
+  const [wasDisconnected, setWasDisconnected] = useState(false)
 
   // Load initial status
   useEffect(() => {
@@ -34,6 +38,27 @@ const StatusView = () => {
       setLoading(false)
     }
   }, [messages.status])
+
+  // Monitor WebSocket connection during restart
+  useEffect(() => {
+    if (isRestarting) {
+      if (!isConnected) {
+        // Connection lost - expected during backend restart
+        setWasDisconnected(true)
+      } else if (wasDisconnected) {
+        // Connection restored after being lost - restart complete
+        setIsRestarting(false)
+        setWasDisconnected(false)
+        showToast(
+          restartingService === 'backend' 
+            ? t('status.restart.backendRestarted')
+            : t('status.restart.frontendRestarted'), 
+          'success'
+        )
+        setRestartingService('')
+      }
+    }
+  }, [isConnected, isRestarting, wasDisconnected, restartingService, showToast, t])
 
   const loadStatus = async () => {
     try {
@@ -89,19 +114,16 @@ const StatusView = () => {
       cancelText: t('common.cancel'),
       onConfirm: async () => {
         try {
-          showToast(t('status.restart.restarting'), 'info')
-          const data = await api.restartBackend()
+          setIsRestarting(true)
+          setRestartingService('backend')
+          setWasDisconnected(false)
           
-          if (data.success) {
-            showToast(t('status.restart.backendRestarted'), 'success')
-            // Connection will be lost, WebSocket will attempt to reconnect
-          } else {
-            showToast(data.message || t('status.restart.restartError'), 'error')
-          }
+          await api.restartBackend()
+          // Don't show toast here - wait for reconnection
         } catch (error) {
           console.error('Error restarting backend:', error)
-          // Don't show error toast - backend is restarting
-          showToast(t('status.restart.backendRestarting'), 'info')
+          // If request fails, still show restarting modal - backend may be restarting
+          // The modal will close when WebSocket reconnects
         }
       }
     })
@@ -112,41 +134,50 @@ const StatusView = () => {
       title: t('status.restart.confirmFrontendTitle'),
       message: t('status.restart.confirmFrontendMessage'),
       type: 'confirm',
-      confirmText: t('common.ok'),
+      confirmText: t('status.restart.confirmButton'),
       cancelText: t('common.cancel'),
-      onConfirm: () => {
-        showToast(t('status.restart.frontendInfo'), 'info')
+      onConfirm: async () => {
+        try {
+          showToast(t('status.restart.restarting'), 'info')
+          const data = await api.restartFrontend()
+          
+          if (data.success) {
+            showToast(t('status.restart.frontendRestarted'), 'success')
+          } else {
+            showToast(data.message || t('status.restart.restartError'), 'error')
+          }
+        } catch (error) {
+          console.error('Error restarting frontend:', error)
+          showToast(t('status.restart.restartError'), 'error')
+        }
       }
     })
   }
 
-  const loadLogs = async (type) => {
-    setLoadingLogs(true)
+  const openLogsModal = (type) => {
     setLogsType(type)
-    setShowLogs(true)
-    
+    setShowLogsModal(true)
+  }
+
+  const closeLogsModal = () => {
+    setShowLogsModal(false)
+  }
+
+  const fetchLogs = async () => {
     try {
-      const data = type === 'backend' 
-        ? await api.getBackendLogs(150)
-        : await api.getFrontendLogs(150)
+      const data = logsType === 'backend' 
+        ? await api.getBackendLogs(200)
+        : await api.getFrontendLogs(200)
       
       if (data.success) {
-        setLogs(data.logs)
+        return data.logs
       } else {
-        setLogs(data.message || t('status.logs.loadError'))
-        showToast(t('status.logs.loadError'), 'error')
+        return data.message || t('status.logs.loadError')
       }
     } catch (error) {
       console.error('Error loading logs:', error)
-      setLogs(t('status.logs.loadError'))
-      showToast(t('status.logs.loadError'), 'error')
-    } finally {
-      setLoadingLogs(false)
+      return t('status.logs.loadError')
     }
-  }
-
-  const refreshLogs = () => {
-    loadLogs(logsType)
   }
 
   const StatusBadge = ({ status }) => {
@@ -236,6 +267,24 @@ const StatusView = () => {
               status={backend?.running ? 'ok' : 'error'}
             />
           </div>
+
+          <div className="info-section">
+            <div className="system-controls">
+              <button 
+                className="btn-restart-backend"
+                onClick={handleRestartBackend}
+              >
+                🔄 {t('status.restart.restartBackend')}
+              </button>
+              
+              <button 
+                className="btn-view-logs"
+                onClick={() => openLogsModal('backend')}
+              >
+                📜 {t('status.logs.viewBackend')}
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* WebUI Status */}
@@ -258,6 +307,24 @@ const StatusView = () => {
               value={frontend?.npm_deps?.status === 'ok' ? 'Installed' : frontend?.npm_deps?.message || 'Checking...'}
               status={frontend?.npm_deps?.status}
             />
+          </div>
+
+          <div className="info-section">
+            <div className="system-controls">
+              <button 
+                className="btn-restart-frontend"
+                onClick={handleRestartFrontend}
+              >
+                🌐 {t('status.restart.restartFrontend')}
+              </button>
+              
+              <button 
+                className="btn-view-logs"
+                onClick={() => openLogsModal('frontend')}
+              >
+                📄 {t('status.logs.viewFrontend')}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -344,78 +411,37 @@ const StatusView = () => {
           </div>
         </div>
 
-        {/* System Control */}
-        <div className="card">
-          <h2>{t('status.sections.systemControl')}</h2>
-          
-          <div className="info-section">
-            <p className="preferences-info">
-              {t('status.restart.description')}
-            </p>
-            
-            <div className="system-controls">
-              <button 
-                className="btn-restart-backend"
-                onClick={handleRestartBackend}
-              >
-                🔄 {t('status.restart.restartBackend')}
-              </button>
-              
-              <button 
-                className="btn-restart-frontend"
-                onClick={handleRestartFrontend}
-              >
-                🌐 {t('status.restart.restartFrontend')}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Logs Viewer */}
-        <div className="card">
-          <h2>{t('status.sections.logs')}</h2>
-          
-          <div className="info-section">
-            <div className="logs-controls">
-              <button 
-                className="btn-view-logs"
-                onClick={() => loadLogs('backend')}
-                disabled={loadingLogs}
-              >
-                📜 {t('status.logs.viewBackend')}
-              </button>
-              
-              <button 
-                className="btn-view-logs"
-                onClick={() => loadLogs('frontend')}
-                disabled={loadingLogs}
-              >
-                📄 {t('status.logs.viewFrontend')}
-              </button>
-            </div>
-
-            {showLogs && (
-              <div className="logs-viewer">
-                <div className="logs-header">
-                  <span className="logs-title">
-                    {logsType === 'backend' ? t('status.logs.backendLogs') : t('status.logs.frontendLogs')}
-                  </span>
-                  <button 
-                    className="btn-refresh-logs"
-                    onClick={refreshLogs}
-                    disabled={loadingLogs}
-                  >
-                    {loadingLogs ? '⏳' : '🔄'}
-                  </button>
-                </div>
-                <pre className="logs-content">
-                  {loadingLogs ? t('common.loading') : logs}
-                </pre>
-              </div>
-            )}
-          </div>
-        </div>
       </div>
+
+      {/* Logs Modal */}
+      <LogsModal 
+        show={showLogsModal}
+        onClose={closeLogsModal}
+        type={logsType}
+        onRefresh={fetchLogs}
+      />
+
+      {/* Restarting Modal */}
+      {isRestarting && (
+        <div className="logs-modal-overlay">
+          <div className="restarting-modal">
+            <div className="restarting-content">
+              <div className="restarting-spinner"></div>
+              <h3>{t('status.restart.restarting')}</h3>
+              <p>
+                {restartingService === 'backend' 
+                  ? t('status.restart.waitingBackend')
+                  : t('status.restart.waitingFrontend')}
+              </p>
+              {wasDisconnected && (
+                <p className="restarting-status">
+                  {t('status.restart.reconnecting')}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -314,6 +314,8 @@
     "apply": "Aplicar",
     "delete": "Eliminar",
     "ok": "Aceptar",
+    "close": "Cerrar",
+    "copy": "Copiar",
     "loading": "Cargando...",
     "loadingContent": "Cargando contenido..."
   },
@@ -376,27 +378,38 @@
       "resetError": "Error al restablecer preferencias"
     },
     "restart": {
-      "description": "Reinicia los servicios del backend o solicita rebuild del frontend.",
+      "description": "Reinicia los servicios del backend (API) o del frontend (Nginx).",
       "confirmBackendTitle": "⚠️ Reiniciar Backend",
       "confirmBackendMessage": "¿Estás seguro de que quieres reiniciar el backend? Se perderá la conexión temporalmente y la aplicación se reiniciará.",
-      "confirmFrontendTitle": "ℹ️ Rebuild Frontend",
-      "confirmFrontendMessage": "El frontend son archivos estáticos servidos por nginx. Para actualizarlo necesitas ejecutar: sudo bash scripts/deploy.sh",
+      "confirmFrontendTitle": "⚠️ Reiniciar Frontend",
+      "confirmFrontendMessage": "¿Estás seguro de que quieres reiniciar Nginx? Esto reiniciará el servidor web del frontend.",
       "confirmButton": "Reiniciar",
       "restartBackend": "Reiniciar Backend",
-      "restartFrontend": "Info Frontend",
+      "restartFrontend": "Reiniciar Frontend",
       "restarting": "Reiniciando...",
       "backendRestarted": "Backend reiniciado. Reconectando...",
       "backendRestarting": "Backend reiniciándose. Espera unos segundos...",
-      "frontendInfo": "Para actualizar el frontend ejecuta: sudo bash scripts/deploy.sh",
-      "restartError": "Error al reiniciar"
+      "frontendRestarted": "Frontend (Nginx) reiniciado correctamente.",
+      "restartError": "Error al reiniciar",
+      "waitingBackend": "Esperando a que el backend se reinicie. La conexión se restablecerá automáticamente...",
+      "waitingFrontend": "Esperando a que el frontend (Nginx) se reinicie...",
+      "reconnecting": "✅ Reconectando..."
     },
     "logs": {
+      "description": "Visualiza los logs del sistema en tiempo real. Backend muestra logs de la aplicación, Frontend muestra logs de Nginx.",
       "viewBackend": "Ver Logs Backend",
       "viewFrontend": "Ver Logs Frontend",
+      "backend": "Logs del Backend (journalctl)",
+      "frontend": "Logs del Frontend (Nginx)",
       "backendLogs": "Logs del Backend (journalctl)",
       "frontendLogs": "Logs del Frontend (nginx)",
+      "realTime": "Logs en tiempo real",
+      "refresh": "Refrescar",
+      "scrollToTop": "Ir al inicio",
+      "scrollToBottom": "Ir al final",
       "loadError": "Error al cargar logs",
-      "refresh": "Refrescar"
+      "errorLoading": "Error al cargar los logs. Intenta de nuevo.",
+      "noLogs": "No hay logs disponibles."
     }
   }
 }

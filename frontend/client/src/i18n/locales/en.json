@@ -314,6 +314,8 @@
     "apply": "Apply",
     "delete": "Delete",
     "ok": "OK",
+    "close": "Close",
+    "copy": "Copy",
     "loading": "Loading...",
     "loadingContent": "Loading content..."
   },
@@ -376,27 +378,38 @@
       "resetError": "Error resetting preferences"
     },
     "restart": {
-      "description": "Restart backend services or request frontend rebuild.",
+      "description": "Restart backend (API) or frontend (Nginx) services.",
       "confirmBackendTitle": "⚠️ Restart Backend",
       "confirmBackendMessage": "Are you sure you want to restart the backend? Connection will be lost temporarily and the application will restart.",
-      "confirmFrontendTitle": "ℹ️ Rebuild Frontend",
-      "confirmFrontendMessage": "Frontend consists of static files served by nginx. To update it you need to run: sudo bash scripts/deploy.sh",
+      "confirmFrontendTitle": "⚠️ Restart Frontend",
+      "confirmFrontendMessage": "Are you sure you want to restart Nginx? This will restart the frontend web server.",
       "confirmButton": "Restart",
       "restartBackend": "Restart Backend",
-      "restartFrontend": "Frontend Info",
+      "restartFrontend": "Restart Frontend",
       "restarting": "Restarting...",
       "backendRestarted": "Backend restarted. Reconnecting...",
       "backendRestarting": "Backend restarting. Wait a few seconds...",
-      "frontendInfo": "To update the frontend run: sudo bash scripts/deploy.sh",
-      "restartError": "Error restarting"
+      "frontendRestarted": "Frontend (Nginx) restarted successfully.",
+      "restartError": "Error restarting",
+      "waitingBackend": "Waiting for backend to restart. Connection will restore automatically...",
+      "waitingFrontend": "Waiting for frontend (Nginx) to restart...",
+      "reconnecting": "✅ Reconnecting..."
     },
     "logs": {
+      "description": "View system logs in real-time. Backend shows application logs, Frontend shows Nginx logs.",
       "viewBackend": "View Backend Logs",
       "viewFrontend": "View Frontend Logs",
+      "backend": "Backend Logs (journalctl)",
+      "frontend": "Frontend Logs (Nginx)",
       "backendLogs": "Backend Logs (journalctl)",
       "frontendLogs": "Frontend Logs (nginx)",
+      "realTime": "Real-time logs",
+      "refresh": "Refresh",
+      "scrollToTop": "Scroll to top",
+      "scrollToBottom": "Scroll to bottom",
       "loadError": "Error loading logs",
-      "refresh": "Refresh"
+      "errorLoading": "Error loading logs. Please try again.",
+      "noLogs": "No logs available."
     }
   }
 }
