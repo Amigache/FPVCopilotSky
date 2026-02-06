@@ -2,8 +2,11 @@
 # Setup Tailscale sudo permissions for VPN management
 # Run this script with: sudo bash setup-tailscale-sudoers.sh
 
-SUDOERS_FILE="/etc/sudoers.d/tailscale"
-CURRENT_USER="${SUDO_USER:-$USER}"
+SUDOERS_FILE="/etc/sudoers.d/fpvcopilot-tailscale"
+FPVCOPILOT_USER="fpvcopilotsky"
+
+# Get actual user if run with sudo, otherwise use fpvcopilotsky
+CURRENT_USER="${SUDO_USER:-$FPVCOPILOT_USER}"
 
 echo "Setting up Tailscale sudo permissions for user: $CURRENT_USER"
 
