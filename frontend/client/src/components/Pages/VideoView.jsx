@@ -595,19 +595,63 @@ const VideoView = () => {
 
           {/* Stats */}
           {status.streaming && status.stats && (
-            <div className="card">
+            <div className="card stats-card">
               <h2>{t('views.video.statistics')}</h2>
-              <div className="stats-grid">
+              
+              {/* Health Indicator */}
+              <div className={`health-indicator health-${status.stats.health}`}>
+                <span className="health-dot"></span>
+                <span className="health-text">{t(`views.video.health.${status.stats.health}`)}</span>
+              </div>
+              
+              {/* Main Stats Grid */}
+              <div className="stats-grid-main">
                 <div className="stat-item">
                   <span className="stat-label">{t('views.video.uptime')}</span>
-                  <span className="stat-value">
-                    {status.stats.uptime ? `${Math.floor(status.stats.uptime)}s` : '-'}
-                  </span>
+                  <span className="stat-value">{status.stats.uptime_formatted}</span>
                 </div>
                 <div className="stat-item">
-                  <span className="stat-label">{t('views.video.errors')}</span>
-                  <span className="stat-value">{status.stats.errors || 0}</span>
+                  <span className="stat-label">{t('views.video.fps')}</span>
+                  <span className="stat-value">{status.stats.current_fps}</span>
+                  <span className="stat-unit">/{status.config.framerate} fps</span>
                 </div>
+                <div className="stat-item">
+                  <span className="stat-label">{t('views.video.bitrate')}</span>
+                  <span className="stat-value">{status.stats.current_bitrate}</span>
+                  <span className="stat-unit">kbps</span>
+                </div>
+              </div>
+              
+              {/* Secondary Stats Grid */}
+              <div className="stats-grid-secondary">
+                <div className="stat-item-secondary">
+                  <span className="stat-label">{t('views.video.framesSent')}</span>
+                  <span className="stat-value-sm">{status.stats.frames_sent}</span>
+                </div>
+                <div className="stat-item-secondary">
+                  <span className="stat-label">{t('views.video.dataSent')}</span>
+                  <span className="stat-value-sm">{status.stats.bytes_sent_mb} MB</span>
+                </div>
+                <div className="stat-item-secondary">
+                  <span className="stat-label">{t('views.video.errors')}</span>
+                  <span className={`stat-value-sm ${status.stats.errors > 0 ? 'error-count' : ''}`}>
+                    {status.stats.errors}
+                  </span>
+                </div>
+              </div>
+              
+              {/* Pipeline Info */}
+              <div className="pipeline-info">
+                <span className="info-label">🔌 Pipeline:</span>
+                <span className="info-value">
+                  {status.config.codec.toUpperCase()} • {status.config.width}x{status.config.height}@{status.config.framerate}fps
+                </span>
+              </div>
+              <div className="pipeline-info">
+                <span className="info-label">📡 Destination:</span>
+                <span className="info-value">
+                  {status.config.udp_host}:{status.config.udp_port}
+                </span>
               </div>
             </div>
           )}

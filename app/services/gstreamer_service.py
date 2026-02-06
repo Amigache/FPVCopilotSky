@@ -48,13 +48,22 @@ class GStreamerService:
         self.is_streaming: bool = False
         self.last_error: Optional[str] = None
         
-        # Statistics
+        # Statistics - counters for real-time metrics
         self.stats = {
             "frames_sent": 0,
             "bytes_sent": 0,
             "errors": 0,
-            "start_time": None
+            "start_time": None,
+            "last_stats_time": None,
+            "last_frames_count": 0,
+            "last_bytes_count": 0,
+            "current_fps": 0,
+            "current_bitrate": 0
         }
+        
+        # Thread lock for stats
+        import threading as th
+        self.stats_lock = th.Lock()
         
         # Initialize GStreamer if available
         if GSTREAMER_AVAILABLE:
@@ -320,6 +329,55 @@ class GStreamerService:
         
         return False
     
+    def _setup_stats_probes(self):
+        """Setup probes to count frames and bytes"""
+        if not GSTREAMER_AVAILABLE or not self.pipeline:
+            return
+        
+        try:
+            # Get the udpsink element to count bytes
+            udpsink = self.pipeline.get_by_name("udpsink")
+            if udpsink:
+                pad = udpsink.get_static_pad("sink")
+                if pad:
+                    pad.add_probe(Gst.PadProbeType.BUFFER, self._on_buffer_probe)
+        except Exception as e:
+            print(f"⚠️ Failed to setup stats probes: {e}")
+    
+    def _on_buffer_probe(self, pad, info):
+        """Pad probe callback to count buffers (frames) and bytes"""
+        try:
+            buffer = info.get_buffer()
+            with self.stats_lock:
+                self.stats["frames_sent"] += 1
+                self.stats["bytes_sent"] += buffer.get_size()
+                
+                # Calculate current FPS and bitrate every 500ms
+                import time
+                now = time.time()
+                if self.stats["last_stats_time"] is None:
+                    self.stats["last_stats_time"] = now
+                else:
+                    elapsed = now - self.stats["last_stats_time"]
+                    if elapsed >= 0.5:  # Update every 500ms
+                        frames_delta = self.stats["frames_sent"] - self.stats["last_frames_count"]
+                        bytes_delta = self.stats["bytes_sent"] - self.stats["last_bytes_count"]
+                        
+                        # FPS: frames in the last interval
+                        self.stats["current_fps"] = int(frames_delta / elapsed)
+                        
+                        # Bitrate in kbps: (bytes * 8 bits) / (seconds * 1000)
+                        self.stats["current_bitrate"] = int((bytes_delta * 8) / (elapsed * 1000))
+                        
+                        # Reset for next interval
+                        self.stats["last_stats_time"] = now
+                        self.stats["last_frames_count"] = self.stats["frames_sent"]
+                        self.stats["last_bytes_count"] = self.stats["bytes_sent"]
+        except Exception as e:
+            print(f"⚠️ Error in buffer probe: {e}")
+        
+        return Gst.PadProbeReturn.OK
+    
     def _on_bus_message(self, bus, message):
         """Handle GStreamer bus messages"""
         if not GSTREAMER_AVAILABLE:
@@ -415,6 +473,9 @@ class GStreamerService:
         if not self.build_pipeline():
             return {"success": False, "message": self.last_error or "Failed to build pipeline"}
         
+        # Setup stats probes for metrics
+        self._setup_stats_probes()
+        
         # Optimize system
         self._optimize_for_streaming()
         
@@ -429,7 +490,17 @@ class GStreamerService:
         
         # Start pipeline
         import time
-        self.stats["start_time"] = time.time()
+        # Reset stats counters for new stream
+        with self.stats_lock:
+            self.stats["start_time"] = time.time()
+            self.stats["frames_sent"] = 0
+            self.stats["bytes_sent"] = 0
+            self.stats["last_stats_time"] = None
+            self.stats["last_frames_count"] = 0
+            self.stats["last_bytes_count"] = 0
+            self.stats["current_fps"] = 0
+            self.stats["current_bitrate"] = 0
+        
         ret = self.pipeline.set_state(Gst.State.PLAYING)
         
         if ret == Gst.StateChangeReturn.FAILURE:
@@ -514,12 +585,34 @@ class GStreamerService:
         return self.start()
     
     def get_status(self) -> Dict[str, Any]:
-        """Get current streaming status"""
+        """Get current streaming status with detailed metrics"""
         import time
         
         uptime = None
         if self.stats["start_time"] and self.is_streaming:
             uptime = int(time.time() - self.stats["start_time"])
+        
+        # Thread-safe stats copy
+        with self.stats_lock:
+            stats_copy = dict(self.stats)
+        
+        # Format stats for frontend
+        stats_formatted = {
+            "uptime": uptime,
+            "uptime_formatted": self._format_uptime(uptime) if uptime else "-",
+            "errors": stats_copy.get("errors", 0),
+            "frames_sent": stats_copy.get("frames_sent", 0),
+            "bytes_sent": stats_copy.get("bytes_sent", 0),
+            "bytes_sent_mb": round(stats_copy.get("bytes_sent", 0) / (1024 * 1024), 2),
+            "current_fps": stats_copy.get("current_fps", 0),
+            "current_bitrate": stats_copy.get("current_bitrate", 0),
+            "current_bitrate_formatted": f"{stats_copy.get('current_bitrate', 0)} kbps",
+            "health": self._calculate_health(
+                stats_copy.get("errors", 0),
+                stats_copy.get("current_fps", 0),
+                self.video_config.framerate
+            )
+        }
         
         return {
             "available": GSTREAMER_AVAILABLE,
@@ -537,13 +630,31 @@ class GStreamerService:
                 "udp_port": self.streaming_config.udp_port,
                 "auto_start": self.streaming_config.auto_start
             },
-            "stats": {
-                "uptime": uptime,
-                "errors": self.stats["errors"]
-            },
+            "stats": stats_formatted,
             "last_error": self.last_error,
             "pipeline_string": self.get_pipeline_string()
         }
+    
+    def _format_uptime(self, seconds: int) -> str:
+        """Format uptime in seconds to HH:MM:SS format"""
+        if not seconds:
+            return "-"
+        hours = seconds // 3600
+        minutes = (seconds % 3600) // 60
+        secs = seconds % 60
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+    
+    def _calculate_health(self, errors: int, current_fps: int, target_fps: int) -> str:
+        """Calculate stream health status: 'good', 'fair', or 'poor'"""
+        if errors > 10:
+            return "poor"
+        fps_rate = (current_fps / target_fps * 100) if target_fps > 0 else 100
+        if fps_rate >= 95 and errors <= 2:
+            return "good"
+        elif fps_rate >= 80 or errors <= 5:
+            return "fair"
+        else:
+            return "poor"
     
     def get_cameras(self) -> list:
         """Get available cameras"""

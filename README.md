@@ -203,7 +203,7 @@ sudo journalctl -u fpvcopilot-sky -f
 ## 📚 Documentación Adicional
 
 - **[Guía de Producción](docs/PRODUCTION.md)** - Detalles de despliegue y arquitectura
-- **[Guía para Desarrolladores](DEVELOPMENT.md)** - Si quieres modificar o contribuir
+- **[Guía para Desarrolladores](docs/DEVELOPMENT.md)** - Si quieres modificar o contribuir
 - **[Integración VPN](docs/VPN_INTEGRATION.md)** - Detalles técnicos del sistema VPN
 - **[Gestión de Red](docs/NETWORK_MANAGEMENT.md)** - Sistema de priorización y métricas
 - **[Funcionalidades del Módem](docs/MODEM_FEATURES.md)** - Modo video, bandas LTE, sesiones de vuelo

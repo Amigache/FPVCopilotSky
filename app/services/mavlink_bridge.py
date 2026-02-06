@@ -54,10 +54,23 @@ class MAVLinkBridge:
         self.mav_parser = mavlink2.MAVLink(None)
         self.mav_parser.robust_parsing = True
         
+        # Our identity as companion computer
+        self.source_system_id: int = 1  # Same as autopilot (part of same vehicle)
+        self.source_component_id: int = 191  # MAV_COMP_ID_ONBOARD_COMPUTER
+        
+        # MAVLink sender (set source IDs for outgoing messages)
+        self.mav_sender = mavlink2.MAVLink(None)
+        self.mav_sender.srcSystem = self.source_system_id
+        self.mav_sender.srcComponent = self.source_component_id
+        
         # Target system (from heartbeat)
         self.target_system: int = 0
         self.target_component: int = 0
         self.last_heartbeat: float = 0
+        
+        # HEARTBEAT thread
+        self.heartbeat_thread: Optional[threading.Thread] = None
+        self.heartbeat_interval: float = 1.0  # Send every 1 second
         
         # WebSocket manager for UI updates
         self.websocket_manager = websocket_manager
@@ -162,6 +175,15 @@ class MAVLinkBridge:
                 name="SerialReader"
             )
             self.serial_reader_thread.start()
+            
+            # Start HEARTBEAT sender thread
+            self.heartbeat_thread = threading.Thread(
+                target=self._heartbeat_sender,
+                daemon=True,
+                name="HeartbeatSender"
+            )
+            self.heartbeat_thread.start()
+            print(f"✅ Started HEARTBEAT transmitter (SysID={self.source_system_id}, CompID={self.source_component_id})")
             
             # Start TCP accept thread only if TCP server is enabled
             if self.tcp_server:
@@ -364,6 +386,61 @@ class MAVLinkBridge:
             pass
         
         print(f"📥 TCP reader stopped for {addr}")
+    
+    def _heartbeat_sender(self):
+        """Send HEARTBEAT messages periodically to identify as companion computer/camera."""
+        print("💓 HEARTBEAT sender started")
+        
+        while self.running:
+            try:
+                if not self.serial_port or not self.serial_port.is_open or not self.connected:
+                    time.sleep(0.5)
+                    continue
+                
+                # Build HEARTBEAT message
+                # type: MAV_TYPE_CAMERA (30) - we're broadcasting video stream info
+                # autopilot: MAV_AUTOPILOT_INVALID (8) - we're not an autopilot
+                # base_mode: 0
+                # custom_mode: 0
+                # system_status: MAV_STATE_ACTIVE (4)
+                msg = self.mav_sender.heartbeat_encode(
+                    type=30,  # MAV_TYPE_CAMERA
+                    autopilot=8,  # MAV_AUTOPILOT_INVALID
+                    base_mode=0,
+                    custom_mode=0,
+                    system_status=4  # MAV_STATE_ACTIVE
+                )
+                
+                # Send via serial AND router (so Mission Planner receives it too)
+                packed_msg = msg.pack(self.mav_sender)
+                
+                try:
+                    acquired = self.serial_lock.acquire(timeout=0.1)
+                    if acquired:
+                        try:
+                            if self.serial_port and self.serial_port.is_open:
+                                self.serial_port.write(packed_msg)
+                                # Also broadcast to router so UDP clients receive it
+                                if self.router:
+                                    self.router.forward_to_outputs(packed_msg)
+                                    # Debug log (first heartbeat of each session)
+                                    if not hasattr(self, '_heartbeat_logged'):
+                                        print(f"💓 Sending HEARTBEAT: SysID={self.mav_sender.srcSystem}, CompID={self.mav_sender.srcComponent}, Size={len(packed_msg)} bytes")
+                                        self._heartbeat_logged = True
+                        finally:
+                            self.serial_lock.release()
+                except Exception as e:
+                    print(f"❌ HEARTBEAT send error: {e}")
+                    pass
+                
+                # Wait for next heartbeat
+                time.sleep(self.heartbeat_interval)
+                
+            except Exception as e:
+                print(f"⚠️ HEARTBEAT sender error: {e}")
+                time.sleep(1)
+        
+        print("💓 HEARTBEAT sender stopped")
     
     def _serial_reader_loop(self):
         """Read from serial and forward to all TCP clients."""

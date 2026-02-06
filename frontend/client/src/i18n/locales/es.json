@@ -91,7 +91,16 @@
       "copied": "✅ Copiado!",
       "statistics": "📊 Estadísticas",
       "uptime": "Uptime",
+      "fps": "FPS",
+      "bitrate": "Bitrate",
+      "framesSent": "Frames Enviados",
+      "dataSent": "Datos Enviados",
       "errors": "Errores",
+      "health": {
+        "good": "✅ Excelente",
+        "fair": "⚠️ Aceptable",
+        "poor": "❌ Deficiente"
+      },
       "streamStarted": "Stream iniciado",
       "streamStopped": "Stream detenido",
       "streamRestarted": "Stream reiniciado",

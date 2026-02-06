@@ -26,6 +26,7 @@ from services.preferences import get_preferences
 from services.serial_detector import get_detector
 from services.gstreamer_service import init_gstreamer_service, get_gstreamer_service
 from services.vpn_service import init_vpn_service, get_vpn_service
+from services.video_stream_info import init_video_stream_info_service, get_video_stream_info_service
 from api.routes import mavlink, system
 from api.routes import router as router_routes
 from api.routes import video as video_routes
@@ -265,6 +266,10 @@ async def startup_event():
     video_service = init_gstreamer_service(websocket_manager, loop)
     video_routes.set_video_service(video_service)
     
+    # Initialize video stream information service (for MAVLink VIDEO_STREAM_INFORMATION)
+    video_stream_info_service = init_video_stream_info_service(mavlink_service, video_service)
+    video_stream_info_service.start()
+    
     # Initialize VPN service
     vpn_service = init_vpn_service(websocket_manager, loop)
     vpn_routes.set_vpn_service(vpn_service)
@@ -354,6 +359,12 @@ async def startup_event():
 async def shutdown_event():
     """Cleanup on shutdown"""
     print("🛑 FPV Copilot Sky shutting down...")
+    
+    # Stop video stream info service
+    video_stream_info_service = get_video_stream_info_service()
+    if video_stream_info_service:
+        video_stream_info_service.stop()
+    
     if video_service:
         video_service.shutdown()
     if router_service:
