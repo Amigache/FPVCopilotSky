@@ -257,6 +257,7 @@ async def startup_event():
     # Initialize VPN service
     vpn_service = init_vpn_service(websocket_manager, loop)
     vpn_routes.set_vpn_service(vpn_service)
+    vpn_routes.set_preferences_service(preferences_service)
     
     # Auto-connect to VPN on startup (if not already connected)
     def auto_connect_vpn():

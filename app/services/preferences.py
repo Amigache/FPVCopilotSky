@@ -95,6 +95,12 @@ class PreferencesService:
                 "enabled": False,  # Not enabled by default
                 "auto_start": False
             },
+            "vpn": {
+                "provider": "",  # No provider by default (empty = none, "tailscale", "zerotier", "wireguard")
+                "enabled": False,  # VPN not enabled by default
+                "auto_connect": False,  # Don't auto-connect on startup
+                "provider_settings": {}  # Provider-specific settings (e.g., exit_node, etc.)
+            },
             "ui": {
                 "language": "es",
                 "theme": "dark"
@@ -286,6 +292,45 @@ class PreferencesService:
             if "streaming" not in self._preferences:
                 self._preferences["streaming"] = {}
             self._preferences["streaming"].update(config)
+            self._save()
+    
+    # ==================== VPN Configuration ====================
+    
+    def get_vpn_config(self) -> Dict[str, Any]:
+        """Get VPN configuration."""
+        with self._lock:
+            return self._preferences.get("vpn", {})
+    
+    def set_vpn_config(self, config: Dict[str, Any]):
+        """Set VPN configuration."""
+        with self._lock:
+            if "vpn" not in self._preferences:
+                self._preferences["vpn"] = {}
+            self._preferences["vpn"].update(config)
+            self._save()
+    
+    def set_vpn_provider(self, provider: str):
+        """Set VPN provider (e.g., 'tailscale', 'zerotier', 'wireguard', or '' for none)."""
+        with self._lock:
+            if "vpn" not in self._preferences:
+                self._preferences["vpn"] = {}
+            self._preferences["vpn"]["provider"] = provider
+            self._save()
+    
+    def set_vpn_enabled(self, enabled: bool):
+        """Enable or disable VPN."""
+        with self._lock:
+            if "vpn" not in self._preferences:
+                self._preferences["vpn"] = {}
+            self._preferences["vpn"]["enabled"] = enabled
+            self._save()
+    
+    def set_vpn_auto_connect(self, auto_connect: bool):
+        """Enable or disable VPN auto-connect on startup."""
+        with self._lock:
+            if "vpn" not in self._preferences:
+                self._preferences["vpn"] = {}
+            self._preferences["vpn"]["auto_connect"] = auto_connect
             self._save()
     
     # ==================== Auto-Detection ====================

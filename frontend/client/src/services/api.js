@@ -70,6 +70,28 @@ export const api = {
       throw new Error(`Failed to fetch VPN peers: ${response.statusText}`)
     }
     return await response.json()
+  },
+
+  getVPNPreferences: async () => {
+    const response = await fetchWithTimeout(`${API_BASE}/api/vpn/preferences`)
+    if (!response.ok) {
+      throw new Error(`Failed to fetch VPN preferences: ${response.statusText}`)
+    }
+    return await response.json()
+  },
+
+  saveVPNPreferences: async (preferences) => {
+    const response = await fetchWithTimeout(`${API_BASE}/api/vpn/preferences`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(preferences)
+    })
+    if (!response.ok) {
+      throw new Error(`Failed to save VPN preferences: ${response.statusText}`)
+    }
+    return await response.json()
   }
 }
 

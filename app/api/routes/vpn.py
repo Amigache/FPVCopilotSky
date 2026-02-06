@@ -5,18 +5,25 @@ Endpoints for managing VPN connections
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Dict, Any
 
 router = APIRouter(prefix="/api/vpn", tags=["vpn"])
 
-# Service reference (will be set by main.py)
+# Service references (will be set by main.py)
 _vpn_service = None
+_preferences_service = None
 
 
 def set_vpn_service(service):
     """Set the VPN service instance"""
     global _vpn_service
     _vpn_service = service
+
+
+def set_preferences_service(service):
+    """Set the preferences service instance"""
+    global _preferences_service
+    _preferences_service = service
 
 
 class VPNConnectRequest(BaseModel):
@@ -27,6 +34,14 @@ class VPNConnectRequest(BaseModel):
 class VPNDisconnectRequest(BaseModel):
     """VPN disconnection request"""
     provider: Optional[str] = None
+
+
+class VPNPreferencesModel(BaseModel):
+    """VPN preferences model"""
+    provider: str = ""  # "tailscale", "zerotier", "wireguard", or "" for none
+    enabled: bool = False
+    auto_connect: bool = False
+    provider_settings: Dict[str, Any] = {}
 
 
 @router.get("/providers")
@@ -157,5 +172,59 @@ async def logout_vpn(request: VPNDisconnectRequest):
         return result
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/preferences")
+async def get_vpn_preferences():
+    """
+    Get VPN preferences from persistent storage
+    
+    Returns:
+        VPN configuration including provider, enabled state, and auto-connect settings
+    """
+    if not _preferences_service:
+        raise HTTPException(status_code=503, detail="Preferences service not initialized")
+    
+    try:
+        # Run synchronous code in thread pool to avoid blocking
+        import asyncio
+        loop = asyncio.get_event_loop()
+        config = await loop.run_in_executor(None, _preferences_service.get_vpn_config)
+        return {
+            "success": True,
+            "preferences": config
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/preferences")
+async def save_vpn_preferences(preferences: VPNPreferencesModel):
+    """
+    Save VPN preferences to persistent storage
+    
+    Args:
+        preferences: VPN preferences including provider, enabled, auto_connect, and provider_settings
+    
+    Returns:
+        Success status and saved preferences
+    """
+    if not _preferences_service:
+        raise HTTPException(status_code=503, detail="Preferences service not initialized")
+    
+    try:
+        config = preferences.model_dump()
+        # Run synchronous code in thread pool to avoid blocking
+        import asyncio
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, lambda: _preferences_service.set_vpn_config(config))
+        
+        return {
+            "success": True,
+            "message": "VPN preferences saved",
+            "preferences": config
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
