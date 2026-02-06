@@ -311,7 +311,8 @@
     "apply": "Apply",
     "delete": "Delete",
     "ok": "OK",
-    "loading": "Loading..."
+    "loading": "Loading...",
+    "loadingContent": "Loading content..."
   },
   "status": {
     "badge": {
@@ -327,6 +328,7 @@
       "backend": "APP",
       "frontend": "WebUI",
       "permissions": "Permissions",
+      "preferences": "Preferences",
       "comingSoon": "Coming Soon"
     },
     "system": {
@@ -357,6 +359,16 @@
       "filePermissions": "File Permissions",
       "canRead": "Can read",
       "canWrite": "Can write to"
+    },
+    "preferences": {
+      "description": "Reset all preferences (serial connection, router, video, etc.) to default values. An automatic backup will be created.",
+      "confirmTitle": "⚠️ Reset Preferences",
+      "confirmMessage": "Are you sure you want to reset all preferences to default values? An automatic backup will be created.",
+      "confirmButton": "Reset",
+      "resetButton": "🔄 Reset Preferences",
+      "resetting": "⏳ Resetting...",
+      "resetSuccess": "Preferences reset successfully. Restarting the application is recommended.",
+      "resetError": "Error resetting preferences"
     }
   }
 }

@@ -311,7 +311,8 @@
     "apply": "Aplicar",
     "delete": "Eliminar",
     "ok": "Aceptar",
-    "loading": "Cargando..."
+    "loading": "Cargando...",
+    "loadingContent": "Cargando contenido..."
   },
   "status": {
     "badge": {
@@ -327,6 +328,7 @@
       "backend": "APP",
       "frontend": "WebUI",
       "permissions": "Permisos",
+      "preferences": "Preferencias",
       "comingSoon": "Próximamente"
     },
     "system": {
@@ -357,6 +359,16 @@
       "filePermissions": "Permisos de Archivos",
       "canRead": "Puede leer",
       "canWrite": "Puede escribir en"
+    },
+    "preferences": {
+      "description": "Restablece todas las preferencias (conexión serial, router, video, etc.) a los valores por defecto. Se creará un backup automático.",
+      "confirmTitle": "⚠️ Restablecer Preferencias",
+      "confirmMessage": "¿Estás seguro de que quieres restablecer todas las preferencias a los valores por defecto? Esta acción creará un backup automático.",
+      "confirmButton": "Restablecer",
+      "resetButton": "🔄 Restablecer Preferencias",
+      "resetting": "⏳ Restableciendo...",
+      "resetSuccess": "Preferencias restablecidas correctamente. Se recomienda reiniciar la aplicación.",
+      "resetError": "Error al restablecer preferencias"
     }
   }
 }

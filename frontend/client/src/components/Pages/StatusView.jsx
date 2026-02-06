@@ -2,12 +2,14 @@ import './StatusView.css'
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useToast } from '../../contexts/ToastContext'
+import { useModal } from '../../contexts/ModalContext'
 import { useWebSocket } from '../../contexts/WebSocketContext'
 import api from '../../services/api'
 
 const StatusView = () => {
   const { t } = useTranslation()
   const { showToast } = useToast()
+  const { showModal } = useModal()
   const { messages, isConnected } = useWebSocket()
   
   const [loading, setLoading] = useState(true)
@@ -44,27 +46,32 @@ const StatusView = () => {
     }
   }
 
-  const handleResetPreferences = async () => {
-    if (!confirm(t('status.preferences.confirmReset', '¿Estás seguro de que quieres restablecer todas las preferencias a los valores por defecto? Esta acción creará un backup.'))) {
-      return
-    }
-
-    setResettingPrefs(true)
-    try {
-      const response = await api.post('/api/system/preferences/reset')
-      const data = await response.json()
-      
-      if (data.success) {
-        showToast(t('status.preferences.resetSuccess', 'Preferencias restablecidas. Se recomienda reiniciar la aplicación.'), 'success')
-      } else {
-        showToast(data.message || t('status.preferences.resetError', 'Error al restablecer preferencias'), 'error')
+  const handleResetPreferences = () => {
+    showModal({
+      title: t('status.preferences.confirmTitle'),
+      message: t('status.preferences.confirmMessage'),
+      type: 'confirm',
+      confirmText: t('status.preferences.confirmButton'),
+      cancelText: t('common.cancel'),
+      onConfirm: async () => {
+        setResettingPrefs(true)
+        try {
+          const response = await api.post('/api/system/preferences/reset')
+          const data = await response.json()
+          
+          if (data.success) {
+            showToast(t('status.preferences.resetSuccess'), 'success')
+          } else {
+            showToast(data.message || t('status.preferences.resetError'), 'error')
+          }
+        } catch (error) {
+          console.error('Error resetting preferences:', error)
+          showToast(t('status.preferences.resetError'), 'error')
+        } finally {
+          setResettingPrefs(false)
+        }
       }
-    } catch (error) {
-      console.error('Error resetting preferences:', error)
-      showToast(t('status.preferences.resetError', 'Error al restablecer preferencias'), 'error')
-    } finally {
-      setResettingPrefs(false)
-    }
+    })
   }
 
   const StatusBadge = ({ status }) => {
@@ -87,7 +94,7 @@ const StatusView = () => {
         <h2>{t('status.sections.backend')}</h2>
         <div className="waiting-data">
           <div className="spinner-small"></div>
-          {t('common.loadingContent', 'Cargando contenido')}
+          {t('common.loadingContent')}
         </div>
       </div>
     )
@@ -245,11 +252,11 @@ const StatusView = () => {
 
         {/* Preferences Management */}
         <div className="card">
-          <h2>{t('status.sections.preferences', 'Preferencias')}</h2>
+          <h2>{t('status.sections.preferences')}</h2>
           
           <div className="info-section">
             <p className="preferences-info">
-              {t('status.preferences.description', 'Restablece todas las preferencias (conexión serial, router, video, etc.) a los valores por defecto. Se creará un backup automático.')}
+              {t('status.preferences.description')}
             </p>
             
             <button 
@@ -257,7 +264,7 @@ const StatusView = () => {
               onClick={handleResetPreferences}
               disabled={resettingPrefs}
             >
-              {resettingPrefs ? '⏳ Restableciendo...' : '🔄 Restablecer Preferencias'}
+              {resettingPrefs ? t('status.preferences.resetting') : t('status.preferences.resetButton')}
             </button>
           </div>
         </div>
