@@ -437,15 +437,17 @@ class TailscaleProvider(VPNProvider):
                 
                 # Add self node first
                 if self_node:
-                    # Prefer DNSName over HostName for display (extract hostname from FQDN)
-                    dns_name = self_node.get('DNSName', '')
+                    dns_fqdn = self_node.get('DNSName', '')
                     host_name = self_node.get('HostName', 'Unknown')
-                    # Extract hostname from DNSName like "device.tailXXXX.ts.net."
-                    display_name = dns_name.split('.')[0] if dns_name else host_name
+                    # Extract short hostname from FQDN like "device.tailXXXX.ts.net."
+                    display_name = dns_fqdn.split('.')[0] if dns_fqdn else host_name
+                    # MagicDNS name (strip trailing dot)
+                    magic_dns = dns_fqdn.rstrip('.') if dns_fqdn else ''
                     
                     peers.append({
                         'id': self_node.get('ID', ''),
                         'hostname': display_name,
+                        'dns_name': magic_dns,
                         'ip_addresses': self_node.get('TailscaleIPs', []),
                         'os': self_node.get('OS', 'Unknown'),
                         'online': self_node.get('Online', False),
@@ -459,15 +461,17 @@ class TailscaleProvider(VPNProvider):
                 
                 # Add other peers
                 for peer_id, peer_data in peers_data.items():
-                    # Prefer DNSName over HostName for display (extract hostname from FQDN)
-                    dns_name = peer_data.get('DNSName', '')
+                    dns_fqdn = peer_data.get('DNSName', '')
                     host_name = peer_data.get('HostName', 'Unknown')
-                    # Extract hostname from DNSName like "device.tailXXXX.ts.net."
-                    display_name = dns_name.split('.')[0] if dns_name else host_name
+                    # Extract short hostname from FQDN like "device.tailXXXX.ts.net."
+                    display_name = dns_fqdn.split('.')[0] if dns_fqdn else host_name
+                    # MagicDNS name (strip trailing dot)
+                    magic_dns = dns_fqdn.rstrip('.') if dns_fqdn else ''
                     
                     peers.append({
                         'id': peer_id,
                         'hostname': display_name,
+                        'dns_name': magic_dns,
                         'ip_addresses': peer_data.get('TailscaleIPs', []),
                         'os': peer_data.get('OS', 'Unknown'),
                         'online': peer_data.get('Online', False),

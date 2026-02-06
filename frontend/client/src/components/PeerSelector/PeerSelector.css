@@ -97,10 +97,16 @@
   border-radius: 6px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
   z-index: 1000;
-  max-height: 300px;
+  max-height: 280px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+.peer-selector-dropdown.drop-up {
+  top: auto;
+  bottom: calc(100% + 4px);
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.5);
 }
 
 .peer-selector-header {
@@ -140,14 +146,16 @@
 
 .peer-selector-list {
   overflow-y: auto;
-  max-height: 260px;
+  overflow-x: hidden;
+  max-height: 240px;
 }
 
 .peer-selector-item {
-  padding: 12px;
+  padding: 8px 12px;
   cursor: pointer;
   border-bottom: 1px solid rgba(120, 138, 190, 0.15);
   transition: background 0.2s;
+  overflow: hidden;
 }
 
 .peer-selector-item:hover:not(.self) {
@@ -168,7 +176,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 6px;
+  margin-bottom: 3px;
 }
 
 .peer-name {
@@ -190,20 +198,33 @@
 
 .peer-selector-item-details {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   align-items: center;
   font-size: 11px;
+  min-width: 0;
+}
+
+.peer-dns {
+  font-family: 'Courier New', monospace;
+  color: #81c784;
+  font-size: 10px;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .peer-ip {
   font-family: 'Courier New', monospace;
   color: #7fa3ff;
   font-weight: 500;
+  font-size: 11px;
 }
 
 .peer-os {
-  color: #9aa6c3;
+  color: #707a94;
   text-transform: capitalize;
+  font-size: 10px;
 }
 
 .peer-selector-empty {

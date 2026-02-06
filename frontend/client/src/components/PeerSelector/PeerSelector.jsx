@@ -16,6 +16,7 @@ export const PeerSelector = ({
   const [peers, setPeers] = useState([])
   const [showDropdown, setShowDropdown] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [dropUp, setDropUp] = useState(false)
   const dropdownRef = useRef(null)
   const inputRef = useRef(null)
 
@@ -55,10 +56,11 @@ export const PeerSelector = ({
   }
 
   const handleSelectPeer = (peer) => {
-    // Prefer first IPv4 address
+    // Use MagicDNS name if available, fallback to IPv4
+    const dnsName = peer.dns_name || ''
     const addresses = peer.ip_addresses || []
     const ip = addresses.find(addr => !addr.includes(':')) || addresses[0] || ''
-    onChange(ip)
+    onChange(dnsName || ip)
     setShowDropdown(false)
     inputRef.current?.focus()
   }
@@ -76,6 +78,11 @@ export const PeerSelector = ({
   const toggleDropdown = () => {
     if (peers.length === 0 && !loading) {
       loadPeers()
+    }
+    if (!showDropdown && dropdownRef.current) {
+      const rect = dropdownRef.current.getBoundingClientRect()
+      const spaceBelow = window.innerHeight - rect.bottom
+      setDropUp(spaceBelow < 280)
     }
     setShowDropdown(!showDropdown)
   }
@@ -112,7 +119,7 @@ export const PeerSelector = ({
       </div>
 
       {showDropdown && peers.length > 0 && (
-        <div className="peer-selector-dropdown">
+        <div className={`peer-selector-dropdown ${dropUp ? 'drop-up' : ''}`}>
           <div className="peer-selector-header">
             <span>VPN Nodes ({peers.length})</span>
             <button 
@@ -128,6 +135,7 @@ export const PeerSelector = ({
             {peers.map((peer, idx) => {
               const addresses = peer.ip_addresses || []
               const ipv4 = addresses.find(addr => !addr.includes(':')) || addresses[0] || 'No IP'
+              const dnsName = peer.dns_name || ''
               return (
                 <div
                   key={idx}
@@ -142,6 +150,7 @@ export const PeerSelector = ({
                     <span className="peer-ip">{ipv4}</span>
                     <span className="peer-os">{peer.os}</span>
                   </div>
+                  {dnsName && <div className="peer-dns">{dnsName}</div>}
                 </div>
               )
             })}
@@ -150,7 +159,7 @@ export const PeerSelector = ({
       )}
 
       {showDropdown && peers.length === 0 && !loading && (
-        <div className="peer-selector-dropdown">
+        <div className={`peer-selector-dropdown ${dropUp ? 'drop-up' : ''}`}>
           <div className="peer-selector-empty">
             No VPN peers available
           </div>
