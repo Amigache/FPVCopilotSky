@@ -6,6 +6,7 @@ Endpoints for managing VPN connections
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
+from providers import get_provider_registry
 
 router = APIRouter(prefix="/api/vpn", tags=["vpn"])
 
@@ -225,6 +226,29 @@ async def save_vpn_preferences(preferences: VPNPreferencesModel):
             "success": True,
             "message": "VPN preferences saved",
             "preferences": config
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/available-providers")
+async def get_available_providers():
+    """
+    Get list of available VPN providers from the provider registry
+    
+    This endpoint uses the new modular provider registry system.
+    Returns all registered VPN providers with their installation status.
+    
+    Returns:
+        List of VPN providers with their names, display names, installation status, and class
+    """
+    try:
+        registry = get_provider_registry()
+        providers = registry.get_available_vpn_providers()
+        return {
+            "success": True,
+            "providers": providers,
+            "count": len(providers)
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

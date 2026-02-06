@@ -18,6 +18,17 @@ logger = logging.getLogger(__name__)
 # Add parent directory to path to import modules
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# Modular providers system
+from providers import init_provider_registry, get_provider_registry
+from providers.vpn.tailscale import TailscaleProvider
+from providers.modem.hilink.huawei import HuaweiE3372hProvider
+from providers.network import (
+    EthernetInterface,
+    WiFiInterface,
+    VPNInterface,
+    ModemInterface,
+)
+
 # Use simplified MAVLink bridge and router
 from services.mavlink_bridge import MAVLinkBridge
 from services.mavlink_router import get_router
@@ -32,7 +43,9 @@ from api.routes import router as router_routes
 from api.routes import video as video_routes
 from api.routes import network as network_routes
 from api.routes import vpn as vpn_routes
+from api.routes import modem as modem_routes
 from api.routes import status as status_routes
+from api.routes import network_interface as network_interface_routes
 
 app = FastAPI(title="FPV Copilot Sky", version="1.0.0")
 
@@ -59,7 +72,9 @@ app.include_router(router_routes.router)
 app.include_router(video_routes.router)
 app.include_router(network_routes.router)
 app.include_router(vpn_routes.router)
+app.include_router(modem_routes.router)
 app.include_router(status_routes.router)
+app.include_router(network_interface_routes.router)
 
 # Global WebSocket endpoint
 @app.websocket("/ws")
@@ -252,6 +267,26 @@ async def startup_event():
     
     # Initialize preferences first
     preferences_service = get_preferences()
+    
+    # Initialize provider registry (VPN, Modem, Network providers)
+    provider_registry = init_provider_registry()
+    
+    # Register VPN providers
+    provider_registry.register_vpn_provider('tailscale', TailscaleProvider)
+    
+    # Register Modem providers
+    provider_registry.register_modem_provider('huawei_e3372h', HuaweiE3372hProvider)
+    
+    # Register Network Interface providers
+    provider_registry.register_network_interface('ethernet', EthernetInterface)
+    provider_registry.register_network_interface('wifi', WiFiInterface)
+    provider_registry.register_network_interface('vpn', VPNInterface)
+    provider_registry.register_network_interface('modem', ModemInterface)
+    
+    print("✅ Provider registry initialized:")
+    print("   - VPN: Tailscale")
+    print("   - Modem: Huawei E3372h")
+    print("   - Network Interfaces: Ethernet, WiFi, VPN, Modem")
     
     # Create router for additional outputs (uses preferences for config)
     router_service = get_router()
