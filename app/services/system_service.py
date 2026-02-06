@@ -396,3 +396,132 @@ class SystemService:
                 "device": "Unknown",
                 "python_version": platform.python_version()
             }
+    
+    @staticmethod
+    def restart_backend() -> Dict[str, Any]:
+        """
+        Restart the backend service (fpvcopilot-sky)
+        
+        Returns:
+            Dictionary with success status and message
+        """
+        try:
+            result = subprocess.run(
+                ['sudo', '-n', 'systemctl', 'restart', 'fpvcopilot-sky'],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            if result.returncode == 0:
+                return {
+                    "success": True,
+                    "message": "Backend service restart initiated. Connection will be lost momentarily."
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": f"Failed to restart backend: {result.stderr or 'Unknown error'}"
+                }
+        except subprocess.TimeoutExpired:
+            # Timeout is expected since we're restarting the service we're running in
+            return {
+                "success": True,
+                "message": "Backend service restart initiated. Connection will be lost momentarily."
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "message": f"Error restarting backend: {str(e)}"
+            }
+    
+    @staticmethod
+    def restart_frontend() -> Dict[str, Any]:
+        """
+        Rebuild frontend (requires manual deployment)
+        Note: This actually needs to run the build script
+        
+        Returns:
+            Dictionary with success status and message
+        """
+        try:
+            # Frontend is static files served by nginx
+            # To "restart" we'd need to rebuild, which is manual
+            return {
+                "success": False,
+                "message": "Frontend rebuild requires manual deployment. Run: sudo bash scripts/deploy.sh"
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "message": f"Error: {str(e)}"
+            }
+    
+    @staticmethod
+    def get_backend_logs(lines: int = 100) -> str:
+        """
+        Get backend service logs from journalctl
+        
+        Args:
+            lines: Number of log lines to retrieve
+            
+        Returns:
+            Log content as string
+        """
+        try:
+            result = subprocess.run(
+                ['journalctl', '-u', 'fpvcopilot-sky', '-n', str(lines), '--no-pager'],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            if result.returncode == 0:
+                return result.stdout
+            else:
+                return f"Error fetching logs: {result.stderr}"
+        except Exception as e:
+            return f"Error fetching logs: {str(e)}"
+    
+    @staticmethod
+    def get_frontend_logs(lines: int = 100) -> str:
+        """
+        Get frontend logs (nginx access and error logs)
+        
+        Args:
+            lines: Number of log lines to retrieve
+            
+        Returns:
+            Log content as string
+        """
+        try:
+            # Try to get nginx error logs
+            nginx_error = ""
+            nginx_access = ""
+            
+            # Check for nginx error log
+            if os.path.exists('/var/log/nginx/error.log'):
+                result = subprocess.run(
+                    ['tail', '-n', str(lines // 2), '/var/log/nginx/error.log'],
+                    capture_output=True,
+                    text=True,
+                    timeout=3
+                )
+                if result.returncode == 0:
+                    nginx_error = "=== Nginx Error Log ===\\n" + result.stdout
+            
+            # Check for nginx access log
+            if os.path.exists('/var/log/nginx/access.log'):
+                result = subprocess.run(
+                    ['tail', '-n', str(lines // 2), '/var/log/nginx/access.log'],
+                    capture_output=True,
+                    text=True,
+                    timeout=3
+                )
+                if result.returncode == 0:
+                    nginx_access = "\\n=== Nginx Access Log ===\\n" + result.stdout
+            
+            combined = nginx_error + nginx_access
+            return combined if combined else "No frontend logs available"
+        except Exception as e:
+            return f"Error fetching frontend logs: {str(e)}"

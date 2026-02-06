@@ -92,6 +92,44 @@ export const api = {
       throw new Error(`Failed to save VPN preferences: ${response.statusText}`)
     }
     return await response.json()
+  },
+
+  // System restart methods
+  restartBackend: async () => {
+    const response = await fetchWithTimeout(`${API_BASE}/api/system/restart/backend`, {
+      method: 'POST'
+    }, 5000)
+    if (!response.ok) {
+      throw new Error(`Failed to restart backend: ${response.statusText}`)
+    }
+    return await response.json()
+  },
+
+  restartFrontend: async () => {
+    const response = await fetchWithTimeout(`${API_BASE}/api/system/restart/frontend`, {
+      method: 'POST'
+    }, 5000)
+    if (!response.ok) {
+      throw new Error(`Failed to restart frontend: ${response.statusText}`)
+    }
+    return await response.json()
+  },
+
+  // System logs methods
+  getBackendLogs: async (lines = 100) => {
+    const response = await fetchWithTimeout(`${API_BASE}/api/system/logs/backend?lines=${lines}`)
+    if (!response.ok) {
+      throw new Error(`Failed to fetch backend logs: ${response.statusText}`)
+    }
+    return await response.json()
+  },
+
+  getFrontendLogs: async (lines = 100) => {
+    const response = await fetchWithTimeout(`${API_BASE}/api/system/logs/frontend?lines=${lines}`)
+    if (!response.ok) {
+      throw new Error(`Failed to fetch frontend logs: ${response.statusText}`)
+    }
+    return await response.json()
   }
 }
 

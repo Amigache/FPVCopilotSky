@@ -332,6 +332,8 @@
       "frontend": "WebUI",
       "permissions": "Permisos",
       "preferences": "Preferencias",
+      "systemControl": "Control del Sistema",
+      "logs": "Logs del Sistema",
       "comingSoon": "Próximamente"
     },
     "system": {
@@ -372,6 +374,29 @@
       "resetting": "⏳ Restableciendo...",
       "resetSuccess": "Preferencias restablecidas correctamente. Se recomienda reiniciar la aplicación.",
       "resetError": "Error al restablecer preferencias"
+    },
+    "restart": {
+      "description": "Reinicia los servicios del backend o solicita rebuild del frontend.",
+      "confirmBackendTitle": "⚠️ Reiniciar Backend",
+      "confirmBackendMessage": "¿Estás seguro de que quieres reiniciar el backend? Se perderá la conexión temporalmente y la aplicación se reiniciará.",
+      "confirmFrontendTitle": "ℹ️ Rebuild Frontend",
+      "confirmFrontendMessage": "El frontend son archivos estáticos servidos por nginx. Para actualizarlo necesitas ejecutar: sudo bash scripts/deploy.sh",
+      "confirmButton": "Reiniciar",
+      "restartBackend": "Reiniciar Backend",
+      "restartFrontend": "Info Frontend",
+      "restarting": "Reiniciando...",
+      "backendRestarted": "Backend reiniciado. Reconectando...",
+      "backendRestarting": "Backend reiniciándose. Espera unos segundos...",
+      "frontendInfo": "Para actualizar el frontend ejecuta: sudo bash scripts/deploy.sh",
+      "restartError": "Error al reiniciar"
+    },
+    "logs": {
+      "viewBackend": "Ver Logs Backend",
+      "viewFrontend": "Ver Logs Frontend",
+      "backendLogs": "Logs del Backend (journalctl)",
+      "frontendLogs": "Logs del Frontend (nginx)",
+      "loadError": "Error al cargar logs",
+      "refresh": "Refrescar"
     }
   }
 }

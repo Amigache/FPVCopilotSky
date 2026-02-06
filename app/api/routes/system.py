@@ -75,3 +75,65 @@ async def reset_preferences():
             "success": False,
             "message": f"Error resetting preferences: {str(e)}"
         }
+
+
+@router.post("/restart/backend")
+async def restart_backend():
+    """Restart backend service (fpvcopilot-sky)"""
+    try:
+        result = SystemService.restart_backend()
+        return result
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Error restarting backend: {str(e)}"
+        }
+
+
+@router.post("/restart/frontend")
+async def restart_frontend():
+    """Rebuild frontend (requires manual deployment)"""
+    try:
+        result = SystemService.restart_frontend()
+        return result
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Error restarting frontend: {str(e)}"
+        }
+
+
+@router.get("/logs/backend")
+async def get_backend_logs(lines: int = 100):
+    """Get backend service logs (journalctl)"""
+    try:
+        logs = SystemService.get_backend_logs(lines)
+        return {
+            "success": True,
+            "logs": logs,
+            "lines": len(logs.split('\n')) if logs else 0
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Error fetching backend logs: {str(e)}",
+            "logs": ""
+        }
+
+
+@router.get("/logs/frontend")
+async def get_frontend_logs(lines: int = 100):
+    """Get frontend logs (nginx access/error logs)"""
+    try:
+        logs = SystemService.get_frontend_logs(lines)
+        return {
+            "success": True,
+            "logs": logs,
+            "lines": len(logs.split('\n')) if logs else 0
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Error fetching frontend logs: {str(e)}",
+            "logs": ""
+        }

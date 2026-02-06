@@ -15,6 +15,12 @@ const StatusView = () => {
   const [loading, setLoading] = useState(true)
   const [statusData, setStatusData] = useState(null)
   const [resettingPrefs, setResettingPrefs] = useState(false)
+  
+  // Logs state
+  const [showLogs, setShowLogs] = useState(false)
+  const [logsType, setLogsType] = useState('backend') // 'backend' or 'frontend'
+  const [logs, setLogs] = useState('')
+  const [loadingLogs, setLoadingLogs] = useState(false)
 
   // Load initial status
   useEffect(() => {
@@ -72,6 +78,75 @@ const StatusView = () => {
         }
       }
     })
+  }
+
+  const handleRestartBackend = () => {
+    showModal({
+      title: t('status.restart.confirmBackendTitle'),
+      message: t('status.restart.confirmBackendMessage'),
+      type: 'confirm',
+      confirmText: t('status.restart.confirmButton'),
+      cancelText: t('common.cancel'),
+      onConfirm: async () => {
+        try {
+          showToast(t('status.restart.restarting'), 'info')
+          const data = await api.restartBackend()
+          
+          if (data.success) {
+            showToast(t('status.restart.backendRestarted'), 'success')
+            // Connection will be lost, WebSocket will attempt to reconnect
+          } else {
+            showToast(data.message || t('status.restart.restartError'), 'error')
+          }
+        } catch (error) {
+          console.error('Error restarting backend:', error)
+          // Don't show error toast - backend is restarting
+          showToast(t('status.restart.backendRestarting'), 'info')
+        }
+      }
+    })
+  }
+
+  const handleRestartFrontend = () => {
+    showModal({
+      title: t('status.restart.confirmFrontendTitle'),
+      message: t('status.restart.confirmFrontendMessage'),
+      type: 'confirm',
+      confirmText: t('common.ok'),
+      cancelText: t('common.cancel'),
+      onConfirm: () => {
+        showToast(t('status.restart.frontendInfo'), 'info')
+      }
+    })
+  }
+
+  const loadLogs = async (type) => {
+    setLoadingLogs(true)
+    setLogsType(type)
+    setShowLogs(true)
+    
+    try {
+      const data = type === 'backend' 
+        ? await api.getBackendLogs(150)
+        : await api.getFrontendLogs(150)
+      
+      if (data.success) {
+        setLogs(data.logs)
+      } else {
+        setLogs(data.message || t('status.logs.loadError'))
+        showToast(t('status.logs.loadError'), 'error')
+      }
+    } catch (error) {
+      console.error('Error loading logs:', error)
+      setLogs(t('status.logs.loadError'))
+      showToast(t('status.logs.loadError'), 'error')
+    } finally {
+      setLoadingLogs(false)
+    }
+  }
+
+  const refreshLogs = () => {
+    loadLogs(logsType)
   }
 
   const StatusBadge = ({ status }) => {
@@ -266,6 +341,78 @@ const StatusView = () => {
             >
               {resettingPrefs ? t('status.preferences.resetting') : t('status.preferences.resetButton')}
             </button>
+          </div>
+        </div>
+
+        {/* System Control */}
+        <div className="card">
+          <h2>{t('status.sections.systemControl')}</h2>
+          
+          <div className="info-section">
+            <p className="preferences-info">
+              {t('status.restart.description')}
+            </p>
+            
+            <div className="system-controls">
+              <button 
+                className="btn-restart-backend"
+                onClick={handleRestartBackend}
+              >
+                🔄 {t('status.restart.restartBackend')}
+              </button>
+              
+              <button 
+                className="btn-restart-frontend"
+                onClick={handleRestartFrontend}
+              >
+                🌐 {t('status.restart.restartFrontend')}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Logs Viewer */}
+        <div className="card">
+          <h2>{t('status.sections.logs')}</h2>
+          
+          <div className="info-section">
+            <div className="logs-controls">
+              <button 
+                className="btn-view-logs"
+                onClick={() => loadLogs('backend')}
+                disabled={loadingLogs}
+              >
+                📜 {t('status.logs.viewBackend')}
+              </button>
+              
+              <button 
+                className="btn-view-logs"
+                onClick={() => loadLogs('frontend')}
+                disabled={loadingLogs}
+              >
+                📄 {t('status.logs.viewFrontend')}
+              </button>
+            </div>
+
+            {showLogs && (
+              <div className="logs-viewer">
+                <div className="logs-header">
+                  <span className="logs-title">
+                    {logsType === 'backend' ? t('status.logs.backendLogs') : t('status.logs.frontendLogs')}
+                  </span>
+                  <button 
+                    className="btn-refresh-logs"
+                    onClick={refreshLogs}
+                    disabled={loadingLogs}
+                  >
+                    {loadingLogs ? '⏳' : '🔄'}
+                  </button>
+                </div>
+                <pre className="logs-content">
+                  {loadingLogs ? t('common.loading') : logs}
+                </pre>
+              </div>
+            )}
           </div>
         </div>
       </div>
