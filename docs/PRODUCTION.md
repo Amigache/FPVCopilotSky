@@ -1,369 +1,430 @@
-# FPV Copilot Sky - Production Deployment Guide
+# 📦 FPV Copilot Sky - Production Deployment Guide
 
-## 📋 Descripción General
-
-Este proyecto puede ejecutarse en dos modos:
-
-1. **🚀 Modo Producción**: Servicio systemd automático al arrancar + Nginx
-2. **🛠️ Modo Desarrollo**: Hot reload para desarrollo continuo
+Guía detallada para desplegar FPV Copilot Sky en modo producción con systemd y nginx.
 
 ## 🏗️ Arquitectura de Producción
 
 ```
 ┌─────────────────────────────────────────────┐
-│  Cliente (Navegador)                        │
-│  http://radxa-ip                            │
+│  Cliente (Navegador/App)                    │
+│  http://<radxa-ip>                          │
 └────────────┬────────────────────────────────┘
              │
              ▼
 ┌─────────────────────────────────────────────┐
 │  Nginx (Puerto 80)                          │
-│  - Sirve frontend estático (React build)    │
-│  - Proxy /api/* → Backend                   │
-│  - Proxy /ws → WebSocket                    │
+│  ├─ Sirve frontend estático (/dist)         │
+│  ├─ Proxy /api/* → Backend:8000             │
+│  └─ Proxy /ws → WebSocket                   │
 └────────────┬────────────────────────────────┘
              │
              ▼
 ┌─────────────────────────────────────────────┐
 │  Backend FastAPI (Puerto 8000)              │
-│  - Servicio systemd: fpvcopilot-sky         │
-│  - Auto-inicia al arrancar                  │
-│  - Auto-restart si falla                    │
+│  ├─ Servicio systemd: fpvcopilot-sky        │
+│  ├─ Auto-inicio al arrancar                 │
+│  ├─ Auto-restart si falla                   │
+│  └─ Logs en journald                        │
 └─────────────────────────────────────────────┘
 ```
 
-## 🚀 Setup Inicial de Producción
+## 🚀 Pasos de Instalación
 
-### 1. Instalar dependencias de producción
+### 1. Instalación Base
 
 ```bash
-sudo bash /opt/FPVCopilotSky/scripts/install-production.sh
+cd /opt
+sudo git clone <repo-url> FPVCopilotSky
+cd FPVCopilotSky
+
+# Instalar dependencias del sistema
+bash install.sh
 ```
 
 Esto instala:
-- Nginx (deshabilita el site por defecto automáticamente)
-- Configura permisos
-- Prepara el entorno
+- ✅ Python 3.12+, Node.js, GStreamer
+- ✅ NetworkManager, ModemManager
+- ✅ Entorno virtual Python
+- ✅ Dependencias npm
+- ✅ Configuración de modems 4G
 
-### 2. Compilar y desplegar
+**Tiempo:** ~15-20 minutos
+
+### 2. Configuración de Producción
 
 ```bash
-bash /opt/FPVCopilotSky/scripts/deploy.sh
+# Setup inicial (solo primera vez)
+sudo bash scripts/install-production.sh
 ```
 
-Esto:
-- ✅ Compila el frontend (React → build estático)
-- ✅ Instala el servicio systemd
-- ✅ Configura nginx (deshabilita default site)
-- ✅ Verifica permisos y propietarios de archivos
-- ✅ Inicia el servicio automáticamente
-- ✅ Habilita auto-inicio al arrancar
-- ✅ Realiza health check
+Esto configura:
+- ✅ Instala nginx
+- ✅ Deshabilita default site de nginx
+- ✅ Desactiva getty en puerto serie (evita conflictos con MAVLink)
+- ✅ Aplica udev rules para permisos de puerto serie
+- ✅ Optimiza sistema para streaming 4G (sysctl)
 
-### 3. Verificar funcionamiento
+### 3. Despliegue
 
 ```bash
-# Ver estado del servicio
-sudo systemctl status fpvcopilot-sky
+# Compilar frontend y desplegar
+bash scripts/deploy.sh
+```
 
-# Ver logs en tiempo real
+Esto ejecuta:
+1. **Build del frontend** (React → static en `/dist`)
+2. **Instala servicio systemd** (`fpvcopilot-sky.service`)
+3. **Configura nginx** (copia config, habilita site)
+4. **Ajusta permisos** (dist/ → www-data:www-data)
+5. **Inicia servicios** (systemd enable + start)
+6. **Health check** (verifica backend + frontend)
+
+**Tiempo:** ~1-2 minutos
+
+### 4. Verificación
+
+```bash
+# Check completo del sistema
+bash scripts/status.sh
+
+# Ver logs
 sudo journalctl -u fpvcopilot-sky -f
-
-# Verificar nginx
-sudo systemctl status nginx
-
-# Quick status check
-bash /opt/FPVCopilotSky/scripts/status.sh
 ```
-
-### 4. Acceder a la aplicación
-
-Abre un navegador y ve a:
-```
-http://192.168.1.145
-```
-(Sustituye con la IP de tu Radxa)
-
-**Si ves "Welcome to nginx"** en lugar de la aplicación, ejecuta:
-```bash
-bash /opt/FPVCopilotSky/scripts/fix-nginx.sh
-```
-
-## 🛠️ Desarrollo en Paralelo
-
-### Opción 1: Script de desarrollo automático
-
-```bash
-bash /opt/FPVCopilotSky/scripts/dev.sh
-```
-
-Esto inicia:
-- **Backend** en puerto 8001 (o 8000 si producción está parada) con hot reload
-- **Frontend** en puerto 5173 con hot reload
-- Ambos se detienen con Ctrl+C
 
 Acceso:
-- Frontend Dev: `http://localhost:5173`
-- Backend Dev: `http://localhost:8001`
-- API Docs: `http://localhost:8001/docs`
-
-### Opción 2: Manual (mayor control)
-
-#### Terminal 1 - Backend
-```bash
-cd /opt/FPVCopilotSky
-source venv/bin/activate
-uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
+```
+http://192.168.1.145  (sustituye con tu IP)
 ```
 
-#### Terminal 2 - Frontend
-```bash
-cd /opt/FPVCopilotSky/frontend/client
-npm run dev
-```
+## 📋 Gestión del Servicio
 
-## 📊 Gestión del Servicio
-
-### Comandos útiles
+### Comandos systemd
 
 ```bash
-# Iniciar servicio
-sudo systemctl start fpvcopilot-sky
-
-# Detener servicio
-sudo systemctl stop fpvcopilot-sky
-
-# Reiniciar servicio
-sudo systemctl restart fpvcopilot-sky
-
 # Ver estado
 sudo systemctl status fpvcopilot-sky
 
-# Habilitar auto-inicio (ya hecho por deploy.sh)
+# Iniciar
+sudo systemctl start fpvcopilot-sky
+
+# Detener
+sudo systemctl stop fpvcopilot-sky
+
+# Reiniciar
+sudo systemctl restart fpvcopilot-sky
+
+# Ver si auto-inicia
+sudo systemctl is-enabled fpvcopilot-sky
+
+# Habilitar auto-inicio
 sudo systemctl enable fpvcopilot-sky
 
 # Deshabilitar auto-inicio
 sudo systemctl disable fpvcopilot-sky
+```
 
-# Ver logs en tiempo real
+### Ver Logs
+
+```bash
+# Tiempo real (follow)
 sudo journalctl -u fpvcopilot-sky -f
 
-# Ver logs recientes
+# Últimas 100 líneas
 sudo journalctl -u fpvcopilot-sky -n 100
 
-# Ver logs desde hoy
-sudo journalctl -u fpvcopilot-sky --since today
-```
+# Con timestamps
+sudo journalctl -u fpvcopilot-sky -n 50 --no-pager
 
-### Nginx
+# Buscar errores
+sudo journalctl -u fpvcopilot-sky | grep ERROR
 
-```bash
-# Reiniciar nginx
-sudo systemctl restart nginx
+# Desde una fecha
+sudo journalctl -u fpvcopilot-sky --since "2026-02-01"
 
-# Verificar configuración
-sudo nginx -t
-
-# Recargar configuración (sin downtime)
-sudo systemctl reload nginx
-
-# Ver logs de acceso
-sudo tail -f /var/log/nginx/fpvcopilot-sky-access.log
-
-# Ver logs de errores
-sudo tail -f /var/log/nginx/fpvcopilot-sky-error.log
-```
-
-## 🔄 Workflow de Actualización
-
-### Actualizar la aplicación en producción:
-
-```bash
-# 1. Hacer cambios en el código
-# 2. Re-desplegar
-bash /opt/FPVCopilotSky/scripts/deploy.sh
-```
-
-El script automáticamente:
-1. Compila el nuevo frontend
-2. Reinicia el servicio backend
-3. Recarga nginx
-
-### Solo actualizar backend:
-
-```bash
-sudo systemctl restart fpvcopilot-sky
-```
-
-### Solo actualizar frontend:
-
-```bash
-cd /opt/FPVCopilotSky/frontend/client
-npm run build
-# Nginx automáticamente sirve el nuevo build
+# Exportar logs
+sudo journalctl -u fpvcopilot-sky -n 200 > logs.txt
 ```
 
 ## 🔧 Configuración
 
-### Backend (Systemd)
+### Servicio Systemd
 
-Editar: `/etc/systemd/system/fpvcopilot-sky.service`
+Archivo: `/etc/systemd/system/fpvcopilot-sky.service`
 
-Después de editar:
-```bash
-sudo systemctl daemon-reload
-sudo systemctl restart fpvcopilot-sky
+```ini
+[Unit]
+Description=FPV Copilot Sky - Backend Service
+After=network.target
+
+[Service]
+Type=simple
+User=fpvcopilotsky
+WorkingDirectory=/opt/FPVCopilotSky
+Environment="PATH=/opt/FPVCopilotSky/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=/opt/FPVCopilotSky/venv/bin/python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
 ```
+
+**Notas:**
+- `User=fpvcopilotsky`: Ejecuta como usuario normal (no root)
+- `Restart=always`: Auto-reinicia si falla
+- `RestartSec=3`: Espera 3s antes de reiniciar
+- `WorkingDirectory`: Importante para rutas relativas
 
 ### Nginx
 
-Editar: `/etc/nginx/sites-available/fpvcopilot-sky`
+Archivo: `/etc/nginx/sites-available/fpvcopilot-sky`
 
-Después de editar:
-```bash
-sudo nginx -t  # Verificar sintaxis
-sudo systemctl reload nginx
+```nginx
+server {
+    listen 80 default_server;
+    server_name _;
+
+    # Frontend estático
+    location / {
+        root /opt/FPVCopilotSky/frontend/client/dist;
+        try_files $uri $uri/ /index.html;
+        add_header Cache-Control "no-cache";
+    }
+    
+    # API REST
+    location /api/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        
+        # Timeouts para API
+        proxy_connect_timeout 10s;
+        proxy_read_timeout 10s;
+        proxy_send_timeout 10s;
+    }
+    
+    # WebSocket
+    location /ws {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        
+        # Timeouts largos para WebSocket
+        proxy_connect_timeout 7d;
+        proxy_read_timeout 7d;
+        proxy_send_timeout 7d;
+    }
+}
 ```
 
-### Variables de entorno
+**Notas importantes:**
+- `127.0.0.1` en lugar de `localhost` (evita problemas IPv6)
+- `try_files` para SPA routing de React
+- `proxy_http_version 1.1` necesario para WebSocket
+- Timeouts largos en /ws para mantener conexión
 
-Editar servicio systemd para añadir variables:
-```ini
-[Service]
-Environment="VARIABLE=valor"
-Environment="OTRA_VAR=otro_valor"
+### Permisos
+
+```bash
+# Verificar permisos del usuario
+groups fpvcopilotsky
+# Debe incluir: dialout, video
+
+# Frontend dist/
+ls -l /opt/FPVCopilotSky/frontend/client/dist
+# Debe ser: fpvcopilotsky:www-data con 755
+
+# Si hay problemas:
+sudo chown -R fpvcopilotsky:www-data /opt/FPVCopilotSky/frontend/client/dist
+sudo chmod -R 755 /opt/FPVCopilotSky/frontend/client/dist
 ```
 
-## 🐛 Troubleshooting
+##  🛠️ Troubleshooting
 
-### Ve "Welcome to nginx" en lugar de la aplicación
+### "Welcome to nginx" en lugar de la app
 
-**Causa:** El site por defecto de nginx está habilitado y tiene prioridad.
-
-**Solución:**
 ```bash
-# Opción 1: Correr script de fix
-bash /opt/FPVCopilotSky/scripts/fix-nginx.sh
+# Ejecutar fix automático
+bash scripts/fix-nginx.sh
 
-# Opción 2: Manual
+# O manualmente:
 sudo rm /etc/nginx/sites-enabled/default
+sudo ln -sf /etc/nginx/sites-available/fpvcopilot-sky /etc/nginx/sites-enabled/
+sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-**Verificar que está arreglado:**
-```bash
-curl http://localhost/
-# Debería devolver el HTML del React app (no "Welcome to nginx")
-```
-
-### El servicio no inicia
+### Backend no responde
 
 ```bash
-# Ver logs detallados
-sudo journalctl -u fpvcopilot-sky -xe
+# Ver logs
+sudo journalctl -u fpvcopilot-sky -f
 
-# Verificar que el puerto 8000 esté libre
-sudo lsof -i :8000
+# Verificar puerto
+ss -tlnp | grep 8000
 
-# Probar backend manualmente
-cd /opt/FPVCopilotSky
-source venv/bin/activate
-python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
+# Verificar proceso
+ps aux | grep uvicorn
 
-### Nginx muestra error 502 Bad Gateway
+# Reiniciar
+sudo systemctl restart fpvcopilot-sky
 
-El backend no está corriendo:
-```bash
-sudo systemctl status fpvcopilot-sky
-sudo systemctl start fpvcopilot-sky
-```
-
-### Frontend no carga
-
-```bash
-# Verificar que el build existe
-ls -la /opt/FPVCopilotSky/frontend/client/dist/
-
-# Si no existe, compilar
-cd /opt/FPVCopilotSky/frontend/client
-npm run build
-
-# Verificar permisos
-sudo chown -R www-data:www-data /opt/FPVCopilotSky/frontend/client/dist/
-
-# Redeployer
-bash /opt/FPVCopilotSky/scripts/deploy.sh
+# Si falla al arrancar, ver errores
+sudo journalctl -u fpvcopilot-sky -n 50
 ```
 
 ### WebSocket no conecta
 
-Verificar configuración nginx:
 ```bash
+# Verificar nginx
 sudo nginx -t
-sudo tail -f /var/log/nginx/fpvcopilot-sky-error.log
+
+# Ver logs nginx
+sudo tail -f /var/log/nginx/error.log
+
+# Verificar proxy_pass en config
+sudo cat /etc/nginx/sites-enabled/fpvcopilot-sky | grep -A 10 "location /ws"
+
+# Reiniciar nginx
+sudo systemctl restart nginx
 ```
 
-## 📱 Puertos Utilizados
+### Puerto serie ocupado
 
-| Servicio | Puerto | Uso |
-|----------|--------|-----|
-| Nginx | 80 | Frontend + Proxy (Producción) |
-| Backend Prod | 8000 | FastAPI (via systemd) |
-| Backend Dev | 8001 | FastAPI (desarrollo) |
-| Frontend Dev | 5173 | Vite dev server |
-
-## 🔐 Seguridad
-
-### Para producción externa (internet):
-
-1. **Agregar HTTPS con Let's Encrypt:**
 ```bash
-sudo apt-get install certbot python3-certbot-nginx
-sudo certbot --nginx -d tu-dominio.com
+# Ver qué proceso usa el puerto
+sudo lsof /dev/ttyAML0
+
+# Si es getty:
+sudo systemctl stop serial-getty@ttyAML0.service
+sudo systemctl disable serial-getty@ttyAML0.service
+sudo systemctl mask serial-getty@ttyAML0.service
+
+# Verificar permisos
+ls -l /dev/ttyAML0
+# Debe ser: crw-rw---- 1 root dialout
+
+# Verificar que el usuario esté en dialout
+groups fpvcopilotsky | grep dialout
 ```
 
-2. **Firewall:**
+### Permisos de cámara
+
 ```bash
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
-sudo ufw enable
+# Ver cámaras disponibles
+v4l2-ctl --list-devices
+
+# Verificar grupo video
+groups fpvcopilotsky | grep video
+
+# Si falta:
+sudo usermod -a -G video fpvcopilotsky
+
+# Relogin necesario
+sudo systemctl restart fpvcopilot-sky
 ```
 
-## ✅ Checklist de Producción
+## 🔄 Actualizar la Aplicación
 
-- [ ] Ejecutar `install-production.sh`
-- [ ] Ejecutar `deploy.sh`
-- [ ] Verificar servicio: `systemctl status fpvcopilot-sky`
-- [ ] Verificar nginx: `systemctl status nginx`
-- [ ] Acceder desde navegador: `http://radxa-ip`
-- [ ] Verificar auto-inicio: `sudo reboot` y comprobar que todo inicia
+```bash
+cd /opt/FPVCopilotSky
 
-## 💡 Tips
+# Pull cambios
+git pull origin main
 
-1. **Logs en tiempo real durante desarrollo:**
-   ```bash
-   sudo journalctl -u fpvcopilot-sky -f
-   ```
+# Re-desplegar
+bash scripts/deploy.sh
 
-2. **Modo desarrollo sin conflictos:**
-   - Detén producción: `sudo systemctl stop fpvcopilot-sky`
-   - Usa script dev: `bash scripts/dev.sh`
-   - Reinicia producción: `sudo systemctl start fpvcopilot-sky`
+# Verificar
+bash scripts/status.sh
+sudo journalctl -u fpvcopilot-sky -f
+```
 
-3. **Backup antes de updates:**
-   ```bash
-   cp -r /opt/FPVCopilotSky /opt/FPVCopilotSky.backup
-   ```
+## 🧹 Mantenimiento
 
-4. **Monitorear recursos:**
-   ```bash
-   # CPU/Memoria del servicio
-   systemctl status fpvcopilot-sky
-   
-   # Procesos Python
-   ps aux | grep python
-   
-   # htop para vista general
-   htop
-   ```
+### Limpiar logs antiguos
+
+```bash
+# Ver espacio usado por logs
+sudo journalctl --disk-usage
+
+# Limpiar logs antiguos (mantener 7 días)
+sudo journalctl --vacuum-time=7d
+
+# O por tamaño (mantener 100MB)
+sudo journalctl --vacuum-size=100M
+```
+
+### Backup de Configuración
+
+```bash
+# Backup completo
+cd /opt
+sudo tar -czf fpvcopilot-backup-$(date +%Y%m%d).tar.gz \
+    FPVCopilotSky/preferences.json \
+    FPVCopilotSky/preferences.json.backup*
+
+# Restaurar
+sudo tar -xzf fpvcopilot-backup-20260206.tar.gz -C /opt/
+```
+
+## 📊 Monitoreo
+
+### Recursos del Sistema
+
+```bash
+# CPU y memoria
+htop
+
+# Temperaturas (si disponible)
+vcgencmd measure_temp
+
+# Espacio en disco
+df -h
+
+# Uso de red
+iftop
+```
+
+### Estadísticas del Servicio
+
+```bash
+# Tiempo de uptime
+sudo systemctl status fpvcopilot-sky | grep Active
+
+# Memoria usada
+ps aux | grep uvicorn | awk '{print $6/1024 " MB"}'
+```
+
+## 🐳 Alternativa: Docker (Próximamente)
+
+En desarrollo: contenedor Docker para despliegue simplificado.
+
+```bash
+# Build
+docker build -t fpvcopilot-sky .
+
+# Run
+docker run -d \
+  --name fpvcopilot \
+  --device=/dev/video0 \
+  --device=/dev/ttyAML0 \
+  -p 80:80 \
+  -v /opt/FPVCopilotSky/preferences.json:/app/preferences.json \
+  fpvcopilot-sky
+```
+
+---
+
+## 📚 Ver También
+
+- [README.md](../README.md) - Guía de usuario
+- [DEVELOPMENT.md](../DEVELOPMENT.md) - Guía de desarrollo
+- [VPN_INTEGRATION.md](VPN_INTEGRATION.md) - Sistema VPN
+
+**¿Problemas?** Revisa logs con `sudo journalctl -u fpvcopilot-sky -f` y abre un issue en GitHub.

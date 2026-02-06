@@ -1,408 +1,301 @@
-# VPN Integration Documentation
+# 🔐 VPN Integration - Tailscale
 
-## Overview
+Documentación del sistema VPN integrado en FPV Copilot Sky usando Tailscale.
 
-The FPVCopilotSky application now includes a comprehensive VPN integration system with an extensible architecture that supports multiple VPN providers. The initial implementation includes Tailscale support, with the ability to easily add ZeroTier, WireGuard, and other providers in the future.
+## 🎯 ¿Para Qué Sirve?
 
-## Architecture
+El sistema VPN te permite acceder a tu drone y telemetría desde **cualquier lugar del mundo** de forma segura:
 
-### Backend Components
+- ✅ Acceso remoto a la WebUI sin abrir puertos
+- ✅ Streaming de telemetría sobre internet
+- ✅ Red privada entre tus dispositivos (móvil, PC, Radxa)
+- ✅ Conexión cifrada automáticamente
+- ✅ No necesitas IP pública ni configurar router
 
-#### 1. VPN Service (`app/services/vpn_service.py`)
+## 🌐 ¿Qué es Tailscale?
 
-The VPN service follows an **Abstract Factory Pattern** with a provider-based architecture:
+Tailscale es una **VPN mesh moderna** que:
+- Crea una red privada entre tus dispositivos
+- Cada dispositivo obtiene una IP privada (100.x.x.x)
+- Funciona a través de NATs y firewalls (sin configuración)
+- Usa WireGuard (protocolo VPN moderno y rápido)
+- Gratis para uso personal (hasta 100 dispositivos)
 
-- **`VPNProvider` (Abstract Base Class)**: Defines the interface that all VPN providers must implement
-  - `is_installed()`: Check if the VPN provider is installed
-  - `get_status()`: Get current connection status
-  - `connect()`: Initiate VPN connection
-  - `disconnect()`: Terminate VPN connection
-  - `get_providers_info()`: Get static provider information
+## 🏗️ Arquitectura
 
-- **`TailscaleProvider`**: Concrete implementation for Tailscale
-  - Uses `tailscale status --json` for modern JSON parsing
-  - Fallback to text-based parsing for older versions
-  - Extracts authentication URLs using regex patterns
-  - Handles authentication flow automatically
-  - Parses peer information and network status
-
-- **`VPNService` (Singleton)**: Manages VPN providers and WebSocket broadcasting
-  - Registers and manages multiple providers
-  - Handles provider selection and delegation
-  - Broadcasts status updates via WebSocket
-  - Thread-safe operations
-
-**Key Features:**
-- JSON-based status parsing for accurate data extraction
-- Authentication URL detection and extraction
-- Real-time status broadcasting via WebSocket
-- Automatic peer discovery and status reporting
-- Comprehensive error handling and logging
-
-#### 2. VPN API Routes (`app/api/routes/vpn.py`)
-
-RESTful API endpoints for VPN management:
-
-- **GET `/api/vpn/providers`**: List all available VPN providers
-  - Returns provider details, features, installation status
-  
-- **GET `/api/vpn/status`**: Get current VPN connection status
-  - Query parameter: `provider` (defaults to 'tailscale')
-  - Returns: connection state, IP address, peers, authentication status
-  
-- **POST `/api/vpn/connect`**: Initiate VPN connection
-  - Body: `{"provider": "tailscale"}`
-  - Returns: connection result, authentication URL if needed
-  
-- **POST `/api/vpn/disconnect`**: Disconnect from VPN
-  - Body: `{"provider": "tailscale"}`
-  - Returns: disconnection result
-
-**Request/Response Models (Pydantic):**
-```python
-class VPNConnectRequest(BaseModel):
-    provider: str = "tailscale"
-
-class VPNStatusResponse(BaseModel):
-    success: bool
-    installed: bool
-    connected: bool = False
-    authenticated: bool = False
-    ip_address: Optional[str] = None
-    hostname: Optional[str] = None
-    interface: Optional[str] = None
-    peers_count: Optional[int] = None
-    online_peers: Optional[int] = None
-    backend_state: Optional[str] = None
-    provider: str
-    provider_display_name: str
+```
+┌──────────────┐         Internet          ┌──────────────┐
+│  Tu Móvil    │◄─────────────────────────►│  Radxa Zero  │
+│  (VPN activa)│      Conexión segura       │  (Drone Sky) │
+│ 100.x.x.1    │      punto a punto         │ 100.x.x.2    │
+└──────────────┘                            └──────────────┘
+      │                                            │
+      │  Acceso directo vía VPN                   │
+      ▼                                            ▼
+http://100.x.x.2              Mission Planner/QGC conecta a:
+     (WebUI)                  udp://100.x.x.2:14550
 ```
 
-### Frontend Components
+## 📦 Instalación de Tailscale
 
-#### 1. VPN View (`frontend/client/src/components/Pages/VPNView.jsx`)
+### Automática (Recomendado)
 
-A comprehensive React component for VPN management:
-
-**Features:**
-- Provider selection dropdown (Tailscale, future providers)
-- Real-time connection status display
-- Interactive authentication flow handling
-- WebSocket integration for live updates
-- Responsive design with mobile support
-
-**State Management:**
-```javascript
-- loading: Initial data loading state
-- providers: List of available VPN providers
-- selectedProvider: Currently selected provider
-- status: Current VPN connection status
-- connecting: Connection/disconnection in progress
-- authUrl: Authentication URL when needed
-- authPolling: Polling state for auth completion
-```
-
-**User Flow:**
-
-1. **Not Installed State**:
-   - Warning message displayed
-   - Link to provider download page
-   - Instructions for installation
-
-2. **Not Authenticated State**:
-   - Information box with step-by-step instructions
-   - Clear guidance on authentication process
-
-3. **Connected State**:
-   - Status grid showing:
-     - Connection status badge
-     - VPN IP address
-     - Hostname
-     - Network interface
-     - Peer count (online/total)
-   
-4. **Authentication Required**:
-   - Banner with authentication URL
-   - Buttons to open URL or copy to clipboard
-   - Automatic polling every 3 seconds
-   - 5-minute timeout protection
-
-**WebSocket Integration:**
-- Listens for `vpn_status` messages
-- Updates UI in real-time
-- No manual refresh needed
-
-#### 2. VPN Styling (`frontend/client/src/components/Pages/VPNView.css`)
-
-Modern, responsive CSS with:
-- Glass morphism effects
-- Status badges with color coding
-- Responsive grid layouts
-- Mobile-first design
-- Smooth animations and transitions
-
-### Internationalization (i18n)
-
-Complete translation support for English and Spanish:
-
-**Translation Keys Added:**
-```javascript
-vpn: {
-  title, loading, providerTitle, provider, features,
-  statusTitle, controlTitle, status, connected,
-  disconnected, ipAddress, hostname, interface,
-  peersCount, online, notInstalled, installInstructions,
-  downloadProvider, notAuthenticated, authInstructions,
-  step1-4, authenticationRequired, openAuthUrl,
-  openUrl, copyUrl, waitingForAuth, urlCopied,
-  copyError, connect, disconnect, alreadyConnected,
-  connectError, disconnectError, authRequired,
-  authTimeout
-}
-```
-
-## Installation
-
-The VPN system is automatically configured during the installation process:
-
-### Install Script (`install.sh`)
-
-Updated to include:
-```bash
-# Install Tailscale
-if ! command -v tailscale &> /dev/null; then
-    echo "Installing Tailscale..."
-    curl -fsSL https://tailscale.com/install.sh | sh
-fi
-```
-
-### Manual Installation
-
-If you need to install Tailscale manually:
+El instalador principal ya incluye Tailscale:
 
 ```bash
-# Linux (Debian/Ubuntu)
+cd /opt/FPVCopilotSky
+bash install.sh
+```
+
+### Manual
+
+```bash
+# Instalar Tailscale
 curl -fsSL https://tailscale.com/install.sh | sh
 
-# Start Tailscale
-sudo tailscale up
+# Configurar permisos sudo
+bash /opt/FPVCopilotSky/scripts/setup-tailscale-sudoers.sh
 ```
 
-## Usage
+## 🚀 Uso desde la Interfaz
 
-### Backend API Examples
+### Conectar por Primera Vez
 
-**Check Providers:**
+1. **Abrir la WebUI** del drone (conectado localmente)
+2. **Ir a la pestaña VPN**
+3. **Click en "Conectar"**
+4. **Aparecer un código QR y una URL**
+5. **Escanear el QR o copiar la URL** desde tu móvil/PC
+6. **Autenticarse** con tu cuenta (Google, Microsoft, GitHub...)
+7. **¡Listo!** La VPN se conecta automáticamente
+
+### Usar la VPN
+
+Una vez conectado:
+- La interfaz muestra la IP VPN del Radxa (ej: `100.97.169.80`)
+- Puedes ver los **peers conectados** (otros dispositivos)
+- Accede a la WebUI usando la IP VPN desde cualquier lugar
+
+### Configurar Telemetría Remota
+
+1. **Ve a la pestaña "Telemetría"**
+2. **Crea una salida** (UDP o TCP)
+3. **Usa el selector de IPs** (botón dropdown) para elegir un peer VPN
+4. **Selecciona tu PC o móvil** de la lista
+5. **Se auto-rellena la IP** del peer seleccionado
+6. **Crea la salida** y conecta Mission Planner/QGC a esa IP
+
+### Configurar Video Remoto
+
+1. **Ve a la pestaña "Video"**
+2. **En "IP Destino"**, usa el selector de peers VPN
+3. **Selecciona tu dispositivo** de la lista
+4. **Configura el puerto** (ej: 5600)
+5. **Aplica y Start Stream**
+
+## 🔑 Permisos Sudo (Importante)
+
+Tailscale requiere permisos sudo para conectar/desconectar. El sistema está configurado para permitir comandos específicos sin contraseña:
+
+**Archivo:** `/etc/sudoers.d/fpvcopilot-tailscale`
+
 ```bash
-curl http://localhost:8000/api/vpn/providers
+# Permite tailscale up/down sin contraseña
+fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/bin/tailscale up *
+fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/bin/tailscale down
+fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/bin/tailscale status *
 ```
 
-**Get Status:**
+**Configurar manualmente:**
 ```bash
-curl http://localhost:8000/api/vpn/status?provider=tailscale
+sudo bash /opt/FPVCopilotSky/scripts/setup-tailscale-sudoers.sh
 ```
 
-**Connect:**
-```bash
-curl -X POST http://localhost:8000/api/vpn/connect \
-  -H "Content-Type: application/json" \
-  -d '{"provider":"tailscale"}'
-```
+## 🛠️ Arquitectura Técnica
 
-**Response with Auth Required:**
-```json
-{
-  "success": true,
-  "needs_auth": true,
-  "auth_url": "https://login.tailscale.com/a/xxxxx",
-  "message": "Please authenticate using the provided URL"
-}
-```
+### Backend
 
-**Disconnect:**
-```bash
-curl -X POST http://localhost:8000/api/vpn/disconnect \
-  -H "Content-Type: application/json" \
-  -d '{"provider":"tailscale"}'
-```
+**Archivo:** `app/services/vpn_service.py`
 
-### Frontend Usage
-
-1. Navigate to the **🔒 VPN** tab
-2. Select your VPN provider from the dropdown
-3. Click **Connect**
-4. If authentication is required:
-   - Click **Open Authentication Page**
-   - Log in to your Tailscale account
-   - Authorize the device
-   - Wait for automatic connection (polling every 3 seconds)
-5. Once connected, view your VPN details:
-   - VPN IP address
-   - Hostname
-   - Connected peers
-
-## Adding New VPN Providers
-
-The architecture is designed for easy extensibility. To add a new provider:
-
-### 1. Create Provider Class
-
-Create a new provider in `vpn_service.py`:
+Sistema basado en **Provider Pattern** (extensible para ZeroTier, WireGuard, etc.):
 
 ```python
-class ZeroTierProvider(VPNProvider):
-    def __init__(self):
-        super().__init__(name="zerotier")
+# Abstract base class
+class VPNProvider:
+    def is_installed() -> bool
+    def get_status() -> dict
+    def connect() -> dict
+    def disconnect() -> dict
+    def get_peers() -> list  # Lista de nodos VPN
+
+# Implementación Tailscale
+class TailscaleProvider(VPNProvider):
+    # Usa: tailscale status --json
+    # Parse: IPs, peers, estado de backend
+```
+
+**API Endpoints:**
+- `GET /api/vpn/status` - Estado actual
+- `POST /api/vpn/connect` - Iniciar conexión
+- `POST /api/vpn/disconnect` - Desconectar
+- `GET /api/vpn/peers` - Lista de nodos en la red VPN
+
+### Frontend
+
+**Archivo:** `frontend/client/src/components/Pages/VPNView.jsx`
+
+Características:
+- Detección automática de estado via WebSocket
+- Polling de autenticación (mientras espera auth)
+- QR code generation para URL de auth
+- Lista de peers con estado online/offline
+
+**Componente PeerSelector:**
+
+Selector de IPs VPN reutilizable:
+- `frontend/client/src/components/PeerSelector/PeerSelector.jsx`
+- Usado en TelemetryView y VideoView
+- Auto-completa IPs de peers VPN
+- Filtra solo peers online
+
+## 📡 Estados de Tailscale
+
+### Backend State
+
+- **`Running`**: Conectado y funcionando
+- **`Stopped`**: Desconectado
+- **`NeedsLogin`**: Requiere autenticación
+- **`Starting`**: Iniciando conexión
+- **`NoState`**: Estado desconocido
+
+### Connection Flow
+
+```
+1. Usuario click "Conectar"
+   ↓
+2. Backend: tailscale up --authkey=... --qr
+   ↓
+3. Parse auth URL del output
+   ↓
+4. Frontend: Muestra QR + URL
+   ↓
+5. Usuario autentica en móvil/PC
+   ↓
+6. Tailscale detecta auth exitosa
+   ↓
+7. Backend: status=connected, IP asignada
+   ↓
+8. Frontend: Muestra IP + peers
+```
+
+## 🔄 Auto-Conexión
+
+El servicio intenta reconectar automáticamente al arrancar:
+
+```python
+# app/main.py - startup_event()
+def auto_connect_vpn():
+    time.sleep(2)  # Espera sistema estable
+    status = vpn_service.get_status()
     
-    def is_installed(self) -> bool:
+    if status['authenticated'] and not status['connected']:
+        vpn_service.connect()
+```
+
+## 🐛 Troubleshooting
+
+### Tailscale no instalado
+
+```bash
+# Instalar manualmente
+curl -fsSL https://tailscale.com/install.sh | sh
+
+# Verificar
+tailscale version
+```
+
+### No puede conectar (Permission denied)
+
+```bash
+# Configurar permisos sudo
+sudo bash /opt/FPVCopilotSky/scripts/setup-tailscale-sudoers.sh
+
+# Verificar
+sudo -l | grep tailscale
+```
+
+### Auth URL no aparece
+
+```bash
+# Ver logs del servicio
+sudo journalctl -u fpvcopilot-sky -f | grep tailscale
+
+# Intentar manualmente
+sudo tailscale up --qr
+```
+
+### No ve peers
+
+```bash
+# Verificar estado
+tailscale status
+
+# Ver JSON completo
+tailscale status --json
+
+# Verificar que otros dispositivos estén conectados
+# desde tu móvil/PC: abrir app Tailscale
+```
+
+### Peers muestran "localhost"
+
+Resuelto en v1.0.0: El sistema ahora usa `DNSName` en lugar de `HostName`:
+
+```python
+# Prefer DNSName (more reliable)
+dns_name = peer.get('DNSName', '')  # "device.tail1234.ts.net."
+display_name = dns_name.split('.')[0]  # "device"
+```
+
+## 🔮 Futuro: Soportar Más Providers
+
+El sistema está diseñado para soportar múltiples VPN providers:
+
+```python
+# Añadir ZeroTier
+class ZeroTierProvider(VPNProvider):
+    def is_installed(self):
         return shutil.which("zerotier-cli") is not None
     
-    def get_status(self) -> dict:
-        # Implement status check using zerotier-cli
+    def get_status(self):
+        # zerotier-cli listnetworks...
         pass
-    
-    def connect(self) -> dict:
-        # Implement connection logic
-        pass
-    
-    def disconnect(self) -> dict:
-        # Implement disconnection logic
-        pass
-    
-    @staticmethod
-    def get_providers_info() -> dict:
-        return {
-            "name": "zerotier",
-            "display_name": "ZeroTier",
-            "description": "Software-defined networking",
-            "features": [
-                "Easy network creation",
-                "P2P connections",
-                "Cross-platform"
-            ],
-            "requires_auth": True,
-            "auth_method": "token",
-            "install_url": "https://www.zerotier.com/download/"
-        }
+
+# Registrar provider
+vpn_service.register_provider("zerotier", ZeroTierProvider())
 ```
 
-### 2. Register Provider
+## 📚 Recursos
 
-Add to `VPNService` initialization:
+- [Tailscale Docs](https://tailscale.com/kb/)
+- [Tailscale CLI Reference](https://tailscale.com/kb/1080/cli/)
+- [WireGuard Protocol](https://www.wireguard.com/)
 
-```python
-async def initialize(self, websocket_manager=None):
-    self.register_provider(TailscaleProvider())
-    self.register_provider(ZeroTierProvider())  # Add new provider
-    self.websocket_manager = websocket_manager
-```
+## 🔐 Seguridad
 
-### 3. Update Install Script
+### Lo que hace Tailscale
 
-Add installation logic in `install.sh`:
+- ✅ Cifrado end-to-end (ChaCha20-Poly1305)
+- ✅ Autenticación mutual de dispositivos
+- ✅ Claves rotadas automáticamente
+- ✅ No hay servidor central con acceso a tu tráfico
 
-```bash
-# Install ZeroTier
-if ! command -v zerotier-cli &> /dev/null; then
-    echo "Installing ZeroTier..."
-    curl -s https://install.zerotier.com | sudo bash
-fi
-```
+### Lo que NO hace
 
-### 4. Update Frontend (Optional)
+- ❌ No protege tu WiFi/4G local (usa HTTPS para eso)
+- ❌ No es un firewall (sigue protegiendo otros servicios)
+- ❌ No oculta tu IP pública (no es una VPN comercial como NordVPN)
 
-The frontend automatically displays all registered providers. No changes needed unless you want provider-specific UI.
+---
 
-## Security Considerations
-
-1. **Authentication**: All providers require user authentication
-2. **Permissions**: VPN operations may require sudo privileges
-3. **Timeouts**: Authentication polling has a 5-minute timeout
-4. **Error Handling**: Failed connections don't expose sensitive data
-5. **WebSocket**: Status updates are broadcast securely
-
-## Troubleshooting
-
-### Tailscale Not Detected
-
-```bash
-# Check if installed
-which tailscale
-
-# Check if running
-sudo systemctl status tailscaled
-
-# Reinstall
-curl -fsSL https://tailscale.com/install.sh | sh
-```
-
-### Authentication Issues
-
-1. Check if you're logged into Tailscale online
-2. Verify the auth URL is valid
-3. Try disconnecting and reconnecting
-4. Check browser popup blockers
-
-### Connection Fails
-
-```bash
-# Check Tailscale status
-sudo tailscale status
-
-# Check logs
-sudo journalctl -u tailscaled
-
-# Restart Tailscale
-sudo systemctl restart tailscaled
-```
-
-### Backend API Not Responding
-
-```bash
-# Check if backend is running
-ps aux | grep "python main.py"
-
-# Check logs
-cd /opt/FPVCopilotSky/app
-tail -f *.log
-
-# Restart backend
-killall python
-cd /opt/FPVCopilotSky/app
-../venv/bin/python main.py
-```
-
-## Performance Notes
-
-- **Status Polling**: 3-second intervals during authentication
-- **WebSocket Updates**: Real-time, no polling needed when connected
-- **Command Execution**: Average response time < 200ms
-- **Memory Usage**: Minimal (~5MB per provider)
-
-## Future Enhancements
-
-Planned improvements:
-- [ ] WireGuard provider support
-- [ ] VPN traffic statistics
-- [ ] Connection quality metrics
-- [ ] Auto-reconnect on disconnect
-- [ ] Multiple simultaneous VPN connections
-- [ ] VPN speed tests
-- [ ] Connection logs and history
-- [ ] Provider-specific advanced settings
-- [ ] QR code for mobile device pairing
-
-## References
-
-- [Tailscale Documentation](https://tailscale.com/kb/)
-- [Tailscale API](https://github.com/tailscale/tailscale/blob/main/cmd/tailscale/cli/status.go)
-- [ZeroTier Documentation](https://docs.zerotier.com/)
-- [WireGuard Documentation](https://www.wireguard.com/quickstart/)
-
-## Version History
-
-- **v1.0.0** (2024): Initial VPN integration with Tailscale support
-  - Abstract provider pattern
-  - WebSocket integration
-  - Complete frontend UI
-  - Full i18n support
+**¿Preguntas?** Consulta [Tailscale KB](https://tailscale.com/kb/) o abre un issue en GitHub.
