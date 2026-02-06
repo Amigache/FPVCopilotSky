@@ -320,6 +320,128 @@
   cursor: not-allowed;
 }
 
+/* Peers List */
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.card-header h2 {
+  margin: 0;
+}
+
+.vpn-btn-refresh {
+  padding: 0.35rem 0.65rem;
+  background: rgba(50, 55, 75, 0.6);
+  border: 1px solid rgba(102, 102, 102, 0.3);
+  border-radius: 5px;
+  color: #a0a8c0;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.15s;
+}
+
+.vpn-btn-refresh:hover:not(:disabled) {
+  background: rgba(60, 65, 90, 0.8);
+}
+
+.vpn-btn-refresh:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.peers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.peer-item {
+  background: rgba(45, 45, 63, 0.4);
+  border-radius: 8px;
+  padding: 0.875rem;
+  border-left: 3px solid rgba(102, 102, 102, 0.5);
+  transition: all 0.15s;
+}
+
+.peer-item.peer-self {
+  background: rgba(79, 125, 255, 0.12);
+  border-left-color: rgba(79, 125, 255, 0.6);
+}
+
+.peer-item.peer-online {
+  border-left-color: rgba(76, 175, 80, 0.6);
+}
+
+.peer-item.peer-offline {
+  opacity: 0.65;
+}
+
+.peer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.625rem;
+}
+
+.peer-name {
+  font-weight: 600;
+  color: #d5ddff;
+  font-size: 0.95rem;
+}
+
+.peer-status {
+  font-size: 0.8rem;
+  font-weight: 500;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+}
+
+.peer-status.status-online {
+  color: #81c784;
+  background: rgba(76, 175, 80, 0.15);
+}
+
+.peer-status.status-offline {
+  color: #9aa6c3;
+  background: rgba(102, 102, 102, 0.15);
+}
+
+.peer-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.5rem;
+}
+
+.peer-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.peer-detail-label {
+  font-size: 0.7rem;
+  color: #9aa6c3;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  font-weight: 500;
+}
+
+.peer-detail-value {
+  font-size: 0.85rem;
+  color: #d5ddff;
+  font-family: 'Monaco', 'Menlo', monospace;
+}
+
+.no-peers {
+  text-align: center;
+  padding: 1.5rem;
+  color: #9aa6c3;
+  font-size: 0.9rem;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .vpn-view {

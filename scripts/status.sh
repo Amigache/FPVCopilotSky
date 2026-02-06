@@ -42,6 +42,10 @@ BACKEND_RUNNING=$?
 check_service nginx
 NGINX_RUNNING=$?
 
+echo -e "\n${BLUE}🌐 Network Services${NC}"
+check_service NetworkManager
+check_service ModemManager
+
 echo -e "\n${BLUE}🔌 Network Ports${NC}"
 check_port 80 "Nginx"
 check_port 8000 "Backend API"
@@ -59,21 +63,144 @@ else
     echo -e "${RED}❌${NC} Python virtual environment NOT found"
 fi
 
-echo -e "\n${BLUE}🌐 Connectivity${NC}"
-# Use 127.0.0.1 to avoid IPv6 resolution issues with localhost
-BACKEND_URL="http://127.0.0.1:8000/api/status/health"
-if curl -s -f --connect-timeout 5 "$BACKEND_URL" > /dev/null 2>&1; then
-    echo -e "${GREEN}✅${NC} Backend API responding"
+echo -e "\n${BLUE}🔧 Network Tools${NC}"
+if command -v nmcli &> /dev/null; then
+    if nmcli general status &> /dev/null; then
+        echo -e "${GREEN}✅${NC} nmcli (NetworkManager CLI) working"
+    else
+        echo -e "${YELLOW}⚠️${NC}  nmcli available but not responding"
+    fi
 else
-    echo -e "${RED}❌${NC} Backend API NOT responding"
+    echo -e "${RED}❌${NC} nmcli NOT found"
+fi
+
+if command -v mmcli &> /dev/null; then
+    if mmcli -L &> /dev/null; then
+        echo -e "${GREEN}✅${NC} mmcli (ModemManager CLI) working"
+    else
+        echo -e "${YELLOW}⚠️${NC}  mmcli available but not responding"
+    fi
+else
+    echo -e "${RED}❌${NC} mmcli NOT found"
+fi
+
+if command -v hostapd &> /dev/null; then
+    echo -e "${GREEN}✅${NC} hostapd (WiFi hotspot) available"
+else
+    echo -e "${RED}❌${NC} hostapd NOT found"
+fi
+
+if command -v iwconfig &> /dev/null; then
+    echo -e "${GREEN}✅${NC} iwconfig (wireless tools) available"
+else
+    echo -e "${RED}❌${NC} iwconfig NOT found"
+fi
+if command -v usb_modeswitch &> /dev/null; then
+    echo -e "${GREEN}✓${NC} usb_modeswitch (USB modem mode switching) available"
+else
+    echo -e "${RED}❌${NC} usb_modeswitch NOT found"
+fi
+
+echo -e "\n${BLUE}� Sudo Permissions${NC}"
+# Check Tailscale sudo permissions
+if [ -f "/etc/sudoers.d/tailscale" ]; then
+    echo -e "${GREEN}✓${NC} Tailscale sudoers file exists"
+    
+    # Check if sudoers file contains correct user
+    if sudo grep -q "^$USER ALL=" /etc/sudoers.d/tailscale 2>/dev/null; then
+        echo -e "${GREEN}✓${NC} Sudoers configured for user: $USER"
+        
+        # Test if tailscale commands work without password
+        # We capture both stdout and stderr to check if command runs without password prompt
+        TAILSCALE_TEST=$(sudo -n tailscale status 2>&1)
+        TAILSCALE_EXIT=$?
+        if [[ $TAILSCALE_EXIT -eq 0 ]] || [[ "$TAILSCALE_TEST" =~ "Logged out" ]]; then
+            echo -e "${GREEN}✓${NC} Tailscale commands work without password"
+        else
+            echo -e "${YELLOW}⚠️${NC}  Tailscale commands may require password"
+            echo -e "    ${BLUE}ℹ️${NC}  Test output: $(echo "$TAILSCALE_TEST" | head -1)"
+        fi
+    else
+        echo -e "${YELLOW}⚠️${NC}  Sudoers not configured for current user ($USER)"
+        # Check what user is configured
+        SUDO_USER=$(sudo grep "ALL=" /etc/sudoers.d/tailscale 2>/dev/null | head -1 | cut -d' ' -f1)
+        if [ ! -z "$SUDO_USER" ]; then
+            echo -e "    ${BLUE}ℹ️${NC}  Configured for: $SUDO_USER"
+        fi
+    fi
+else
+    echo -e "${RED}❌${NC} Tailscale sudoers file missing"
+    echo -e "    ${BLUE}ℹ️${NC}  VPN functionality may require password prompts"
+fi
+
+# Check general sudo access
+if sudo -n true 2>/dev/null; then
+    echo -e "${GREEN}✓${NC} User has passwordless sudo access"
+else
+    echo -e "${BLUE}ℹ️${NC}  User requires password for sudo commands"
+fi
+
+echo -e "\n${BLUE}�📱 USB Modem Status${NC}"
+# Check for Huawei modems
+if lsusb | grep -q "12d1:1f01.*Mass storage"; then
+    echo -e "${YELLOW}⚠️${NC}  Huawei modem in mass storage mode (needs switching)"
+elif lsusb | grep -q "12d1:14dc.*HiLink Modem"; then
+    echo -e "${GREEN}✓${NC} Huawei E3372 HiLink modem detected and ready"
+    # Check if HiLink interface is active
+    if ip addr show | grep -A5 "enx" | grep -q "192\.168\.8\."; then
+        HILINK_IP=$(ip addr show | grep "inet.*192\.168\.8\." | awk '{print $2}' | head -1)
+        echo -e "${GREEN}✓${NC} HiLink network interface active: $HILINK_IP"
+        # Test gateway connectivity
+        if ping -c 1 -W 2 192.168.8.1 &>/dev/null; then
+            echo -e "${GREEN}✓${NC} HiLink gateway 192.168.8.1 responding"
+        else
+            echo -e "${YELLOW}⚠️${NC}  HiLink gateway not responding"
+        fi
+    else
+        echo -e "${YELLOW}⚠️${NC}  HiLink interface not active"
+    fi
+elif lsusb | grep -q "12d1:"; then
+    HUAWEI_MODEL=$(lsusb | grep "12d1:" | cut -d' ' -f7- | head -1)
+    echo -e "${GREEN}✓${NC} Huawei modem detected: $HUAWEI_MODEL"
+else
+    echo -e "${BLUE}ℹ️${NC}  No Huawei USB modem detected"
+fi
+
+# Check ModemManager detection (only for traditional modems)
+if command -v mmcli &> /dev/null; then
+    MMCLI_OUTPUT=$(mmcli -L 2>/dev/null || echo "")
+    if echo "$MMCLI_OUTPUT" | grep -q "^/org/freedesktop/ModemManager1/Modem/"; then
+        MODEM_COUNT=$(echo "$MMCLI_OUTPUT" | grep -c "^/org/freedesktop/ModemManager1/Modem/" || echo "0")
+        echo -e "${GREEN}✅${NC} ModemManager detected $MODEM_COUNT traditional modem(s)"
+        # Show basic modem info
+        echo "$MMCLI_OUTPUT" | grep "^/org/freedesktop/ModemManager1/Modem/" | head -3 | while read -r line; do
+            echo "    $line"
+        done
+    else
+        echo -e "${BLUE}ℹ️${NC}  No traditional modems detected by ModemManager"
+        if lsusb | grep -q "12d1:14dc.*HiLink"; then
+            echo -e "    ${BLUE}ℹ️${NC}  (This is normal - HiLink modems work as network interfaces)"
+        fi
+    fi
+fi
+echo -e "\n${BLUE}🌐 Connectivity${NC}"
+# Test backend port using /dev/tcp (built into bash)
+if timeout 1 bash -c "echo >/dev/tcp/127.0.0.1/8000" 2>/dev/null; then
+    echo -e "${GREEN}✅${NC} Backend API port is open"
+elif ss -tuln | grep -q ":8000 "; then
+    echo -e "${YELLOW}⚠️${NC}  Backend API port open but not responding"
+else
+    echo -e "${RED}❌${NC} Backend API port failed"
 fi
 
 if [ $NGINX_RUNNING -eq 0 ]; then
-    NGINX_URL="http://127.0.0.1/"
-    if curl -s -f --connect-timeout 5 "$NGINX_URL" > /dev/null 2>&1; then
-        echo -e "${GREEN}✅${NC} Nginx serving frontend"
+    # Test nginx port using /dev/tcp
+    if timeout 1 bash -c "echo >/dev/tcp/127.0.0.1/80" 2>/dev/null; then
+        echo -e "${GREEN}✅${NC} Nginx frontend port is accessible"
+    elif ss -tuln | grep -q ":80 "; then
+        echo -e "${YELLOW}⚠️${NC}  Nginx frontend port open but not responding"
     else
-        echo -e "${YELLOW}⚠️${NC}  Nginx running but not serving correctly"
+        echo -e "${RED}❌${NC} Nginx frontend port failed"
     fi
 fi
 

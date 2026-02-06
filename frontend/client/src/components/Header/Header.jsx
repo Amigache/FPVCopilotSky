@@ -23,12 +23,25 @@ const Header = () => {
   
   const vpnStatus = messages.vpn_status || {
     connected: false,
-    authenticated: false
+    authenticated: false,
+    installed: true
   }
   
   const isArmed = telemetry.system?.armed || false
   const isStreaming = videoStatus.streaming || false
   const isVpnConnected = vpnStatus.connected || false
+  const isVpnAuthenticated = vpnStatus.authenticated || false
+  const isVpnInstalled = vpnStatus.installed !== false
+
+  // VPN badge logic:
+  // - Connected = success (green)
+  // - Authenticated but not connected = danger (red) - can be brought up
+  // - Not installed or not authenticated = warning (yellow)
+  const vpnBadgeVariant = isVpnConnected 
+    ? "success" 
+    : (isVpnInstalled && isVpnAuthenticated) 
+      ? "danger" 
+      : "warning"
 
   return (
     <div className="header">
@@ -51,7 +64,7 @@ const Header = () => {
             </Badge>
           </div>
           <div className="info-item-badge">
-            <Badge variant={isVpnConnected ? "success" : "secondary"}>
+            <Badge variant={vpnBadgeVariant}>
               {isVpnConnected ? t('header.vpnConnected') : t('header.vpnDisconnected')}
             </Badge>
           </div>

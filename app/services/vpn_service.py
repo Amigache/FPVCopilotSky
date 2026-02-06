@@ -42,6 +42,11 @@ class VPNProvider(ABC):
     def get_info(self) -> Dict:
         """Get provider information and capabilities"""
         pass
+    
+    @abstractmethod
+    def get_peers(self) -> List[Dict]:
+        """Get list of peers/nodes in the VPN network"""
+        pass
 
 
 class TailscaleProvider(VPNProvider):
@@ -114,15 +119,15 @@ class TailscaleProvider(VPNProvider):
                 node_online = self_node.get('Online', False)
                 node_active = self_node.get('Active', False)
                 
-                # Connected only if backend running AND node is online/active AND no auth needed
+                # Authenticated means has valid credentials and is not in login-required state
+                # User is authenticated in these states: Stopped, Starting, Running
+                # User is NOT authenticated in: NoState, NeedsLogin
+                authenticated = backend_state not in ['NeedsLogin', 'NoState', 'Unknown', '']
+                
+                # Connected only if backend running AND node is online/active AND authenticated
                 connected = (backend_state == 'Running' and 
                            (node_online or node_active) and 
-                           not auth_url)
-                
-                # Authenticated means has valid credentials (not needs login)
-                # User is authenticated even when disconnected (Stopped state)
-                authenticated = (backend_state not in ['NeedsLogin', 'NoState'] and 
-                               not auth_url)
+                           authenticated)
                 
                 # Get Tailscale IP
                 tailscale_ips = self_node.get('TailscaleIPs', [])
@@ -147,11 +152,15 @@ class TailscaleProvider(VPNProvider):
                     'backend_state': backend_state
                 }
                 
-                # If there's an auth URL, include it and mark as needs auth
+                # If there's an auth URL, include it for UI purposes but don't override authenticated
+                # (auth_url can temporarily appear during reconnection)
                 if auth_url:
                     response['needs_auth'] = True
                     response['auth_url'] = auth_url
                     response['message'] = 'Device needs re-authentication'
+                    # Override authenticated only if we're actually in NeedsLogin state
+                    if backend_state in ['NeedsLogin', 'NoState']:
+                        response['authenticated'] = False
                 
                 return response
                 
@@ -229,99 +238,96 @@ class TailscaleProvider(VPNProvider):
                     'already_connected': True
                 }
             
-            # Execute tailscale up
-            cmd = ['sudo', '-n', 'tailscale', 'up']
+            # First, check if we need a login URL by checking current state
+            # If backend_state is NeedsLogin, we need to get an auth URL
+            backend_state = status.get('backend_state', '')
             
-            logger.info(f"Executing: {' '.join(cmd)}")
-            
-            # Use Popen to capture output with timeout
-            import subprocess
-            from threading import Timer
-            import time
-            
-            proc = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
-            )
-            
-            # Kill after 5 seconds to capture auth URL
-            def kill_proc():
+            if backend_state == 'NeedsLogin' or not status.get('authenticated'):
+                # Use 'timeout' OUTSIDE sudo to prevent tailscale up from blocking forever
+                # timeout wraps sudo so it can kill it without needing sudoers entry for timeout
+                cmd = ['timeout', '5', 'sudo', '-n', 'tailscale', 'up']
+                
+                logger.info(f"Executing: {' '.join(cmd)}")
+                
                 try:
-                    proc.kill()
-                except:
-                    pass
-            
-            timer = Timer(5.0, kill_proc)
-            timer.start()
-            
-            try:
-                stdout, stderr = proc.communicate(timeout=10)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                stdout, stderr = proc.communicate()
-            finally:
-                timer.cancel()
-            
-            returncode = proc.returncode
-            combined_output = stdout + stderr
-            
-            logger.info(f"Tailscale up result: returncode={returncode}")
-            logger.debug(f"Output: {combined_output}")
-            
-            # Check for authentication URL
-            auth_url = self._extract_auth_url(combined_output)
-            
-            if auth_url or 'login.tailscale.com' in combined_output.lower():
+                    result = subprocess.run(
+                        cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=10  # Python-level safety timeout
+                    )
+                    combined_output = result.stdout + result.stderr
+                    logger.info(f"Tailscale up result: returncode={result.returncode}, output={combined_output[:200]}")
+                except subprocess.TimeoutExpired:
+                    # If Python timeout fires, try to get partial output
+                    combined_output = ''
+                    logger.warning("Tailscale up timed out at Python level")
+                
+                # Extract auth URL from output
+                auth_url = self._extract_auth_url(combined_output)
+                
+                if auth_url:
+                    return {
+                        'success': True,
+                        'needs_auth': True,
+                        'auth_url': auth_url,
+                        'message': 'Authentication required'
+                    }
+                
+                # If no URL in output, check status for auth URL
+                check_status = self.get_status()
+                if check_status.get('needs_auth') and check_status.get('auth_url'):
+                    return {
+                        'success': True,
+                        'needs_auth': True,
+                        'auth_url': check_status.get('auth_url'),
+                        'message': 'Authentication required'
+                    }
+                
+                # If now connected (was already authenticated but just needed 'up')
+                if check_status.get('connected'):
+                    return {
+                        'success': True,
+                        'message': 'Connected successfully'
+                    }
+                
                 return {
-                    'success': True,
-                    'needs_auth': True,
-                    'auth_url': auth_url,
-                    'message': 'Authentication required'
+                    'success': False,
+                    'error': 'Could not get authentication URL. Try again.'
                 }
             
-            # Wait a moment for Tailscale to establish connection
+            # Already authenticated, just need to bring it up
+            cmd = ['timeout', '10', 'sudo', '-n', 'tailscale', 'up']
+            logger.info(f"Executing (already authenticated): {' '.join(cmd)}")
+            
+            try:
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=15
+                )
+            except subprocess.TimeoutExpired:
+                logger.warning("Tailscale up timed out for authenticated connect")
+            
+            import time
             time.sleep(2)
             
-            # Verify actual connection status
             verify_status = self.get_status()
             
-            # Check if really connected (node online or active)
             if verify_status.get('connected'):
                 return {
                     'success': True,
                     'message': 'Connected successfully'
                 }
             
-            # If has auth_url after connection attempt, needs re-authentication
-            if verify_status.get('needs_auth') and verify_status.get('auth_url'):
-                return {
-                    'success': True,
-                    'needs_auth': True,
-                    'auth_url': verify_status.get('auth_url'),
-                    'message': 'Device needs re-authentication'
-                }
-            
-            # Connection failed - device might be deleted from admin panel
-            # Inform user to use the Logout button
-            if returncode == 0 and not verify_status.get('connected'):
-                # Check if node is not online/active despite being "authenticated"
-                # This indicates device was deleted from admin panel
-                if verify_status.get('backend_state') != 'NeedsLogin' and not verify_status.get('needs_auth'):
-                    logger.warning("Device appears deleted from admin panel. User needs to logout first.")
-                    
-                    return {
-                        'success': False,
-                        'needs_logout': True,
-                        'error': 'Device was deleted from admin panel. Please click the "Logout" button and try again.'
-                    }
-            
-            # Other errors
-            if returncode != 0:
+            # Check if device was deleted from admin panel
+            if verify_status.get('backend_state') != 'NeedsLogin' and not verify_status.get('needs_auth'):
+                logger.warning("Device appears deleted from admin panel")
                 return {
                     'success': False,
-                    'error': stderr or stdout or 'Unknown error'
+                    'needs_logout': True,
+                    'error': 'Device was deleted from admin panel. Please click the "Logout" button and try again.'
                 }
             
             return {
@@ -405,6 +411,85 @@ class TailscaleProvider(VPNProvider):
             'auth_method': 'web',
             'install_url': 'https://tailscale.com/download'
         }
+    
+    def get_peers(self) -> List[Dict]:
+        """Get list of Tailscale peers/nodes"""
+        if not self.is_installed():
+            return []
+        
+        try:
+            result = subprocess.run(
+                ['tailscale', 'status', '--json'],
+                capture_output=True, text=True, timeout=5
+            )
+            
+            if result.returncode != 0:
+                logger.error(f"Failed to get Tailscale peers: {result.stderr}")
+                return []
+            
+            import json
+            try:
+                status_data = json.loads(result.stdout)
+                peers_data = status_data.get('Peer', {}) or {}
+                self_node = status_data.get('Self', {})
+                
+                peers = []
+                
+                # Add self node first
+                if self_node:
+                    # Prefer DNSName over HostName for display (extract hostname from FQDN)
+                    dns_name = self_node.get('DNSName', '')
+                    host_name = self_node.get('HostName', 'Unknown')
+                    # Extract hostname from DNSName like "device.tailXXXX.ts.net."
+                    display_name = dns_name.split('.')[0] if dns_name else host_name
+                    
+                    peers.append({
+                        'id': self_node.get('ID', ''),
+                        'hostname': display_name,
+                        'ip_addresses': self_node.get('TailscaleIPs', []),
+                        'os': self_node.get('OS', 'Unknown'),
+                        'online': self_node.get('Online', False),
+                        'active': self_node.get('Active', False),
+                        'is_self': True,
+                        'exit_node': self_node.get('ExitNode', False),
+                        'exit_node_option': self_node.get('ExitNodeOption', False),
+                        'relay': self_node.get('CurAddr', ''),
+                        'last_seen': self_node.get('LastSeen', '')
+                    })
+                
+                # Add other peers
+                for peer_id, peer_data in peers_data.items():
+                    # Prefer DNSName over HostName for display (extract hostname from FQDN)
+                    dns_name = peer_data.get('DNSName', '')
+                    host_name = peer_data.get('HostName', 'Unknown')
+                    # Extract hostname from DNSName like "device.tailXXXX.ts.net."
+                    display_name = dns_name.split('.')[0] if dns_name else host_name
+                    
+                    peers.append({
+                        'id': peer_id,
+                        'hostname': display_name,
+                        'ip_addresses': peer_data.get('TailscaleIPs', []),
+                        'os': peer_data.get('OS', 'Unknown'),
+                        'online': peer_data.get('Online', False),
+                        'active': peer_data.get('Active', False),
+                        'is_self': False,
+                        'exit_node': peer_data.get('ExitNode', False),
+                        'exit_node_option': peer_data.get('ExitNodeOption', False),
+                        'relay': peer_data.get('CurAddr', ''),
+                        'last_seen': peer_data.get('LastSeen', ''),
+                        'rx_bytes': peer_data.get('RxBytes', 0),
+                        'tx_bytes': peer_data.get('TxBytes', 0)
+                    })
+                
+                return peers
+                
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse Tailscale status JSON: {e}")
+                return []
+                
+        except Exception as e:
+            logger.error(f"Error getting Tailscale peers: {e}")
+            return []
 
 
 class VPNService:
@@ -461,6 +546,20 @@ class VPNService:
         status['provider_display_name'] = provider_obj.display_name
         
         return status
+    
+    def get_peers(self, provider: Optional[str] = None) -> List[Dict]:
+        """Get list of VPN peers/nodes for a specific provider or current one"""
+        provider_name = provider or self.current_provider
+        
+        if not provider_name or provider_name not in self.providers:
+            return []
+        
+        provider_obj = self.providers[provider_name]
+        
+        if not provider_obj.is_installed():
+            return []
+        
+        return provider_obj.get_peers()
     
     def connect(self, provider: Optional[str] = None) -> Dict:
         """Connect to VPN"""

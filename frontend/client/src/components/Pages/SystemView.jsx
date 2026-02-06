@@ -110,7 +110,10 @@ const SystemView = () => {
     return (
       <div className="card">
         <h2>{t('status.sections.system')}</h2>
-        <div className="waiting-data">{t('common.loading')}</div>
+        <div className="waiting-data">
+          <div className="spinner-small"></div>
+          {t('common.loadingContent', 'Cargando contenido')}
+        </div>
       </div>
     )
   }
@@ -119,7 +122,10 @@ const SystemView = () => {
     return (
       <div className="card">
         <h2>{t('status.sections.system')}</h2>
-        <div className="waiting-data">{t('views.system.waiting')}</div>
+        <div className="waiting-data">
+          <div className="spinner-small"></div>
+          {t('common.loadingContent', 'Cargando contenido')}
+        </div>
       </div>
     )
   }

@@ -177,11 +177,16 @@ class NetworkService:
             # Get additional info
             ip_info = await self._get_interface_details(device)
             
+            # Determine connected state: nmcli says 'connected', or interface has an IP
+            # (covers unmanaged interfaces like tailscale, tun, etc.)
+            has_ip = ip_info.get('ip') is not None
+            is_connected = (state == 'connected') or has_ip
+            
             interface = NetworkInterface(
                 name=device,
                 type=iface_type,
                 connection=connection if connection else None,
-                state='connected' if state == 'connected' else 'disconnected',
+                state='connected' if is_connected else 'disconnected',
                 ip_address=ip_info.get('ip'),
                 gateway=ip_info.get('gateway'),
                 metric=ip_info.get('metric'),
@@ -256,17 +261,51 @@ class NetworkService:
         if not self._wifi_interface:
             return networks
         
+        # Check if interface is managed by NetworkManager
+        is_managed = await self._is_nm_managed(self._wifi_interface)
+        
+        if is_managed:
+            networks = await self._scan_wifi_nmcli()
+        
+        # Fallback to wpa_cli if nmcli returned nothing (unmanaged or failed)
+        if not networks:
+            networks = await self._scan_wifi_wpa_cli()
+        
+        # Sort by signal strength
+        networks.sort(key=lambda x: x['signal'], reverse=True)
+        return networks
+    
+    async def _is_nm_managed(self, device: str) -> bool:
+        """Check if a device is managed by NetworkManager"""
+        result = await self._run_command(
+            ['nmcli', '-t', '-f', 'DEVICE,STATE', 'device'], timeout=5
+        )
+        if result.returncode == 0:
+            for line in result.stdout.strip().split('\n'):
+                parts = line.split(':')
+                if len(parts) >= 2 and parts[0] == device:
+                    return parts[1] not in ('unmanaged', 'unavailable')
+        return False
+    
+    async def _scan_wifi_nmcli(self) -> List[Dict]:
+        """Scan WiFi networks using nmcli (for NM-managed interfaces)"""
+        networks = []
+        
         # Request a rescan
-        await self._run_command(['nmcli', 'device', 'wifi', 'rescan'], timeout=15)
+        rescan = await self._run_command(
+            ['nmcli', 'device', 'wifi', 'rescan', 'ifname', self._wifi_interface], timeout=15
+        )
+        if rescan.returncode != 0:
+            logger.warning(f"nmcli rescan failed: {rescan.stderr.strip()}")
         
         # Get networks list
         result = await self._run_command(
-            ['nmcli', '-t', '-f', 'SSID,SIGNAL,SECURITY,IN-USE', 'device', 'wifi', 'list'],
+            ['nmcli', '-t', '-f', 'SSID,SIGNAL,SECURITY,IN-USE', 'device', 'wifi', 'list',
+             'ifname', self._wifi_interface],
             timeout=10
         )
         
-        if result.returncode != 0:
-            logger.error(f"Failed to get WiFi networks: {result.stderr}")
+        if result.returncode != 0 or not result.stdout.strip():
             return networks
         
         seen_ssids = set()
@@ -292,16 +331,94 @@ class NetworkService:
             security = parts[2] if len(parts) > 2 else ''
             in_use = '*' in (parts[3] if len(parts) > 3 else '')
             
-            network = WiFiNetwork(
-                ssid=ssid,
-                signal=signal,
-                security=security,
-                connected=in_use
-            )
-            networks.append(network.to_dict())
+            networks.append(WiFiNetwork(
+                ssid=ssid, signal=signal, security=security, connected=in_use
+            ).to_dict())
         
-        # Sort by signal strength
-        networks.sort(key=lambda x: x['signal'], reverse=True)
+        return networks
+    
+    async def _scan_wifi_wpa_cli(self) -> List[Dict]:
+        """Scan WiFi networks using wpa_cli (for wpa_supplicant-managed interfaces)"""
+        networks = []
+        
+        # Get currently connected SSID
+        current_ssid = None
+        status_result = await self._run_command(
+            ['wpa_cli', '-i', self._wifi_interface, 'status'], timeout=5
+        )
+        if status_result.returncode == 0:
+            for line in status_result.stdout.strip().split('\n'):
+                if line.startswith('ssid='):
+                    current_ssid = line.split('=', 1)[1]
+                    break
+        
+        # Trigger scan
+        scan_result = await self._run_command(
+            ['wpa_cli', '-i', self._wifi_interface, 'scan'], timeout=10
+        )
+        if scan_result.returncode != 0:
+            logger.warning(f"wpa_cli scan failed: {scan_result.stderr.strip()}")
+        
+        # Wait for scan to complete
+        await asyncio.sleep(2)
+        
+        # Get results
+        result = await self._run_command(
+            ['wpa_cli', '-i', self._wifi_interface, 'scan_results'], timeout=10
+        )
+        
+        if result.returncode != 0:
+            logger.error(f"wpa_cli scan_results failed: {result.stderr}")
+            return networks
+        
+        seen_ssids = set()
+        for line in result.stdout.strip().split('\n'):
+            # Skip header line
+            if line.startswith('bssid') or not line.strip():
+                continue
+            
+            # Format: bssid / frequency / signal level / flags / ssid
+            parts = line.split('\t')
+            if len(parts) < 5:
+                continue
+            
+            ssid = parts[4].strip()
+            if not ssid or ssid in seen_ssids:
+                continue
+            
+            seen_ssids.add(ssid)
+            
+            # Convert dBm signal to percentage (roughly: -30 dBm = 100%, -90 dBm = 0%)
+            try:
+                dbm = int(parts[2])
+                signal = max(0, min(100, 2 * (dbm + 100)))
+            except:
+                signal = 0
+            
+            # Parse security flags like [WPA2-PSK-CCMP][WPS][ESS]
+            flags = parts[3] if len(parts) > 3 else ''
+            if 'WPA3' in flags:
+                security = 'WPA3'
+            elif 'WPA2' in flags:
+                security = 'WPA2'
+            elif 'WPA' in flags:
+                security = 'WPA'
+            elif 'WEP' in flags:
+                security = 'WEP'
+            else:
+                security = ''
+            
+            is_connected = (ssid == current_ssid) if current_ssid else False
+            
+            networks.append(WiFiNetwork(
+                ssid=ssid, signal=signal, security=security, connected=is_connected
+            ).to_dict())
+        
+        if networks:
+            logger.info(f"wpa_cli found {len(networks)} WiFi networks")
+        else:
+            logger.warning("wpa_cli scan returned no networks")
+        
         return networks
     
     async def connect_wifi(self, ssid: str, password: Optional[str] = None) -> Dict:

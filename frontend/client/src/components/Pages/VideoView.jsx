@@ -301,7 +301,10 @@ const VideoView = () => {
     return (
       <div className="card">
         <h2>{t('views.video.title')}</h2>
-        <div className="waiting-data">{t('views.video.loading')}</div>
+        <div className="waiting-data">
+          <div className="spinner-small"></div>
+          {t('common.loadingContent', 'Cargando contenido')}
+        </div>
       </div>
     )
   }

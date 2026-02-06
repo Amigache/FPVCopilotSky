@@ -42,6 +42,97 @@ sudo apt-get install -y \
 echo "🎥 Installing video tools..."
 sudo apt-get install -y ffmpeg v4l-utils || true
 
+# Install network management tools
+echo "🌐 Installing network management tools..."
+sudo apt-get install -y \
+    network-manager \
+    modemmanager \
+    hostapd \
+    wireless-tools \
+    usb-modeswitch \
+    usb-modeswitch-data
+
+# Enable and start network services
+echo "🔧 Configuring network services..."
+sudo systemctl enable NetworkManager
+sudo systemctl start NetworkManager
+echo "  ✓ NetworkManager enabled and started"
+
+sudo systemctl enable ModemManager
+sudo systemctl start ModemManager
+echo "  ✓ ModemManager enabled and started"
+
+# Verify network tools work
+echo "🔍 Verifying network tools..."
+if command -v nmcli &> /dev/null; then
+    echo "  ✓ nmcli (NetworkManager CLI) available"
+    nmcli general status || true
+else
+    echo "  ⚠ nmcli not found"
+fi
+
+if command -v mmcli &> /dev/null; then
+    echo "  ✓ mmcli (ModemManager CLI) available"
+    mmcli -L 2>/dev/null || echo "    (No modems detected - OK)"
+else
+    echo "  ⚠ mmcli not found"
+fi
+
+if command -v hostapd &> /dev/null; then
+    echo "  ✓ hostapd (WiFi hotspot) available"
+else
+    echo "  ⚠ hostapd not found"
+fi
+
+if command -v iwconfig &> /dev/null; then
+    echo "  ✓ iwconfig (wireless tools) available"
+else
+    echo "  ⚠ iwconfig not found"
+fi
+
+if command -v usb_modeswitch &> /dev/null; then
+    echo "  ✓ usb_modeswitch (USB modem mode switching) available"
+else
+    echo "  ⚠ usb_modeswitch not found"
+fi
+
+# Configure USB modems automatically
+echo "📱 Configuring USB modems..."
+configure_usb_modems() {
+    # Look for Huawei modems in mass storage mode
+    if lsusb | grep -q "12d1:1f01.*Mass storage"; then
+        echo "  🔄 Huawei modem found in mass storage mode, switching to modem mode..."
+        sudo usb_modeswitch -v 12d1 -p 1f01 -M "55534243123456780000000000000a11062000000000000100000000000000" 2>/dev/null || true
+        sleep 3
+        if lsusb | grep -q "12d1:14dc.*HiLink Modem"; then
+            echo "  ✓ Huawei modem successfully switched to modem mode"
+        elif lsusb | grep -q "12d1:"; then
+            echo "  ✓ Huawei modem detected (may already be in correct mode)"
+        else
+            echo "  ⚠ Huawei modem mode switch may have failed"
+        fi
+    elif lsusb | grep -q "12d1:"; then
+        echo "  ✓ Huawei modem already in correct mode"
+    else
+        echo "  ℹ️ No Huawei modem detected"
+    fi
+    
+    # Wait a moment for ModemManager to detect the modem
+    sleep 2
+    MMCLI_OUTPUT=$(mmcli -L 2>/dev/null || echo "")
+    if echo "$MMCLI_OUTPUT" | grep -q "^/org/freedesktop/ModemManager1/Modem/"; then
+        echo "  ✓ Traditional modem detected by ModemManager"
+    else
+        if lsusb | grep -q "12d1:14dc.*HiLink"; then
+            echo "  ℹ️ HiLink modem detected - works as network interface (this is normal)"
+            echo "    HiLink modems don't appear in ModemManager - they work as USB network adapters"
+        else
+            echo "  ℹ️ No traditional modem detected by ModemManager (this is normal if no modem is connected)"
+        fi
+    fi
+}
+configure_usb_modems
+
 # Create virtual environment if it doesn't exist
 if [ ! -d "venv" ]; then
     echo "🔧 Creating Python virtual environment..."

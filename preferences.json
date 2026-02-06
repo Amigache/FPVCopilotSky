@@ -8,18 +8,9 @@
   "router": {
     "outputs": [
       {
-        "id": "ca5d26b9",
-        "type": "tcp_server",
-        "host": "0.0.0.0",
-        "port": 5760,
-        "name": "tcp_server:5760",
-        "enabled": true,
-        "auto_start": true
-      },
-      {
-        "id": "0090d567",
+        "id": "d8bd9be7",
         "type": "udp",
-        "host": "192.168.1.136",
+        "host": "100.103.90.22",
         "port": 14550,
         "name": "udp:14550",
         "enabled": true,
@@ -28,16 +19,16 @@
     ]
   },
   "video": {
-    "device": "/dev/video1",
+    "device": "/dev/video0",
     "width": 960,
     "height": 720,
     "framerate": 30,
     "codec": "h264",
-    "quality": 85,
+    "quality": 80,
     "h264_bitrate": 2000
   },
   "streaming": {
-    "udp_host": "192.168.1.136",
+    "udp_host": "100.103.90.22",
     "udp_port": 5600,
     "enabled": true,
     "auto_start": true

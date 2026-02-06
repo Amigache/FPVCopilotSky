@@ -58,6 +58,31 @@ async def get_status(provider: Optional[str] = None):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/peers")
+async def get_peers(provider: Optional[str] = None):
+    """
+    Get list of VPN peers/nodes
+    
+    Args:
+        provider: VPN provider name (optional, uses current if not specified)
+    
+    Returns:
+        List of peers in the VPN network with their status and information
+    """
+    if not _vpn_service:
+        raise HTTPException(status_code=503, detail="VPN service not initialized")
+    
+    try:
+        peers = _vpn_service.get_peers(provider)
+        return {
+            "success": True,
+            "peers": peers,
+            "count": len(peers)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/connect")
 async def connect_vpn(request: VPNConnectRequest):
     """

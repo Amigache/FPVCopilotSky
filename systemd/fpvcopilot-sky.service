@@ -4,8 +4,8 @@ After=network.target
 
 [Service]
 Type=simple
-User=hector
-Group=hector
+User=fpvcopilotsky
+Group=fpvcopilotsky
 # Ensure we have access to serial ports and video devices
 SupplementaryGroups=dialout video
 WorkingDirectory=/opt/FPVCopilotSky

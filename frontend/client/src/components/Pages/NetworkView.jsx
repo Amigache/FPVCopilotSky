@@ -194,7 +194,8 @@ const NetworkView = () => {
       <div className="card">
         <h2>🌐 {t('network.title', 'Network')}</h2>
         <div className="waiting-data">
-          {t('network.loading', 'Loading network status...')}
+          <div className="spinner-small"></div>
+          {t('common.loadingContent', 'Cargando contenido')}
         </div>
       </div>
     )

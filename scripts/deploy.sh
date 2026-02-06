@@ -56,7 +56,7 @@ if command -v nginx &> /dev/null; then
     
     # Fix permissions for frontend build
     # dist/ is owned by hector (can rebuild) and www-data (can read)
-    sudo chown -R hector:www-data "$PROJECT_DIR/frontend/client/dist"
+    sudo chown -R $USER:www-data "$PROJECT_DIR/frontend/client/dist"
     sudo chmod -R 755 "$PROJECT_DIR/frontend/client/dist"
     
     # Test nginx config

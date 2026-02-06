@@ -49,7 +49,7 @@ export const WebSocketProvider = ({ children }) => {
     isConnectingRef.current = true
 
     const wsUrl = getWebSocketUrl()
-    console.log('🔌 Connecting to WebSocket:', wsUrl)
+
     
     try {
       const ws = new WebSocket(wsUrl)
@@ -59,7 +59,7 @@ export const WebSocketProvider = ({ children }) => {
           ws.close()
           return
         }
-        console.log('🟢 WebSocket connected')
+
         isConnectingRef.current = false
         setIsConnected(true)
       }
