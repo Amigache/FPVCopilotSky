@@ -687,6 +687,108 @@ class NetworkService:
             logger.error(f"Error in auto-adjust: {e}")
             return {'success': False, 'error': str(e)}
     
+    async def _get_current_dns(self) -> List[str]:
+        """Get current DNS servers from resolv.conf"""
+        try:
+            with open('/etc/resolv.conf', 'r') as f:
+                dns_servers = []
+                for line in f:
+                    line = line.strip()
+                    if line.startswith('nameserver'):
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            dns_servers.append(parts[1])
+                return dns_servers
+        except Exception as e:
+            logger.warning(f"Could not read DNS config: {e}")
+            return []
+    
+    async def _restore_dns(self, dns_servers: List[str]) -> bool:
+        """Restore DNS servers if they were lost"""
+        try:
+            if not dns_servers:
+                return True  # Nothing to restore
+            
+            # Check if DNS is still present
+            current_dns = await self._get_current_dns()
+            if current_dns:
+                return True  # DNS is fine
+            
+            # DNS was lost, restore it
+            logger.warning(f"DNS was lost, restoring: {dns_servers}")
+            
+            # Build resolv.conf content
+            resolv_content = ""
+            for dns in dns_servers:
+                resolv_content += f"nameserver {dns}\n"
+            
+            # Write to temp file
+            import tempfile
+            with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.conf') as tf:
+                tf.write(resolv_content)
+                temp_path = tf.name
+            
+            # Copy temp file to /etc/resolv.conf with sudo
+            result = await self._run_command(
+                ['sudo', 'cp', temp_path, '/etc/resolv.conf']
+            )
+            
+            # Clean up temp file
+            try:
+                import os
+                os.unlink(temp_path)
+            except:
+                pass
+            
+            if result.returncode == 0:
+                logger.info("DNS configuration restored successfully")
+                return True
+            else:
+                logger.error(f"Failed to restore DNS: {result.stderr}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error restoring DNS: {e}")
+            return False
+    
+    async def _set_interface_metric_manual(self, interface: str, metric: int) -> Dict:
+        """Set metric using NetworkManager (preserves DNS)"""
+        try:
+            # Get active connection for this interface
+            conn_result = await self._run_command(
+                ['nmcli', '-t', '-f', 'NAME,DEVICE', 'connection', 'show', '--active']
+            )
+            
+            conn_name = None
+            for line in conn_result.stdout.strip().split('\n'):
+                if ':' in line:
+                    name, device = line.split(':', 1)
+                    if device == interface:
+                        conn_name = name
+                        break
+            
+            if not conn_name:
+                return {'success': False, 'error': f'No active connection found for {interface}'}
+            
+            # Set metric via NetworkManager (this preserves DNS)
+            result = await self._run_command(
+                ['nmcli', 'connection', 'modify', conn_name, 'ipv4.route-metric', str(metric)]
+            )
+            
+            if result.returncode != 0:
+                return {'success': False, 'error': result.stderr.strip()}
+            
+            # Reactivate connection to apply changes
+            await self._run_command(['nmcli', 'connection', 'down', conn_name])
+            await asyncio.sleep(0.5)
+            await self._run_command(['nmcli', 'connection', 'up', conn_name])
+            
+            logger.info(f"Metric for {interface} set to {metric} via NetworkManager")
+            return {'success': True, 'message': f'Metric set to {metric}'}
+            
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
     async def _set_interface_metric(self, interface: str, metric: int) -> Dict:
         """Set metric for an interface by modifying its default route"""
         try:
@@ -740,8 +842,12 @@ class NetworkService:
             return {'success': False, 'error': str(e)}
     
     async def _set_interface_metric_smooth(self, interface: str, metric: int, vpn_active: bool) -> Dict:
-        """Set metric with smooth transition to avoid VPN disruption"""
+        """Set metric with smooth transition and DNS preservation"""
         try:
+            # STEP 1: Preserve current DNS configuration
+            current_dns = await self._get_current_dns()
+            logger.debug(f"Current DNS servers: {current_dns}")
+            
             # Get current default route info
             result = await self._run_command(['ip', 'route', 'show', 'default'])
             if result.returncode != 0:
@@ -769,43 +875,82 @@ class NetworkService:
                 logger.debug(f"Metric for {interface} already set to {metric}")
                 return {'success': True, 'message': f'Metric already set to {metric}'}
             
+            # STEP 2: Use NetworkManager for DNS-safe changes when possible
+            if not vpn_active:
+                # Try NetworkManager approach first (safest for DNS)
+                nm_result = await self._set_interface_metric_manual(interface, metric)
+                if nm_result['success']:
+                    logger.info(f"Metric for {interface} set to {metric} via NetworkManager (DNS preserved)")
+                    return nm_result
+                else:
+                    logger.warning(f"NetworkManager method failed, falling back to manual route change")
+            
+            # STEP 3: Manual route changes with DNS preservation
             if vpn_active:
-                # SMOOTH TRANSITION: Add new route before deleting old one
-                logger.info(f"VPN active: Adding new route with metric {metric} before removing old")
+                # SMOOTH TRANSITION: Use 'ip route change' instead of del+add
+                logger.info(f"VPN active: Changing route metric using 'ip route change' to preserve DNS")
                 
-                # Add new route with new metric (will coexist temporarily)
-                result = await self._run_command(
-                    ['sudo', 'ip', 'route', 'add', 'default', 'via', gateway,
-                     'dev', interface, 'metric', str(metric)]
-                )
-                
-                if result.returncode != 0 and 'File exists' not in result.stderr:
-                    return {'success': False, 'error': f'Failed to add new route: {result.stderr}'}
-                
-                # Wait for connections to migrate to new route
-                await asyncio.sleep(self.ROUTE_TRANSITION_DELAY)
-                
-                # Now delete old route if it had a different metric
+                # Try to change the existing route directly
                 if old_metric is not None:
-                    await self._run_command(
-                        ['sudo', 'ip', 'route', 'del', 'default', 'via', gateway,
-                         'dev', interface, 'metric', str(old_metric)]
+                    result = await self._run_command(
+                        ['sudo', 'ip', 'route', 'change', 'default', 'via', gateway,
+                         'dev', interface, 'metric', str(metric)]
                     )
-            else:
-                # NO VPN: Can safely do immediate replacement
-                await self._run_command(
-                    ['sudo', 'ip', 'route', 'del', 'default', 'via', gateway, 'dev', interface]
-                )
+                else:
+                    # No old metric, need to add
+                    result = await self._run_command(
+                        ['sudo', 'ip', 'route', 'add', 'default', 'via', gateway,
+                         'dev', interface, 'metric', str(metric)]
+                    )
                 
+                if result.returncode != 0:
+                    logger.warning(f"Route change failed, trying add+delete method: {result.stderr}")
+                    
+                    # Fallback: Add new route before deleting old one
+                    result = await self._run_command(
+                        ['sudo', 'ip', 'route', 'add', 'default', 'via', gateway,
+                         'dev', interface, 'metric', str(metric)]
+                    )
+                    
+                    if result.returncode != 0 and 'File exists' not in result.stderr:
+                        await self._restore_dns(current_dns)
+                        return {'success': False, 'error': f'Failed to add new route: {result.stderr}'}
+                    
+                    # Wait for connections to migrate
+                    await asyncio.sleep(self.ROUTE_TRANSITION_DELAY)
+                    
+                    # Delete old route
+                    if old_metric is not None:
+                        await self._run_command(
+                            ['sudo', 'ip', 'route', 'del', 'default', 'via', gateway,
+                             'dev', interface, 'metric', str(old_metric)]
+                        )
+            else:
+                # NO VPN: Use 'ip route change' for atomic update
                 result = await self._run_command(
-                    ['sudo', 'ip', 'route', 'add', 'default', 'via', gateway,
+                    ['sudo', 'ip', 'route', 'change', 'default', 'via', gateway,
                      'dev', interface, 'metric', str(metric)]
                 )
                 
                 if result.returncode != 0:
-                    return {'success': False, 'error': result.stderr.strip()}
+                    # Fallback to del+add
+                    await self._run_command(
+                        ['sudo', 'ip', 'route', 'del', 'default', 'via', gateway, 'dev', interface]
+                    )
+                    
+                    result = await self._run_command(
+                        ['sudo', 'ip', 'route', 'add', 'default', 'via', gateway,
+                         'dev', interface, 'metric', str(metric)]
+                    )
+                    
+                    if result.returncode != 0:
+                        await self._restore_dns(current_dns)
+                        return {'success': False, 'error': result.stderr.strip()}
             
-            # Persist in NetworkManager
+            # STEP 4: Restore DNS if it was lost
+            await self._restore_dns(current_dns)
+            
+            # STEP 5: Persist in NetworkManager
             conn_result = await self._run_command(
                 ['nmcli', '-t', '-f', 'NAME,DEVICE', 'connection', 'show', '--active']
             )
@@ -819,10 +964,15 @@ class NetworkService:
                         )
                         break
             
-            logger.info(f"Metric for {interface} set to {metric} (VPN-aware: {vpn_active})")
+            logger.info(f"Metric for {interface} set to {metric} (VPN-aware: {vpn_active}, DNS preserved)")
             return {'success': True, 'message': f'Metric set to {metric}'}
         
         except Exception as e:
+            # Try to restore DNS even on error
+            try:
+                await self._restore_dns(current_dns)
+            except:
+                pass
             return {'success': False, 'error': str(e)}
     
     async def _set_modem_metric(self, metric: int) -> Dict:
@@ -875,10 +1025,14 @@ class NetworkService:
             return {'success': False, 'error': str(e)}
     
     async def _set_modem_metric_smooth(self, metric: int, vpn_active: bool) -> Dict:
-        """Set modem metric with smooth transition to avoid VPN disruption"""
+        """Set modem metric with smooth transition and DNS preservation"""
         try:
             if not self._modem_interface:
                 return {'success': False, 'error': 'No modem interface found'}
+            
+            # STEP 1: Preserve current DNS configuration
+            current_dns = await self._get_current_dns()
+            logger.debug(f"Current DNS servers before modem change: {current_dns}")
             
             # Get modem IP
             result = await self._run_command(['ip', 'addr', 'show', self._modem_interface])
@@ -911,66 +1065,100 @@ class NetworkService:
                 logger.debug(f"Metric for {self._modem_interface} already set to {metric}")
                 return {'success': True, 'message': f'Modem metric already set to {metric}'}
             
+            # STEP 2: Perform route changes with DNS preservation
             if vpn_active:
-                # SMOOTH TRANSITION: Add new route before deleting old one
-                logger.info(f"VPN active: Adding new modem route with metric {metric} before removing old")
+                # SMOOTH TRANSITION: Use 'ip route change' for atomic update
+                logger.info(f"VPN active: Changing modem route metric using 'ip route change' to preserve DNS")
                 
-                # Add new route with new metric
+                # Try to change the existing route directly
+                if old_metric is not None:
+                    result = await self._run_command(
+                        ['sudo', 'ip', 'route', 'change', 'default', 'via', modem_gateway,
+                         'dev', self._modem_interface, 'metric', str(metric)]
+                    )
+                else:
+                    # No old metric, need to add
+                    result = await self._run_command(
+                        ['sudo', 'ip', 'route', 'add', 'default', 'via', modem_gateway,
+                         'dev', self._modem_interface, 'metric', str(metric)]
+                    )
+                
+                if result.returncode != 0:
+                    logger.warning(f"Route change failed, trying add+delete method: {result.stderr}")
+                    
+                    # Fallback: Add new route before deleting old one
+                    result = await self._run_command(
+                        ['sudo', 'ip', 'route', 'add', 'default', 'via', modem_gateway,
+                         'dev', self._modem_interface, 'metric', str(metric)]
+                    )
+                    
+                    if result.returncode != 0 and 'File exists' not in result.stderr:
+                        await self._restore_dns(current_dns)
+                        return {'success': False, 'error': f'Failed to add new route: {result.stderr}'}
+                    
+                    # Wait for connections to migrate
+                    await asyncio.sleep(self.ROUTE_TRANSITION_DELAY)
+                    
+                    # Remove old routes
+                    routes_result = await self._run_command(['ip', 'route', 'show', 'default'])
+                    for line in routes_result.stdout.strip().split('\n'):
+                        if self._modem_interface in line and line.strip():
+                            parts = line.split()
+                            if len(parts) >= 3 and parts[0] == 'default' and parts[1] == 'via':
+                                existing_gw = parts[2]
+                                # Extract metric if present
+                                line_metric = None
+                                metric_match = re.search(r'metric\s+(\d+)', line)
+                                if metric_match:
+                                    line_metric = int(metric_match.group(1))
+                                
+                                # Only delete if it's not the new metric we just added
+                                if line_metric != metric:
+                                    await self._run_command(
+                                        ['sudo', 'ip', 'route', 'del', 'default', 'via', existing_gw,
+                                         'dev', self._modem_interface, 'metric', str(line_metric) if line_metric else '0']
+                                    )
+            else:
+                # NO VPN: Use 'ip route change' for atomic update
                 result = await self._run_command(
-                    ['sudo', 'ip', 'route', 'add', 'default', 'via', modem_gateway,
+                    ['sudo', 'ip', 'route', 'change', 'default', 'via', modem_gateway,
                      'dev', self._modem_interface, 'metric', str(metric)]
                 )
                 
-                if result.returncode != 0 and 'File exists' not in result.stderr:
-                    return {'success': False, 'error': f'Failed to add new route: {result.stderr}'}
-                
-                # Wait for connections to migrate
-                await asyncio.sleep(self.ROUTE_TRANSITION_DELAY)
-                
-                # Remove old routes
-                routes_result = await self._run_command(['ip', 'route', 'show', 'default'])
-                for line in routes_result.stdout.strip().split('\n'):
-                    if self._modem_interface in line and line.strip():
-                        parts = line.split()
-                        if len(parts) >= 3 and parts[0] == 'default' and parts[1] == 'via':
-                            existing_gw = parts[2]
-                            # Extract metric if present
-                            line_metric = None
-                            metric_match = re.search(r'metric\s+(\d+)', line)
-                            if metric_match:
-                                line_metric = int(metric_match.group(1))
-                            
-                            # Only delete if it's not the new metric we just added
-                            if line_metric != metric:
+                if result.returncode != 0:
+                    # Fallback to del+add
+                    routes_result = await self._run_command(['ip', 'route', 'show', 'default'])
+                    for line in routes_result.stdout.strip().split('\n'):
+                        if self._modem_interface in line and line.strip():
+                            parts = line.split()
+                            if len(parts) >= 3 and parts[0] == 'default' and parts[1] == 'via':
+                                existing_gw = parts[2]
                                 await self._run_command(
                                     ['sudo', 'ip', 'route', 'del', 'default', 'via', existing_gw,
-                                     'dev', self._modem_interface, 'metric', str(line_metric) if line_metric else '0']
+                                     'dev', self._modem_interface]
                                 )
-            else:
-                # NO VPN: Can safely do immediate replacement
-                routes_result = await self._run_command(['ip', 'route', 'show', 'default'])
-                for line in routes_result.stdout.strip().split('\n'):
-                    if self._modem_interface in line and line.strip():
-                        parts = line.split()
-                        if len(parts) >= 3 and parts[0] == 'default' and parts[1] == 'via':
-                            existing_gw = parts[2]
-                            await self._run_command(
-                                ['sudo', 'ip', 'route', 'del', 'default', 'via', existing_gw,
-                                 'dev', self._modem_interface]
-                            )
-                
-                result = await self._run_command(
-                    ['sudo', 'ip', 'route', 'add', 'default', 'via', modem_gateway,
-                     'dev', self._modem_interface, 'metric', str(metric)]
-                )
-                
-                if result.returncode != 0 and 'File exists' not in result.stderr:
-                    return {'success': False, 'error': result.stderr.strip()}
+                    
+                    result = await self._run_command(
+                        ['sudo', 'ip', 'route', 'add', 'default', 'via', modem_gateway,
+                         'dev', self._modem_interface, 'metric', str(metric)]
+                    )
+                    
+                    if result.returncode != 0 and 'File exists' not in result.stderr:
+                        await self._restore_dns(current_dns)
+                        return {'success': False, 'error': result.stderr.strip()}
             
-            logger.info(f"Modem {self._modem_interface} metric set to {metric} (VPN-aware: {vpn_active})")
+            # STEP 3: Restore DNS if it was lost
+            await self._restore_dns(current_dns)
+            
+            logger.info(f"Modem {self._modem_interface} metric set to {metric} (VPN-aware: {vpn_active}, DNS preserved)")
             return {'success': True, 'message': f'Modem metric set to {metric}'}
         
         except Exception as e:
+            # Try to restore DNS even on error
+            try:
+                await self._restore_dns(current_dns)
+            except:
+                pass
             return {'success': False, 'error': str(e)}
     
     async def get_modem_info(self) -> Dict:
