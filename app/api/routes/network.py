@@ -18,7 +18,7 @@ class WiFiConnectRequest(BaseModel):
 
 
 class PriorityModeRequest(BaseModel):
-    mode: str  # 'wifi' or 'modem'
+    mode: str  # 'wifi', 'modem', or 'auto'
 
 
 class ForgetConnectionRequest(BaseModel):
@@ -113,10 +113,10 @@ async def set_priority_mode(request: PriorityModeRequest):
     Set network priority mode
     
     Args:
-        mode: 'wifi' (WiFi primary) or 'modem' (4G primary)
+        mode: 'wifi' (WiFi primary), 'modem' (4G primary), or 'auto' (4G preferred, WiFi backup)
     """
-    if request.mode not in ['wifi', 'modem']:
-        raise HTTPException(status_code=400, detail="Mode must be 'wifi' or 'modem'")
+    if request.mode not in ['wifi', 'modem', 'auto']:
+        raise HTTPException(status_code=400, detail="Mode must be 'wifi', 'modem', or 'auto'")
     
     service = get_network_service()
     result = await service.set_connection_priority(request.mode)
@@ -124,6 +124,20 @@ async def set_priority_mode(request: PriorityModeRequest):
     if result.get("success"):
         return result
     raise HTTPException(status_code=400, detail=result.get("error", "Failed to set priority"))
+
+
+@router.post("/priority/auto-adjust")
+async def auto_adjust_priority():
+    """
+    Automatically adjust network priority based on available interfaces.
+    4G modem always primary if available, WiFi as backup.
+    """
+    service = get_network_service()
+    result = await service.auto_adjust_priority()
+    
+    if result.get("success"):
+        return result
+    raise HTTPException(status_code=400, detail=result.get("error", "Failed to auto-adjust priority"))
 
 
 # =====================

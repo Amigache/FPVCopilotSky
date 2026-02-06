@@ -202,6 +202,101 @@ else
     echo "  ⚠ System sudoers setup script not found"
 fi
 
+# Configure network priority management (VPN-aware routing)
+echo "🌐 Configuring network priority management..."
+
+# Verify iproute2 available (needed for route management)
+if command -v ip &> /dev/null; then
+    IP_BIN=$(which ip)
+    echo "  ✓ iproute2 available: $IP_BIN"
+else
+    echo "  ⚠ iproute2 not found, installing..."
+    sudo apt-get install -y iproute2
+fi
+
+# Verify ip route sudoers are in place
+if [ -f "/etc/sudoers.d/fpvcopilot-system" ]; then
+    if sudo grep -q "ip route" /etc/sudoers.d/fpvcopilot-system 2>/dev/null; then
+        echo "  ✓ Network route management sudo permissions configured"
+    else
+        echo "  ⚠ Route permissions missing, re-running sudoers setup..."
+        sudo bash scripts/setup-system-sudoers.sh
+    fi
+fi
+
+# Detect and configure default network priority
+# 4G modem is always primary when available, WiFi is backup
+echo "  🔍 Detecting network interfaces..."
+MODEM_IFACE=""
+WIFI_IFACE=""
+
+# Detect USB 4G modem (HiLink mode uses 192.168.8.x)
+if ip -o addr show 2>/dev/null | grep -q "192\.168\.8\."; then
+    MODEM_IFACE=$(ip -o addr show 2>/dev/null | grep "192\.168\.8\." | awk '{print $2}' | head -1)
+    echo "  ✓ USB 4G modem detected: $MODEM_IFACE"
+else
+    echo "  ℹ️ No USB 4G modem detected"
+fi
+
+# Detect WiFi
+WIFI_IFACE=$(nmcli -t -f DEVICE,TYPE device 2>/dev/null | grep ':wifi$' | cut -d: -f1 | head -1)
+if [ -n "$WIFI_IFACE" ]; then
+    echo "  ✓ WiFi interface detected: $WIFI_IFACE"
+else
+    echo "  ℹ️ No WiFi interface detected"
+fi
+
+# Set initial network priority: 4G primary (metric 100), WiFi backup (metric 200)
+if [ -n "$MODEM_IFACE" ]; then
+    MODEM_GW=$(ip route show default dev "$MODEM_IFACE" 2>/dev/null | awk '/via/{print $3}' | head -1)
+    if [ -n "$MODEM_GW" ]; then
+        CURRENT_METRIC=$(ip route show default dev "$MODEM_IFACE" 2>/dev/null | grep -oP 'metric \K\d+')
+        if [ "$CURRENT_METRIC" != "100" ]; then
+            sudo ip route del default via "$MODEM_GW" dev "$MODEM_IFACE" 2>/dev/null || true
+            sudo ip route add default via "$MODEM_GW" dev "$MODEM_IFACE" metric 100 2>/dev/null || true
+            echo "  ✓ 4G modem set as primary (metric 100)"
+        else
+            echo "  ✓ 4G modem already primary (metric 100)"
+        fi
+    fi
+fi
+
+if [ -n "$WIFI_IFACE" ]; then
+    WIFI_GW=$(ip route show default dev "$WIFI_IFACE" 2>/dev/null | awk '/via/{print $3}' | head -1)
+    if [ -n "$WIFI_GW" ]; then
+        CURRENT_METRIC=$(ip route show default dev "$WIFI_IFACE" 2>/dev/null | grep -oP 'metric \K\d+')
+        if [ "$CURRENT_METRIC" != "200" ]; then
+            sudo ip route del default via "$WIFI_GW" dev "$WIFI_IFACE" 2>/dev/null || true
+            sudo ip route add default via "$WIFI_GW" dev "$WIFI_IFACE" metric 200 2>/dev/null || true
+            echo "  ✓ WiFi set as backup (metric 200)"
+        else
+            echo "  ✓ WiFi already backup (metric 200)"
+        fi
+    fi
+fi
+
+# Persist metrics in NetworkManager connections
+if [ -n "$MODEM_IFACE" ]; then
+    NM_CONN=$(nmcli -t -f NAME,DEVICE connection show --active 2>/dev/null | grep ":${MODEM_IFACE}$" | cut -d: -f1)
+    if [ -n "$NM_CONN" ]; then
+        nmcli connection modify "$NM_CONN" ipv4.route-metric 100 2>/dev/null || true
+        echo "  ✓ NetworkManager metric persisted for 4G"
+    fi
+fi
+
+if [ -n "$WIFI_IFACE" ]; then
+    NM_CONN=$(nmcli -t -f NAME,DEVICE connection show --active 2>/dev/null | grep ":${WIFI_IFACE}$" | cut -d: -f1)
+    if [ -n "$NM_CONN" ]; then
+        nmcli connection modify "$NM_CONN" ipv4.route-metric 200 2>/dev/null || true
+        echo "  ✓ NetworkManager metric persisted for WiFi"
+    fi
+fi
+
+echo "  ✓ Network priority management configured"
+echo "    Priority: 4G (metric 100) > WiFi (metric 200)"
+echo "    Auto-adjust: Enabled (every 30s via backend)"
+echo "    VPN-aware: Smooth transitions when Tailscale active"
+
 # Set permissions for serial ports
 echo "🔐 Setting up serial port permissions..."
 sudo usermod -a -G dialout $USER

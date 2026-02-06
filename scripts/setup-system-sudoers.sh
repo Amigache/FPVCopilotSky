@@ -23,6 +23,12 @@ $CURRENT_USER ALL=(ALL) NOPASSWD: /usr/bin/journalctl -u fpvcopilot-sky *
 $CURRENT_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart nginx
 $CURRENT_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl status nginx
 $CURRENT_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl reload nginx
+
+# Allow $CURRENT_USER to manage network routes without password (VPN-aware routing)
+$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/sbin/ip route add *
+$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/sbin/ip route del *
+$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/sbin/ip route change *
+$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/sbin/ip route replace *
 EOF
 
 # Set proper permissions
@@ -37,6 +43,7 @@ if visudo -c -f "$SUDOERS_FILE" > /dev/null 2>&1; then
     echo "  - sudo systemctl restart nginx"
     echo "  - sudo systemctl status fpvcopilot-sky"
     echo "  - sudo journalctl -u fpvcopilot-sky"
+    echo "  - sudo ip route add/del/change (for network priority management)"
 else
     echo "❌ Error: Invalid sudoers syntax"
     rm -f "$SUDOERS_FILE"

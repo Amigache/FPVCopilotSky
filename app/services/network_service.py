@@ -6,7 +6,8 @@ Manages WiFi, USB 4G modems, and network metrics
 import subprocess
 import re
 import asyncio
-from typing import Dict, List, Optional
+import time
+from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 from utils.logger import get_logger
 
@@ -61,15 +62,21 @@ class NetworkService:
     """Service for managing network connections"""
     
     # Metric constants
-    METRIC_PRIMARY = 50      # Primary connection (lowest = preferred)
-    METRIC_SECONDARY = 100   # Secondary connection
+    METRIC_VPN = 10          # VPN always has highest priority (lowest metric)
+    METRIC_PRIMARY = 100     # Primary connection (4G modem)
+    METRIC_SECONDARY = 200   # Secondary connection (WiFi backup)
     METRIC_TERTIARY = 600    # Tertiary/backup connection
+    
+    # Transition settings
+    ROUTE_TRANSITION_DELAY = 2  # Seconds to keep old route before deletion
     
     def __init__(self):
         self._wifi_interface: Optional[str] = None
         self._modem_interface: Optional[str] = None
         self._interfaces_detected = False
         self._loop = None
+        self._last_priority_change = 0  # Timestamp of last priority change
+        self._priority_change_cooldown = 5  # Minimum seconds between priority changes
         
     async def _run_command(self, cmd: List[str], timeout: int = 10) -> subprocess.CompletedProcess:
         """Run a command asynchronously"""
@@ -513,48 +520,104 @@ class NetworkService:
         except Exception as e:
             return {'success': False, 'error': str(e)}
     
-    async def set_connection_priority(self, mode: str) -> Dict:
+    async def _is_vpn_active(self) -> Tuple[bool, Optional[str]]:
+        """Check if VPN (Tailscale) is active and return interface name"""
+        try:
+            result = await self._run_command(['ip', 'link', 'show'], timeout=2)
+            if result.returncode == 0:
+                for line in result.stdout.split('\n'):
+                    if 'tailscale' in line.lower():
+                        match = re.search(r'\d+:\s+(\S+):', line)
+                        if match:
+                            iface = match.group(1)
+                            # Check if interface has UP or LOWER_UP flags (means it's active)
+                            # Tailscale uses state UNKNOWN but has LOWER_UP when active
+                            if 'UP' in line or 'LOWER_UP' in line:
+                                logger.info(f"Active VPN detected: {iface}")
+                                return True, iface
+        except Exception as e:
+            logger.warning(f"Error checking VPN status: {e}")
+        return False, None
+    
+    async def set_connection_priority(self, mode: str, force: bool = False) -> Dict:
         """
-        Set network connection priority mode
+        Set network connection priority mode with smooth transition
         
         Args:
-            mode: 'wifi' (WiFi primary, modem backup) or 'modem' (modem primary, WiFi backup)
+            mode: 'wifi' (WiFi primary, modem backup), 'modem' (modem primary, WiFi backup), or 'auto'
+            force: Skip cooldown period if True
         """
         try:
+            # Check cooldown
+            if not force:
+                time_since_last = time.time() - self._last_priority_change
+                if time_since_last < self._priority_change_cooldown:
+                    return {
+                        'success': False,
+                        'error': f'Priority change on cooldown. Wait {self._priority_change_cooldown - int(time_since_last)}s'
+                    }
+            
             await self.detect_interfaces()
             
+            # Check for active VPN
+            vpn_active, vpn_interface = await self._is_vpn_active()
+            if vpn_active:
+                logger.info(f"VPN active on {vpn_interface}, using smooth transition")
+            
+            # Determine metrics based on mode
             if mode == 'wifi':
-                wifi_metric = self.METRIC_PRIMARY      # 50
-                modem_metric = self.METRIC_TERTIARY    # 600
+                wifi_metric = self.METRIC_PRIMARY      # 100
+                modem_metric = self.METRIC_SECONDARY   # 200
             elif mode == 'modem':
-                modem_metric = self.METRIC_PRIMARY     # 50
-                wifi_metric = self.METRIC_TERTIARY     # 600
+                modem_metric = self.METRIC_PRIMARY     # 100
+                wifi_metric = self.METRIC_SECONDARY    # 200
+            elif mode == 'auto':
+                # Auto mode: 4G primary if available, else WiFi
+                if self._modem_interface:
+                    modem_metric = self.METRIC_PRIMARY     # 100
+                    wifi_metric = self.METRIC_SECONDARY    # 200
+                else:
+                    wifi_metric = self.METRIC_PRIMARY      # 100
+                    modem_metric = self.METRIC_SECONDARY   # 200
             else:
-                return {'success': False, 'error': f'Invalid mode: {mode}'}
+                return {'success': False, 'error': f'Invalid mode: {mode}. Use wifi, modem, or auto'}
             
             results = []
             
-            # Set WiFi metric
+            # Set WiFi metric with smooth transition
             if self._wifi_interface:
-                result = await self._set_interface_metric(self._wifi_interface, wifi_metric)
-                results.append(('wifi', result))
+                result = await self._set_interface_metric_smooth(
+                    self._wifi_interface, wifi_metric, vpn_active
+                )
+                # Only fail if interface has gateway but still errored
+                if not result.get('success') and 'No gateway found' not in result.get('error', ''):
+                    results.append(('wifi', result))
+                elif result.get('success'):
+                    results.append(('wifi', result))
+                else:
+                    logger.info(f"WiFi interface {self._wifi_interface} has no gateway, skipping")
             
-            # Set modem metric
+            # Set modem metric with smooth transition
             if self._modem_interface:
-                result = await self._set_modem_metric(modem_metric)
+                result = await self._set_modem_metric_smooth(
+                    modem_metric, vpn_active
+                )
                 results.append(('modem', result))
             
             # Check results
             all_success = all(r[1].get('success', False) for r in results)
             
             if all_success:
-                logger.info(f"Network priority set to: {mode}")
+                self._last_priority_change = time.time()
+                logger.info(f"Network priority set to: {mode} (VPN-aware: {vpn_active})")
                 return {
                     'success': True,
                     'message': f'Priority mode set to {mode}',
                     'mode': mode,
                     'wifi_metric': wifi_metric if self._wifi_interface else None,
-                    'modem_metric': modem_metric if self._modem_interface else None
+                    'modem_metric': modem_metric if self._modem_interface else None,
+                    'vpn_active': vpn_active,
+                    'vpn_interface': vpn_interface
                 }
             else:
                 errors = [f"{r[0]}: {r[1].get('error', 'unknown')}" for r in results if not r[1].get('success')]
@@ -562,6 +625,66 @@ class NetworkService:
         
         except Exception as e:
             logger.error(f"Error setting priority: {e}")
+            return {'success': False, 'error': str(e)}
+    
+    async def auto_adjust_priority(self) -> Dict:
+        """
+        Automatically adjust network priority based on available interfaces.
+        4G modem always primary if available, WiFi as backup.
+        """
+        try:
+            await self.detect_interfaces(force=True)
+            
+            # Check which interfaces are up and have connectivity
+            modem_up = False
+            wifi_up = False
+            
+            if self._modem_interface:
+                result = await self._run_command(['ip', 'addr', 'show', self._modem_interface])
+                if result.returncode == 0 and 'state UP' in result.stdout:
+                    modem_up = True
+            
+            if self._wifi_interface:
+                result = await self._run_command(['ip', 'addr', 'show', self._wifi_interface])
+                if result.returncode == 0 and 'state UP' in result.stdout:
+                    wifi_up = True
+            
+            # Determine optimal mode
+            if modem_up:
+                target_mode = 'modem'
+                reason = '4G modem available (primary)'
+            elif wifi_up:
+                target_mode = 'wifi'
+                reason = 'Only WiFi available'
+            else:
+                return {
+                    'success': False,
+                    'error': 'No network interfaces available'
+                }
+            
+            # Get current routes to check if change is needed
+            routes = await self.get_routes()
+            current_primary = routes[0].get('interface') if routes else None
+            
+            target_interface = self._modem_interface if target_mode == 'modem' else self._wifi_interface
+            
+            if current_primary == target_interface:
+                logger.debug(f"Priority already optimal: {target_mode}")
+                return {
+                    'success': True,
+                    'message': 'Priority already optimal',
+                    'mode': target_mode,
+                    'changed': False
+                }
+            
+            # Apply priority change
+            result = await self.set_connection_priority(target_mode, force=False)
+            result['reason'] = reason
+            result['changed'] = True
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error in auto-adjust: {e}")
             return {'success': False, 'error': str(e)}
     
     async def _set_interface_metric(self, interface: str, metric: int) -> Dict:
@@ -616,6 +739,92 @@ class NetworkService:
         except Exception as e:
             return {'success': False, 'error': str(e)}
     
+    async def _set_interface_metric_smooth(self, interface: str, metric: int, vpn_active: bool) -> Dict:
+        """Set metric with smooth transition to avoid VPN disruption"""
+        try:
+            # Get current default route info
+            result = await self._run_command(['ip', 'route', 'show', 'default'])
+            if result.returncode != 0:
+                return {'success': False, 'error': 'Failed to get routes'}
+            
+            gateway = None
+            old_metric = None
+            
+            for line in result.stdout.strip().split('\n'):
+                if interface in line:
+                    match = re.search(r'via\s+(\d+\.\d+\.\d+\.\d+)', line)
+                    if match:
+                        gateway = match.group(1)
+                    metric_match = re.search(r'metric\s+(\d+)', line)
+                    if metric_match:
+                        old_metric = int(metric_match.group(1))
+                    break
+            
+            if not gateway:
+                logger.warning(f'No gateway found for {interface} (may be unmanaged or disconnected)')
+                return {'success': False, 'error': f'No gateway found for {interface}'}
+            
+            # If metric is the same, no change needed
+            if old_metric == metric:
+                logger.debug(f"Metric for {interface} already set to {metric}")
+                return {'success': True, 'message': f'Metric already set to {metric}'}
+            
+            if vpn_active:
+                # SMOOTH TRANSITION: Add new route before deleting old one
+                logger.info(f"VPN active: Adding new route with metric {metric} before removing old")
+                
+                # Add new route with new metric (will coexist temporarily)
+                result = await self._run_command(
+                    ['sudo', 'ip', 'route', 'add', 'default', 'via', gateway,
+                     'dev', interface, 'metric', str(metric)]
+                )
+                
+                if result.returncode != 0 and 'File exists' not in result.stderr:
+                    return {'success': False, 'error': f'Failed to add new route: {result.stderr}'}
+                
+                # Wait for connections to migrate to new route
+                await asyncio.sleep(self.ROUTE_TRANSITION_DELAY)
+                
+                # Now delete old route if it had a different metric
+                if old_metric is not None:
+                    await self._run_command(
+                        ['sudo', 'ip', 'route', 'del', 'default', 'via', gateway,
+                         'dev', interface, 'metric', str(old_metric)]
+                    )
+            else:
+                # NO VPN: Can safely do immediate replacement
+                await self._run_command(
+                    ['sudo', 'ip', 'route', 'del', 'default', 'via', gateway, 'dev', interface]
+                )
+                
+                result = await self._run_command(
+                    ['sudo', 'ip', 'route', 'add', 'default', 'via', gateway,
+                     'dev', interface, 'metric', str(metric)]
+                )
+                
+                if result.returncode != 0:
+                    return {'success': False, 'error': result.stderr.strip()}
+            
+            # Persist in NetworkManager
+            conn_result = await self._run_command(
+                ['nmcli', '-t', '-f', 'NAME,DEVICE', 'connection', 'show', '--active']
+            )
+            
+            for line in conn_result.stdout.strip().split('\n'):
+                if ':' in line:
+                    name, device = line.split(':', 1)
+                    if device == interface:
+                        await self._run_command(
+                            ['nmcli', 'connection', 'modify', name, 'ipv4.route-metric', str(metric)]
+                        )
+                        break
+            
+            logger.info(f"Metric for {interface} set to {metric} (VPN-aware: {vpn_active})")
+            return {'success': True, 'message': f'Metric set to {metric}'}
+        
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
     async def _set_modem_metric(self, metric: int) -> Dict:
         """Set metric for the USB 4G modem"""
         try:
@@ -660,6 +869,105 @@ class NetworkService:
                 return {'success': False, 'error': result.stderr.strip()}
             
             logger.info(f"Modem {self._modem_interface} metric set to {metric}")
+            return {'success': True, 'message': f'Modem metric set to {metric}'}
+        
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    async def _set_modem_metric_smooth(self, metric: int, vpn_active: bool) -> Dict:
+        """Set modem metric with smooth transition to avoid VPN disruption"""
+        try:
+            if not self._modem_interface:
+                return {'success': False, 'error': 'No modem interface found'}
+            
+            # Get modem IP
+            result = await self._run_command(['ip', 'addr', 'show', self._modem_interface])
+            if result.returncode != 0:
+                return {'success': False, 'error': 'Failed to get modem IP'}
+            
+            ip_match = re.search(r'inet\s+(\d+\.\d+\.\d+\.\d+)', result.stdout)
+            if not ip_match:
+                return {'success': False, 'error': 'Modem has no IP address'}
+            
+            modem_ip = ip_match.group(1)
+            
+            # Derive gateway (typically .1 in same subnet for USB modems)
+            ip_parts = modem_ip.split('.')
+            ip_parts[-1] = '1'
+            modem_gateway = '.'.join(ip_parts)
+            
+            # Get current metric for this interface
+            old_metric = None
+            routes_result = await self._run_command(['ip', 'route', 'show', 'default'])
+            for line in routes_result.stdout.strip().split('\n'):
+                if self._modem_interface in line and line.strip():
+                    metric_match = re.search(r'metric\s+(\d+)', line)
+                    if metric_match:
+                        old_metric = int(metric_match.group(1))
+                        break
+            
+            # If metric is the same, no change needed
+            if old_metric == metric:
+                logger.debug(f"Metric for {self._modem_interface} already set to {metric}")
+                return {'success': True, 'message': f'Modem metric already set to {metric}'}
+            
+            if vpn_active:
+                # SMOOTH TRANSITION: Add new route before deleting old one
+                logger.info(f"VPN active: Adding new modem route with metric {metric} before removing old")
+                
+                # Add new route with new metric
+                result = await self._run_command(
+                    ['sudo', 'ip', 'route', 'add', 'default', 'via', modem_gateway,
+                     'dev', self._modem_interface, 'metric', str(metric)]
+                )
+                
+                if result.returncode != 0 and 'File exists' not in result.stderr:
+                    return {'success': False, 'error': f'Failed to add new route: {result.stderr}'}
+                
+                # Wait for connections to migrate
+                await asyncio.sleep(self.ROUTE_TRANSITION_DELAY)
+                
+                # Remove old routes
+                routes_result = await self._run_command(['ip', 'route', 'show', 'default'])
+                for line in routes_result.stdout.strip().split('\n'):
+                    if self._modem_interface in line and line.strip():
+                        parts = line.split()
+                        if len(parts) >= 3 and parts[0] == 'default' and parts[1] == 'via':
+                            existing_gw = parts[2]
+                            # Extract metric if present
+                            line_metric = None
+                            metric_match = re.search(r'metric\s+(\d+)', line)
+                            if metric_match:
+                                line_metric = int(metric_match.group(1))
+                            
+                            # Only delete if it's not the new metric we just added
+                            if line_metric != metric:
+                                await self._run_command(
+                                    ['sudo', 'ip', 'route', 'del', 'default', 'via', existing_gw,
+                                     'dev', self._modem_interface, 'metric', str(line_metric) if line_metric else '0']
+                                )
+            else:
+                # NO VPN: Can safely do immediate replacement
+                routes_result = await self._run_command(['ip', 'route', 'show', 'default'])
+                for line in routes_result.stdout.strip().split('\n'):
+                    if self._modem_interface in line and line.strip():
+                        parts = line.split()
+                        if len(parts) >= 3 and parts[0] == 'default' and parts[1] == 'via':
+                            existing_gw = parts[2]
+                            await self._run_command(
+                                ['sudo', 'ip', 'route', 'del', 'default', 'via', existing_gw,
+                                 'dev', self._modem_interface]
+                            )
+                
+                result = await self._run_command(
+                    ['sudo', 'ip', 'route', 'add', 'default', 'via', modem_gateway,
+                     'dev', self._modem_interface, 'metric', str(metric)]
+                )
+                
+                if result.returncode != 0 and 'File exists' not in result.stderr:
+                    return {'success': False, 'error': result.stderr.strip()}
+            
+            logger.info(f"Modem {self._modem_interface} metric set to {metric} (VPN-aware: {vpn_active})")
             return {'success': True, 'message': f'Modem metric set to {metric}'}
         
         except Exception as e:

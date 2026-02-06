@@ -163,6 +163,17 @@ async def periodic_stats_broadcast():
                 network_status = await network_service.get_status()
                 await websocket_manager.broadcast("network_status", {"success": True, **network_status})
             
+            # Auto-adjust network priority every 30 seconds (transparent, only if needed)
+            if counter % 30 == 0:
+                from services.network_service import get_network_service
+                network_service = get_network_service()
+                result = await network_service.auto_adjust_priority()
+                if result.get('changed'):
+                    logger.info(f"Network priority auto-adjusted: {result.get('reason')}")
+                    # Broadcast updated network status after change
+                    network_status = await network_service.get_status()
+                    await websocket_manager.broadcast("network_status", {"success": True, **network_status})
+            
             # System resources (CPU/Memory) every 3 seconds
             if counter % 3 == 0:
                 from services.system_service import SystemService

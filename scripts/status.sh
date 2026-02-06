@@ -210,6 +210,61 @@ if command -v mmcli &> /dev/null; then
         fi
     fi
 fi
+echo -e "\n${BLUE}🌐 Network Priority & Routing${NC}"
+# Show default routes with metrics
+ROUTES=$(ip route show default 2>/dev/null)
+if [ -n "$ROUTES" ]; then
+    # Parse primary route (lowest metric)
+    PRIMARY_IFACE=$(echo "$ROUTES" | sort -t' ' -k9 -n | head -1 | grep -oP 'dev \K\S+')
+    PRIMARY_METRIC=$(echo "$ROUTES" | sort -t' ' -k9 -n | head -1 | grep -oP 'metric \K\d+')
+    PRIMARY_GW=$(echo "$ROUTES" | sort -t' ' -k9 -n | head -1 | grep -oP 'via \K\S+')
+    
+    # Detect modem interface
+    MODEM_IFACE=$(ip -o addr show 2>/dev/null | grep "192\.168\.8\." | awk '{print $2}' | head -1)
+    
+    # Check if primary is 4G modem
+    if [ -n "$MODEM_IFACE" ] && [ "$PRIMARY_IFACE" = "$MODEM_IFACE" ]; then
+        echo -e "${GREEN}✅${NC} Primary: 4G modem ($PRIMARY_IFACE) metric $PRIMARY_METRIC via $PRIMARY_GW"
+    elif [ -n "$PRIMARY_IFACE" ]; then
+        echo -e "${YELLOW}⚠️${NC}  Primary: $PRIMARY_IFACE metric $PRIMARY_METRIC via $PRIMARY_GW"
+        if [ -n "$MODEM_IFACE" ]; then
+            echo -e "    ${BLUE}ℹ️${NC}  4G modem detected ($MODEM_IFACE) but not primary"
+        fi
+    fi
+    
+    # Show all routes
+    ROUTE_COUNT=$(echo "$ROUTES" | wc -l)
+    if [ "$ROUTE_COUNT" -gt 1 ]; then
+        BACKUP_LINES=$(echo "$ROUTES" | sort -t' ' -k9 -n | tail -n +2)
+        while IFS= read -r line; do
+            B_IFACE=$(echo "$line" | grep -oP 'dev \K\S+')
+            B_METRIC=$(echo "$line" | grep -oP 'metric \K\d+')
+            B_GW=$(echo "$line" | grep -oP 'via \K\S+')
+            echo -e "${GREEN}✓${NC} Backup: $B_IFACE metric $B_METRIC via $B_GW"
+        done <<< "$BACKUP_LINES"
+    else
+        echo -e "${YELLOW}⚠️${NC}  Only one default route (no failover)"
+    fi
+else
+    echo -e "${RED}❌${NC} No default routes configured"
+fi
+
+# VPN-aware routing check
+if ip link show 2>/dev/null | grep -q "tailscale.*UP"; then
+    TS_IP=$(ip -o addr show tailscale0 2>/dev/null | grep -oP 'inet \K[\d.]+')
+    echo -e "${GREEN}✅${NC} VPN active: tailscale0 ($TS_IP) - smooth transitions enabled"
+else
+    echo -e "${BLUE}ℹ️${NC}  VPN not active - standard route transitions"
+fi
+
+# Check route permissions
+if sudo -n ip route show default &>/dev/null; then
+    echo -e "${GREEN}✓${NC} Route management permissions OK"
+else
+    echo -e "${YELLOW}⚠️${NC}  Route management may require password"
+    echo -e "    ${BLUE}ℹ️${NC}  Run: sudo bash scripts/setup-system-sudoers.sh"
+fi
+
 echo -e "\n${BLUE}🌐 Connectivity${NC}"
 # Test backend port using /dev/tcp (built into bash)
 if timeout 1 bash -c "echo >/dev/tcp/127.0.0.1/8000" 2>/dev/null; then
