@@ -347,7 +347,7 @@ Cambios de banda: ${stats.band_changes}
         <h2>📶 Módem</h2>
         <div className="waiting-data">
           <div className="spinner-small"></div>
-          {t('common.loadingContent', 'Cargando contenido')}
+          {t('common.loadingContent')}
         </div>
       </div>
     )

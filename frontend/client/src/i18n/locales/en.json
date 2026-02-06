@@ -303,7 +303,10 @@
     "disconnectError": "Failed to disconnect from VPN",
     "authRequired": "Open the authentication page to complete the connection",
     "authTimeout": "Authentication timeout. Please try again.",
-    "deviceDeleted": "Device appears to be deleted from admin panel. Please logout and re-authenticate."
+    "deviceDeleted": "Device appears to be deleted from admin panel. Please logout and re-authenticate.",
+    "peersTitle": "Network Nodes",
+    "loadingPeers": "Loading nodes...",
+    "noPeers": "No other nodes found in the network"
   },
   "common": {
     "cancel": "Cancel",

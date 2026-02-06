@@ -303,7 +303,10 @@
     "disconnectError": "Error al desconectar de la VPN",
     "authRequired": "Abre la página de autenticación para completar la conexión",
     "authTimeout": "Tiempo de autenticación agotado. Por favor, inténtalo de nuevo.",
-    "deviceDeleted": "El dispositivo parece haber sido eliminado del panel de administración. Por favor, cierra sesión y vuelve a autenticarte."
+    "deviceDeleted": "El dispositivo parece haber sido eliminado del panel de administración. Por favor, cierra sesión y vuelve a autenticarte.",
+    "peersTitle": "Nodos de la Red",
+    "loadingPeers": "Cargando nodos...",
+    "noPeers": "No se encontraron otros nodos en la red"
   },
   "common": {
     "cancel": "Cancelar",

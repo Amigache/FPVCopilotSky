@@ -393,7 +393,7 @@ const VPNView = () => {
         <h2>{t('vpn.title')}</h2>
         <div className="waiting-data">
           <div className="spinner-small"></div>
-          {t('common.loadingContent', 'Cargando contenido')}
+          {t('common.loadingContent')}
         </div>
       </div>
     )
@@ -533,7 +533,7 @@ const VPNView = () => {
       {isConnected && (
         <div className="card">
           <div className="card-header">
-            <h2>🌐 {t('vpn.peersTitle', 'Network Nodes')}</h2>
+            <h2>🌐 {t('vpn.peersTitle')}</h2>
             <button 
               className="vpn-btn-refresh" 
               onClick={loadPeers} 
@@ -546,7 +546,7 @@ const VPNView = () => {
           {loadingPeers && peers.length === 0 ? (
             <div className="waiting-data">
               <div className="spinner-small"></div>
-              {t('vpn.loadingPeers', 'Loading nodes...')}
+              {t('vpn.loadingPeers')}
             </div>
           ) : (
             <div className="peers-list">
@@ -590,7 +590,7 @@ const VPNView = () => {
               ))}
               {peers.length === 0 && !loadingPeers && (
                 <div className="no-peers">
-                  {t('vpn.noPeers', 'No other nodes found in the network')}
+                  {t('vpn.noPeers')}
                 </div>
               )}
             </div>
