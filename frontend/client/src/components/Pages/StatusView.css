@@ -251,6 +251,40 @@
   to { transform: rotate(360deg); }
 }
 
+/* Preferences section */
+.preferences-info {
+  color: #9aa6c3;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  margin-bottom: 1rem;
+}
+
+.btn-reset-preferences {
+  width: 100%;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #d32f2f 0%, #b71c1c 100%);
+  color: white;
+  border: 1px solid rgba(244, 67, 54, 0.4);
+  border-radius: 6px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-reset-preferences:hover:not(:disabled) {
+  background: linear-gradient(135deg, #e53935 0%, #c62828 100%);
+  border-color: rgba(244, 67, 54, 0.6);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(244, 67, 54, 0.3);
+}
+
+.btn-reset-preferences:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .monitor-columns {

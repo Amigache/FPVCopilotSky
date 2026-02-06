@@ -393,14 +393,23 @@ class GStreamerService:
         if self.is_streaming:
             return {"success": False, "message": "Already streaming"}
         
-        # Auto-detect camera if needed
-        if not os.path.exists(self.video_config.device):
+        # Auto-detect camera if device is not configured or doesn't exist
+        if not self.video_config.device or not os.path.exists(self.video_config.device):
             detected = auto_detect_camera()
-            if os.path.exists(detected):
+            if detected and os.path.exists(detected):
+                old_device = self.video_config.device
                 self.video_config.device = detected
-                print(f"📷 Auto-detected camera: {detected}")
+                if old_device:
+                    print(f"⚠️ Camera {old_device} not found, using detected: {detected}")
+                else:
+                    print(f"📷 Auto-detected camera: {detected}")
             else:
-                return {"success": False, "message": f"Camera not found: {self.video_config.device}"}
+                msg = f"Camera not found: {self.video_config.device}" if self.video_config.device else "No camera configured or detected"
+                return {"success": False, "message": msg}
+        
+        # Validate streaming configuration
+        if not self.streaming_config.udp_host:
+            return {"success": False, "message": "No destination IP configured for streaming"}
         
         # Build pipeline
         if not self.build_pipeline():

@@ -12,6 +12,7 @@ const StatusView = () => {
   
   const [loading, setLoading] = useState(true)
   const [statusData, setStatusData] = useState(null)
+  const [resettingPrefs, setResettingPrefs] = useState(false)
 
   // Load initial status
   useEffect(() => {
@@ -40,6 +41,29 @@ const StatusView = () => {
       showToast(t('status.error.loadingStatus'), 'error')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleResetPreferences = async () => {
+    if (!confirm(t('status.preferences.confirmReset', '¿Estás seguro de que quieres restablecer todas las preferencias a los valores por defecto? Esta acción creará un backup.'))) {
+      return
+    }
+
+    setResettingPrefs(true)
+    try {
+      const response = await api.post('/api/system/preferences/reset')
+      const data = await response.json()
+      
+      if (data.success) {
+        showToast(t('status.preferences.resetSuccess', 'Preferencias restablecidas. Se recomienda reiniciar la aplicación.'), 'success')
+      } else {
+        showToast(data.message || t('status.preferences.resetError', 'Error al restablecer preferencias'), 'error')
+      }
+    } catch (error) {
+      console.error('Error resetting preferences:', error)
+      showToast(t('status.preferences.resetError', 'Error al restablecer preferencias'), 'error')
+    } finally {
+      setResettingPrefs(false)
     }
   }
 
@@ -131,9 +155,7 @@ const StatusView = () => {
             />
           </div>
         </div>
-      </div>
 
-      <div className="monitor-col">
         {/* WebUI Status */}
         <div className="card">
           <h2>{t('status.sections.frontend')}</h2>
@@ -156,7 +178,9 @@ const StatusView = () => {
             />
           </div>
         </div>
+      </div>
 
+      <div className="monitor-col">
         {/* Permissions */}
         <div className="card">
           <h2>{t('status.sections.permissions')}</h2>
@@ -217,6 +241,25 @@ const StatusView = () => {
               </div>
             </div>
           )}
+        </div>
+
+        {/* Preferences Management */}
+        <div className="card">
+          <h2>{t('status.sections.preferences', 'Preferencias')}</h2>
+          
+          <div className="info-section">
+            <p className="preferences-info">
+              {t('status.preferences.description', 'Restablece todas las preferencias (conexión serial, router, video, etc.) a los valores por defecto. Se creará un backup automático.')}
+            </p>
+            
+            <button 
+              className="btn-reset-preferences"
+              onClick={handleResetPreferences}
+              disabled={resettingPrefs}
+            >
+              {resettingPrefs ? '⏳ Restableciendo...' : '🔄 Restablecer Preferencias'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

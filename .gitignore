@@ -43,6 +43,10 @@ Thumbs.db
 *.log
 logs/
 
+# User preferences (auto-generated, contains user-specific config)
+preferences.json
+preferences.json.backup*
+
 # Cache
 .cache/
 .pytest_cache/
@@ -64,6 +68,9 @@ preferences.json.backup
 
 # Config backups
 config.json.backup
+
+# User preferences (generated on first run)
+preferences.json
 
 # Video/Stream temp files
 *.m3u8

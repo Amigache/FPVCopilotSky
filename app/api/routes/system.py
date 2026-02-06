@@ -50,3 +50,28 @@ async def get_system_resources():
         "cpu": SystemService.get_cpu_info(),
         "memory": SystemService.get_memory_info()
     }
+
+
+@router.post("/preferences/reset")
+async def reset_preferences():
+    """Reset all preferences to defaults"""
+    try:
+        from services.preferences import get_preferences
+        prefs = get_preferences()
+        success = prefs.reset_preferences()
+        
+        if success:
+            return {
+                "success": True,
+                "message": "Preferences reset to defaults. Restart recommended."
+            }
+        else:
+            return {
+                "success": False,
+                "message": "Failed to reset preferences"
+            }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Error resetting preferences: {str(e)}"
+        }

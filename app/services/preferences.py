@@ -78,20 +78,10 @@ class PreferencesService:
                 "last_successful": False
             },
             "router": {
-                "outputs": [
-                    {
-                        "id": "default-tcp",
-                        "type": "tcp_server",
-                        "host": "0.0.0.0",
-                        "port": 5760,
-                        "name": "Mission Planner",
-                        "enabled": True,
-                        "auto_start": True
-                    }
-                ]
+                "outputs": []  # No outputs by default, user creates them
             },
             "video": {
-                "device": "/dev/video0",
+                "device": "",  # Will be auto-detected when user saves first time
                 "width": 960,
                 "height": 720,
                 "framerate": 30,
@@ -100,9 +90,9 @@ class PreferencesService:
                 "h264_bitrate": 2000
             },
             "streaming": {
-                "udp_host": "192.168.1.136",
+                "udp_host": "",  # No default IP, user must configure
                 "udp_port": 5600,
-                "enabled": True,
+                "enabled": False,  # Not enabled by default
                 "auto_start": False
             },
             "ui": {
@@ -129,7 +119,11 @@ class PreferencesService:
                 
                 print(f"✅ Loaded preferences from {self._config_path}")
             else:
-                print(f"📝 Using default preferences (no file found)")
+                # First run - create preferences file with defaults
+                print(f"📝 First run detected - creating preferences file")
+                self._preferences = self._default_preferences()
+                self._save()
+                print(f"✅ Created default preferences at {self._config_path}")
         except Exception as e:
             print(f"⚠️ Failed to load preferences: {e}")
             self._preferences = self._default_preferences()
@@ -228,7 +222,48 @@ class PreferencesService:
     def get_video_config(self) -> Dict[str, Any]:
         """Get video configuration."""
         with self._lock:
-            return self._preferences.get("video", {})
+            config = self._preferences.get("video", {})
+            device = config.get("device", "")
+            
+            # If device is empty or doesn't exist, try to auto-detect
+            if not device or not os.path.exists(device):
+                # Find first available video device
+                import glob
+                devices = sorted(glob.glob('/dev/video*'))
+                if devices:
+                    # Filter out metadata devices (e.g., video0 might be metadata, video1 actual camera)
+                    for dev in devices:
+                        try:
+                            # Quick check if it's a capture device
+                            import subprocess
+                            result = subprocess.run(
+                                ['v4l2-ctl', '--device', dev, '--info'],
+                                capture_output=True,
+                                text=True,
+                                timeout=2
+                            )
+                            if result.returncode == 0 and 'video capture' in result.stdout.lower():
+                                config["device"] = dev
+                                if device:  # Only warn if there was a previous device configured
+                                    print(f"⚠️ Video device {device} not found, using {dev}")
+                                else:
+                                    print(f"ℹ️ Auto-detected video device: {dev}")
+                                break
+                        except Exception:
+                            continue
+                    else:
+                        # No valid capture device found
+                        if device:
+                            print(f"⚠️ Video device {device} not found and no alternative detected")
+                        else:
+                            print(f"ℹ️ No video capture devices detected")
+                else:
+                    if device:
+                        print(f"⚠️ Video device {device} not found, no /dev/video* devices available")
+                    else:
+                        print(f"ℹ️ No video devices detected")
+            
+            return config
     
     def set_video_config(self, config: Dict[str, Any]):
         """Set video configuration."""
@@ -306,6 +341,26 @@ class PreferencesService:
         """Get all preferences (for debugging/export)."""
         with self._lock:
             return self._preferences.copy()
+    
+    def reset_preferences(self) -> bool:
+        """Reset all preferences to defaults and save."""
+        try:
+            with self._lock:
+                # Keep a backup
+                backup_path = self._config_path + ".backup"
+                if os.path.exists(self._config_path):
+                    import shutil
+                    shutil.copy2(self._config_path, backup_path)
+                    print(f"📦 Backed up preferences to {backup_path}")
+                
+                # Reset to defaults
+                self._preferences = self._default_preferences()
+                self._save()
+                print(f"✅ Preferences reset to defaults")
+                return True
+        except Exception as e:
+            print(f"⚠️ Failed to reset preferences: {e}")
+            return False
 
 
 # Singleton instance
