@@ -470,6 +470,42 @@ class GStreamerService:
         
         return {"success": True, "message": "Streaming stopped"}
     
+    def update_live_property(self, property_name: str, value) -> Dict[str, Any]:
+        """Update a pipeline element property without restarting.
+        
+        Only supports:
+        - quality (MJPEG codec, jpegenc element)
+        - h264_bitrate (H.264 codec, x264enc element)
+        """
+        if not self.is_streaming or not self.pipeline:
+            return {"success": False, "message": "Not streaming"}
+        
+        encoder = self.pipeline.get_by_name("encoder")
+        if not encoder:
+            return {"success": False, "message": "Encoder element not found"}
+        
+        codec = self.video_config.codec.lower()
+        
+        if property_name == "quality" and codec == "mjpeg":
+            value = max(10, min(100, int(value)))
+            encoder.set_property("quality", value)
+            self.video_config.quality = value
+            print(f"🎛️ Live update: JPEG quality → {value}")
+            self._broadcast_status()
+            return {"success": True, "message": f"Quality set to {value}", "property": "quality", "value": value}
+        
+        elif property_name == "h264_bitrate" and codec == "h264":
+            value = max(100, min(10000, int(value)))
+            encoder.set_property("bitrate", value)
+            self.video_config.h264_bitrate = value
+            print(f"🎛️ Live update: H.264 bitrate → {value} kbps")
+            self._broadcast_status()
+            return {"success": True, "message": f"Bitrate set to {value} kbps", "property": "h264_bitrate", "value": value}
+        
+        else:
+            allowed = "quality" if codec == "mjpeg" else "h264_bitrate"
+            return {"success": False, "message": f"Cannot change '{property_name}' live with {codec}. Only '{allowed}' is allowed."}
+
     def restart(self) -> Dict[str, Any]:
         """Restart video streaming with current configuration"""
         self.stop()

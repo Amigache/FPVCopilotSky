@@ -185,7 +185,7 @@
 .slider {
   -webkit-appearance: none;
   width: 100%;
-  height: 6px;
+  height: 6px !important;
   border-radius: 3px;
   background: rgba(102, 102, 102, 0.3);
   outline: none;
@@ -449,4 +449,89 @@
   .btn {
     width: 100%;
   }
+}
+
+/* ======================== */
+/* Live Mode Styles         */
+/* ======================== */
+
+/* Badge shown when streaming */
+.live-mode-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  margin-bottom: 12px;
+  border-radius: 6px;
+  background: rgba(76, 175, 80, 0.12);
+  border: 1px solid rgba(76, 175, 80, 0.3);
+  color: #81c784;
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.live-mode-badge .live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #4caf50;
+  animation: pulse 1.5s infinite;
+}
+
+/* Disabled fields while streaming */
+.field-disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.field-disabled select,
+.field-disabled input {
+  cursor: not-allowed;
+}
+
+/* Live-editable field highlight */
+.field-live {
+  background: rgba(76, 175, 80, 0.06);
+  border-radius: 6px;
+  padding: 8px;
+  margin-left: -8px;
+  margin-right: -8px;
+  border: 1px solid rgba(76, 175, 80, 0.15);
+}
+
+/* LIVE tag next to label */
+.live-tag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(76, 175, 80, 0.2);
+  color: #81c784;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  vertical-align: middle;
+}
+
+/* Card disabled overlay */
+.card-disabled {
+  position: relative;
+}
+
+.card-disabled::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 8px;
+  pointer-events: none;
+}
+
+/* Lock notice */
+.lock-notice {
+  font-size: 0.78rem;
+  color: #ffb74d;
+  background: rgba(255, 152, 0, 0.08);
+  padding: 6px 10px;
+  border-radius: 4px;
+  margin-bottom: 10px;
 }

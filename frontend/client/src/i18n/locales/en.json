@@ -103,7 +103,11 @@
       "errorStopping": "Error stopping",
       "errorRestarting": "Error restarting",
       "errorApplying": "Error applying",
-      "errorCopying": "Error copying"
+      "errorCopying": "Error copying",
+      "errorLiveUpdate": "Error updating live parameter",
+      "liveMode": "Live — only quality/bitrate can be changed",
+      "lockedWhileLive": "Network locked while streaming",
+      "liveUpdated": "Parameter updated live"
     },
     "flightController": {
       "title": "🔗 Connection",

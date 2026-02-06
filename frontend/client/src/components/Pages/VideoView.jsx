@@ -203,6 +203,26 @@ const VideoView = () => {
     setActionLoading(null)
   }
 
+  // Live update - change property on-the-fly without restart
+  const liveUpdate = async (property, value) => {
+    try {
+      const response = await api.post('/api/video/live-update', { property, value: parseInt(value) })
+      const data = await response.json()
+      if (!data.success) {
+        showToast(data.message || t('views.video.errorLiveUpdate'), 'error')
+      }
+    } catch (error) {
+      showToast(error.message || t('views.video.errorLiveUpdate'), 'error')
+    }
+  }
+
+  // Debounced live update for sliders
+  const liveUpdateTimer = useRef(null)
+  const debouncedLiveUpdate = (property, value) => {
+    clearTimeout(liveUpdateTimer.current)
+    liveUpdateTimer.current = setTimeout(() => liveUpdate(property, value), 300)
+  }
+
   const copyPipeline = async () => {
     const pipeline = getPipelineString()
     
@@ -347,22 +367,31 @@ const VideoView = () => {
           <div className="card">
             <h2>{t('views.video.videoConfiguration')}</h2>
             
-            <div className="form-group">
+            {status.streaming && (
+              <div className="live-mode-badge">
+                <span className="live-dot"></span>
+                {t('views.video.liveMode')}
+              </div>
+            )}
+
+            <div className={`form-group ${status.streaming ? 'field-disabled' : ''}`}>
               <label>{t('views.video.codec')}</label>
               <select 
                 value={config.codec} 
                 onChange={(e) => updateConfig(prev => ({ ...prev, codec: e.target.value }))}
+                disabled={status.streaming}
               >
                 <option value="mjpeg">{t('views.video.codecMjpeg')}</option>
                 <option value="h264">{t('views.video.codecH264')}</option>
               </select>
             </div>
 
-            <div className="form-group">
+            <div className={`form-group ${status.streaming ? 'field-disabled' : ''}`}>
               <label>{t('views.video.videoSource')}</label>
               <select 
                 value={config.device} 
                 onChange={(e) => handleCameraChange(e.target.value)}
+                disabled={status.streaming}
               >
                 {cameras.length === 0 ? (
                   <option value="">{t('views.video.noCamerasAvailable')}</option>
@@ -377,11 +406,12 @@ const VideoView = () => {
             </div>
 
             <div className="form-row">
-              <div className="form-group">
+              <div className={`form-group ${status.streaming ? 'field-disabled' : ''}`}>
                 <label>{t('views.video.resolution')}</label>
                 <select 
                   value={`${config.width}x${config.height}`}
                   onChange={(e) => handleResolutionChange(e.target.value)}
+                  disabled={status.streaming}
                 >
                   {availableResolutions.length > 0 ? (
                     availableResolutions.map(res => (
@@ -395,11 +425,12 @@ const VideoView = () => {
                 </select>
               </div>
 
-              <div className="form-group">
+              <div className={`form-group ${status.streaming ? 'field-disabled' : ''}`}>
                 <label>{t('views.video.fps')}</label>
                 <select 
                   value={config.framerate}
                   onChange={(e) => updateConfig(prev => ({ ...prev, framerate: parseInt(e.target.value) }))}
+                  disabled={status.streaming}
                 >
                   {availableFps.map(fps => (
                     <option key={fps} value={fps}>{fps} fps</option>
@@ -408,28 +439,42 @@ const VideoView = () => {
               </div>
             </div>
 
-            {/* MJPEG Settings */}
+            {/* MJPEG Settings - editable live */}
             {config.codec === 'mjpeg' && (
-              <div className="form-group">
-                <label>{t('views.video.jpegQuality')}: {config.quality}</label>
+              <div className={`form-group ${status.streaming ? 'field-live' : ''}`}>
+                <label>
+                  {t('views.video.jpegQuality')}: {config.quality}
+                  {status.streaming && <span className="live-tag">LIVE</span>}
+                </label>
                 <input 
                   type="range" 
-                  min="50" 
+                  min="10" 
                   max="100" 
                   value={config.quality}
-                  onChange={(e) => updateConfig(prev => ({ ...prev, quality: parseInt(e.target.value) }))}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value)
+                    updateConfig(prev => ({ ...prev, quality: val }))
+                    if (status.streaming) debouncedLiveUpdate('quality', val)
+                  }}
                   className="slider"
                 />
               </div>
             )}
 
-            {/* H.264 Settings */}
+            {/* H.264 Settings - editable live */}
             {config.codec === 'h264' && (
-              <div className="form-group">
-                <label>{t('views.video.bitrate')}</label>
+              <div className={`form-group ${status.streaming ? 'field-live' : ''}`}>
+                <label>
+                  {t('views.video.bitrate')}
+                  {status.streaming && <span className="live-tag">LIVE</span>}
+                </label>
                 <select 
                   value={config.h264_bitrate}
-                  onChange={(e) => updateConfig(prev => ({ ...prev, h264_bitrate: parseInt(e.target.value) }))}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value)
+                    updateConfig(prev => ({ ...prev, h264_bitrate: val }))
+                    if (status.streaming) liveUpdate('h264_bitrate', val)
+                  }}
                 >
                   <option value="500">500 ({t('views.video.bitrateMobile')})</option>
                   <option value="1000">1000</option>
@@ -442,18 +487,22 @@ const VideoView = () => {
           </div>
 
           {/* Network Settings */}
-          <div className="card">
+          <div className={`card ${status.streaming ? 'card-disabled' : ''}`}>
             <h2>{t('views.video.networkUdpRtp')}</h2>
+            {status.streaming && (
+              <div className="lock-notice">🔒 {t('views.video.lockedWhileLive')}</div>
+            )}
             <div className="form-row">
-              <div className="form-group">
+              <div className={`form-group ${status.streaming ? 'field-disabled' : ''}`}>
                 <PeerSelector
                   label={t('views.video.destinationIp')}
                   value={config.udp_host}
                   onChange={(value) => updateConfig(prev => ({ ...prev, udp_host: value }))}
                   placeholder="192.168.1.100"
+                  disabled={status.streaming}
                 />
               </div>
-              <div className="form-group">
+              <div className={`form-group ${status.streaming ? 'field-disabled' : ''}`}>
                 <label>{t('views.video.udpPort')}</label>
                 <input 
                   type="number" 
@@ -461,16 +510,18 @@ const VideoView = () => {
                   min="1024"
                   max="65535"
                   onChange={(e) => updateConfig(prev => ({ ...prev, udp_port: parseInt(e.target.value) }))}
+                  disabled={status.streaming}
                 />
               </div>
             </div>
             
-            <div className="form-group auto-start-toggle">
+            <div className={`form-group auto-start-toggle ${status.streaming ? 'field-disabled' : ''}`}>
               <label className="toggle-label">
                 <input 
                   type="checkbox" 
                   checked={config.auto_start || false}
                   onChange={(e) => updateConfig(prev => ({ ...prev, auto_start: e.target.checked }))}
+                  disabled={status.streaming}
                 />
                 <span className="toggle-switch"></span>
                 <span className="toggle-text">{t('views.video.autoStart')}</span>
@@ -484,38 +535,45 @@ const VideoView = () => {
           {/* Stream Control */}
           <div className="card">
             <h2>{t('views.video.streamControl')}</h2>
-            <div className="button-group">
-              <button 
-                className="btn btn-apply"
-                onClick={applySettings}
-                disabled={actionLoading !== null}
-              >
-                {actionLoading === 'apply' ? '⏳' : t('views.video.apply')}
-              </button>
-              <button 
-                className="btn btn-restart"
-                onClick={restartStream}
-                disabled={actionLoading !== null}
-              >
-                {actionLoading === 'restart' ? '⏳' : t('views.video.restart')}
-              </button>
-            </div>
-            <div className="button-group" style={{ marginTop: '10px' }}>
-              <button 
-                className="btn btn-start"
-                onClick={applyConfigAndStart}
-                disabled={actionLoading !== null || status.streaming}
-              >
-                {actionLoading === 'start' ? '⏳' : t('views.video.start')}
-              </button>
-              <button 
-                className="btn btn-stop"
-                onClick={stopStream}
-                disabled={actionLoading !== null || !status.streaming}
-              >
-                {actionLoading === 'stop' ? '⏳' : t('views.video.stop')}
-              </button>
-            </div>
+            {!status.streaming ? (
+              /* Offline mode: Apply + Start */
+              <>
+                <div className="button-group">
+                  <button 
+                    className="btn btn-apply"
+                    onClick={applySettings}
+                    disabled={actionLoading !== null}
+                  >
+                    {actionLoading === 'apply' ? '⏳' : t('views.video.apply')}
+                  </button>
+                  <button 
+                    className="btn btn-start"
+                    onClick={applyConfigAndStart}
+                    disabled={actionLoading !== null}
+                  >
+                    {actionLoading === 'start' ? '⏳' : t('views.video.start')}
+                  </button>
+                </div>
+              </>
+            ) : (
+              /* Live mode: Stop + Restart */
+              <div className="button-group">
+                <button 
+                  className="btn btn-stop"
+                  onClick={stopStream}
+                  disabled={actionLoading !== null}
+                >
+                  {actionLoading === 'stop' ? '⏳' : t('views.video.stop')}
+                </button>
+                <button 
+                  className="btn btn-restart"
+                  onClick={restartStream}
+                  disabled={actionLoading !== null}
+                >
+                  {actionLoading === 'restart' ? '⏳' : t('views.video.restart')}
+                </button>
+              </div>
+            )}
           </div>
 
           {/* GStreamer Pipeline */}

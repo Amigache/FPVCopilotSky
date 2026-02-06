@@ -103,7 +103,11 @@
       "errorStopping": "Error al detener",
       "errorRestarting": "Error al reiniciar",
       "errorApplying": "Error al aplicar",
-      "errorCopying": "Error al copiar"
+      "errorCopying": "Error al copiar",
+      "errorLiveUpdate": "Error al actualizar parámetro en vivo",
+      "liveMode": "En vivo — solo se puede cambiar calidad/bitrate",
+      "lockedWhileLive": "Red bloqueada durante la transmisión",
+      "liveUpdated": "Parámetro actualizado en vivo"
     },
     "flightController": {
       "title": "🔗 Conexión",

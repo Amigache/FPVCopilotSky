@@ -30,6 +30,12 @@ class VideoConfigRequest(BaseModel):
     h264_bitrate: Optional[int] = None
 
 
+class LivePropertyRequest(BaseModel):
+    """Live property change request (no pipeline restart)"""
+    property: str
+    value: int
+
+
 class StreamingConfigRequest(BaseModel):
     """Streaming configuration request"""
     udp_host: Optional[str] = None
@@ -150,6 +156,31 @@ async def configure_streaming(config: StreamingConfigRequest):
         print(f"⚠️ Failed to save streaming config: {e}")
     
     return {"success": True, "message": "Streaming configuration updated", "config": config_dict}
+
+
+@router.post("/live-update")
+async def live_update(req: LivePropertyRequest):
+    """Update a pipeline property on-the-fly without restarting.
+    Only quality (MJPEG) or h264_bitrate (H.264) are allowed."""
+    if not _video_service:
+        raise HTTPException(status_code=503, detail="Video service not initialized")
+    
+    result = _video_service.update_live_property(req.property, req.value)
+    
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["message"])
+    
+    # Save to preferences
+    try:
+        from services.preferences import get_preferences
+        prefs = get_preferences()
+        current = prefs.get_video_config()
+        current[req.property] = req.value
+        prefs.set_video_config(current)
+    except Exception as e:
+        print(f"⚠️ Failed to save live update: {e}")
+    
+    return result
 
 
 @router.get("/pipeline-string")
