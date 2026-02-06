@@ -25,6 +25,11 @@ FPV Copilot Sky es una solución integral para gestionar tu drone FPV desde cual
 ### 🌐 Conectividad Inteligente
 - **WiFi** y **4G/LTE** con priorización automática
 - Soporte modems **Huawei HiLink** (E3372, E8372...)
+- **Modo Video** optimizado para streaming 4G
+- Gestión avanzada de **bandas LTE** con presets
+- **Evaluación de calidad** de video en tiempo real
+- **Test de latencia** integrado
+- **Sesión de vuelo** para registro de métricas
 - Gestión visual de redes disponibles
 - Cambio automático entre interfaces
 
@@ -138,6 +143,13 @@ Por ejemplo: `http://192.168.1.145`
    - Ve a la pestaña **"Red"**
    - Conecta a WiFi o verifica estado del modem 4G
    - Visualiza interfaces activas y rutas
+   
+6. **Modo Video 4G (Opcional)**
+   - Ve a la pestaña **"Módem"**
+   - Activa el **Modo Video** para optimizar el streaming
+   - Configura bandas LTE según tu operador
+   - Realiza test de latencia pre-vuelo
+   - Ver [documentación del módem](docs/MODEM_FEATURES.md)
 
 ### Comandos Útiles
 
@@ -193,6 +205,9 @@ sudo journalctl -u fpvcopilot-sky -f
 - **[Guía de Producción](docs/PRODUCTION.md)** - Detalles de despliegue y arquitectura
 - **[Guía para Desarrolladores](DEVELOPMENT.md)** - Si quieres modificar o contribuir
 - **[Integración VPN](docs/VPN_INTEGRATION.md)** - Detalles técnicos del sistema VPN
+- **[Gestión de Red](docs/NETWORK_MANAGEMENT.md)** - Sistema de priorización y métricas
+- **[Funcionalidades del Módem](docs/MODEM_FEATURES.md)** - Modo video, bandas LTE, sesiones de vuelo
+- **[Quick Start Red](docs/NETWORK_QUICKSTART.md)** - Inicio rápido de configuración de red
 
 ## 🛠️ Soporte Técnico
 

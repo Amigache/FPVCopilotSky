@@ -97,16 +97,16 @@ const ModemView = () => {
   // Set LTE band
   const handleSetBand = async (preset) => {
     setChangingBand(true)
-    showToast('⏳ Cambiando banda LTE...', 'info')
+    showToast(`⏳ ${t('modem.changingBand')}`, 'info')
     try {
       const response = await api.post('/api/network/hilink/band', { preset }, 20000)
       if (response.ok) {
         const data = await response.json()
-        showToast(`✅ Banda cambiada: ${data.preset_name}`, 'success')
+        showToast(`✅ ${t('modem.bandChanged', { name: data.preset_name })}`, 'success')
         await loadStatus()
       } else {
         const data = await response.json()
-        showToast(data.detail || 'Error al cambiar banda', 'error')
+        showToast(data.detail || t('modem.errorChangingBand'), 'error')
       }
     } catch (error) {
       showToast(error.message, 'error')
@@ -117,11 +117,11 @@ const ModemView = () => {
   // Set network mode
   const handleSetNetworkMode = async (mode) => {
     setChangingMode(true)
-    showToast('⏳ Cambiando modo de red...', 'info')
+    showToast(`⏳ ${t('modem.changingNetworkMode')}`, 'info')
     try {
       const response = await api.post('/api/network/hilink/mode', { mode }, 20000)
       if (response.ok) {
-        showToast('✅ Modo de red cambiado', 'success')
+        showToast(`✅ ${t('modem.networkModeChanged')}`, 'success')
         await loadStatus()
       } else {
         const data = await response.json()
@@ -179,11 +179,11 @@ const ModemView = () => {
   // Reconnect network
   const handleReconnect = async () => {
     setReconnecting(true)
-    showToast('⏳ Reconectando a la red...', 'info')
+    showToast(`⏳ ${t('modem.reconnecting')}`, 'info')
     try {
       const response = await api.post('/api/network/hilink/reconnect', {}, 20000)
       if (response.ok) {
-        showToast('✅ Reconexión iniciada', 'success')
+        showToast(`✅ ${t('modem.reconnectionStarted')}`, 'success')
         // Wait and refresh
         setTimeout(async () => {
           await loadStatus()
@@ -205,7 +205,7 @@ const ModemView = () => {
     try {
       const response = await api.post('/api/network/hilink/flight-session/start')
       if (response.ok) {
-        showToast('Sesión de vuelo iniciada', 'success')
+        showToast(t('modem.flightSessionStarted'), 'success')
         await loadFlightSession()
         
         // Start periodic sampling
@@ -230,14 +230,14 @@ const ModemView = () => {
       const response = await api.post('/api/network/hilink/flight-session/stop')
       if (response.ok) {
         const data = await response.json()
-        showToast('Sesión de vuelo finalizada', 'success')
+        showToast(t('modem.flightSessionStopped'), 'success')
         
         // Show session summary modal
         showModal({
-          title: 'Resumen de Sesión',
+          title: t('modem.sessionSummary'),
           message: formatSessionSummary(data.session_stats),
           type: 'info',
-          confirmText: 'Cerrar'
+          confirmText: t('modem.close')
         })
         
         setFlightSession({ active: false })
@@ -249,33 +249,33 @@ const ModemView = () => {
 
   // Format session summary
   const formatSessionSummary = (stats) => {
-    if (!stats) return 'Sin datos'
+    if (!stats) return t('modem.noData')
     
     const duration = Math.floor(stats.duration_seconds / 60)
     return `
-Duración: ${duration} minutos
-Muestras: ${stats.sample_count}
+${t('modem.duration')}: ${duration} ${t('modem.minutes')}
+${t('modem.samples')}: ${stats.sample_count}
 SINR: ${stats.min_sinr?.toFixed(1) || 'N/A'} - ${stats.max_sinr?.toFixed(1) || 'N/A'} dB
 RSRP: ${stats.min_rsrp?.toFixed(0) || 'N/A'} - ${stats.max_rsrp?.toFixed(0) || 'N/A'} dBm
-Latencia promedio: ${stats.avg_latency_ms?.toFixed(0) || 'N/A'} ms
-Cambios de banda: ${stats.band_changes}
+${t('modem.avgLatency')}: ${stats.avg_latency_ms?.toFixed(0) || 'N/A'} ms
+${t('modem.bandChanges')}: ${stats.band_changes}
     `.trim()
   }
 
   // Reboot modem
   const handleRebootModem = () => {
     showModal({
-      title: 'Reiniciar Módem',
-      message: '¿Estás seguro de que quieres reiniciar el módem 4G? Se perderá la conexión temporalmente.',
+      title: t('modem.rebootModem'),
+      message: t('modem.confirmRebootModem'),
       type: 'confirm',
-      confirmText: 'Reiniciar',
-      cancelText: 'Cancelar',
+      confirmText: t('common.save'),
+      cancelText: t('common.cancel'),
       onConfirm: async () => {
         try {
           setModemRebooting(true)
           const response = await api.post('/api/network/hilink/reboot')
           if (response.ok) {
-            showToast('⏳ Módem reiniciándose...', 'info')
+            showToast(`⏳ ${t('network.modemRebooting')}`, 'info')
             
             // Poll for modem to come back online (check every 5s for up to 60s)
             let attempts = 0
@@ -288,7 +288,7 @@ Cambios de banda: ${stats.band_changes}
                   const data = await checkResponse.json()
                   if (data.available) {
                     setModemRebooting(false)
-                    showToast('✅ Módem en línea', 'success')
+                    showToast(`✅ ${t('modem.modemOnline')}`, 'success')
                     await loadStatus()
                     return
                   }
@@ -301,7 +301,7 @@ Cambios de banda: ${stats.band_changes}
                 setTimeout(checkModem, 5000)
               } else {
                 setModemRebooting(false)
-                showToast('⚠️ El módem no respondió. Verifica la conexión.', 'warning')
+                showToast(`⚠️ ${t('modem.modemNoResponse')}`, 'warning')
               }
             }
             
@@ -344,7 +344,7 @@ Cambios de banda: ${stats.band_changes}
   if (loading) {
     return (
       <div className="card">
-        <h2>📶 Módem</h2>
+        <h2>📶 {t('modem.title')}</h2>
         <div className="waiting-data">
           <div className="spinner-small"></div>
           {t('common.loadingContent')}
@@ -357,13 +357,13 @@ Cambios de banda: ${stats.band_changes}
     return (
       <div className="modem-view">
         <div className="card modem-offline">
-          <h2>📶 Módem</h2>
+          <h2>📶 {t('modem.title')}</h2>
           <div className="offline-message">
             <span className="offline-icon">❌</span>
-            <p>Módem no detectado o no disponible</p>
-            <p className="offline-hint">Verifica que el módem USB esté conectado</p>
+            <p>{t('modem.notDetected')}</p>
+            <p className="offline-hint">{t('modem.checkConnection')}</p>
             <button className="btn-primary" onClick={loadStatus}>
-              🔄 Reintentar
+              🔄 {t('modem.retry')}
             </button>
           </div>
         </div>
@@ -385,12 +385,12 @@ Cambios de banda: ${stats.band_changes}
           <span className="banner-icon">{status.video_mode_active ? '🎬' : '📶'}</span>
           <div className="banner-text">
             <span className="banner-title">
-              {status.video_mode_active ? 'Modo Video Activo' : 'Modo Normal'}
+              {status.video_mode_active ? t('modem.videoModeActive') : t('modem.normalMode')}
             </span>
             <span className="banner-description">
               {status.video_mode_active 
-                ? '4G Only + Optimización para streaming' 
-                : 'Configuración estándar del módem'}
+                ? t('modem.videoModeDesc')
+                : t('modem.normalModeDesc')}
             </span>
           </div>
         </div>
@@ -399,25 +399,25 @@ Cambios de banda: ${stats.band_changes}
           onClick={handleToggleVideoMode}
           disabled={togglingVideoMode}
         >
-          {togglingVideoMode ? '⏳' : status.video_mode_active ? '⏹️ Desactivar' : '🎬 Activar Modo Video'}
+          {togglingVideoMode ? '⏳' : status.video_mode_active ? `⏹️ ${t('modem.deactivate')}` : `🎬 ${t('modem.activateVideoMode')}`}
         </button>
       </div>
 
       <div className="modem-sections">
         {/* === CARD 1: INFO - Operador & Dispositivo === */}
         <div className="card info-card">
-          <h2>📡 Información</h2>
+          <h2>📡 {t('modem.information')}</h2>
           <div className="info-sections">
             {/* Operador Section */}
             <div className="info-section operator-section">
               <div className="section-header">
-                <span className="section-title">Operador</span>
+                <span className="section-title">{t('modem.operatorSection')}</span>
                 <span className={`connection-badge ${network.connection_status === 'Connected' ? 'connected' : 'disconnected'}`}>
-                  {network.connection_status === 'Connected' ? '● Conectado' : '○ Desconectado'}
+                  {network.connection_status === 'Connected' ? `● ${t('network.connected')}` : `○ ${t('modem.disconnected')}`}
                 </span>
               </div>
               <div className="operator-main-info">
-                <span className="operator-name">{network.operator || 'Desconocido'}</span>
+                <span className="operator-name">{network.operator || t('modem.unknown')}</span>
                 <span className="tech-badge">{network.network_type_ex || network.network_type || '-'}</span>
               </div>
               <div className="info-grid">
@@ -430,13 +430,13 @@ Cambios de banda: ${stats.band_changes}
                   <span className="info-value mono small">{network.primary_dns || '-'}</span>
                 </div>
                 <div className="info-item">
-                  <span className="info-label">Roaming</span>
+                  <span className="info-label">{t('modem.roaming')}</span>
                   <span className={`info-value ${network.roaming ? 'warning' : ''}`}>
-                    {network.roaming ? '⚠️ Activo' : 'No'}
+                    {network.roaming ? `⚠️ ${t('modem.roamingActive')}` : t('modem.roamingNo')}
                   </span>
                 </div>
                 <div className="info-item">
-                  <span className="info-label">Señal</span>
+                  <span className="info-label">{t('modem.signal')}</span>
                   <span className="info-value">{'📶'.repeat(network.signal_icon || 0)}</span>
                 </div>
               </div>
@@ -447,11 +447,11 @@ Cambios de banda: ${stats.band_changes}
             {/* Dispositivo Section */}
             <div className="info-section device-section">
               <div className="section-header">
-                <span className="section-title">Dispositivo</span>
+                <span className="section-title">{t('modem.deviceSection')}</span>
               </div>
               <div className="info-grid">
                 <div className="info-item">
-                  <span className="info-label">Modelo</span>
+                  <span className="info-label">{t('modem.model')}</span>
                   <span className="info-value">{device.device_name || '-'}</span>
                 </div>
                 <div className="info-item">
@@ -459,11 +459,11 @@ Cambios de banda: ${stats.band_changes}
                   <span className="info-value mono small">{device.imei || '-'}</span>
                 </div>
                 <div className="info-item">
-                  <span className="info-label">Hardware</span>
+                  <span className="info-label">{t('modem.hardware')}</span>
                   <span className="info-value">{device.hardware_version || '-'}</span>
                 </div>
                 <div className="info-item">
-                  <span className="info-label">Firmware</span>
+                  <span className="info-label">{t('modem.firmware')}</span>
                   <span className="info-value">{device.software_version || '-'}</span>
                 </div>
               </div>
@@ -473,13 +473,13 @@ Cambios de banda: ${stats.band_changes}
 
         {/* === CARD 2: KPIs - Calidad, Latencia, Señal, Tráfico === */}
         <div className="card kpi-card">
-          <h2>📊 Métricas de Rendimiento</h2>
+          <h2>📊 {t('modem.performanceMetrics')}</h2>
           
           <div className="kpi-sections">
             {/* Video Quality Section */}
             <div className="kpi-section">
               <div className="kpi-header">
-                <span className="kpi-title">🎬 Calidad Video</span>
+                <span className="kpi-title">🎬 {t('modem.videoQuality')}</span>
               </div>
               {videoQuality?.available ? (
                 <div className="kpi-content">
@@ -488,7 +488,7 @@ Cambios de banda: ${stats.band_changes}
                     <span className="quality-bitrate">{videoQuality.max_bitrate_kbps} kbps</span>
                   </div>
                   <div className="quality-rec">
-                    Resolución: <strong>{videoQuality.recommended_resolution}</strong>
+                    {t('modem.resolution')}: <strong>{videoQuality.recommended_resolution}</strong>
                   </div>
                   {videoQuality.warnings?.length > 0 && (
                     <div className="quality-warnings">
@@ -499,14 +499,14 @@ Cambios de banda: ${stats.band_changes}
                   )}
                 </div>
               ) : (
-                <div className="kpi-no-data">Sin datos</div>
+                <div className="kpi-no-data">{t('modem.noData')}</div>
               )}
             </div>
 
             {/* Latency Section */}
             <div className="kpi-section">
               <div className="kpi-header">
-                <span className="kpi-title">⏱️ Latencia</span>
+                <span className="kpi-title">⏱️ {t('modem.latency')}</span>
                 <button 
                   className="btn-mini" 
                   onClick={handleTestLatency}
@@ -530,7 +530,7 @@ Cambios de banda: ${stats.band_changes}
               ) : (
                 <div className="kpi-no-data">
                   <button className="btn-small" onClick={handleTestLatency} disabled={testingLatency}>
-                    {testingLatency ? 'Probando...' : 'Probar'}
+                    {testingLatency ? t('modem.testing') : t('modem.test')}
                   </button>
                 </div>
               )}
@@ -539,7 +539,7 @@ Cambios de banda: ${stats.band_changes}
             {/* Signal Section */}
             <div className="kpi-section signal-section">
               <div className="kpi-header">
-                <span className="kpi-title">📶 Señal LTE</span>
+                <span className="kpi-title">📶 {t('modem.lteSignal')}</span>
               </div>
               <div className="signal-grid-compact">
                 <div className="signal-metric">
@@ -572,7 +572,7 @@ Cambios de banda: ${stats.band_changes}
             {/* Traffic Section */}
             <div className="kpi-section">
               <div className="kpi-header">
-                <span className="kpi-title">📈 Tráfico</span>
+                <span className="kpi-title">📈 {t('modem.traffic')}</span>
               </div>
               <div className="traffic-grid-compact">
                 <div className="traffic-metric">
@@ -584,7 +584,7 @@ Cambios de banda: ${stats.band_changes}
                   <span className="traffic-val">{traffic.current_upload || '-'}</span>
                 </div>
                 <div className="traffic-total">
-                  Total: ⬇️ {traffic.total_download || '-'} / ⬆️ {traffic.total_upload || '-'}
+                  {t('modem.total')}: ⬇️ {traffic.total_download || '-'} / ⬆️ {traffic.total_upload || '-'}
                 </div>
               </div>
             </div>
@@ -593,32 +593,32 @@ Cambios de banda: ${stats.band_changes}
 
         {/* === CARD 3: CONFIGURACIÓN - Banda, Modo, Sesión === */}
         <div className="card config-card">
-          <h2>⚙️ Configuración</h2>
+          <h2>⚙️ {t('modem.configuration')}</h2>
           
           <div className="config-sections">
             {/* Band Config */}
             <div className="config-section">
               <div className="config-header">
-                <span className="config-title">📡 Banda LTE</span>
+                <span className="config-title">📡 {t('modem.lteBand')}</span>
                 <button 
                   className="btn-mini" 
                   onClick={handleReconnect}
                   disabled={reconnecting}
-                  title="Reconectar"
+                  title={t('modem.reconnect')}
                 >
                   {reconnecting ? '...' : '🔁'}
                 </button>
               </div>
               
               {changingBand && (
-                <div className="config-loading">⏳ Aplicando...</div>
+                <div className="config-loading">⏳ {t('modem.applying')}</div>
               )}
               
               <div className="band-info">
                 <span className="band-enabled">
-                  Habilitadas: <strong>{currentBand.enabled_bands?.length > 0 
+                  {t('modem.enabled')}: <strong>{currentBand.enabled_bands?.length > 0 
                     ? currentBand.enabled_bands.join(', ') 
-                    : 'Todas'}</strong>
+                    : t('modem.all')}</strong>
                 </span>
               </div>
               
@@ -642,15 +642,15 @@ Cambios de banda: ${stats.band_changes}
             {/* Network Mode */}
             <div className="config-section">
               <div className="config-header">
-                <span className="config-title">📶 Modo de Red</span>
+                <span className="config-title">📶 {t('modem.networkMode')}</span>
               </div>
               
               {changingMode && (
-                <div className="config-loading">⏳ Cambiando...</div>
+                <div className="config-loading">⏳ {t('modem.changing')}</div>
               )}
               
               <div className="current-mode-info">
-                Actual: <strong>{status.mode?.network_mode_name || network.network_type || '-'}</strong>
+                {t('modem.current')}: <strong>{status.mode?.network_mode_name || network.network_type || '-'}</strong>
               </div>
               
               <div className="mode-grid">
@@ -683,24 +683,24 @@ Cambios de banda: ${stats.band_changes}
             {/* Flight Session */}
             <div className="config-section">
               <div className="config-header">
-                <span className="config-title">✈️ Sesión de Vuelo</span>
+                <span className="config-title">✈️ {t('modem.flightSession')}</span>
               </div>
               
               {flightSession?.active ? (
                 <div className="session-active-compact">
                   <div className="session-status">
                     <span className="recording-dot">🔴</span>
-                    <span>Grabando - {flightSession.stats?.sample_count || 0} muestras</span>
+                    <span>{t('modem.recording')} - {flightSession.stats?.sample_count || 0} {t('modem.samples')}</span>
                   </div>
                   <button className="btn-stop" onClick={handleStopFlightSession}>
-                    ⏹️ Detener
+                    ⏹️ {t('modem.stop')}
                   </button>
                 </div>
               ) : (
                 <div className="session-inactive">
-                  <span className="session-hint">Graba estadísticas durante el vuelo</span>
+                  <span className="session-hint">{t('modem.recordStats')}</span>
                   <button className="btn-start" onClick={handleStartFlightSession}>
-                    ▶️ Iniciar
+                    ▶️ {t('modem.start')}
                   </button>
                 </div>
               )}
@@ -709,15 +709,15 @@ Cambios de banda: ${stats.band_changes}
 
           {/* Reboot Section */}
           <div className="config-group reboot-section">
-            <h3>🔄 Reinicio</h3>
+            <h3>🔄 {t('modem.rebootSection')}</h3>
             <div className="reboot-container">
-              <span className="reboot-hint">Reinicia el módem si hay problemas de conexión</span>
+              <span className="reboot-hint">{t('modem.rebootHint')}</span>
               <button 
                 className="btn-reboot" 
                 onClick={handleRebootModem}
                 disabled={modemRebooting}
               >
-                {modemRebooting ? '⏳ Reiniciando...' : '🔄 Reiniciar Módem'}
+                {modemRebooting ? `⏳ ${t('modem.rebooting')}` : `🔄 ${t('modem.rebootModem')}`}
               </button>
             </div>
           </div>
