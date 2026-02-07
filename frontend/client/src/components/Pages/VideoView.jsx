@@ -394,13 +394,6 @@ const VideoView = () => {
           <div className="card">
             <h2>{t('views.video.videoSource')}</h2>
             
-            {status.streaming && (
-              <div className="live-mode-badge">
-                <span className="live-dot"></span>
-                {t('views.video.liveMode')}
-              </div>
-            )}
-
             <div className={`form-group ${status.streaming ? 'field-disabled' : ''}`}>
               <label>{t('views.video.videoSource')}</label>
               <select 
@@ -604,9 +597,6 @@ const VideoView = () => {
           {/* Network Settings */}
           <div className={`card ${status.streaming ? 'card-disabled' : ''}`}>
             <h2>{t('views.video.networkUdpRtp')}</h2>
-            {status.streaming && (
-              <div className="lock-notice">🔒 {t('views.video.lockedWhileLive')}</div>
-            )}
             <div className="form-row">
               <div className={`form-group ${status.streaming ? 'field-disabled' : ''}`}>
                 <PeerSelector

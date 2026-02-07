@@ -4,12 +4,19 @@
   box-sizing: border-box;
 }
 
+html {
+  /* Reserve space for scrollbar to prevent layout shift */
+  scrollbar-gutter: stable;
+}
+
 body {
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   background: linear-gradient(135deg, #0f1726 0%, #1a1235 100%);
   color: #e0e4f0;
   padding: 20px;
   min-height: 100vh;
+  /* Force scrollbar space to be always reserved */
+  overflow-y: scroll;
 }
 
 code {

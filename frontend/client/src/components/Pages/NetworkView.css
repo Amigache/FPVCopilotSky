@@ -194,8 +194,6 @@
   gap: 6px;
   max-height: 300px;
   overflow-y: auto;
-  padding-right: 12px;
-  margin-right: -12px;  /* ← Compensa el padding para mantener el ancho */
 }
 
 .wifi-network {

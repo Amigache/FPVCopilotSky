@@ -117,42 +117,29 @@ const DashboardView = () => {
           </div>
         </div>
 
-        {/* Mensajes Card */}
+        {/* Batería Card */}
         <div className="card">
-          <h2>{t('dashboard.messages')}</h2>
-          <div style={{background: 'linear-gradient(135deg, rgba(45, 45, 63, 0.4), rgba(30, 30, 46, 0.4))', border: '1px solid rgba(102, 102, 102, 0.3)', borderRadius: '4px', padding: '12px 15px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', maxHeight: '200px', overflowY: 'auto'}}>
-            {telemetry.messages && telemetry.messages.length > 0 ? (
-              <div style={{display: 'flex', flexDirection: 'column', gap: '6px'}}>
-                {telemetry.messages.map((msg, idx) => {
-                  const severityColors = {
-                    'EMERGENCY': { bg: 'rgba(244, 67, 54, 0.2)', border: '#f44336', text: '#ffb3b8' },
-                    'ALERT': { bg: 'rgba(244, 67, 54, 0.2)', border: '#f44336', text: '#ffb3b8' },
-                    'CRITICAL': { bg: 'rgba(244, 67, 54, 0.15)', border: '#e57373', text: '#ffb3b8' },
-                    'ERROR': { bg: 'rgba(255, 152, 0, 0.15)', border: '#ff9800', text: '#ffcc80' },
-                    'WARNING': { bg: 'rgba(255, 152, 0, 0.1)', border: '#ffa726', text: '#ffcc80' },
-                    'NOTICE': { bg: 'rgba(33, 150, 243, 0.1)', border: '#42a5f5', text: '#90caf9' },
-                    'INFO': { bg: 'rgba(76, 175, 80, 0.1)', border: '#66bb6a', text: '#9fe8c2' },
-                    'DEBUG': { bg: 'rgba(158, 158, 158, 0.1)', border: '#9e9e9e', text: '#bdbdbd' }
-                  }
-                  const colors = severityColors[msg.severity] || severityColors['INFO']
-                  const timestamp = new Date(msg.timestamp * 1000).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-                  
-                  return (
-                    <div key={idx} style={{background: colors.bg, border: `1px solid ${colors.border}`, borderRadius: '3px', padding: '6px 8px', fontSize: '0.8em'}}>
-                      <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px'}}>
-                        <span style={{color: colors.text, fontWeight: '600', fontSize: '0.85em', whiteSpace: 'nowrap'}}>{msg.severity}</span>
-                        <span style={{color: '#d5ddff', flex: 1, wordBreak: 'break-word'}}>{msg.text}</span>
-                        <span style={{color: '#9aa6c3', fontSize: '0.75em', whiteSpace: 'nowrap'}}>{timestamp}</span>
-                      </div>
-                    </div>
-                  )
-                })}
+          <h2>{t('dashboard.battery')}</h2>
+          <div style={{background: 'linear-gradient(135deg, rgba(45, 45, 63, 0.4), rgba(30, 30, 46, 0.4))', border: `1px solid ${batteryColor}`, borderRadius: '4px', padding: '12px 15px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)'}}>
+            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px'}}>
+              <span style={{fontSize: '0.9em', fontWeight: '600', color: '#d5ddff'}}>{t('dashboard.charge')}</span>
+              <span style={{display: 'inline-block', padding: '3px 8px', background: batteryBgColor, color: batteryTextColor, borderRadius: '3px', fontSize: '0.9em', fontWeight: '700', border: `1px solid ${batteryColor}`}}>
+                {remaining}%
+              </span>
+            </div>
+            <div style={{display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px', fontSize: '0.85em'}}>
+              <div>
+                <div style={{color: '#9aa6c3', fontSize: '0.85em', marginBottom: '2px'}}>{t('dashboard.voltage')}</div>
+                <div style={{color: voltage < 10 ? '#f44336' : voltage < 11 ? '#ff9800' : '#d5ddff', fontWeight: '700', fontSize: '1.1em'}}>{voltage.toFixed(2)} V</div>
               </div>
-            ) : (
-              <div style={{color: '#9aa6c3', fontSize: '0.85em', textAlign: 'center', padding: '20px 0'}}>
-                {t('dashboard.noMessages')}
+              <div>
+                <div style={{color: '#9aa6c3', fontSize: '0.85em', marginBottom: '2px'}}>{t('dashboard.current')}</div>
+                <div style={{color: '#d5ddff', fontWeight: '600', fontSize: '1.1em'}}>{(telemetry.battery?.current || 0).toFixed(1)} A</div>
               </div>
-            )}
+            </div>
+            <div style={{marginTop: '10px', background: 'rgba(20, 20, 30, 0.5)', borderRadius: '3px', height: '6px', overflow: 'hidden'}}>
+              <div style={{background: `linear-gradient(90deg, ${batteryBarColor}, ${batteryBarGradient})`, height: '100%', width: `${remaining}%`, transition: 'width 0.3s'}}></div>
+            </div>
           </div>
         </div>
       </div>
@@ -210,29 +197,38 @@ const DashboardView = () => {
           </div>
         </div>
 
-        {/* Batería Card */}
-        <div className="card">
-          <h2>{t('dashboard.battery')}</h2>
-          <div style={{background: 'linear-gradient(135deg, rgba(45, 45, 63, 0.4), rgba(30, 30, 46, 0.4))', border: `1px solid ${batteryColor}`, borderRadius: '4px', padding: '12px 15px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)'}}>
-            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px'}}>
-              <span style={{fontSize: '0.9em', fontWeight: '600', color: '#d5ddff'}}>{t('dashboard.charge')}</span>
-              <span style={{display: 'inline-block', padding: '3px 8px', background: batteryBgColor, color: batteryTextColor, borderRadius: '3px', fontSize: '0.9em', fontWeight: '700', border: `1px solid ${batteryColor}`}}>
-                {remaining}%
-              </span>
-            </div>
-            <div style={{display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px', fontSize: '0.85em'}}>
-              <div>
-                <div style={{color: '#9aa6c3', fontSize: '0.85em', marginBottom: '2px'}}>{t('dashboard.voltage')}</div>
-                <div style={{color: voltage < 10 ? '#f44336' : voltage < 11 ? '#ff9800' : '#d5ddff', fontWeight: '700', fontSize: '1.1em'}}>{voltage.toFixed(2)} V</div>
+        {/* Mensajes Card */}
+        <div className="card messages-card">
+          <h2>{t('dashboard.messages')}</h2>
+          <div className="messages-list">
+            {telemetry.messages && telemetry.messages.length > 0 ? (
+              telemetry.messages.map((msg, idx) => {
+                const severityColors = {
+                  'EMERGENCY': { bg: 'rgba(244, 67, 54, 0.2)', border: '#f44336', text: '#ffb3b8' },
+                  'ALERT': { bg: 'rgba(244, 67, 54, 0.2)', border: '#f44336', text: '#ffb3b8' },
+                  'CRITICAL': { bg: 'rgba(244, 67, 54, 0.15)', border: '#e57373', text: '#ffb3b8' },
+                  'ERROR': { bg: 'rgba(255, 152, 0, 0.15)', border: '#ff9800', text: '#ffcc80' },
+                  'WARNING': { bg: 'rgba(255, 152, 0, 0.1)', border: '#ffa726', text: '#ffcc80' },
+                  'NOTICE': { bg: 'rgba(33, 150, 243, 0.1)', border: '#42a5f5', text: '#90caf9' },
+                  'INFO': { bg: 'rgba(76, 175, 80, 0.1)', border: '#66bb6a', text: '#9fe8c2' },
+                  'DEBUG': { bg: 'rgba(158, 158, 158, 0.1)', border: '#9e9e9e', text: '#bdbdbd' }
+                }
+                const colors = severityColors[msg.severity] || severityColors['INFO']
+                const timestamp = new Date(msg.timestamp * 1000).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                
+                return (
+                  <div key={idx} className="message-item" style={{background: colors.bg, border: `1px solid ${colors.border}`}}>
+                    <div className="message-severity" style={{color: colors.text}}>{msg.severity}</div>
+                    <div className="message-text" style={{color: '#d5ddff'}}>{msg.text}</div>
+                    <div className="message-time" style={{color: '#9aa6c3'}}>{timestamp}</div>
+                  </div>
+                )
+              })
+            ) : (
+              <div className="no-messages">
+                {t('dashboard.noMessages')}
               </div>
-              <div>
-                <div style={{color: '#9aa6c3', fontSize: '0.85em', marginBottom: '2px'}}>{t('dashboard.current')}</div>
-                <div style={{color: '#d5ddff', fontWeight: '600', fontSize: '1.1em'}}>{(telemetry.battery?.current || 0).toFixed(1)} A</div>
-              </div>
-            </div>
-            <div style={{marginTop: '10px', background: 'rgba(20, 20, 30, 0.5)', borderRadius: '3px', height: '6px', overflow: 'hidden'}}>
-              <div style={{background: `linear-gradient(90deg, ${batteryBarColor}, ${batteryBarGradient})`, height: '100%', width: `${remaining}%`, transition: 'width 0.3s'}}></div>
-            </div>
+            )}
           </div>
         </div>
       </div>

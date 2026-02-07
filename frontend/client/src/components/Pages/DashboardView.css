@@ -31,6 +31,55 @@
   letter-spacing: 0.5px;
 }
 
+/* Messages Card */
+.messages-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.messages-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 300px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.message-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  border-radius: 3px;
+  padding: 6px 8px;
+  font-size: 0.8em;
+}
+
+.message-severity {
+  font-weight: 600;
+  font-size: 0.85em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.message-text {
+  flex: 1;
+  word-break: break-word;
+}
+
+.message-time {
+  font-size: 0.75em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.no-messages {
+  color: #9aa6c3;
+  font-size: 0.85em;
+  text-align: center;
+  padding: 20px 0;
+}
+
 /* Responsive adjustments */
 @media (max-width: 768px) {
   .monitor-columns {
