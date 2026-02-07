@@ -18,21 +18,42 @@ export const getApiBaseUrl = () => {
   return ''
 }
 
+// Get user's preferred language from browser or localStorage
+const getPreferredLanguage = () => {
+  // Try localStorage first (user preference)
+  const stored = localStorage.getItem('language')
+  if (stored) return stored
+  
+  // Try browser language
+  const browserLang = navigator.language || navigator.userLanguage
+  if (browserLang.startsWith('es')) return 'es'
+  
+  // Default to English
+  return 'en'
+}
+
 // API endpoints
 export const API_BASE = getApiBaseUrl()
 export const API_MAVLINK = `${API_BASE}/api/mavlink`
 export const API_MAVLINK_ROUTER = `${API_BASE}/api/mavlink-router`
 export const API_SYSTEM = `${API_BASE}/api/system`
 
-// Helper function for fetch with timeout
+// Helper function for fetch with timeout and language support
 // Default timeout is 30s to accommodate VPN/remote access latency
 export const fetchWithTimeout = async (url, options = {}, timeout = 30000) => {
   const controller = new AbortController()
   const id = setTimeout(() => controller.abort(), timeout)
   
   try {
+    // Add Accept-Language header for internationalization
+    const headers = {
+      ...options.headers,
+      'Accept-Language': getPreferredLanguage()
+    }
+    
     const response = await fetch(url, {
       ...options,
+      headers,
       signal: controller.signal
     })
     clearTimeout(id)

@@ -3,10 +3,11 @@ MAVLink API Routes
 Endpoints for MAVLink connection management
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional
 from services.mavlink_dialect import MAVLinkDialect
+from app.i18n import get_language_from_request, translate
 
 router = APIRouter()
 
@@ -264,7 +265,7 @@ async def get_serial_preferences():
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/preferences")
-async def save_serial_preferences(preferences: SerialPreferencesModel):
+async def save_serial_preferences(preferences: SerialPreferencesModel, request: Request):
     """
     Save serial connection preferences to persistent storage
     
@@ -275,13 +276,14 @@ async def save_serial_preferences(preferences: SerialPreferencesModel):
         Success status and saved preferences
     """
     try:
+        lang = get_language_from_request(request)
         from services.preferences import get_preferences
         prefs = get_preferences()
         prefs.set_serial_auto_connect(preferences.auto_connect)
         
         return {
             "success": True,
-            "message": "Serial preferences saved",
+            "message": translate("serial.preferences_saved", lang),
             "preferences": {
                 "auto_connect": preferences.auto_connect
             }

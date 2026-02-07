@@ -1,0 +1,56 @@
+{
+  "serial": {
+    "preferences_saved": "Preferencias de serie guardadas"
+  },
+  "vpn": {
+    "preferences_saved": "Preferencias de VPN guardadas"
+  },
+  "video": {
+    "configuration_updated": "Configuración de vídeo actualizada",
+    "streaming_configuration_updated": "Configuración de streaming actualizada"
+  },
+  "system": {
+    "preferences_reset_success": "Preferencias restauradas a valores por defecto. Se recomienda reiniciar.",
+    "preferences_reset_failed": "Error al restaurar preferencias",
+    "preferences_reset_error": "Error al restaurar preferencias: {error}",
+    "restart_backend_error": "Error al reiniciar backend: {error}",
+    "restart_frontend_error": "Error al reiniciar frontend: {error}",
+    "backend_logs_error": "Error al obtener logs del backend: {error}",
+    "frontend_logs_error": "Error al obtener logs del frontend: {error}",
+    "board_not_detected": "No se ha detectado placa - ejecutándose en plataforma genérica/no soportada",
+    "board_info_error": "Error al obtener información de la placa: {error}"
+  },
+  "network": {
+    "interface_brought_up": "Interfaz '{interface}' activada",
+    "interface_up_failed": "Error al activar interfaz",
+    "interface_brought_down": "Interfaz '{interface}' desactivada",
+    "interface_down_failed": "Error al desactivar interfaz",
+    "metric_set": "Métrica configurada a {metric} para la interfaz '{interface}'",
+    "metric_set_failed": "Error al configurar métrica",
+    "wifi_connected": "Conectado a '{ssid}'",
+    "wifi_connect_failed": "Error al conectar a '{ssid}'",
+    "wifi_disconnected": "Desconectado de WiFi",
+    "wifi_disconnect_failed": "Error al desconectar",
+    "connecting": "Conectando a {ssid}...",
+    "connection_failed": "Error de conexión",
+    "disconnection_failed": "Error de desconexión",
+    "band_configuration_failed": "Error al configurar banda",
+    "reboot_failed": "Error al reiniciar"
+  },
+  "router": {
+    "rtmp_output_added": "Salida RTMP añadida",
+    "rtmp_output_add_failed": "Error al añadir salida RTMP",
+    "rtmp_output_removed": "Salida RTMP eliminada",
+    "rtmp_output_remove_failed": "Error al eliminar salida RTMP",
+    "srt_output_added": "Salida SRT añadida",
+    "srt_output_add_failed": "Error al añadir salida SRT",
+    "srt_output_removed": "Salida SRT eliminada",
+    "srt_output_remove_failed": "Error al eliminar salida SRT"
+  },
+  "dependencies": {
+    "requirements_not_found": "requirements.txt no encontrado",
+    "all_installed": "Todas las dependencias instaladas",
+    "frontend_not_available": "Frontend no disponible",
+    "node_modules_not_found": "node_modules no encontrado o vacío"
+  }
+}

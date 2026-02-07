@@ -3,11 +3,12 @@ VPN API Routes
 Endpoints for managing VPN connections
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 from providers import get_provider_registry
 from services.preferences import get_preferences
+from app.i18n import get_language_from_request, translate
 
 router = APIRouter(prefix="/api/vpn", tags=["vpn"])
 
@@ -235,7 +236,7 @@ async def get_vpn_preferences():
 
 
 @router.post("/preferences")
-async def save_vpn_preferences(preferences: VPNPreferencesModel):
+async def save_vpn_preferences(preferences: VPNPreferencesModel, request: Request):
     """
     Save VPN preferences to persistent storage
     
@@ -246,6 +247,7 @@ async def save_vpn_preferences(preferences: VPNPreferencesModel):
         Success status and saved preferences
     """
     try:
+        lang = get_language_from_request(request)
         prefs = _get_preferences_service()
         config = preferences.model_dump()
         # Run synchronous code in thread pool to avoid blocking
@@ -255,7 +257,7 @@ async def save_vpn_preferences(preferences: VPNPreferencesModel):
         
         return {
             "success": True,
-            "message": "VPN preferences saved",
+            "message": translate("vpn.preferences_saved", lang),
             "preferences": config
         }
     except Exception as e:

@@ -3,8 +3,9 @@ System API Routes
 Endpoints for system information
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from services.system_service import SystemService
+from app.i18n import get_language_from_request, translate
 
 router = APIRouter()
 
@@ -53,9 +54,10 @@ async def get_system_resources():
 
 
 @router.post("/preferences/reset")
-async def reset_preferences():
+async def reset_preferences(request: Request):
     """Reset all preferences to defaults"""
     try:
+        lang = get_language_from_request(request)
         from services.preferences import get_preferences
         prefs = get_preferences()
         success = prefs.reset_preferences()
@@ -63,48 +65,51 @@ async def reset_preferences():
         if success:
             return {
                 "success": True,
-                "message": "Preferences reset to defaults. Restart recommended."
+                "message": translate("system.preferences_reset_success", lang)
             }
         else:
             return {
                 "success": False,
-                "message": "Failed to reset preferences"
+                "message": translate("system.preferences_reset_failed", lang)
             }
     except Exception as e:
+        lang = get_language_from_request(request)
         return {
             "success": False,
-            "message": f"Error resetting preferences: {str(e)}"
+            "message": translate("system.preferences_reset_error", lang, error=str(e))
         }
 
 
 @router.post("/restart/backend")
-async def restart_backend():
+async def restart_backend(request: Request):
     """Restart backend service (fpvcopilot-sky)"""
     try:
         result = SystemService.restart_backend()
         return result
     except Exception as e:
+        lang = get_language_from_request(request)
         return {
             "success": False,
-            "message": f"Error restarting backend: {str(e)}"
+            "message": translate("system.restart_backend_error", lang, error=str(e))
         }
 
 
 @router.post("/restart/frontend")
-async def restart_frontend():
+async def restart_frontend(request: Request):
     """Rebuild frontend (requires manual deployment)"""
     try:
         result = SystemService.restart_frontend()
         return result
     except Exception as e:
+        lang = get_language_from_request(request)
         return {
             "success": False,
-            "message": f"Error restarting frontend: {str(e)}"
+            "message": translate("system.restart_frontend_error", lang, error=str(e))
         }
 
 
 @router.get("/logs/backend")
-async def get_backend_logs(lines: int = 100):
+async def get_backend_logs(lines: int = 100, request: Request = None):
     """Get backend service logs (journalctl)"""
     try:
         logs = SystemService.get_backend_logs(lines)
@@ -114,15 +119,16 @@ async def get_backend_logs(lines: int = 100):
             "lines": len(logs.split('\n')) if logs else 0
         }
     except Exception as e:
+        lang = get_language_from_request(request) if request else "en"
         return {
             "success": False,
-            "message": f"Error fetching backend logs: {str(e)}",
+            "message": translate("system.backend_logs_error", lang, error=str(e)),
             "logs": ""
         }
 
 
 @router.get("/logs/frontend")
-async def get_frontend_logs(lines: int = 100):
+async def get_frontend_logs(lines: int = 100, request: Request = None):
     """Get frontend logs (nginx access/error logs)"""
     try:
         logs = SystemService.get_frontend_logs(lines)
@@ -132,17 +138,19 @@ async def get_frontend_logs(lines: int = 100):
             "lines": len(logs.split('\n')) if logs else 0
         }
     except Exception as e:
+        lang = get_language_from_request(request) if request else "en"
         return {
             "success": False,
-            "message": f"Error fetching frontend logs: {str(e)}",
+            "message": translate("system.frontend_logs_error", lang, error=str(e)),
             "logs": ""
         }
 
 
 @router.get("/board")
-async def get_board_info():
+async def get_board_info(request: Request):
     """Get detected board/platform information with hardware specs and supported features"""
     try:
+        lang = get_language_from_request(request)
         from providers.board import BoardRegistry
 
         registry = BoardRegistry()
@@ -156,12 +164,13 @@ async def get_board_info():
         else:
             return {
                 "success": False,
-                "message": "No board detected - running on generic/unsupported platform",
+                "message": translate("system.board_not_detected", lang),
                 "data": None
             }
     except Exception as e:
+        lang = get_language_from_request(request)
         return {
             "success": False,
-            "message": f"Error retrieving board info: {str(e)}",
+            "message": translate("system.board_info_error", lang, error=str(e)),
             "data": None
         }

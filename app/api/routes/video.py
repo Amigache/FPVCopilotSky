@@ -3,9 +3,10 @@ Video Streaming API Routes
 Endpoints for controlling GStreamer video streaming
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional
+from app.i18n import get_language_from_request, translate
 
 router = APIRouter(prefix="/api/video", tags=["video"])
 
@@ -166,10 +167,12 @@ async def restart_streaming():
 
 
 @router.post("/config/video")
-async def configure_video(config: VideoConfigRequest):
+async def configure_video(config: VideoConfigRequest, request: Request):
     """Update video configuration"""
     if not _video_service:
         raise HTTPException(status_code=503, detail="Video service not initialized")
+    
+    lang = get_language_from_request(request)
     
     # Convert to dict, excluding None values
     config_dict = {k: v for k, v in config.model_dump().items() if v is not None}
@@ -211,11 +214,16 @@ async def configure_video(config: VideoConfigRequest):
     except Exception as e:
         print(f"⚠️ Failed to save video config: {e}")
     
-    return {"success": True, "message": "Video configuration updated", "config": config_dict}
+    return {"success": True, "message": translate("video.configuration_updated", lang), "config": config_dict}
 
 
 @router.post("/config/streaming")
-async def configure_streaming(config: StreamingConfigRequest):
+async def configure_streaming(config: StreamingConfigRequest, request: Request):
+    """Update streaming configuration"""
+    if not _video_service:
+        raise HTTPException(status_code=503, detail="Video service not initialized")
+    
+    lang = get_language_from_request(request)
     """Update streaming configuration"""
     if not _video_service:
         raise HTTPException(status_code=503, detail="Video service not initialized")
@@ -238,7 +246,7 @@ async def configure_streaming(config: StreamingConfigRequest):
     except Exception as e:
         print(f"⚠️ Failed to save streaming config: {e}")
     
-    return {"success": True, "message": "Streaming configuration updated", "config": config_dict}
+    return {"success": True, "message": translate("video.streaming_configuration_updated", lang), "config": config_dict}
 
 
 @router.post("/live-update")

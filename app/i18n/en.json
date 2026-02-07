@@ -1,0 +1,56 @@
+{
+  "serial": {
+    "preferences_saved": "Serial preferences saved"
+  },
+  "vpn": {
+    "preferences_saved": "VPN preferences saved"
+  },
+  "video": {
+    "configuration_updated": "Video configuration updated",
+    "streaming_configuration_updated": "Streaming configuration updated"
+  },
+  "system": {
+    "preferences_reset_success": "Preferences reset to defaults. Restart recommended.",
+    "preferences_reset_failed": "Failed to reset preferences",
+    "preferences_reset_error": "Error resetting preferences: {error}",
+    "restart_backend_error": "Error restarting backend: {error}",
+    "restart_frontend_error": "Error restarting frontend: {error}",
+    "backend_logs_error": "Error fetching backend logs: {error}",
+    "frontend_logs_error": "Error fetching frontend logs: {error}",
+    "board_not_detected": "No board detected - running on generic/unsupported platform",
+    "board_info_error": "Error retrieving board info: {error}"
+  },
+  "network": {
+    "interface_brought_up": "Interface '{interface}' brought up",
+    "interface_up_failed": "Failed to bring up interface",
+    "interface_brought_down": "Interface '{interface}' brought down",
+    "interface_down_failed": "Failed to bring down interface",
+    "metric_set": "Metric set to {metric} for interface '{interface}'",
+    "metric_set_failed": "Failed to set metric",
+    "wifi_connected": "Connected to '{ssid}'",
+    "wifi_connect_failed": "Failed to connect to '{ssid}'",
+    "wifi_disconnected": "Disconnected from WiFi",
+    "wifi_disconnect_failed": "Failed to disconnect",
+    "connecting": "Connecting to {ssid}...",
+    "connection_failed": "Connection failed",
+    "disconnection_failed": "Disconnection failed",
+    "band_configuration_failed": "Band configuration failed",
+    "reboot_failed": "Reboot failed"
+  },
+  "router": {
+    "rtmp_output_added": "RTMP output added",
+    "rtmp_output_add_failed": "Failed to add RTMP output",
+    "rtmp_output_removed": "RTMP output removed",
+    "rtmp_output_remove_failed": "Failed to remove RTMP output",
+    "srt_output_added": "SRT output added",
+    "srt_output_add_failed": "Failed to add SRT output",
+    "srt_output_removed": "SRT output removed",
+    "srt_output_remove_failed": "Failed to remove SRT output"
+  },
+  "dependencies": {
+    "requirements_not_found": "requirements.txt not found",
+    "all_installed": "All dependencies installed",
+    "frontend_not_available": "Frontend not available",
+    "node_modules_not_found": "node_modules not found or empty"
+  }
+}

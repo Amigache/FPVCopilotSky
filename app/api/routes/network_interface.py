@@ -2,12 +2,13 @@
 Network Interface API endpoints - Provider-based network interface management
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from typing import Dict, List, Optional
 from pydantic import BaseModel
 import logging
 
 from providers import get_provider_registry
+from app.i18n import get_language_from_request, translate
 
 logger = logging.getLogger(__name__)
 
@@ -156,7 +157,7 @@ async def get_interface_status(interface_name: str) -> Dict:
 # ==================== Interface Control ====================
 
 @router.post("/bring-up/{interface_name}")
-async def bring_up_interface(interface_name: str) -> InterfaceActionResponse:
+async def bring_up_interface(interface_name: str, request: Request) -> InterfaceActionResponse:
     """
     Bring up a network interface.
     
@@ -167,6 +168,7 @@ async def bring_up_interface(interface_name: str) -> InterfaceActionResponse:
         InterfaceActionResponse with success status
     """
     try:
+        lang = get_language_from_request(request)
         registry = get_provider_registry()
         provider = registry.get_network_interface(interface_name)
         
@@ -191,7 +193,7 @@ async def bring_up_interface(interface_name: str) -> InterfaceActionResponse:
         
         return InterfaceActionResponse(
             success=success,
-            message=f"Interface '{interface_name}' brought up" if success else "Failed to bring up interface",
+            message=translate("network.interface_brought_up", lang, interface=interface_name) if success else translate("network.interface_up_failed", lang),
             interface_name=status.get('interface_name') if status else None,
             status=status
         )
@@ -204,7 +206,7 @@ async def bring_up_interface(interface_name: str) -> InterfaceActionResponse:
 
 
 @router.post("/bring-down/{interface_name}")
-async def bring_down_interface(interface_name: str) -> InterfaceActionResponse:
+async def bring_down_interface(interface_name: str, request: Request) -> InterfaceActionResponse:
     """
     Bring down a network interface.
     
@@ -215,6 +217,7 @@ async def bring_down_interface(interface_name: str) -> InterfaceActionResponse:
         InterfaceActionResponse with success status
     """
     try:
+        lang = get_language_from_request(request)
         registry = get_provider_registry()
         provider = registry.get_network_interface(interface_name)
         
@@ -239,7 +242,7 @@ async def bring_down_interface(interface_name: str) -> InterfaceActionResponse:
         
         return InterfaceActionResponse(
             success=success,
-            message=f"Interface '{interface_name}' brought down" if success else "Failed to bring down interface",
+            message=translate("network.interface_brought_down", lang, interface=interface_name) if success else translate("network.interface_down_failed", lang),
             interface_name=status.get('interface_name') if status else None,
             status=status
         )
@@ -251,10 +254,11 @@ async def bring_down_interface(interface_name: str) -> InterfaceActionResponse:
         raise HTTPException(status_code=500, detail=str(e))
 
 
+
 # ==================== Routing Priority (Metric) ====================
 
 @router.post("/set-metric/{interface_name}")
-async def set_interface_metric(interface_name: str, request: SetMetricRequest) -> InterfaceActionResponse:
+async def set_interface_metric(interface_name: str, request_body: SetMetricRequest, request: Request) -> InterfaceActionResponse:
     """
     Set routing metric (priority) for a network interface.
     Lower metric = higher priority.
@@ -266,12 +270,13 @@ async def set_interface_metric(interface_name: str, request: SetMetricRequest) -
     
     Args:
         interface_name: Name of the interface provider
-        request: SetMetricRequest with metric value
+        request_body: SetMetricRequest with metric value
     
     Returns:
         InterfaceActionResponse with success status
     """
     try:
+        lang = get_language_from_request(request)
         registry = get_provider_registry()
         provider = registry.get_network_interface(interface_name)
         
@@ -289,21 +294,21 @@ async def set_interface_metric(interface_name: str, request: SetMetricRequest) -
             )
         
         # Validate metric range
-        if request.metric < 0 or request.metric > 999:
+        if request_body.metric < 0 or request_body.metric > 999:
             raise HTTPException(
                 status_code=400,
                 detail="Metric must be between 0 and 999"
             )
         
         # Set metric
-        success = provider.set_metric(request.metric)
+        success = provider.set_metric(request_body.metric)
         
         # Get updated status
         status = provider.get_status() if success else None
         
         return InterfaceActionResponse(
             success=success,
-            message=f"Metric set to {request.metric} for interface '{interface_name}'" if success else "Failed to set metric",
+            message=translate("network.metric_set", lang, metric=request_body.metric, interface=interface_name) if success else translate("network.metric_set_failed", lang),
             interface_name=status.get('interface_name') if status else None,
             status=status
         )
