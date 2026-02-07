@@ -441,10 +441,24 @@ async def startup_event():
     provider_registry.register_network_interface('vpn', VPNInterface)
     provider_registry.register_network_interface('modem', ModemInterface)
     
+    # Initialize Video providers (auto-register from registry_init modules)
+    from app.providers import video_registry_init  # Video encoders
+    from app.providers import video_source_registry_init  # Video sources
+    
     print("✅ Provider registry initialized:")
     print("   - VPN: Tailscale")
     print("   - Modem: Huawei E3372h")
     print("   - Network Interfaces: Ethernet, WiFi, VPN, Modem")
+    print("   - Video Sources: V4L2, LibCamera, HDMI Capture, Network Stream")
+    print("   - Video Encoders: Hardware H.264, MJPEG, x264, OpenH264")
+    
+    # Log available encoders
+    available_encoders = provider_registry.get_available_video_encoders()
+    encoder_names = [e['display_name'] for e in available_encoders if e['available']]
+    if encoder_names:
+        print(f"   - Video Encoders: {', '.join(encoder_names)}")
+    else:
+        print("   - Video Encoders: None available (GStreamer plugins may be missing)")
     
     # Create router for additional outputs (uses preferences for config)
     router_service = get_router()

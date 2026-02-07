@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 import logging
 
-from providers.base import ModemProvider, ModemStatus, ModemInfo, NetworkInfo
+from ...base import ModemProvider, ModemStatus, ModemInfo, NetworkInfo
 
 logger = logging.getLogger(__name__)
 

@@ -4,7 +4,7 @@ Implementation for VPN tunnel interfaces (Tailscale, ZeroTier, WireGuard, etc.)
 """
 
 from typing import Dict, Optional
-from providers.base import NetworkInterface, InterfaceStatus, InterfaceType
+from ..base import NetworkInterface, InterfaceStatus, InterfaceType
 import subprocess
 import re
 import logging

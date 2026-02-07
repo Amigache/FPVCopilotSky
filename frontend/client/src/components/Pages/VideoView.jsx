@@ -14,6 +14,7 @@ const VideoView = () => {
   // State
   const [loading, setLoading] = useState(true)
   const [cameras, setCameras] = useState([])
+  const [availableCodecs, setAvailableCodecs] = useState([])
   const [config, setConfig] = useState({
     device: '/dev/video0',
     codec: 'mjpeg',
@@ -22,6 +23,7 @@ const VideoView = () => {
     framerate: 30,
     quality: 85,
     h264_bitrate: 2000,
+    gop_size: 2,
     udp_host: '192.168.1.136',
     udp_port: 5600,
     auto_start: false
@@ -45,7 +47,8 @@ const VideoView = () => {
       framerate: parseInt(config.framerate),
       codec: config.codec,
       quality: parseInt(config.quality),
-      h264_bitrate: parseInt(config.h264_bitrate)
+      h264_bitrate: parseInt(config.h264_bitrate),
+      gop_size: parseInt(config.gop_size || 2)
     }
   }
 
@@ -89,15 +92,40 @@ const VideoView = () => {
     }
   }, [])
 
-  // Initial load - cameras only, status comes via WebSocket
+  // Load available codecs (hardware-dependent)
+  const loadCodecs = useCallback(async () => {
+    try {
+      const response = await api.get('/api/video/codecs')
+      if (response.ok) {
+        const data = await response.json()
+        setAvailableCodecs(data.codecs || [])
+        
+        // If current codec is not available, select first available
+        if (data.codecs.length > 0) {
+          setConfig(prev => {
+            const currentCodecAvailable = data.codecs.some(c => c.id === prev.codec)
+            if (!currentCodecAvailable) {
+              console.warn(`Codec ${prev.codec} not available, switching to ${data.codecs[0].id}`)
+              return { ...prev, codec: data.codecs[0].id }
+            }
+            return prev
+          })
+        }
+      }
+    } catch (error) {
+      console.error('Error loading codecs:', error)
+    }
+  }, [])  // No dependencies - only loads available codecs, doesn't depend on selection
+
+  // Initial load - cameras and codecs only, status comes via WebSocket
   useEffect(() => {
     const loadData = async () => {
       setLoading(true)
-      await loadCameras()
+      await Promise.all([loadCameras(), loadCodecs()])
       setLoading(false)
     }
     loadData()
-  }, [loadCameras])
+  }, [loadCameras, loadCodecs])
 
   // Actions - Apply config before starting
   const applyConfigAndStart = async () => {
@@ -243,8 +271,14 @@ const VideoView = () => {
   }
 
   // Get pipeline based on codec
+  // Get pipeline string from server status (WebSocket updates it in real-time)
   const getPipelineString = () => {
-    if (config.codec === 'h264') {
+    // Use the pipeline from server if available (works for all codecs)
+    if (status.pipeline_string) {
+      return status.pipeline_string
+    }
+    // Fallback to local generation for compatibility (should rarely happen)
+    if (config.codec === 'h264' || config.codec === 'h264_openh264') {
       return `udpsrc port=${config.udp_port} caps="application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)H264, payload=(int)96" ! rtph264depay ! avdec_h264 ! videoconvert ! video/x-raw,format=BGRA ! appsink name=outsink sync=false`
     }
     return `udpsrc port=${config.udp_port} caps="application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)JPEG, payload=(int)26" ! rtpjpegdepay ! jpegdec ! videoconvert ! video/x-raw,format=BGRA ! appsink name=outsink sync=false`
@@ -353,11 +387,12 @@ const VideoView = () => {
         )}
       </div>
 
-      <div className="video-columns">
+        <div className="video-columns">
         {/* Left Column - Video Settings */}
         <div className="video-col">
+          {/* Video Source Card */}
           <div className="card">
-            <h2>{t('views.video.videoConfiguration')}</h2>
+            <h2>{t('views.video.videoSource')}</h2>
             
             {status.streaming && (
               <div className="live-mode-badge">
@@ -365,18 +400,6 @@ const VideoView = () => {
                 {t('views.video.liveMode')}
               </div>
             )}
-
-            <div className={`form-group ${status.streaming ? 'field-disabled' : ''}`}>
-              <label>{t('views.video.codec')}</label>
-              <select 
-                value={config.codec} 
-                onChange={(e) => updateConfig(prev => ({ ...prev, codec: e.target.value }))}
-                disabled={status.streaming}
-              >
-                <option value="mjpeg">{t('views.video.codecMjpeg')}</option>
-                <option value="h264">{t('views.video.codecH264')}</option>
-              </select>
-            </div>
 
             <div className={`form-group ${status.streaming ? 'field-disabled' : ''}`}>
               <label>{t('views.video.videoSource')}</label>
@@ -390,7 +413,7 @@ const VideoView = () => {
                 ) : (
                   cameras.map(cam => (
                     <option key={cam.device} value={cam.device}>
-                      {cam.name} ({cam.device})
+                      {cam.name} {cam.provider && `[${cam.provider}]`} ({cam.device})
                     </option>
                   ))
                 )}
@@ -430,6 +453,56 @@ const VideoView = () => {
                 </select>
               </div>
             </div>
+          </div>
+
+          {/* Encoding Configuration Card */}
+          <div className="card">
+            <h2>{t('views.video.encodingConfiguration')}</h2>
+            
+            <div className={`form-group ${status.streaming ? 'field-disabled' : ''}`}>
+              <label>
+                {t('views.video.codec')}
+                {availableCodecs.length > 0 && (
+                  <span className="field-hint">
+                    {availableCodecs.length} {t('views.video.codecsAvailable')}
+                  </span>
+                )}
+              </label>
+              <select 
+                value={config.codec} 
+                onChange={(e) => {
+                  updateConfig(prev => ({ ...prev, codec: e.target.value }))
+                  // Adjust default bitrate when changing codec
+                  const selectedCodec = availableCodecs.find(c => c.id === e.target.value)
+                  if (selectedCodec && selectedCodec.default_bitrate) {
+                    updateConfig(prev => ({ ...prev, h264_bitrate: selectedCodec.default_bitrate }))
+                  }
+                }}
+                disabled={status.streaming || availableCodecs.length === 0}
+              >
+                {availableCodecs.length === 0 ? (
+                  <>
+                    <option value="mjpeg">{t('views.video.codecMjpeg')}</option>
+                    <option value="h264">{t('views.video.codecH264')}</option>
+                  </>
+                ) : (
+                  availableCodecs.map(codec => (
+                    <option key={codec.id} value={codec.id}>
+                      {codec.name}
+                      {codec.description && ` - ${codec.cpu_usage} CPU, ${codec.latency} latencia`}
+                    </option>
+                  ))
+                )}
+              </select>
+              {availableCodecs.length > 0 && config.codec && (
+                <small className="codec-info">
+                  {(() => {
+                    const currentCodec = availableCodecs.find(c => c.id === config.codec)
+                    return currentCodec?.description || ''
+                  })()}
+                </small>
+              )}
+            </div>
 
             {/* MJPEG Settings - editable live */}
             {config.codec === 'mjpeg' && (
@@ -453,7 +526,7 @@ const VideoView = () => {
               </div>
             )}
 
-            {/* H.264 Settings - editable live */}
+            {/* H.264 (x264) Settings - editable live */}
             {config.codec === 'h264' && (
               <div className={`form-group ${status.streaming ? 'field-live' : ''}`}>
                 <label>
@@ -465,7 +538,7 @@ const VideoView = () => {
                   onChange={(e) => {
                     const val = parseInt(e.target.value)
                     updateConfig(prev => ({ ...prev, h264_bitrate: val }))
-                    if (status.streaming) liveUpdate('h264_bitrate', val)
+                    if (status.streaming) liveUpdate('bitrate', val)
                   }}
                 >
                   <option value="500">500 ({t('views.video.bitrateMobile')})</option>
@@ -475,6 +548,56 @@ const VideoView = () => {
                   <option value="5000">5000 ({t('views.video.bitrateWifi')})</option>
                 </select>
               </div>
+            )}
+
+            {/* OpenH264 Settings - editable live */}
+            {config.codec === 'h264_openh264' && (
+              <>
+                <div className={`form-group ${status.streaming ? 'field-live' : ''}`}>
+                  <label>
+                    {t('views.video.bitrate')}
+                    {status.streaming && <span className="live-tag">LIVE</span>}
+                  </label>
+                  <select 
+                    value={config.h264_bitrate}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value)
+                      updateConfig(prev => ({ ...prev, h264_bitrate: val }))
+                      if (status.streaming) liveUpdate('bitrate', val)
+                    }}
+                  >
+                    <option value="500">500 (Móvil)</option>
+                    <option value="1000">1000</option>
+                    <option value="2000">2000 (Recomendado)</option>
+                    <option value="3000">3000</option>
+                    <option value="5000">5000 (WiFi)</option>
+                    <option value="8000">8000 (LAN)</option>
+                  </select>
+                </div>
+
+                <div className={`form-group ${status.streaming ? 'field-live' : ''}`}>
+                  <label>
+                    Keyframe Interval (GOP)
+                    {status.streaming && <span className="live-tag">LIVE</span>}
+                  </label>
+                  <select 
+                    value={config.gop_size || 2}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value)
+                      updateConfig(prev => ({ ...prev, gop_size: val }))
+                      if (status.streaming) liveUpdate('gop-size', val)
+                    }}
+                  >
+                    <option value="1">1 (Baja latencia, +bitrate)</option>
+                    <option value="2">2 (Balance FPV - recomendado)</option>
+                    <option value="3">3 (Normal)</option>
+                    <option value="5">5 (+Compresión)</option>
+                    <option value="10">10 (Alta compresión, +latencia)</option>
+                    <option value="15">15 (Máx. compresión)</option>
+                  </select>
+                  <small>Keyframes por segundo a 30fps: {Math.round(30 / (config.gop_size || 2))}</small>
+                </div>
+              </>
             )}
           </div>
 
@@ -630,6 +753,21 @@ const VideoView = () => {
                     {status.stats.errors}
                   </span>
                 </div>
+              </div>
+              
+              {/* Provider Info */}
+              <div className="pipeline-info">
+                <span className="info-label">📡 Providers:</span>
+                <span className="info-value">
+                  {status.providers?.encoder ? (
+                    <>
+                      {status.providers.encoder}
+                      {status.providers.source && ` (from ${status.providers.source})`}
+                    </>
+                  ) : (
+                    "No providers active"
+                  )}
+                </span>
               </div>
               
               {/* Pipeline Info */}

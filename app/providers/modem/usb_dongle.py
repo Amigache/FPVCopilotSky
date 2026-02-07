@@ -4,7 +4,7 @@ Implementation for generic USB dongle modems (e.g., via ModemManager/NetworkMana
 """
 
 from typing import Dict, Optional
-from providers.base import ModemProvider, ModemStatus, ModemInfo, NetworkInfo
+from ..base import ModemProvider, ModemStatus, ModemInfo, NetworkInfo
 import logging
 import subprocess
 import re

@@ -2,6 +2,7 @@
 GStreamer Video Streaming Service
 Supports MJPEG and H.264 encoding with UDP/RTP output for Mission Planner
 Optimized for ultra-low latency FPV streaming
+Uses provider-based architecture for codec-agnostic encoding
 """
 
 import os
@@ -47,6 +48,10 @@ class GStreamerService:
         self.main_loop_thread: Optional[threading.Thread] = None
         self.is_streaming: bool = False
         self.last_error: Optional[str] = None
+        
+        # Provider tracking
+        self.current_encoder_provider: Optional[str] = None
+        self.current_source_provider: Optional[str] = None
         
         # Statistics - counters for real-time metrics
         self.stats = {
@@ -96,238 +101,214 @@ class GStreamerService:
         # Broadcast updated status
         self._broadcast_status()
     
-    def _build_mjpeg_pipeline(self) -> Any:
-        """
-        Build MJPEG pipeline for ultra-low latency
-        Pipeline: v4l2src → jpegdec → jpegenc → rtpjpegpay → udpsink
-        """
-        if not GSTREAMER_AVAILABLE:
-            return None
-        
-        print("🔧 Building MJPEG pipeline...")
-        
-        pipeline = Gst.Pipeline.new("fpv-mjpeg-pipeline")
-        
-        # Source: UVC camera
-        source = Gst.ElementFactory.make("v4l2src", "source")
-        source.set_property("device", self.video_config.device)
-        source.set_property("do-timestamp", True)
-        
-        # Caps filter - request MJPEG from camera
-        caps_str = (
-            f"image/jpeg,width={self.video_config.width},"
-            f"height={self.video_config.height},"
-            f"framerate={self.video_config.framerate}/1"
-        )
-        caps_filter = Gst.ElementFactory.make("capsfilter", "caps_filter")
-        caps_filter.set_property("caps", Gst.Caps.from_string(caps_str))
-        
-        # MJPEG decoder
-        decoder = Gst.ElementFactory.make("jpegdec", "decoder")
-        
-        # Queue - minimal buffering for low latency
-        queue_pre = Gst.ElementFactory.make("queue", "queue_pre")
-        queue_pre.set_property("max-size-buffers", 2)
-        queue_pre.set_property("max-size-time", 0)
-        queue_pre.set_property("max-size-bytes", 0)
-        queue_pre.set_property("leaky", 2)  # Leak downstream (drop old frames)
-        
-        # Video conversion
-        videoconvert = Gst.ElementFactory.make("videoconvert", "videoconvert")
-        
-        # MJPEG encoder
-        encoder = Gst.ElementFactory.make("jpegenc", "encoder")
-        encoder.set_property("quality", self.video_config.quality)
-        
-        # Queue for UDP output
-        queue_udp = Gst.ElementFactory.make("queue", "queue_udp")
-        queue_udp.set_property("max-size-buffers", 3)
-        queue_udp.set_property("max-size-time", 0)
-        queue_udp.set_property("max-size-bytes", 0)
-        queue_udp.set_property("leaky", 2)
-        
-        # RTP payloader for MJPEG
-        rtppay = Gst.ElementFactory.make("rtpjpegpay", "rtppay")
-        rtppay.set_property("pt", 26)  # Payload type 26 for JPEG
-        rtppay.set_property("mtu", 1400)
-        
-        # UDP sink
-        udpsink = Gst.ElementFactory.make("udpsink", "udpsink")
-        udpsink.set_property("host", self.streaming_config.udp_host)
-        udpsink.set_property("port", self.streaming_config.udp_port)
-        udpsink.set_property("sync", False)
-        udpsink.set_property("async", False)
-        
-        # Add elements
-        elements = [source, caps_filter, decoder, queue_pre, videoconvert, encoder, queue_udp, rtppay, udpsink]
-        for element in elements:
-            if not element:
-                print(f"❌ Failed to create GStreamer element")
-                return None
-            pipeline.add(element)
-        
-        # Link elements
-        links = [
-            (source, caps_filter),
-            (caps_filter, decoder),
-            (decoder, queue_pre),
-            (queue_pre, videoconvert),
-            (videoconvert, encoder),
-            (encoder, queue_udp),
-            (queue_udp, rtppay),
-            (rtppay, udpsink)
-        ]
-        
-        for src, dst in links:
-            if not src.link(dst):
-                print(f"❌ Failed to link {src.get_name()} → {dst.get_name()}")
-                return None
-        
-        print("✅ MJPEG pipeline built successfully")
-        return pipeline
-    
-    def _build_h264_pipeline(self) -> Any:
-        """
-        Build H.264 pipeline for better compression
-        Pipeline: v4l2src → jpegdec → x264enc → rtph264pay → udpsink
-        """
-        if not GSTREAMER_AVAILABLE:
-            return None
-        
-        print("🔧 Building H.264 pipeline...")
-        
-        pipeline = Gst.Pipeline.new("fpv-h264-pipeline")
-        
-        # Source: UVC camera
-        source = Gst.ElementFactory.make("v4l2src", "source")
-        source.set_property("device", self.video_config.device)
-        source.set_property("do-timestamp", True)
-        
-        # Caps filter - request MJPEG from camera
-        caps_str = (
-            f"image/jpeg,width={self.video_config.width},"
-            f"height={self.video_config.height},"
-            f"framerate={self.video_config.framerate}/1"
-        )
-        caps_filter = Gst.ElementFactory.make("capsfilter", "caps_filter")
-        caps_filter.set_property("caps", Gst.Caps.from_string(caps_str))
-        
-        # MJPEG decoder
-        decoder = Gst.ElementFactory.make("jpegdec", "decoder")
-        
-        # Video conversion
-        videoconvert = Gst.ElementFactory.make("videoconvert", "videoconvert")
-        
-        # Video scaling
-        videoscale = Gst.ElementFactory.make("videoscale", "videoscale")
-        
-        # Caps filter for encoder input (I420 format)
-        encoder_caps_str = (
-            f"video/x-raw,format=I420,width={self.video_config.width},"
-            f"height={self.video_config.height},"
-            f"framerate={self.video_config.framerate}/1"
-        )
-        encoder_caps = Gst.ElementFactory.make("capsfilter", "encoder_caps")
-        encoder_caps.set_property("caps", Gst.Caps.from_string(encoder_caps_str))
-        
-        # Queue before encoder - decouple decoder and encoder threads
-        queue_pre = Gst.ElementFactory.make("queue", "queue_pre")
-        queue_pre.set_property("max-size-buffers", 2)
-        queue_pre.set_property("max-size-time", 0)
-        queue_pre.set_property("max-size-bytes", 0)
-        queue_pre.set_property("leaky", 2)  # Drop old frames if backed up
-        
-        # H.264 encoder - optimized for ultra-low latency
-        encoder = Gst.ElementFactory.make("x264enc", "encoder")
-        encoder.set_property("bitrate", self.video_config.h264_bitrate)
-        encoder.set_property("speed-preset", "ultrafast")  # Force ultrafast for minimal latency
-        encoder.set_property("tune", 0x00000004)  # zerolatency
-        encoder.set_property("key-int-max", self.video_config.framerate)  # Keyframe every second for recovery
-        encoder.set_property("bframes", 0)  # No B-frames for lower latency
-        encoder.set_property("threads", 4)  # Use all cores
-        encoder.set_property("sliced-threads", True)
-        encoder.set_property("rc-lookahead", 0)  # No lookahead for lower latency
-        encoder.set_property("vbv-buf-capacity", 300)  # Smaller buffer for faster response
-        
-        # Queue after encoder - prevent UDP sink from blocking encoder
-        queue_post = Gst.ElementFactory.make("queue", "queue_post")
-        queue_post.set_property("max-size-buffers", 3)
-        queue_post.set_property("max-size-time", 0)
-        queue_post.set_property("max-size-bytes", 0)
-        queue_post.set_property("leaky", 2)
-        
-        # H.264 parser
-        h264parse = Gst.ElementFactory.make("h264parse", "h264parse")
-        h264parse.set_property("config-interval", -1)
-        
-        # RTP payloader for H.264
-        rtppay = Gst.ElementFactory.make("rtph264pay", "rtppay")
-        rtppay.set_property("pt", 96)
-        rtppay.set_property("mtu", 1400)
-        rtppay.set_property("config-interval", -1)
-        
-        # UDP sink
-        udpsink = Gst.ElementFactory.make("udpsink", "udpsink")
-        udpsink.set_property("host", self.streaming_config.udp_host)
-        udpsink.set_property("port", self.streaming_config.udp_port)
-        udpsink.set_property("sync", False)
-        udpsink.set_property("async", False)
-        
-        # Add elements
-        elements = [
-            source, caps_filter, decoder, videoconvert, videoscale,
-            encoder_caps, queue_pre, encoder, queue_post, h264parse, rtppay, udpsink
-        ]
-        for element in elements:
-            if not element:
-                print(f"❌ Failed to create GStreamer element")
-                return None
-            pipeline.add(element)
-        
-        # Link elements
-        links = [
-            (source, caps_filter),
-            (caps_filter, decoder),
-            (decoder, videoconvert),
-            (videoconvert, videoscale),
-            (videoscale, encoder_caps),
-            (encoder_caps, queue_pre),
-            (queue_pre, encoder),
-            (encoder, queue_post),
-            (queue_post, h264parse),
-            (h264parse, rtppay),
-            (rtppay, udpsink)
-        ]
-        
-        for src, dst in links:
-            if not src.link(dst):
-                print(f"❌ Failed to link {src.get_name()} → {dst.get_name()}")
-                return None
-        
-        print("✅ H.264 pipeline built successfully")
-        return pipeline
-    
     def build_pipeline(self) -> bool:
-        """Build the pipeline based on codec selection"""
+        """Build the pipeline using provider architecture"""
         if not GSTREAMER_AVAILABLE:
             self.last_error = "GStreamer not available"
             return False
         
-        codec = self.video_config.codec.lower()
+        codec_id = self.video_config.codec.lower()
         
-        if codec == "h264":
-            self.pipeline = self._build_h264_pipeline()
-        else:
-            self.pipeline = self._build_mjpeg_pipeline()
-        
-        if self.pipeline:
+        # Build pipeline using provider
+        return self._build_pipeline_from_provider(codec_id)
+    
+    def _build_pipeline_from_provider(self, codec_id: str) -> bool:
+        """
+        Build pipeline using video encoder provider.
+        Returns True if successful, False otherwise.
+        """
+        try:
+            # Import here to avoid circular dependency
+            from app.providers.registry import get_provider_registry
+            
+            registry = get_provider_registry()
+            provider = registry.get_video_encoder(codec_id)
+            
+            if not provider:
+                print(f"⚠️ No provider found for codec: {codec_id}")
+                return False
+            
+            if not provider.is_available():
+                print(f"⚠️ Provider {codec_id} not available on system")
+                return False
+            
+            # Build config dict from video_config
+            config = {
+                'width': self.video_config.width,
+                'height': self.video_config.height,
+                'framerate': self.video_config.framerate,
+                'bitrate': self.video_config.h264_bitrate,
+                'quality': self.video_config.quality,
+                'gop_size': self.video_config.gop_size
+            }
+            
+            # Validate config
+            validation = provider.validate_config(config)
+            if not validation['valid']:
+                print(f"❌ Invalid config: {validation['errors']}")
+                self.last_error = '; '.join(validation['errors'])
+                return False
+            
+            if validation['warnings']:
+                for warning in validation['warnings']:
+                    print(f"⚠️ {warning}")
+            
+            # Get pipeline elements from provider
+            pipeline_config = provider.build_pipeline_elements(config)
+            if not pipeline_config['success']:
+                print(f"❌ Failed to build pipeline elements: {pipeline_config.get('error', 'Unknown error')}")
+                self.last_error = pipeline_config.get('error', 'Unknown error')
+                return False
+            
+            # Create GStreamer pipeline
+            print(f"🔧 Building pipeline with encoder: {provider.display_name}")
+            pipeline = Gst.Pipeline.new(f"fpv-{codec_id}-pipeline")
+            
+            # Store encoder provider name for status reporting
+            self.current_encoder_provider = provider.display_name
+            
+            # Get video source provider
+            registry = get_provider_registry()
+            
+            # Find which source provider handles this device
+            source_provider = None
+            source_config_result = None
+            
+            for source_type in registry.list_video_source_providers():
+                sp = registry.get_video_source(source_type)
+                if sp and sp.is_available():
+                    # Check if this provider can handle the device
+                    sources = sp.discover_sources()
+                    for src in sources:
+                        if src['device'] == self.video_config.device:
+                            source_provider = sp
+                            break
+                    if source_provider:
+                        break
+            
+            # Fallback to v4l2 if no provider found (backward compatibility)
+            if not source_provider:
+                source_provider = registry.get_video_source('v4l2')
+            
+            # Store source provider name for status reporting
+            if source_provider:
+                self.current_source_provider = source_provider.display_name
+            
+            if not source_provider:
+                print(f"❌ No video source provider available for {self.video_config.device}")
+                self.last_error = "No video source provider available"
+                return False
+            
+            # Build source element from provider
+            source_config_result = source_provider.build_source_element(
+                self.video_config.device,
+                config
+            )
+            
+            if not source_config_result['success']:
+                print(f"❌ Failed to build source element: {source_config_result.get('error')}")
+                self.last_error = source_config_result.get('error', 'Unknown error')
+                return False
+            
+            # Create source element
+            source_cfg = source_config_result['source_element']
+            source = Gst.ElementFactory.make(source_cfg['element'], source_cfg['name'])
+            if not source:
+                print(f"❌ Failed to create source element: {source_cfg['element']}")
+                return False
+            
+            # Set source properties
+            for prop, value in source_cfg['properties'].items():
+                source.set_property(prop, value)
+            
+            pipeline.add(source)
+            elements_list = [source]
+            
+            # Add caps filter if provided
+            if source_config_result['caps_filter']:
+                caps_filter = Gst.ElementFactory.make("capsfilter", "caps_filter")
+                caps_filter.set_property("caps", Gst.Caps.from_string(source_config_result['caps_filter']))
+                pipeline.add(caps_filter)
+                elements_list.append(caps_filter)
+            
+            # Add any post-source elements from provider
+            for elem_config in source_config_result.get('post_elements', []):
+                element = Gst.ElementFactory.make(elem_config['element'], elem_config['name'])
+                if not element:
+                    print(f"❌ Failed to create post-source element: {elem_config['element']}")
+                    return False
+                
+                for prop, value in elem_config.get('properties', {}).items():
+                    element.set_property(prop, value)
+                
+                pipeline.add(element)
+                elements_list.append(element)
+            
+            for elem_config in pipeline_config['elements']:
+                element = Gst.ElementFactory.make(elem_config['element'], elem_config['name'])
+                if not element:
+                    print(f"❌ Failed to create element: {elem_config['element']}")
+                    return False
+                
+                # Set properties
+                for prop, value in elem_config['properties'].items():
+                    try:
+                        # Handle capsfilter caps property specially
+                        if prop == 'caps' and isinstance(value, str):
+                            element.set_property(prop, Gst.Caps.from_string(value))
+                        else:
+                            element.set_property(prop, value)
+                    except Exception as e:
+                        print(f"⚠️ Failed to set property {prop}={value} on {elem_config['name']}: {e}")
+                
+                pipeline.add(element)
+                elements_list.append(element)
+            
+            # Add RTP payloader
+            rtppay = Gst.ElementFactory.make(pipeline_config['rtp_payloader'], "rtppay")
+            if not rtppay:
+                print(f"❌ Failed to create RTP payloader: {pipeline_config['rtp_payloader']}")
+                return False
+            
+            for prop, value in pipeline_config['rtp_payloader_properties'].items():
+                rtppay.set_property(prop, value)
+            
+            pipeline.add(rtppay)
+            elements_list.append(rtppay)
+            
+            # Add UDP sink
+            udpsink = Gst.ElementFactory.make("udpsink", "udpsink")
+            udpsink.set_property("host", self.streaming_config.udp_host)
+            udpsink.set_property("port", self.streaming_config.udp_port)
+            udpsink.set_property("sync", False)
+            udpsink.set_property("async", False)
+            
+            pipeline.add(udpsink)
+            elements_list.append(udpsink)
+            
+            # Link all elements in order
+            for i in range(len(elements_list) - 1):
+                if not elements_list[i].link(elements_list[i + 1]):
+                    src_name = elements_list[i].get_name()
+                    dst_name = elements_list[i + 1].get_name()
+                    print(f"❌ Failed to link {src_name} → {dst_name}")
+                    return False
+            
             # Setup bus for messages
-            bus = self.pipeline.get_bus()
+            bus = pipeline.get_bus()
             bus.add_signal_watch()
             bus.connect("message", self._on_bus_message)
+            
+            self.pipeline = pipeline
+            print(f"✅ Pipeline built successfully using provider: {provider.display_name}")
             return True
-        
-        return False
+            
+        except Exception as e:
+            print(f"❌ Exception building pipeline from provider: {e}")
+            import traceback
+            traceback.print_exc()
+            self.last_error = str(e)
+            return False
     
     def _setup_stats_probes(self):
         """Setup probes to count frames and bytes"""
@@ -535,6 +516,8 @@ class GStreamerService:
             self.main_loop.quit()
         
         self.is_streaming = False
+        self.current_encoder_provider = None
+        self.current_source_provider = None
         self._restore_cpu_mode()
         
         self._broadcast_status()
@@ -542,12 +525,7 @@ class GStreamerService:
         return {"success": True, "message": "Streaming stopped"}
     
     def update_live_property(self, property_name: str, value) -> Dict[str, Any]:
-        """Update a pipeline element property without restarting.
-        
-        Only supports:
-        - quality (MJPEG codec, jpegenc element)
-        - h264_bitrate (H.264 codec, x264enc element)
-        """
+        """Update a pipeline element property without restarting using provider info"""
         if not self.is_streaming or not self.pipeline:
             return {"success": False, "message": "Not streaming"}
         
@@ -555,27 +533,57 @@ class GStreamerService:
         if not encoder:
             return {"success": False, "message": "Encoder element not found"}
         
-        codec = self.video_config.codec.lower()
+        codec_id = self.video_config.codec.lower()
         
-        if property_name == "quality" and codec == "mjpeg":
-            value = max(10, min(100, int(value)))
-            encoder.set_property("quality", value)
-            self.video_config.quality = value
-            print(f"🎛️ Live update: JPEG quality → {value}")
-            self._broadcast_status()
-            return {"success": True, "message": f"Quality set to {value}", "property": "quality", "value": value}
-        
-        elif property_name == "h264_bitrate" and codec == "h264":
-            value = max(100, min(10000, int(value)))
-            encoder.set_property("bitrate", value)
-            self.video_config.h264_bitrate = value
-            print(f"🎛️ Live update: H.264 bitrate → {value} kbps")
-            self._broadcast_status()
-            return {"success": True, "message": f"Bitrate set to {value} kbps", "property": "h264_bitrate", "value": value}
-        
-        else:
-            allowed = "quality" if codec == "mjpeg" else "h264_bitrate"
-            return {"success": False, "message": f"Cannot change '{property_name}' live with {codec}. Only '{allowed}' is allowed."}
+        try:
+            # Import here to avoid circular dependency
+            from app.providers.registry import get_provider_registry
+            
+            registry = get_provider_registry()
+            provider = registry.get_video_encoder(codec_id)
+            
+            if provider:
+                # Use provider to get live adjustable properties
+                adjustable = provider.get_live_adjustable_properties()
+                
+                if property_name not in adjustable:
+                    allowed = ', '.join(adjustable.keys()) if adjustable else 'none'
+                    return {
+                        "success": False,
+                        "message": f"Cannot change '{property_name}' live with {codec_id}. Allowed: {allowed}"
+                    }
+                
+                prop_info = adjustable[property_name]
+                
+                # Clamp value to allowed range
+                value = max(prop_info['min'], min(prop_info['max'], int(value)))
+                
+                # Apply multiplier if needed (e.g., OpenH264 uses bps instead of kbps)
+                actual_value = value * prop_info.get('multiplier', 1)
+                
+                # Set the property on the encoder
+                encoder.set_property(prop_info['property'], actual_value)
+                
+                # Update config
+                if property_name == "quality":
+                    self.video_config.quality = value
+                elif property_name == "bitrate" or property_name == "h264_bitrate":
+                    self.video_config.h264_bitrate = value
+                
+                print(f"🎛️ Live update ({provider.display_name}): {property_name} → {value}")
+                self._broadcast_status()
+                
+                return {
+                    "success": True,
+                    "message": f"{prop_info['description']}: {value}",
+                    "property": property_name,
+                    "value": value
+                }
+            
+        except Exception as e:
+            error_msg = f"Failed to update property: {e}"
+            print(f"❌ {error_msg}")
+            return {"success": False, "message": error_msg}
 
     def restart(self) -> Dict[str, Any]:
         """Restart video streaming with current configuration"""
@@ -631,6 +639,10 @@ class GStreamerService:
                 "auto_start": self.streaming_config.auto_start
             },
             "stats": stats_formatted,
+            "providers": {
+                "encoder": self.current_encoder_provider,
+                "source": self.current_source_provider
+            },
             "last_error": self.last_error,
             "pipeline_string": self.get_pipeline_string()
         }
@@ -661,24 +673,25 @@ class GStreamerService:
         return get_available_cameras()
     
     def get_pipeline_string(self) -> str:
-        """Get GStreamer pipeline string for Mission Planner"""
-        codec = self.video_config.codec.lower()
+        """Get GStreamer pipeline string for Mission Planner using provider"""
+        codec_id = self.video_config.codec.lower()
         port = self.streaming_config.udp_port
         
-        if codec == "h264":
-            return (
-                f'udpsrc port={port} caps="application/x-rtp, media=(string)video, '
-                f'clock-rate=(int)90000, encoding-name=(string)H264, payload=(int)96" ! '
-                f'rtph264depay ! avdec_h264 ! videoconvert ! '
-                f'video/x-raw,format=BGRA ! appsink name=outsink sync=false'
-            )
-        else:
-            return (
-                f'udpsrc port={port} caps="application/x-rtp, media=(string)video, '
-                f'clock-rate=(int)90000, encoding-name=(string)JPEG, payload=(int)26" ! '
-                f'rtpjpegdepay ! jpegdec ! videoconvert ! '
-                f'video/x-raw,format=BGRA ! appsink name=outsink sync=false'
-            )
+        try:
+            # Import here to avoid circular dependency
+            from app.providers.registry import get_provider_registry
+            
+            registry = get_provider_registry()
+            provider = registry.get_video_encoder(codec_id)
+            
+            if provider:
+                return provider.get_pipeline_string_for_client(port)
+        
+        except Exception as e:
+            print(f"⚠️ Failed to get pipeline string from provider: {e}")
+        
+        # Should never reach here if providers are properly configured
+        return f'udpsrc port={port} ! fakesink'
     
     def _broadcast_status(self):
         """Broadcast status via WebSocket"""

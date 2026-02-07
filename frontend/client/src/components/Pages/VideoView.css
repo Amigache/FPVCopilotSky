@@ -17,6 +17,23 @@
   gap: 0.75rem;
 }
 
+/* Codec info and hints */
+.codec-info {
+  display: block;
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: #9aa6c3;
+  line-height: 1.4;
+  font-style: italic;
+}
+
+.field-hint {
+  margin-left: 0.5rem;
+  font-size: 0.85rem;
+  color: #7fa3ff;
+  font-weight: normal;
+}
+
 .spinner-small {
   width: 20px;
   height: 20px;

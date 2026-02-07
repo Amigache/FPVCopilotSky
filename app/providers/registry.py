@@ -1,18 +1,18 @@
 """
-Provider Registry - Central registry for VPN, Modem, and Network Interface providers
+Provider Registry - Central registry for VPN, Modem, Network Interface, and Video Encoder providers
 Enables dynamic provider discovery and instantiation
 """
 
 import logging
 from typing import Dict, Type, Optional, List
-from .base import VPNProvider, ModemProvider, NetworkInterface
+from .base import VPNProvider, ModemProvider, NetworkInterface, VideoEncoderProvider, VideoSourceProvider
 
 logger = logging.getLogger(__name__)
 
 
 class ProviderRegistry:
     """
-    Central registry for all VPN, Modem, and Network Interface providers.
+    Central registry for all VPN, Modem, Network Interface, and Video Encoder providers.
     Allows dynamic registration and discovery of providers.
     """
     
@@ -20,9 +20,13 @@ class ProviderRegistry:
         self._vpn_providers: Dict[str, Type[VPNProvider]] = {}
         self._modem_providers: Dict[str, Type[ModemProvider]] = {}
         self._network_providers: Dict[str, Type[NetworkInterface]] = {}
+        self._video_encoder_providers: Dict[str, Type[VideoEncoderProvider]] = {}
+        self._video_source_providers: Dict[str, Type[VideoSourceProvider]] = {}
         self._vpn_instances: Dict[str, VPNProvider] = {}
         self._modem_instances: Dict[str, ModemProvider] = {}
         self._network_instances: Dict[str, NetworkInterface] = {}
+        self._video_encoder_instances: Dict[str, VideoEncoderProvider] = {}
+        self._video_source_instances: Dict[str, VideoSourceProvider] = {}
     
     # ==================== VPN PROVIDERS ====================
     
@@ -255,6 +259,120 @@ class ProviderRegistry:
         
         return available
     
+    # ==================== VIDEO ENCODER PROVIDERS ====================
+    
+    def register_video_encoder(self, codec_id: str, provider_class: Type[VideoEncoderProvider]) -> None:
+        """
+        Register a Video Encoder provider class.
+        
+        Args:
+            codec_id: Codec identifier (e.g., 'mjpeg', 'h264', 'h264_openh264')
+            provider_class: Class inheriting from VideoEncoderProvider
+        """
+        if not issubclass(provider_class, VideoEncoderProvider):
+            raise TypeError(f"{provider_class} must inherit from VideoEncoderProvider")
+        
+        self._video_encoder_providers[codec_id] = provider_class
+        logger.info(f"Registered Video Encoder provider: {codec_id}")
+    
+    def get_video_encoder(self, codec_id: str) -> Optional[VideoEncoderProvider]:
+        """
+        Get a Video Encoder provider instance by codec ID.
+        Caches instances for reuse.
+        """
+        if codec_id not in self._video_encoder_providers:
+            logger.warning(f"Video Encoder provider '{codec_id}' not found")
+            return None
+        
+        # Return cached instance if available
+        if codec_id in self._video_encoder_instances:
+            return self._video_encoder_instances[codec_id]
+        
+        # Create new instance
+        try:
+            provider = self._video_encoder_providers[codec_id]()
+            self._video_encoder_instances[codec_id] = provider
+            logger.info(f"Instantiated Video Encoder provider: {codec_id}")
+            return provider
+        except Exception as e:
+            logger.error(f"Failed to instantiate Video Encoder provider '{codec_id}': {e}")
+            return None
+    
+    def list_video_encoders(self) -> List[str]:
+        """Get list of registered Video Encoder provider codec IDs"""
+        return list(self._video_encoder_providers.keys())
+    
+    def get_available_video_encoders(self) -> List[Dict]:
+        """
+        Get list of available Video Encoder providers with capabilities.
+        Only returns encoders that are actually available on the system.
+        
+        Returns:
+            [
+                {
+                    'codec_id': str,
+                    'display_name': str,
+                    'codec_family': str,
+                    'encoder_type': str,
+                    'available': bool,
+                    'capabilities': dict,
+                    'class': str
+                },
+                ...
+            ]
+        """
+        available = []
+        
+        for codec_id in self._video_encoder_providers:
+            provider = self.get_video_encoder(codec_id)
+            if provider:
+                try:
+                    is_available = provider.is_available()
+                    capabilities = provider.get_capabilities()
+                    
+                    available.append({
+                        'codec_id': codec_id,
+                        'display_name': provider.display_name,
+                        'codec_family': provider.codec_family,
+                        'encoder_type': provider.encoder_type,
+                        'available': is_available,
+                        'capabilities': capabilities,
+                        'class': self._video_encoder_providers[codec_id].__name__
+                    })
+                except Exception as e:
+                    logger.error(f"Error getting capabilities for encoder '{codec_id}': {e}")
+        
+        # Sort by priority (higher first), then by availability
+        available.sort(key=lambda x: (x['available'], x['capabilities'].get('priority', 0)), reverse=True)
+        
+        return available
+    
+    def get_best_video_encoder(self, codec_family: Optional[str] = None) -> Optional[VideoEncoderProvider]:
+        """
+        Get the best available video encoder, optionally filtered by codec family.
+        
+        Args:
+            codec_family: Optional filter ('mjpeg', 'h264', 'h265')
+        
+        Returns:
+            VideoEncoderProvider instance with highest priority that is available
+        """
+        encoders = self.get_available_video_encoders()
+        
+        # Filter by codec family if specified
+        if codec_family:
+            encoders = [e for e in encoders if e['codec_family'] == codec_family]
+        
+        # Filter only available encoders
+        encoders = [e for e in encoders if e['available']]
+        
+        if not encoders:
+            return None
+        
+        # Already sorted by priority in get_available_video_encoders
+        best_codec_id = encoders[0]['codec_id']
+        return self.get_video_encoder(best_codec_id)
+    
     # ==================== UTILITIES ====================
     
     def get_provider_status(self, provider_type: str, name: str) -> Dict:
@@ -290,11 +408,127 @@ class ProviderRegistry:
         
         return {'success': False, 'error': 'Invalid provider type'}
     
+    # ==================== VIDEO SOURCE PROVIDERS ====================
+    
+    def register_video_source(self, source_type: str, provider_class: Type[VideoSourceProvider]) -> None:
+        """
+        Register a video source provider class.
+        
+        Args:
+            source_type: Source type identifier (e.g., 'v4l2', 'libcamera', 'hdmi_capture')
+            provider_class: Class inheriting from VideoSourceProvider
+        """
+        if not issubclass(provider_class, VideoSourceProvider):
+            raise TypeError(f"{provider_class} must inherit from VideoSourceProvider")
+        
+        self._video_source_providers[source_type] = provider_class
+        logger.info(f"Registered video source provider: {source_type}")
+    
+    def get_video_source(self, source_type: str) -> Optional[VideoSourceProvider]:
+        """
+        Get a video source provider instance by type.
+        Caches instances for reuse.
+        """
+        if source_type not in self._video_source_providers:
+            logger.warning(f"Video source provider '{source_type}' not found")
+            return None
+        
+        # Return cached instance if available
+        if source_type in self._video_source_instances:
+            return self._video_source_instances[source_type]
+        
+        # Create new instance
+        try:
+            provider = self._video_source_providers[source_type]()
+            self._video_source_instances[source_type] = provider
+            logger.info(f"Instantiated video source provider: {source_type}")
+            return provider
+        except Exception as e:
+            logger.error(f"Failed to instantiate video source provider '{source_type}': {e}")
+            return None
+    
+    def list_video_source_providers(self) -> List[str]:
+        """Get list of registered video source provider types"""
+        return list(self._video_source_providers.keys())
+    
+    def get_available_video_sources(self) -> List[Dict]:
+        """
+        Get list of all available video sources from all providers.
+        
+        Returns:
+            [
+                {
+                    'source_id': str,
+                    'name': str,
+                    'type': str,  # 'v4l2', 'libcamera', etc.
+                    'device': str,
+                    'capabilities': dict,
+                    'provider': str
+                },
+                ...
+            ]
+        """
+        all_sources = []
+        
+        # Query each registered provider
+        for source_type in self._video_source_providers:
+            provider = self.get_video_source(source_type)
+            if provider and provider.is_available():
+                try:
+                    sources = provider.discover_sources()
+                    all_sources.extend(sources)
+                except Exception as e:
+                    logger.error(f"Failed to discover sources from {source_type}: {e}")
+        
+        # Sort by provider priority (highest first)
+        all_sources.sort(
+            key=lambda s: self.get_video_source(s['type']).priority if self.get_video_source(s['type']) else 0,
+            reverse=True
+        )
+        
+        return all_sources
+    
+    def get_best_video_source(self) -> Optional[Dict]:
+        """
+        Get the best available video source based on provider priority.
+        
+        Returns first available source from highest priority provider.
+        """
+        sources = self.get_available_video_sources()
+        return sources[0] if sources else None
+    
+    def find_video_source_by_identity(self, name: str, bus_info: str = "", driver: str = "") -> Optional[Dict]:
+        """
+        Find a video source by identity across all providers.
+        
+        Args:
+            name: Device name
+            bus_info: Bus info (optional)
+            driver: Driver name (optional)
+            
+        Returns:
+            Source dict if found, None otherwise
+        """
+        for source_type in self._video_source_providers:
+            provider = self.get_video_source(source_type)
+            if provider and provider.is_available():
+                source_id = provider.find_source_by_identity(name, bus_info, driver)
+                if source_id:
+                    # Get full source info
+                    sources = provider.discover_sources()
+                    for source in sources:
+                        if source['source_id'] == source_id:
+                            return source
+        
+        return None
+    
     def clear_cache(self) -> None:
         """Clear cached provider instances"""
         self._vpn_instances.clear()
         self._modem_instances.clear()
         self._network_instances.clear()
+        self._video_encoder_instances.clear()
+        self._video_source_instances.clear()
         logger.info("Provider cache cleared")
 
 

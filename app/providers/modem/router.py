@@ -4,7 +4,7 @@ Implementation for modems in router/gateway mode (e.g., TP-Link M7200)
 """
 
 from typing import Dict, Optional
-from providers.base import ModemProvider, ModemStatus, ModemInfo, NetworkInfo
+from ..base import ModemProvider, ModemStatus, ModemInfo, NetworkInfo
 import logging
 import subprocess
 

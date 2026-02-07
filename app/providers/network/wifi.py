@@ -4,7 +4,7 @@ Implementation for wireless WiFi connections
 """
 
 from typing import Dict, Optional, List
-from providers.base import NetworkInterface, InterfaceStatus, InterfaceType
+from ..base import NetworkInterface, InterfaceStatus, InterfaceType
 import subprocess
 import re
 import logging

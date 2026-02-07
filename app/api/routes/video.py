@@ -30,6 +30,7 @@ class VideoConfigRequest(BaseModel):
     codec: Optional[str] = None
     quality: Optional[int] = None
     h264_bitrate: Optional[int] = None
+    gop_size: Optional[int] = None
 
 
 class LivePropertyRequest(BaseModel):
@@ -57,11 +58,69 @@ async def get_status():
 
 @router.get("/cameras")
 async def get_cameras():
-    """Get available cameras"""
+    """Get available cameras from all video source providers"""
     if not _video_service:
         raise HTTPException(status_code=503, detail="Video service not initialized")
     
-    return {"cameras": _video_service.get_cameras()}
+    # Import here to avoid circular dependency
+    from app.providers.registry import get_provider_registry
+    
+    registry = get_provider_registry()
+    sources = registry.get_available_video_sources()
+    
+    # Format for frontend consumption (maintain compatibility)
+    cameras = []
+    for source in sources:
+        caps = source.get('capabilities', {})
+        cameras.append({
+            'device': source['device'],
+            'name': source['name'],
+            'type': caps.get('identity', {}).get('driver', source['type']),
+            'driver': caps.get('identity', {}).get('driver', 'unknown'),
+            'bus_info': caps.get('identity', {}).get('bus_info', ''),
+            'is_usb': caps.get('is_usb', False),
+            'resolutions': caps.get('supported_resolutions', []),
+            'resolutions_fps': caps.get('supported_framerates', {}),
+            'provider': source['provider']
+        })
+    
+    return {"cameras": cameras}
+
+
+
+@router.get("/codecs")
+async def get_codecs():
+    """Get available video codecs/encoders"""
+    if not _video_service:
+        raise HTTPException(status_code=503, detail="Video service not initialized")
+    
+    # Import here to avoid circular dependency
+    from app.providers.registry import get_provider_registry
+    
+    registry = get_provider_registry()
+    available_encoders = registry.get_available_video_encoders()
+    
+    # Format for frontend consumption
+    codecs = []
+    for encoder in available_encoders:
+        if encoder['available']:  # Only return actually available codecs
+            caps = encoder['capabilities']
+            codecs.append({
+                'id': encoder['codec_id'],
+                'name': encoder['display_name'],
+                'family': encoder['codec_family'],
+                'type': encoder['encoder_type'],
+                'description': caps.get('description', ''),
+                'latency': caps.get('latency_estimate', 'medium'),
+                'cpu_usage': caps.get('cpu_usage', 'medium'),
+                'default_bitrate': caps.get('default_bitrate', 2000),
+                'min_bitrate': caps.get('min_bitrate', 0),
+                'max_bitrate': caps.get('max_bitrate', 10000),
+                'quality_control': caps.get('quality_control', False),
+                'priority': caps.get('priority', 50)
+            })
+    
+    return {"codecs": codecs}
 
 
 @router.post("/start")
