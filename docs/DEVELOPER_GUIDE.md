@@ -140,6 +140,13 @@ FPVCopilotSky/
 │   │   │   ├── network_interface.py
 │   │   │   ├── video_source_provider.py     # [NUEVO] Para fuentes de video
 │   │   │   └── video_encoder_provider.py    # [NUEVO] Para codificadores
+│   │   ├── board/               # [NUEVO] Proveedores de board/plataforma
+│   │   │   ├── board_provider.py           # Clase abstracta BoardProvider
+│   │   │   ├── board_registry.py           # Singleton con auto-discovery
+│   │   │   ├── board_definitions.py        # Enums y DTOs
+│   │   │   ├── detected_board.py           # DTO resultante
+│   │   │   └── implementations/
+│   │   │       └── radxa/zero.py           # RadxaZeroProvider (Amlogic S905Y2)
 │   │   ├── modem/               # Implementaciones de modem
 │   │   │   ├── hilink/huawei.py # HuaweiE3372hProvider (~1500 líneas)
 │   │   │   ├── usb_dongle.py
@@ -384,7 +391,328 @@ class TPLinkM7200Provider(ModemProvider):
 - [ ] Probar con `curl` los endpoints relevantes
 
 ---
+## 6.2 Sistema de Board Providers
 
+Como FPV Copilot Sky ejecuta en diversas placas SBC (Radxa Zero, Jetson, Raspberry Pi, etc.) con distintas distros y kernels, usamos un **Board Provider System** que detecta y declara:
+
+1. **Hardware detectado**: CPU cores, RAM, GPU, almacenamiento (en runtime, sin hardcoding)
+2. **Variante actual**: SO, versión kernel, tipo almacenamiento
+3. **Features soportados**: Video sources, video encoders, conectividad, periféricos
+
+### Arquitectura: BoardProvider + BoardRegistry
+
+**Estructura de archivos:**
+```
+app/providers/board/
+├── board_provider.py               # Clase abstracta
+├── board_registry.py               # Singleton con auto-discovery
+├── board_definitions.py            # Enums/DTOs
+├── detected_board.py               # DTO del resultado
+└── implementations/
+    ├── __init__.py
+    └── radxa/
+        ├── __init__.py
+        └── zero.py                 # RadxaZeroProvider implementado
+```
+
+**Patrón de descubrimiento automático:**
+
+`BoardRegistry` importa dinámicamente todos los módulos en `implementations/*/` usando `importlib`. Cada módulo que contenga una clase heredando de `BoardProvider` se registra automáticamente. No requiere cambios en `main.py`.
+
+```python
+# En app/main.py al startup
+from providers.board import BoardRegistry
+
+registry = BoardRegistry()  # Auto-descubre e intenta detectar
+detected_board = registry.get_detected_board()
+if detected_board:
+    logger.info(f"✅ Board detected: {detected_board.board_name}")
+```
+
+### Implementación actual: RadxaZeroProvider
+
+```python
+# app/providers/board/implementations/radxa/zero.py
+from ..board_provider import BoardProvider
+from ..board_definitions import (
+    HardwareInfo, VariantInfo, StorageType, DistroFamily, CPUArch,
+    VideoSourceFeature, VideoEncoderFeature, ConnectivityFeature, SystemFeature
+)
+import os
+import subprocess
+
+class RadxaZeroProvider(BoardProvider):
+    """Radxa Zero (Amlogic S905Y2)
+    
+    Auto-detecta en runtime:
+    - CPU cores: os.cpu_count() o /proc/cpuinfo
+    - RAM: /proc/meminfo → MemTotal
+    - Storage: df / → tamaño root filesystem
+    - Variante: /etc/os-release → nombre + versión
+    """
+    
+    @property
+    def board_name(self) -> str:
+        return "Radxa Zero"
+    
+    @property
+    def board_identifier(self) -> str:
+        return "radxa_zero_amlogic_s905y2"
+    
+    def detect_board(self) -> bool:
+        """Verifica si es Radxa Zero: /proc/device-tree/model o cpuinfo"""
+        return self._check_detection_criteria()
+    
+    def _check_detection_criteria(self) -> bool:
+        # Primero intenta /proc/device-tree/model
+        try:
+            with open('/proc/device-tree/model', 'r') as f:
+                model = f.read().strip()
+                return 'Radxa Zero' in model
+        except FileNotFoundError:
+            pass
+        
+        # Fallback: busca en cpuinfo
+        try:
+            with open('/proc/cpuinfo', 'r') as f:
+                content = f.read()
+                return 'Amlogic' in content and 'S905Y2' in content
+        except FileNotFoundError:
+            return False
+    
+    def _get_hardware_info(self) -> HardwareInfo:
+        """Auto-detecta specs en runtime"""
+        return HardwareInfo(
+            cpu_model="Amlogic S905Y2",      # Inmutable
+            cpu_cores=self._detect_cpu_cores(),   # Runtime
+            cpu_arch=CPUArch.ARMV8,               # Inmutable
+            ram_gb=self._detect_ram_gb(),         # Runtime
+            storage_gb=self._detect_storage_gb(), # Runtime
+            has_gpu=True,                         # Inmutable
+            gpu_model="Mali-G31 MP2"             # Inmutable
+        )
+    
+    @staticmethod
+    def _detect_cpu_cores() -> int:
+        try:
+            return os.cpu_count() or 4
+        except:
+            return 4
+    
+    @staticmethod
+    def _detect_ram_gb() -> int:
+        try:
+            with open('/proc/meminfo', 'r') as f:
+                for line in f:
+                    if line.startswith('MemTotal:'):
+                        kb = int(line.split()[1])
+                        return max(1, int(round(kb / (1024 * 1024))))
+        except:
+            pass
+        return 4  # fallback
+    
+    @staticmethod
+    def _detect_storage_gb() -> int:
+        try:
+            output = subprocess.check_output(['df', '/'], text=True)
+            lines = output.strip().split('\n')
+            if len(lines) > 1:
+                parts = lines[1].split()
+                kb = int(parts[1])  # Tamaño en 1K-blocks
+                return max(1, int(round(kb / (1024 * 1024))))
+        except:
+            pass
+        return 32  # fallback
+    
+    def detect_running_variant(self) -> Optional[VariantInfo]:
+        """Lee /etc/os-release para detectar variante actual"""
+        try:
+            distro = None
+            version = None
+            with open('/etc/os-release', 'r') as f:
+                for line in f:
+                    if line.startswith('ID='):
+                        distro = line.split('=')[1].strip().strip('"')
+                    elif line.startswith('VERSION_ID='):
+                        version = line.split('=')[1].strip().strip('"')
+            
+            if distro and distro.lower() in ['armbian', 'ubuntu', 'debian']:
+                # Detecta automáticamente el kernel
+                kernel_version = subprocess.check_output(
+                    ['uname', '-r'], text=True
+                ).strip()
+                
+                return VariantInfo(
+                    name=f"{distro.capitalize()} {version}",
+                    storage_type=StorageType.EMMC,
+                    distro_family=(
+                        DistroFamily.ARMBIAN if distro.lower() == 'armbian'
+                        else DistroFamily.DEBIAN
+                    ),
+                    distro_version=version or "unknown",
+                    kernel_version=kernel_version,
+                    is_default=True,
+                    video_sources=[VideoSourceFeature.V4L2, VideoSourceFeature.LIBCAMERA],
+                    video_encoders=[
+                        VideoEncoderFeature.HARDWARE_H264,
+                        VideoEncoderFeature.MJPEG,
+                        VideoEncoderFeature.X264_SOFTWARE,
+                    ],
+                    connectivity=[
+                        ConnectivityFeature.WIFI,
+                        ConnectivityFeature.USB_MODEM,
+                        ConnectivityFeature.USB_3,
+                    ],
+                    system_features=[
+                        SystemFeature.GPIO,
+                        SystemFeature.I2C,
+                        SystemFeature.SPI
+                    ]
+                )
+        except Exception as e:
+            logger.warning(f"Could not detect running variant: {e}")
+        
+        return None
+```
+
+### Acceso a información del board
+
+**Desde servicios o rutas API:**
+```python
+from providers.board import BoardRegistry
+
+registry = BoardRegistry()  # Singleton - la misma instancia siempre
+detected = registry.get_detected_board()
+
+if detected:
+    print(f"Board: {detected.board_name}")
+    print(f"CPU: {detected.hardware.cpu_cores} cores @ {detected.hardware.cpu_model}")
+    print(f"RAM: {detected.hardware.ram_gb} GB")
+    print(f"Storage: {detected.hardware.storage_gb} GB")
+    print(f"Encoder support: {detected.variant.video_encoders}")
+```
+
+**Ejemplo: GStreamerService adapta codec según board**
+```python
+# En gstreamer_service.py
+from providers.board import BoardRegistry
+
+def _adapt_codec_to_board(self, preferred_codec: str) -> str:
+    """Selecciona codec disponible en esta placa"""
+    registry = BoardRegistry()
+    board = registry.get_detected_board()
+    
+    if not board:
+        return preferred_codec  # No detection, usar preferido
+    
+    available = board.variant.video_encoders
+    
+    # Fallback chain: HW H.264 → x264 → MJPEG
+    if VideoEncoderFeature.HARDWARE_H264 in available:
+        return 'h264'
+    elif VideoEncoderFeature.X264_SOFTWARE in available:
+        return 'x264'
+    else:
+        return 'mjpeg'  # Siempre disponible
+```
+
+### Endpoint API: `/api/system/board`
+
+```python
+# app/api/routes/system.py
+@router.get("/board")
+async def get_board_info():
+    registry = BoardRegistry()
+    detected = registry.get_detected_board()
+    
+    if not detected:
+        return {"success": False, "message": "No board detected"}
+    
+    return {
+        "success": True,
+        "data": detected.to_dict()  # DTO con todos los detalles
+    }
+```
+
+**Respuesta JSON:**
+```json
+{
+  "success": true,
+  "data": {
+    "board_name": "Radxa Zero",
+    "board_model": "Radxa Zero (Amlogic S905Y2)",
+    "hardware": {
+      "cpu_model": "Amlogic S905Y2",
+      "cpu_cores": 4,
+      "cpu_arch": "aarch64",
+      "ram_gb": 4,
+      "storage_gb": 29,
+      "has_gpu": true,
+      "gpu_model": "Mali-G31 MP2"
+    },
+    "variant": {
+      "name": "Ubuntu 24.04",
+      "storage_type": "eMMC",
+      "distro_family": "debian",
+      "distro_version": "24.04",
+      "kernel_version": "6.1.63-current-meson64"
+    },
+    "features": {
+      "video_sources": ["v4l2", "libcamera"],
+      "video_encoders": ["hardware_h264", "mjpeg", "x264"],
+      "connectivity": ["wifi", "usb_modem", "usb3"],
+      "system_features": ["gpio", "i2c", "spi"]
+    }
+  }
+}
+```
+
+### Integración frontend
+
+**En SystemView.jsx:**
+- Card que muestra: board name, model, CPU/RAM/Storage detectados
+- Badge con kernel version y distro
+- Tags de features: video sources, encoders, connectivity, periféricos
+- Datos obtenidos via `GET /api/system/board` al montar el componente
+
+### Checklist para agregar nuevo board
+
+1. **Crear implementación:**
+   ```bash
+   mkdir -p app/providers/board/implementations/<marca>/
+   touch app/providers/board/implementations/<marca>/<modelo>.py
+   ```
+
+2. **Heredar de BoardProvider e implementar:**
+   - `board_name`, `board_identifier` (properties)
+   - `detect_board()` → conocer si esta placa está presente
+   - `_get_hardware_info()` → **auto-detectar** CPU cores, RAM, storage (no hardcodear)
+     - CPU cores: `os.cpu_count()`, `/proc/cpuinfo`, o `lscpu`
+     - RAM: `/proc/meminfo` → MemTotal
+     - Storage: `df /`, `lsblk`, o `statvfs()`
+   - `detect_running_variant()` → detectar SO/kernel actual
+   - `get_variants()` → definir variantes soportadas y features
+
+3. **Testing:**
+   - Verificar que `BoardRegistry` lo auto-descubre: `logger.info()` en main.py
+   - Testear endpoint: `curl http://localhost:8000/api/system/board`
+   - Validar specs auto-detectadas vs `df`, `uname`, `/proc/*` en shell
+
+4. **Git:**
+   - Guardar en `implementations/<marca>/<modelo>.py`
+   - Auto-discovery ocurre sin cambios en main.py
+   - Verificar que detecta solo en hardware real (no falsos positivos en dev)
+
+### Notas sobre detección
+
+- La detección ocurre en `app/main.py` al inicializar el app
+- Una placa se considera "detectada" cuando todos los criterios coinciden
+- Cada variante puede tener diferentes features (ej: SD vs eMMC)
+- La detección automática de variante es el mejor esfuerzo (puede fallar)
+- Si no hay match perfecto, se puede retornar la variante por defecto
+- Los servicios consultan `BoardRegistry.get_detected_board()` para adaptar comportamiento
+
+---
 ## 6.3 Proveedores de Video: Fuentes (Cámaras) y Codificadores
 
 FPV Copilot Sky usa una arquitectura basada en proveedores para **fuentes de video** (cámaras) y **codificadores** (H.264, MJPEG, etc.), permitiendo soporte flexible para múltiples hardware.

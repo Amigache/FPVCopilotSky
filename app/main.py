@@ -28,6 +28,7 @@ from providers.network import (
     VPNInterface,
     ModemInterface,
 )
+from providers.board import BoardRegistry  # Board/platform detection
 
 # Use simplified MAVLink bridge and router
 from services.mavlink_bridge import MAVLinkBridge
@@ -62,6 +63,7 @@ mavlink_service = None
 router_service = None
 preferences_service = None
 video_service = None
+detected_board = None  # Board provider detection
 
 # Include routers
 app.include_router(mavlink.router, prefix="/api/mavlink", tags=["mavlink"])
@@ -420,11 +422,30 @@ def auto_connect_serial():
 @app.on_event("startup")
 async def startup_event():
     """Initialize services on startup"""
-    global mavlink_service, router_service, preferences_service, video_service
+    global mavlink_service, router_service, preferences_service, video_service, detected_board
     loop = asyncio.get_event_loop()
     
     # Initialize preferences first
     preferences_service = get_preferences()
+    
+    # Initialize Board Provider detection
+    # This detects the hardware platform and capabilities
+    try:
+        board_registry = BoardRegistry()
+        detected_board = board_registry.get_detected_board()
+        if detected_board:
+            print(f"✅ Board detected: {detected_board.board_name}")
+            print(f"   - Variant: {detected_board.variant.name}")
+            print(f"   - CPU: {detected_board.hardware.cpu_cores} cores @ {detected_board.hardware.cpu_model}")
+            print(f"   - RAM: {detected_board.hardware.ram_gb}GB")
+            print(f"   - Storage: {detected_board.hardware.storage_gb}GB ({detected_board.variant.storage_type.value})")
+            print(f"   - Video Sources: {', '.join([f.value for f in detected_board.variant.video_sources])}")
+            print(f"   - Video Encoders: {', '.join([f.value for f in detected_board.variant.video_encoders])}")
+        else:
+            print("⚠️  No board detected - using generic configuration")
+    except Exception as e:
+        logger.error(f"Board detection failed: {e}")
+        print("⚠️  Board detection error - using generic configuration")
     
     # Initialize provider registry (VPN, Modem, Network providers)
     provider_registry = init_provider_registry()
@@ -542,7 +563,12 @@ async def startup_event():
         name="AutoConnect"
     )
     auto_connect_thread.start()
-    
+
+
+def get_detected_board():
+    """Get detected board info (singleton pattern)"""
+    return detected_board
+
 @app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup on shutdown"""

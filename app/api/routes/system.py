@@ -137,3 +137,31 @@ async def get_frontend_logs(lines: int = 100):
             "message": f"Error fetching frontend logs: {str(e)}",
             "logs": ""
         }
+
+
+@router.get("/board")
+async def get_board_info():
+    """Get detected board/platform information with hardware specs and supported features"""
+    try:
+        from providers.board import BoardRegistry
+
+        registry = BoardRegistry()
+        detected_board = registry.get_detected_board()
+        
+        if detected_board:
+            return {
+                "success": True,
+                "data": detected_board.to_dict()
+            }
+        else:
+            return {
+                "success": False,
+                "message": "No board detected - running on generic/unsupported platform",
+                "data": None
+            }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Error retrieving board info: {str(e)}",
+            "data": None
+        }

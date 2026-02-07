@@ -107,10 +107,89 @@ class GStreamerService:
             self.last_error = "GStreamer not available"
             return False
         
+        # Log board detection info at pipeline build
+        try:
+            from providers.board import BoardRegistry
+            detected_board = BoardRegistry().get_detected_board()
+            if detected_board:
+                print(f"\n🎯 Building video pipeline for: {detected_board.board_name}")
+                print(f"   - Variant: {detected_board.variant.name}")
+                print(f"   - Available encoders: {', '.join([f.value for f in detected_board.variant.video_encoders])}")
+                print(f"   - Available sources: {', '.join([f.value for f in detected_board.variant.video_sources])}")
+        except Exception as e:
+            print(f"   (Board info unavailable: {e})")
+        
         codec_id = self.video_config.codec.lower()
+        
+        # Adapt codec based on board capabilities
+        codec_id = self._adapt_codec_to_board(codec_id)
         
         # Build pipeline using provider
         return self._build_pipeline_from_provider(codec_id)
+    
+    def _adapt_codec_to_board(self, codec_id: str) -> str:
+        """
+        Adapt requested codec to available board features.
+        
+        E.g., if user requests HW H.264 but board doesn't support it,
+        fallback to x264 software encoder.
+        
+        Args:
+            codec_id: Requested codec (e.g., 'h264_hw', 'x264', 'mjpeg')
+        
+        Returns:
+            Adapted codec_id that's supported on this board
+        """
+        try:
+            from providers.board import BoardRegistry
+            
+            detected_board = BoardRegistry().get_detected_board()
+            if not detected_board:
+                # No board detection, use requested codec as-is
+                return codec_id
+            
+            # Check available encoders on this board
+            available_encoders = [f.value for f in detected_board.variant.video_encoders]
+            
+            print(f"📊 Board supports encoders: {available_encoders}")
+            print(f"   User requested: {codec_id}")
+            
+            # Map codec ID to board feature names
+            codec_to_feature = {
+                'h264_hw': 'hardware_h264',
+                'h264': 'hardware_h264',
+                'h264_hw_meson': 'hardware_h264',
+                'x264': 'x264',
+                'mjpeg': 'mjpeg',
+                'openh264': 'openh264'
+            }
+            
+            requested_feature = codec_to_feature.get(codec_id)
+            
+            # If requested codec is supported, use it
+            if requested_feature and requested_feature in available_encoders:
+                print(f"✅ Using requested {codec_id} (supported on board)")
+                return codec_id
+            
+            # If not supported, fallback strategy:
+            # hardware_h264 → x264 → mjpeg
+            if requested_feature == 'hardware_h264' and 'x264' in available_encoders:
+                print(f"⚠️ {codec_id} not supported, falling back to x264")
+                return 'x264'
+            
+            if requested_feature in ['hardware_h264', 'x264'] and 'mjpeg' in available_encoders:
+                print(f"⚠️ {codec_id} not supported, falling back to mjpeg")
+                return 'mjpeg'
+            
+            # If we got here, just use what was requested
+            # Provider will handle errors if truly not available
+            print(f"⚠️ {codec_id} not in board features, attempting anyway")
+            return codec_id
+            
+        except Exception as e:
+            print(f"⚠️ Board adaptation error: {e}, using requested codec")
+            return codec_id
+
     
     def _build_pipeline_from_provider(self, codec_id: str) -> bool:
         """

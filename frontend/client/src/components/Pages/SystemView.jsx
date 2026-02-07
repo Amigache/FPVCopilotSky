@@ -16,12 +16,15 @@ const SystemView = () => {
   const [servicesLoading, setServicesLoading] = useState(true)
   const [cpuInfo, setCpuInfo] = useState(null)
   const [memoryInfo, setMemoryInfo] = useState(null)
+  const [boardInfo, setBoardInfo] = useState(null)
+  const [boardLoading, setBoardLoading] = useState(true)
 
   // Load initial status
   useEffect(() => {
     loadStatus()
     loadServices()
     loadResources()
+    loadBoard()
     // No polling needed - all updates come via WebSocket
   }, [])
 
@@ -93,6 +96,20 @@ const SystemView = () => {
     }
   }
 
+  const loadBoard = async () => {
+    try {
+      const response = await api.get('/api/system/board')
+      if (response.ok) {
+        const data = await response.json()
+        setBoardInfo(data)
+      }
+    } catch (error) {
+      console.error('Error loading board info:', error)
+    } finally {
+      setBoardLoading(false)
+    }
+  }
+
   // Color helpers
   const getUsageColor = (percent) => {
     if (percent >= 90) return { border: 'rgba(244, 67, 54, 0.5)', bg: 'rgba(244, 67, 54, 0.25)', text: '#ffb3b8', bar: '#f44336', barGradient: '#d32f2f' }
@@ -132,6 +149,7 @@ const SystemView = () => {
 
   const { backend } = statusData
   const connectedColor = 'rgba(102, 102, 102, 0.3)'
+  const boardData = boardInfo?.data
   
   // Memory colors
   const memPercent = memoryInfo?.percentage || 0
@@ -162,6 +180,65 @@ const SystemView = () => {
           </div>
         </div>
 
+        {/* Board Info Card */}
+        <div className="card">
+          <h2>🧩 {t('views.system.board', 'Board')}</h2>
+          {boardLoading ? (
+            <div className="waiting-data">{t('common.loading', 'Cargando')}</div>
+          ) : boardInfo?.success && boardData ? (
+            <div className="info-section">
+              <InfoRow label={t('views.system.boardName', 'Board')} value={boardData.board_name || 'N/A'} />
+              <InfoRow label={t('views.system.boardModel', 'Model')} value={boardData.board_model || 'N/A'} />
+              <InfoRow label={t('views.system.cpuModel', 'CPU')} value={boardData.hardware?.cpu_model || 'N/A'} />
+              <InfoRow label={t('views.system.cpuCores', 'Cores')} value={boardData.hardware?.cpu_cores ?? 'N/A'} />
+              <InfoRow label={t('views.system.ram', 'RAM')} value={boardData.hardware?.ram_gb ? `${boardData.hardware.ram_gb} GB` : 'N/A'} />
+              <InfoRow label={t('views.system.storage', 'Storage')} value={boardData.hardware?.storage_gb ? `${boardData.hardware.storage_gb} GB` : 'N/A'} />
+              <InfoRow label={t('views.system.storageType', 'Storage Type')} value={boardData.variant?.storage_type || 'N/A'} />
+              <InfoRow label={t('views.system.distro', 'Distro')} value={boardData.variant?.distro || 'N/A'} />
+              <InfoRow label={t('views.system.kernel', 'Kernel')} value={boardData.variant?.kernel || 'N/A'} />
+              <div className="board-features">
+                <div className="board-feature-group">
+                  <div className="board-feature-label">{t('views.system.videoSources', 'Video Sources')}</div>
+                  <div className="board-feature-tags">
+                    {(boardData.features?.video_sources || []).map((feature) => (
+                      <span key={`vs-${feature}`} className="board-tag">{feature}</span>
+                    ))}
+                  </div>
+                </div>
+                <div className="board-feature-group">
+                  <div className="board-feature-label">{t('views.system.videoEncoders', 'Video Encoders')}</div>
+                  <div className="board-feature-tags">
+                    {(boardData.features?.video_encoders || []).map((feature) => (
+                      <span key={`ve-${feature}`} className="board-tag">{feature}</span>
+                    ))}
+                  </div>
+                </div>
+                <div className="board-feature-group">
+                  <div className="board-feature-label">{t('views.system.connectivity', 'Connectivity')}</div>
+                  <div className="board-feature-tags">
+                    {(boardData.features?.connectivity || []).map((feature) => (
+                      <span key={`conn-${feature}`} className="board-tag">{feature}</span>
+                    ))}
+                  </div>
+                </div>
+                <div className="board-feature-group">
+                  <div className="board-feature-label">{t('views.system.systemFeatures', 'System Features')}</div>
+                  <div className="board-feature-tags">
+                    {(boardData.features?.system_features || []).map((feature) => (
+                      <span key={`sys-${feature}`} className="board-tag">{feature}</span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="waiting-data">{boardInfo?.message || t('views.system.boardUnknown', 'No board detected')}</div>
+          )}
+        </div>
+
+      </div>
+
+      <div className="monitor-col">
         {/* Memory Card */}
         <div className="card">
           <h2>💾 {t('views.system.memory')}</h2>
@@ -229,9 +306,7 @@ const SystemView = () => {
             </div>
           </div>
         </div>
-      </div>
 
-      <div className="monitor-col">
         {/* Services Card */}
         <div className="card">
           <h2>🔧 {t('views.system.services')}</h2>
