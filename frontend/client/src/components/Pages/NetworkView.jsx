@@ -14,7 +14,6 @@ const NetworkView = () => {
   
   // State
   const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
   const [status, setStatus] = useState(null)
   const [hilinkStatus, setHilinkStatus] = useState(null)
   const [wifiNetworks, setWifiNetworks] = useState([])
@@ -104,16 +103,6 @@ const NetworkView = () => {
       setLoading(false)
     }
   }, [messages.network_status])
-
-  // Refresh all
-  const handleRefresh = async () => {
-    setRefreshing(true)
-    await loadStatus()
-    await loadHilinkStatus()
-    await loadWifiNetworks()
-    setRefreshing(false)
-    showToast(t('network.refreshed', 'Status updated'), 'success')
-  }
 
   // Set priority mode
   const handleSetMode = async (mode) => {
@@ -261,16 +250,7 @@ const NetworkView = () => {
         <div className="network-col">
           {/* Interfaces Card */}
           <div className="card">
-            <div className="card-header">
-              <h2>🔌 {t('network.interfaces', 'Interfaces')}</h2>
-              <button 
-                className="btn-refresh" 
-                onClick={handleRefresh} 
-                disabled={refreshing}
-              >
-                {refreshing ? '...' : '🔄'}
-              </button>
-            </div>
+            <h2>🔌 {t('network.interfaces', 'Interfaces')}</h2>
             <div className="interfaces-list">
               {interfaces.map((iface) => (
                 <div 

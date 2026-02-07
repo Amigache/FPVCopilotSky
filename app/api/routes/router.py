@@ -87,6 +87,53 @@ async def add_output(request: AddOutputRequest):
     }
 
 
+@router.put("/outputs/{output_id}")
+async def update_output(output_id: str, request: AddOutputRequest):
+    """Update a router output configuration."""
+    if not _router_service:
+        raise HTTPException(status_code=500, detail="Router service not initialized")
+    
+    from app.services.mavlink_router import OutputConfig, OutputType
+    
+    # Check if output exists
+    outputs = _router_service.outputs
+    if output_id not in outputs:
+        raise HTTPException(status_code=404, detail=f"Output {output_id} not found")
+    
+    # Remove the old output
+    success, message = _router_service.remove_output(output_id)
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    
+    # Create new output with updated config
+    config = OutputConfig(
+        id=output_id,
+        type=OutputType(request.type),
+        host=request.host,
+        port=request.port,
+        name=request.name or f"{request.type}:{request.port}",
+        enabled=True,
+        auto_start=True  # Always auto-start after update
+    )
+    
+    # Add the updated output
+    success, message = _router_service.add_output(config)
+    
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    
+    return {
+        "id": output_id,
+        "type": request.type,
+        "host": request.host,
+        "port": request.port,
+        "name": config.name,
+        "running": True,
+        "clients": 0,
+        "stats": {"tx": 0, "rx": 0, "errors": 0}
+    }
+
+
 @router.delete("/outputs/{output_id}")
 async def remove_output(output_id: str):
     """Remove a router output (stops it first if running)."""

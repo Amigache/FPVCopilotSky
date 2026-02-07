@@ -21,6 +21,7 @@ const TelemetryView = () => {
   const [outputType, setOutputType] = useState('tcp_server')
   const [host, setHost] = useState('0.0.0.0')
   const [port, setPort] = useState('14550')
+  const [editingId, setEditingId] = useState(null)
   
   // Presets
   const presets = {
@@ -61,29 +62,72 @@ const TelemetryView = () => {
     setLoading(true)
     
     try {
-      const response = await fetchWithTimeout(`${API_MAVLINK_ROUTER}/outputs`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: outputType,
-          host: host,
-          port: parseInt(port)
+      if (editingId) {
+        // Update existing output
+        const response = await fetchWithTimeout(`${API_MAVLINK_ROUTER}/outputs/${editingId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: outputType,
+            host: host,
+            port: parseInt(port)
+          })
         })
-      })
-      
-      if (response.ok) {
-        showToast(t('router.outputCreated'), 'success')
-        fetchOutputs()
+        
+        if (response.ok) {
+          showToast(t('router.outputUpdated'), 'success')
+          handleCancelEdit()
+          fetchOutputs()
+        } else {
+          const error = await response.json()
+          showToast(error.detail || t('router.updateError'), 'error')
+        }
       } else {
-        const error = await response.json()
-        showToast(error.detail || t('router.createError'), 'error')
+        // Create new output
+        const response = await fetchWithTimeout(`${API_MAVLINK_ROUTER}/outputs`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: outputType,
+            host: host,
+            port: parseInt(port)
+          })
+        })
+        
+        if (response.ok) {
+          showToast(t('router.outputCreated'), 'success')
+          // Clear form
+          setOutputType('tcp_server')
+          setHost('0.0.0.0')
+          setPort('14550')
+          fetchOutputs()
+        } else {
+          const error = await response.json()
+          showToast(error.detail || t('router.createError'), 'error')
+        }
       }
     } catch (error) {
-      showToast(t('router.createError'), 'error')
-      console.error('Error creating output:', error)
+      showToast(editingId ? t('router.updateError') : t('router.createError'), 'error')
+      console.error('Error:', error)
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleEditOutput = (output) => {
+    setEditingId(output.id)
+    setOutputType(output.type)
+    setHost(output.host)
+    setPort(output.port.toString())
+    // Scroll to form
+    document.querySelector('.router-form')?.scrollIntoView({ behavior: 'smooth' })
+  }
+
+  const handleCancelEdit = () => {
+    setEditingId(null)
+    setOutputType('tcp_server')
+    setHost('0.0.0.0')
+    setPort('14550')
   }
   
   const handleDeleteOutput = async (outputId) => {
@@ -179,8 +223,18 @@ const TelemetryView = () => {
           
           <div className="button-group">
             <button type="submit" className="btn-primary" disabled={loading}>
-              ➕ {t('router.create')}
+              {editingId ? '💾 ' : '➕ '}{editingId ? t('router.save') : t('router.create')}
             </button>
+            {editingId && (
+              <button 
+                type="button" 
+                className="btn-secondary" 
+                onClick={handleCancelEdit}
+                disabled={loading}
+              >
+                ❌ {t('router.cancel')}
+              </button>
+            )}
             <button 
               type="button" 
               className="btn-secondary" 
@@ -225,6 +279,13 @@ const TelemetryView = () => {
                     )}
                   </div>
                   <div className="output-actions">
+                    <button 
+                      className="btn-edit" 
+                      onClick={() => handleEditOutput(output)}
+                      disabled={loading}
+                    >
+                      ✏️ {t('router.edit')}
+                    </button>
                     <button 
                       className="btn-delete" 
                       onClick={() => handleDeleteOutput(output.id)}

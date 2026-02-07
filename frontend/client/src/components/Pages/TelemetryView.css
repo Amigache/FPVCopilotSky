@@ -248,6 +248,22 @@
   border-color: rgba(244, 67, 54, 0.5);
 }
 
+.btn-edit {
+  background: rgba(33, 150, 243, 0.2);
+  color: #64b5f6;
+  border: 1px solid rgba(33, 150, 243, 0.3);
+}
+
+.btn-edit:hover:not(:disabled) {
+  background: rgba(33, 150, 243, 0.3);
+  border-color: rgba(33, 150, 243, 0.5);
+}
+
+.btn-edit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* Badge */
 .output-badge {
   display: flex;
