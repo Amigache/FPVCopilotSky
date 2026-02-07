@@ -1,245 +1,103 @@
 # 🚁 FPV Copilot Sky
 
-**Sistema completo de control y telemetría para drones FPV**
+**Plataforma completa de telemetría, video y conectividad para drones FPV**
 
-FPV Copilot Sky es una solución integral para gestionar tu drone FPV desde cualquier lugar. Convierte tu Radxa Zero (u otro SBC Linux) en un hub completo de telemetría, video y conectividad.
+FPV Copilot Sky convierte un SBC Linux (Radxa Zero, Raspberry Pi, Orange Pi…) en un hub inteligente que gestiona telemetría MAVLink, streaming de video en baja latencia y conectividad 4G/VPN — todo controlable desde una interfaz web moderna.
 
 ![Version](https://img.shields.io/badge/version-1.0.0-blue)
-![Platform](https://img.shields.io/badge/platform-Linux-green)
+![Platform](https://img.shields.io/badge/platform-Linux_ARM/x86-green)
 ![License](https://img.shields.io/badge/license-MIT-yellow)
-
-## ✨ Características Principales
-
-### 📡 Telemetría MAVLink
-- **Conexión directa** al controlador de vuelo (Pixhawk, Ardupilot, iNav...)
-- **Auto-detección** de puertos serie y baudrates
-- **Múltiples salidas** simultáneas (UDP/TCP)
-- Compatible con **Mission Planner**, **QGroundControl**, **APM Planner**
-
-### 🎥 Video en Tiempo Real
-- **Streaming ultra-baja latencia** vía RTP/UDP
-- Soporte **H.264** y **MJPEG**
-- Compatible con cámaras **USB** y **CSI**
-- Resoluciones desde 480p hasta 1080p
-
-### 🌐 Conectividad Inteligente
-- **WiFi** y **4G/LTE** con priorización automática
-- Soporte modems **Huawei HiLink** (E3372, E8372...)
-- **Modo Video** optimizado para streaming 4G
-- Gestión avanzada de **bandas LTE** con presets
-- **Evaluación de calidad** de video en tiempo real
-- **Test de latencia** integrado
-- **Sesión de vuelo** para registro de métricas
-- Gestión visual de redes disponibles
-- Cambio automático entre interfaces
-
-### 🔐 Acceso Remoto Seguro (VPN)
-- Integración con **Tailscale** (VPN mesh)
-- Configuración en **1 click** desde la interfaz
-- Acceso seguro desde cualquier lugar
-- Lista de dispositivos conectados en tiempo real
-
-### 💻 Interfaz Web Moderna
-- **WebUI responsive** en español e inglés
-- **Tiempo real** con WebSocket
-- Sin instalación de apps, solo navegador
-- Dashboard completo de estado del sistema
-
-## 📦 ¿Qué Necesitas?
-
-### Hardware Mínimo
-- **Radxa Zero** (2GB RAM recomendado) o similar (Raspberry Pi, Orange Pi...)
-- **Tarjeta microSD** 16GB+ (32GB recomendado)
-- **Cámara USB** (para video)
-- **Modem 4G USB** (opcional, para conectividad móvil)
-- Conexión al controlador de vuelo (UART/USB)
-
-### Software
-- Sistema operativo Linux (Debian/Ubuntu/Armbian)
-- Acceso SSH o terminal
-
-## 🚀 Instalación Rápida
-
-### 1. Descargar e Instalar
-
-```bash
-# Clonar el repositorio en /opt
-cd /opt
-sudo git clone https://github.com/tu-usuario/FPVCopilotSky.git
-cd FPVCopilotSky
-
-# Ejecutar instalador (instala dependencias del sistema)
-bash install.sh
-```
-
-El instalador se encarga de:
-- ✅ Instalar Python, Node.js, GStreamer
-- ✅ Configurar NetworkManager y ModemManager
-- ✅ Detectar y configurar modems 4G
-- ✅ Crear entorno virtual de Python
-- ✅ Instalar todas las dependencias
-- ✅ Compilar el frontend
-
-**Tiempo estimado:** 15-20 minutos (dependiendo de velocidad de internet)
-
-### 2. Configurar para Producción
-
-```bash
-# Instalar nginx y configurar servicios (solo primera vez)
-sudo bash scripts/install-production.sh
-
-# Compilar y desplegar
-bash scripts/deploy.sh
-```
-
-Esto configura:
-- ✅ Servicio systemd (arranca automáticamente al encender)
-- ✅ Nginx como servidor web
-- ✅ Frontend optimizado
-- ✅ Logs del sistema
-
-### 3. Acceder a la Aplicación
-
-Abre tu navegador y accede a:
-```
-http://<IP-DE-TU-RADXA>
-```
-
-Por ejemplo: `http://192.168.1.145`
-
-💡 **Tip:** Puedes encontrar la IP de tu Radxa con el comando `hostname -I`
-
-## 📱 Guía de Uso
-
-### Primera Configuración
-
-1. **Conectar el Controlador de Vuelo**
-   - Ve a la pestaña **"Controlador"**
-   - El sistema detecta automáticamente el puerto serie
-   - Verás telemetría en tiempo real cuando conecte
-
-2. **Configurar Streaming de Video**
-   - Ve a la pestaña **"Video"**
-   - Selecciona tu cámara USB
-   - Ajusta resolución y codec (H264 = mejor calidad, MJPEG = menor latencia)
-   - Configura IP de destino y puerto (puedes usar el selector de peers VPN)
-   - Haz clic en **"Aplicar"** y luego **"Iniciar Stream"**
-
-3. **Configurar Telemetría Remota**
-   - Ve a la pestaña **"Telemetría"**
-   - Crea salidas TCP/UDP según necesites:
-     - **Mission Planner**: TCP Server puerto 5760
-     - **QGroundControl**: UDP puerto 14550
-   - Usa el selector de IPs para elegir destinos en tu red VPN
-
-4. **Conectar VPN (Opcional pero Recomendado)**
-   - Ve a la pestaña **"VPN"**
-   - Haz clic en **"Conectar"**
-   - Escanea el código QR o copia la URL de autenticación
-   - Autentica desde tu móvil/ordenador
-   - ¡Listo! Ahora puedes acceder desde cualquier lugar
-
-5. **Gestionar Conectividad**
-   - Ve a la pestaña **"Red"**
-   - Conecta a WiFi o verifica estado del modem 4G
-   - Visualiza interfaces activas y rutas
-   
-6. **Modo Video 4G (Opcional)**
-   - Ve a la pestaña **"Módem"**
-   - Activa el **Modo Video** para optimizar el streaming
-   - Configura bandas LTE según tu operador
-   - Realiza test de latencia pre-vuelo
-   - Ver [documentación del módem](docs/MODEM_FEATURES.md)
-
-### Comandos Útiles
-
-```bash
-# Ver estado de todo el sistema
-bash /opt/FPVCopilotSky/scripts/status.sh
-
-# Ver logs en tiempo real
-sudo journalctl -u fpvcopilot-sky -f
-
-# Reiniciar servicio
-sudo systemctl restart fpvcopilot-sky
-
-# Detener servicio
-sudo systemctl stop fpvcopilot-sky
-
-# Actualizar después de cambios
-bash /opt/FPVCopilotSky/scripts/deploy.sh
-```
-
-## 🔧 Solución de Problemas
-
-### No veo la interfaz web (aparece "Welcome to nginx")
-```bash
-bash /opt/FPVCopilotSky/scripts/fix-nginx.sh
-```
-
-### El backend no responde
-```bash
-# Reiniciar el servicio
-sudo systemctl restart fpvcopilot-sky
-
-# Ver qué está pasando
-sudo journalctl -u fpvcopilot-sky -f
-```
-
-### No detecta el controlador de vuelo
-- Verifica la conexión física del cable
-- Comprueba que el puerto serie no esté siendo usado por otro proceso
-- Prueba con diferentes baudrates manualmente
-
-### Video no arranca
-- Verifica que la cámara esté conectada (`v4l2-ctl --list-devices`)
-- Asegúrate de haber configurado una IP de destino
-- El primer arranque puede tardar unos segundos
-
-### No hay redes WiFi
-- Ejecuta `sudo systemctl restart NetworkManager`
-- Verifica que tu interfaz WiFi no esté gestionada por otro servicio
-
-## 📚 Documentación Adicional
-
-- **[Guía de Producción](docs/PRODUCTION.md)** - Detalles de despliegue y arquitectura
-- **[Guía para Desarrolladores](docs/DEVELOPMENT.md)** - Si quieres modificar o contribuir
-- **[Integración VPN](docs/VPN_INTEGRATION.md)** - Detalles técnicos del sistema VPN
-- **[Gestión de Red](docs/NETWORK_MANAGEMENT.md)** - Sistema de priorización y métricas
-- **[Funcionalidades del Módem](docs/MODEM_FEATURES.md)** - Modo video, bandas LTE, sesiones de vuelo
-- **[Quick Start Red](docs/NETWORK_QUICKSTART.md)** - Inicio rápido de configuración de red
-
-## 🛠️ Soporte Técnico
-
-### Información del Sistema
-
-Para reportar problemas, ejecuta:
-```bash
-bash /opt/FPVCopilotSky/scripts/status.sh > status.txt
-sudo journalctl -u fpvcopilot-sky -n 100 > logs.txt
-```
-
-Y comparte los archivos `status.txt` y `logs.txt`.
-
-### Comunidad
-
-- 📧 **Email**: support@fpvcopilotsky.com
-- 💬 **Telegram**: @fpvcopilotsky
-- 🐛 **Issues**: GitHub Issues
-
-## 📄 Licencia
-
-Este proyecto está bajo licencia MIT. Ver archivo [LICENSE](LICENSE) para más detalles.
-
-## 🙏 Agradecimientos
-
-Construido con:
-- [FastAPI](https://fastapi.tiangolo.com/) - Framework web Python
-- [React](https://react.dev/) - Framework UI
-- [GStreamer](https://gstreamer.freedesktop.org/) - Pipeline multimedia
-- [PyMAVLink](https://github.com/ArduPilot/pymavlink) - Protocolo MAVLink
-- [Tailscale](https://tailscale.com/) - VPN mesh
+![Python](https://img.shields.io/badge/python-3.12+-blue)
+![React](https://img.shields.io/badge/react-19-61dafb)
 
 ---
 
-**¿Necesitas ayuda?** No dudes en abrir un issue o contactarnos. ¡Felices vuelos! 🚁✈️
+## ✨ ¿Qué puedes hacer?
+
+| Función | Descripción |
+|---------|-------------|
+| **📡 Telemetría MAVLink** | Conexión directa al FC, auto-detección de puertos, múltiples salidas UDP/TCP simultáneas |
+| **🎥 Video HD** | Streaming RTP/UDP ultra-baja latencia, H.264 y MJPEG, cámaras USB y CSI |
+| **📱 Modem 4G/LTE** | Gestión completa de Huawei HiLink, bandas LTE, modo video optimizado, test de latencia |
+| **🔐 VPN Tailscale** | Acceso remoto en 1 clic, conexión mesh P2P cifrada desde cualquier lugar |
+| **🌐 Red inteligente** | Priorización WiFi/4G automática, failover, métricas de ruta |
+| **💻 WebUI** | Interfaz responsive en español e inglés, tiempo real por WebSocket |
+
+## 📦 ¿Qué necesitas?
+
+### Hardware
+
+- **SBC Linux** — Radxa Zero 2GB+ (recomendado), Raspberry Pi 4/5, Orange Pi, o cualquier x86
+- **MicroSD** 16 GB+ (32 GB recomendado)
+- **Cámara USB** para video (o CSI si tu placa lo soporta)
+- **Modem 4G USB** Huawei HiLink (E3372, E8372…) — opcional, para conectividad móvil
+- **Conexión al FC** por UART o USB (cable serie)
+
+### Software
+
+- Debian / Ubuntu / Armbian
+- Acceso SSH o terminal
+
+## 🚀 Primeros pasos
+
+```bash
+# 1. Clonar
+cd /opt
+sudo git clone https://github.com/Amigache/FPVCopilotSky.git
+cd FPVCopilotSky
+
+# 2. Instalar dependencias del sistema y entorno Python/Node
+bash install.sh              # ~15 min la primera vez
+
+# 3. Configurar producción (nginx + systemd)
+sudo bash scripts/install-production.sh
+
+# 4. Compilar frontend y arrancar
+bash scripts/deploy.sh
+```
+
+Abre `http://<IP-DE-TU-SBC>` en el navegador. Listo.
+
+> **Tip:** Obtén la IP con `hostname -I`
+
+## 🔧 Comandos rápidos
+
+```bash
+bash scripts/status.sh                   # Estado completo del sistema
+sudo journalctl -u fpvcopilot-sky -f     # Logs en tiempo real
+sudo systemctl restart fpvcopilot-sky    # Reiniciar servicio
+bash scripts/deploy.sh                   # Recompilar y desplegar
+bash scripts/dev.sh                      # Modo desarrollo con hot-reload
+```
+
+## 📚 Documentación
+
+Toda la documentación extendida está en la **[Wiki del proyecto](docs/INDEX.md)**:
+
+| Documento | Descripción |
+|-----------|-------------|
+| [📑 Índice](docs/INDEX.md) | Punto de entrada a toda la wiki |
+| [📥 Guía de Instalación](docs/INSTALLATION.md) | Requisitos, instalación paso a paso, verificación |
+| [📖 Guía de Usuario](docs/USER_GUIDE.md) | Uso de cada pestaña, configuración, solución de problemas |
+| [🛠️ Guía de Desarrollo](docs/DEVELOPER_GUIDE.md) | Arquitectura, stack, cómo contribuir y extender |
+
+## 🏗️ Tecnologías
+
+| Capa | Stack |
+|------|-------|
+| **Backend** | Python 3.12, FastAPI, Uvicorn, PyMAVLink, GStreamer, huawei-lte-api |
+| **Frontend** | React 19, Vite, i18next, WebSocket |
+| **Infra** | Nginx, systemd, NetworkManager, Tailscale |
+
+## 📄 Licencia
+
+MIT — ver [LICENSE](LICENSE).
+
+## 📧 Contacto
+
+- **GitHub**: [github.com/Amigache/FPVCopilotSky](https://github.com/Amigache/FPVCopilotSky)
+- **Issues**: [Abrir un issue](https://github.com/Amigache/FPVCopilotSky/issues)
+
+---
+
+Construido con ❤️ y opensource: [FastAPI](https://fastapi.tiangolo.com/) · [React](https://react.dev/) · [GStreamer](https://gstreamer.freedesktop.org/) · [PyMAVLink](https://github.com/ArduPilot/pymavlink) · [Tailscale](https://tailscale.com/)

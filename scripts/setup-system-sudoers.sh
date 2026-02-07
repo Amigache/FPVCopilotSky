@@ -29,6 +29,10 @@ $CURRENT_USER ALL=(ALL) NOPASSWD: /usr/sbin/ip route add *
 $CURRENT_USER ALL=(ALL) NOPASSWD: /usr/sbin/ip route del *
 $CURRENT_USER ALL=(ALL) NOPASSWD: /usr/sbin/ip route change *
 $CURRENT_USER ALL=(ALL) NOPASSWD: /usr/sbin/ip route replace *
+
+# Allow $CURRENT_USER to scan WiFi networks without password
+$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/sbin/iw dev * scan
+$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/sbin/iw dev * link
 EOF
 
 # Set proper permissions

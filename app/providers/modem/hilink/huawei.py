@@ -195,6 +195,9 @@ class HuaweiE3372hProvider(ModemProvider):
         self._last_latency_ms: Optional[float] = None
         self._last_jitter_ms: Optional[float] = None
         
+        # Thread pool for async operations
+        self._executor = None
+        
         self.is_available = self.detect()
     
     def detect(self) -> bool:
@@ -214,6 +217,116 @@ class HuaweiE3372hProvider(ModemProvider):
         except:
             return False
     
+    # =====================
+    # Async Methods
+    # =====================
+    
+    async def _run_in_executor(self, func, timeout: float = 1.0):
+        """
+        Run a sync function in a thread pool executor with timeout.
+        
+        Args:
+            func: Synchronous function/callable to run
+            timeout: Max seconds to wait (default 1.0 for quick failure)
+        
+        Returns:
+            Result of the function or None on error
+        """
+        try:
+            loop = asyncio.get_event_loop()
+            # Use ThreadPoolExecutor for I/O operations (default executor is used)
+            result = await asyncio.wait_for(
+                loop.run_in_executor(None, func),
+                timeout=timeout
+            )
+            return result
+        except asyncio.TimeoutError:
+            self._last_error = f"Operation timeout after {timeout}s"
+            return None
+        except Exception as e:
+            self._last_error = str(e)
+            return None
+    
+    async def async_get_status(self) -> Dict:
+        """Async version of get_status() - get full modem status asynchronously"""
+        if not HILINK_AVAILABLE:
+            return {
+                'available': False,
+                'status': ModemStatus.UNAVAILABLE,
+                'modem_info': None,
+                'network_info': None,
+                'error': 'huawei-lte-api not installed'
+            }
+        
+        try:
+            # Get modem info and network info in parallel
+            modem_info, network_info = await asyncio.gather(
+                self.async_get_device_info(),
+                self.async_get_network_info(),
+                return_exceptions=True
+            )
+            
+            # Handle exceptions
+            if isinstance(modem_info, Exception):
+                modem_info = None
+            if isinstance(network_info, Exception):
+                network_info = None
+            
+            if not modem_info:
+                return {
+                    'available': False,
+                    'status': ModemStatus.ERROR,
+                    'modem_info': None,
+                    'network_info': None,
+                    'error': self._last_error or 'Could not connect to modem'
+                }
+            
+            status = ModemStatus.CONNECTED if network_info and network_info.status == ModemStatus.CONNECTED else ModemStatus.DISCONNECTED
+            
+            return {
+                'available': True,
+                'status': status,
+                'modem_info': modem_info,
+                'network_info': network_info,
+                'error': None
+            }
+        except Exception as e:
+            return {
+                'available': False,
+                'status': ModemStatus.ERROR,
+                'modem_info': None,
+                'network_info': None,
+                'error': str(e)
+            }
+    
+    async def async_get_device_info(self) -> Optional[ModemInfo]:
+        """Async version of get_modem_info()"""
+        return await self._run_in_executor(self.get_modem_info, timeout=1.0)
+    
+    async def async_get_signal_info(self) -> Optional[Dict]:
+        """Async version of get_signal_info()"""
+        return await self._run_in_executor(self._get_signal_info_sync, timeout=1.0)
+    
+    async def async_get_network_info(self) -> Optional[NetworkInfo]:
+        """Async version of get_network_info()"""
+        return await self._run_in_executor(self.get_network_info, timeout=1.0)
+    
+    async def async_get_traffic_stats(self) -> Optional[Dict]:
+        """Async version of get_traffic_stats()"""
+        return await self._run_in_executor(self._get_traffic_stats_sync, timeout=1.0)
+    
+    async def async_get_raw_device_info(self) -> Optional[Dict]:
+        """Async version of _get_device_info_sync() - returns raw dict with all fields"""
+        return await self._run_in_executor(self._get_device_info_sync, timeout=1.0)
+    
+    async def async_get_raw_network_info(self) -> Optional[Dict]:
+        """Async version of _get_network_info_sync() - returns raw dict with all fields"""
+        return await self._run_in_executor(self._get_network_info_sync, timeout=1.0)
+    
+    # =====================
+    # Sync Methods
+    # =====================
+    
     def _ensure_connected(self) -> bool:
         """Ensure we have a connection to the modem"""
         if not HILINK_AVAILABLE:
@@ -222,7 +335,10 @@ class HuaweiE3372hProvider(ModemProvider):
         
         try:
             if self._connection is None:
-                self._connection = Connection(self.MODEM_URL, timeout=self.CONNECTION_TIMEOUT)
+                # Clear any previous error before retrying
+                self._last_error = None
+                # Use very short timeout (500ms) to fail fast if modem not available
+                self._connection = Connection(self.MODEM_URL, timeout=0.5)
                 self._client = Client(self._connection)
             return True
         except Exception as e:
@@ -410,6 +526,616 @@ class HuaweiE3372hProvider(ModemProvider):
             return {
                 'success': success,
                 'message': f'Banda configurada: {hex(band_mask)}' if success else self._last_error
+            }
+        except Exception as e:
+            return {'success': False, 'message': str(e)}
+    
+    # ======================
+    # Public methods expected by route endpoints
+    # ======================
+    
+    def set_lte_band(self, preset: str = None, custom_mask: int = None) -> Dict:
+        """Set LTE band from preset name or custom mask"""
+        try:
+            if preset:
+                if preset not in LTE_BAND_PRESETS:
+                    return {'success': False, 'message': f'Preset desconocido: {preset}'}
+                band_mask = LTE_BAND_PRESETS[preset]['mask']
+                preset_name = LTE_BAND_PRESETS[preset]['name']
+            elif custom_mask is not None:
+                band_mask = custom_mask
+                preset_name = f'Custom ({hex(custom_mask)})'
+            else:
+                return {'success': False, 'message': 'Provide preset or custom_mask'}
+            
+            success = self._set_lte_band_sync(band_mask)
+            if success:
+                return {
+                    'success': True,
+                    'message': f'Banda configurada: {preset_name}',
+                    'preset_name': preset_name,
+                    'band_mask': hex(band_mask),
+                }
+            return {'success': False, 'message': self._last_error or 'Error configurando banda'}
+        except Exception as e:
+            return {'success': False, 'message': str(e)}
+    
+    def get_current_band(self) -> Optional[Dict]:
+        """Get current LTE band configuration"""
+        try:
+            if not self._ensure_connected():
+                return None
+            
+            net_mode = self._client.net.net_mode()
+            lte_band_hex = net_mode.get('LTEBand', '')
+            network_mode = net_mode.get('NetworkMode', '')
+            network_band = net_mode.get('NetworkBand', '')
+            
+            # Convert hex to int for band detection
+            lte_band_int = int(lte_band_hex, 16) if lte_band_hex else 0
+            
+            # Detect which bands are enabled
+            enabled_bands = []
+            for band_name, band_mask in LTE_BANDS.items():
+                if lte_band_int & band_mask:
+                    enabled_bands.append(band_name)
+            
+            # Detect matching preset
+            matching_preset = None
+            for preset_key, preset_data in LTE_BAND_PRESETS.items():
+                if preset_data['mask'] == lte_band_int:
+                    matching_preset = preset_key
+                    break
+            
+            # Current active band from signal info
+            signal = self._get_signal_info_sync()
+            current_band = signal.get('band', '') if signal else ''
+            
+            mode_names = {'00': 'Auto', '01': '2G Only', '02': '3G Only', '03': '4G Only'}
+            
+            return {
+                'lte_band_hex': lte_band_hex,
+                'lte_band_int': lte_band_int,
+                'enabled_bands': enabled_bands,
+                'matching_preset': matching_preset,
+                'active_band': current_band,
+                'network_mode': network_mode,
+                'network_mode_name': mode_names.get(network_mode, network_mode),
+            }
+        except Exception as e:
+            self._last_error = str(e)
+            self._disconnect()
+            return None
+    
+    def get_network_mode(self) -> Optional[Dict]:
+        """Get current network mode (Auto/2G/3G/4G)"""
+        try:
+            if not self._ensure_connected():
+                return None
+            
+            net_mode = self._client.net.net_mode()
+            network_mode = net_mode.get('NetworkMode', '00')
+            
+            mode_names = {'00': 'Auto (4G/3G/2G)', '01': '2G Only', '02': '3G Only', '03': '4G Only'}
+            
+            return {
+                'network_mode': network_mode,
+                'network_mode_name': mode_names.get(network_mode, f'Unknown ({network_mode})'),
+            }
+        except Exception as e:
+            self._last_error = str(e)
+            self._disconnect()
+            return None
+    
+    def set_network_mode(self, mode: str) -> bool:
+        """Set network mode (00=Auto, 01=2G, 02=3G, 03=4G)"""
+        try:
+            # Read current band config to preserve it
+            if self._ensure_connected():
+                current = self._client.net.net_mode()
+                network_band = current.get('NetworkBand', '3FFFFFFF')
+                lte_band = current.get('LTEBand', '7FFFFFFFFFFFFFFF')
+            else:
+                network_band = '3FFFFFFF'
+                lte_band = '7FFFFFFFFFFFFFFF'
+            
+            xml_data = f'''<?xml version="1.0" encoding="UTF-8"?>
+<request>
+<NetworkMode>{mode}</NetworkMode>
+<NetworkBand>{network_band}</NetworkBand>
+<LTEBand>{lte_band}</LTEBand>
+</request>'''
+            
+            success, msg = self._direct_api_post('api/net/net-mode', xml_data)
+            if success:
+                logger.info(f"Network mode set to: {mode}")
+                return True
+            else:
+                self._last_error = msg
+                return False
+        except Exception as e:
+            self._last_error = str(e)
+            return False
+    
+    def reconnect_network(self) -> Dict:
+        """Force network reconnection (public wrapper)"""
+        try:
+            success = self._reconnect_network_sync()
+            return {
+                'success': success,
+                'message': 'Re-registro de red iniciado' if success else (self._last_error or 'Error en reconexión'),
+            }
+        except Exception as e:
+            return {'success': False, 'message': str(e)}
+    
+    def get_apn_settings(self) -> Dict:
+        """Get current APN settings and available presets"""
+        try:
+            current_apn = ''
+            if self._ensure_connected():
+                try:
+                    dialup = self._client.dialup.profiles()
+                    # profiles may return a list or dict
+                    if isinstance(dialup, dict):
+                        current_apn = dialup.get('ApnName', '') or dialup.get('APN', '')
+                    elif isinstance(dialup, list) and dialup:
+                        current_apn = dialup[0].get('ApnName', '') or dialup[0].get('APN', '')
+                except Exception as e:
+                    logger.debug(f"Could not read APN: {e}")
+            
+            return {
+                'current_apn': current_apn,
+                'presets': APN_PRESETS,
+            }
+        except Exception as e:
+            return {'current_apn': '', 'presets': APN_PRESETS, 'error': str(e)}
+    
+    def set_apn(self, preset: str = None, custom_apn: str = None) -> Dict:
+        """Configure APN settings"""
+        try:
+            if preset:
+                if preset not in APN_PRESETS:
+                    return {'success': False, 'message': f'Preset APN desconocido: {preset}'}
+                apn = APN_PRESETS[preset]['apn']
+                apn_name = APN_PRESETS[preset]['name']
+            elif custom_apn:
+                apn = custom_apn
+                apn_name = custom_apn
+            else:
+                return {'success': False, 'message': 'Provide preset or custom_apn'}
+            
+            xml_data = f'''<?xml version="1.0" encoding="UTF-8"?>
+<request>
+<Delete>0</Delete>
+<SetDefault>0</SetDefault>
+<Modify>1</Modify>
+<ProfileName>{apn_name}</ProfileName>
+<ApnIsStatic>1</ApnIsStatic>
+<ApnName>{apn}</ApnName>
+<DailupNum>*99#</DailupNum>
+<Username></Username>
+<Password></Password>
+<AuthMode>0</AuthMode>
+<IpIsStatic>0</IpIsStatic>
+<IpAddress></IpAddress>
+</request>'''
+            
+            success, msg = self._direct_api_post('api/dialup/profiles', xml_data)
+            if success:
+                return {'success': True, 'message': f'APN configurado: {apn_name}', 'apn': apn}
+            return {'success': False, 'message': msg or 'Error configurando APN'}
+        except Exception as e:
+            return {'success': False, 'message': str(e)}
+    
+    def set_roaming(self, enabled: bool) -> Dict:
+        """Enable or disable data roaming"""
+        try:
+            roaming_val = '1' if enabled else '0'
+            xml_data = f'''<?xml version="1.0" encoding="UTF-8"?>
+<request>
+<RoamAutoConnectEnable>{roaming_val}</RoamAutoConnectEnable>
+</request>'''
+            
+            success, msg = self._direct_api_post('api/dialup/connection', xml_data)
+            if success:
+                state = 'activado' if enabled else 'desactivado'
+                return {'success': True, 'message': f'Roaming {state}'}
+            return {'success': False, 'message': msg or 'Error configurando roaming'}
+        except Exception as e:
+            return {'success': False, 'message': str(e)}
+    
+    # ======================
+    # Video Mode
+    # ======================
+    
+    @property
+    def video_mode_active(self) -> bool:
+        """Whether video-optimized mode is active"""
+        return self._video_mode_active
+    
+    def enable_video_mode(self) -> Dict:
+        """Enable video-optimized modem settings (force 4G, optimize bands)"""
+        try:
+            if self._video_mode_active:
+                return {'success': True, 'message': 'Modo video ya activo', 'video_mode_active': True}
+            
+            # Save current settings
+            current_mode = self.get_network_mode()
+            current_band = self.get_current_band()
+            self._original_settings = {
+                'network_mode': current_mode.get('network_mode', '00') if current_mode else '00',
+                'lte_band_hex': current_band.get('lte_band_hex', '') if current_band else '',
+            }
+            
+            # Force 4G Only mode
+            self.set_network_mode('03')
+            
+            # Set urban bands (B3+B7) for lowest latency
+            self._set_lte_band_sync(LTE_BAND_PRESETS['urban']['mask'])
+            
+            self._video_mode_active = True
+            logger.info("Video mode enabled: 4G Only + B3+B7")
+            
+            return {
+                'success': True,
+                'message': 'Modo video activado: 4G Only + B3+B7 (baja latencia)',
+                'video_mode_active': True,
+            }
+        except Exception as e:
+            return {'success': False, 'message': str(e)}
+    
+    def disable_video_mode(self) -> Dict:
+        """Disable video mode and restore original settings"""
+        try:
+            if not self._video_mode_active:
+                return {'success': True, 'message': 'Modo video no estaba activo', 'video_mode_active': False}
+            
+            # Restore original settings
+            original_mode = self._original_settings.get('network_mode', '00')
+            self.set_network_mode(original_mode)
+            
+            # Restore bands (all bands)
+            self._set_lte_band_sync(LTE_BAND_PRESETS['all']['mask'])
+            
+            self._video_mode_active = False
+            self._original_settings = {}
+            logger.info("Video mode disabled: settings restored")
+            
+            return {
+                'success': True,
+                'message': 'Modo video desactivado: configuración restaurada',
+                'video_mode_active': False,
+            }
+        except Exception as e:
+            return {'success': False, 'message': str(e)}
+    
+    # ======================
+    # Video Quality Assessment
+    # ======================
+    
+    def get_video_quality_assessment(self) -> Dict:
+        """
+        Assess video streaming quality based on current signal metrics.
+        Uses SINR and RSRP to determine max recommended bitrate.
+        """
+        try:
+            signal = self._get_signal_info_sync()
+            if not signal:
+                return {'available': False, 'error': 'No signal data'}
+            
+            # Parse SINR
+            sinr_str = signal.get('sinr', '')
+            sinr = None
+            if sinr_str:
+                try:
+                    sinr = float(sinr_str.replace('dB', '').strip())
+                except (ValueError, AttributeError):
+                    pass
+            
+            # Parse RSRP
+            rsrp_str = signal.get('rsrp', '')
+            rsrp = None
+            if rsrp_str:
+                try:
+                    rsrp = float(rsrp_str.replace('dBm', '').strip())
+                except (ValueError, AttributeError):
+                    pass
+            
+            if sinr is None:
+                return {'available': False, 'error': 'Could not parse SINR'}
+            
+            # Determine quality level from SINR
+            quality = 'critical'
+            for level in ['excellent', 'good', 'moderate', 'poor', 'critical']:
+                threshold = VIDEO_QUALITY_THRESHOLDS[level]
+                if sinr >= threshold['sinr_min']:
+                    quality = level
+                    break
+            
+            threshold = VIDEO_QUALITY_THRESHOLDS[quality]
+            
+            # RSRP quality check (can downgrade quality)
+            rsrp_quality = 'critical'
+            if rsrp is not None:
+                for level in ['excellent', 'good', 'moderate', 'poor', 'critical']:
+                    if rsrp >= RSRP_THRESHOLDS[level]:
+                        rsrp_quality = level
+                        break
+            
+            # Resolution recommendations
+            resolutions = {
+                'excellent': '1920x1080',
+                'good': '1280x720',
+                'moderate': '854x480',
+                'poor': '640x360',
+                'critical': '320x240',
+            }
+            
+            # Warnings
+            warnings = []
+            if rsrp is not None and rsrp < RSRP_THRESHOLDS['poor']:
+                warnings.append('Señal muy débil')
+            if sinr < 0:
+                warnings.append('SINR negativo - interferencia alta')
+            if rsrp_quality == 'critical':
+                warnings.append('RSRP crítico - posible pérdida de conexión')
+            
+            return {
+                'available': True,
+                'quality': quality,
+                'label': threshold['label'],
+                'color': threshold['color'],
+                'max_bitrate_kbps': threshold['max_bitrate_kbps'],
+                'recommended_resolution': resolutions.get(quality, '640x360'),
+                'sinr_db': sinr,
+                'rsrp_dbm': rsrp,
+                'rsrp_quality': rsrp_quality,
+                'signal_percent': signal.get('signal_percent', 0),
+                'warnings': warnings,
+            }
+        except Exception as e:
+            return {'available': False, 'error': str(e)}
+    
+    # ======================
+    # Latency Measurement
+    # ======================
+    
+    def measure_latency(self, host: str = None, count: int = None) -> Dict:
+        """
+        Measure network latency using ping through the modem interface.
+        Returns avg, min, max, jitter in milliseconds.
+        """
+        target = host or self.LATENCY_TEST_HOST
+        ping_count = count or self.LATENCY_TEST_COUNT
+        
+        try:
+            # Find modem interface (192.168.8.x route)
+            iface = None
+            try:
+                result = subprocess.run(
+                    ['ip', 'route', 'show', 'to', '192.168.8.0/24'],
+                    capture_output=True, text=True, timeout=3
+                )
+                for line in result.stdout.strip().split('\n'):
+                    if 'dev' in line:
+                        parts = line.split()
+                        dev_idx = parts.index('dev') + 1
+                        if dev_idx < len(parts):
+                            iface = parts[dev_idx]
+                            break
+            except Exception:
+                pass
+            
+            # Build ping command
+            cmd = ['ping', '-c', str(ping_count), '-W', '3', '-q', target]
+            if iface:
+                cmd.extend(['-I', iface])
+            
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=ping_count * 5 + 5)
+            
+            if result.returncode != 0:
+                return {
+                    'success': False,
+                    'error': f'Ping failed: {result.stderr.strip() or "No response"}',
+                    'host': target,
+                }
+            
+            # Parse ping output
+            # rtt min/avg/max/mdev = 23.456/45.678/67.890/12.345 ms
+            output = result.stdout
+            rtt_line = None
+            packet_loss = None
+            
+            for line in output.split('\n'):
+                if 'rtt' in line or 'round-trip' in line:
+                    rtt_line = line
+                if 'packet loss' in line:
+                    try:
+                        loss_str = line.split('%')[0].split()[-1]
+                        packet_loss = float(loss_str)
+                    except (ValueError, IndexError):
+                        pass
+            
+            if not rtt_line:
+                return {
+                    'success': False,
+                    'error': 'Could not parse ping results',
+                    'host': target,
+                }
+            
+            # Extract values
+            import re
+            match = re.search(r'[\d.]+/[\d.]+/[\d.]+/[\d.]+', rtt_line)
+            if not match:
+                return {'success': False, 'error': 'Could not parse RTT', 'host': target}
+            
+            parts = match.group().split('/')
+            min_ms = round(float(parts[0]), 1)
+            avg_ms = round(float(parts[1]), 1)
+            max_ms = round(float(parts[2]), 1)
+            jitter_ms = round(float(parts[3]), 1)
+            
+            # Store for later reference
+            self._last_latency_ms = avg_ms
+            self._last_jitter_ms = jitter_ms
+            
+            # Quality assessment
+            if avg_ms < 30:
+                quality_level = 'excellent'
+                quality_label = 'Excelente'
+            elif avg_ms < 60:
+                quality_level = 'good'
+                quality_label = 'Bueno'
+            elif avg_ms < 100:
+                quality_level = 'moderate'
+                quality_label = 'Moderado'
+            elif avg_ms < 200:
+                quality_level = 'poor'
+                quality_label = 'Alto'
+            else:
+                quality_level = 'critical'
+                quality_label = 'Crítico'
+            
+            return {
+                'success': True,
+                'host': target,
+                'count': ping_count,
+                'interface': iface,
+                'min_ms': min_ms,
+                'avg_ms': avg_ms,
+                'max_ms': max_ms,
+                'jitter_ms': jitter_ms,
+                'packet_loss': packet_loss,
+                'quality': {
+                    'level': quality_level,
+                    'label': quality_label,
+                },
+            }
+        except subprocess.TimeoutExpired:
+            return {
+                'success': False,
+                'error': 'Ping timeout',
+                'host': target,
+            }
+        except Exception as e:
+            return {'success': False, 'error': str(e), 'host': target}
+    
+    # ======================
+    # Flight Session
+    # ======================
+    
+    def get_flight_session_status(self) -> Dict:
+        """Get current flight session status"""
+        if self._flight_session:
+            return {
+                'active': True,
+                'stats': self._flight_session.to_dict(),
+            }
+        return {'active': False}
+    
+    def start_flight_session(self) -> Dict:
+        """Start a new flight session to track signal statistics"""
+        if self._flight_session:
+            return {
+                'success': False,
+                'message': 'Ya hay una sesión activa',
+                'active': True,
+                'stats': self._flight_session.to_dict(),
+            }
+        
+        self._flight_session = FlightSessionStats()
+        logger.info("Flight session started")
+        return {
+            'success': True,
+            'message': 'Sesión de vuelo iniciada',
+            'active': True,
+            'start_time': self._flight_session.start_time.isoformat(),
+        }
+    
+    def stop_flight_session(self) -> Dict:
+        """Stop flight session and return summary"""
+        if not self._flight_session:
+            return {'success': False, 'message': 'No hay sesión activa'}
+        
+        stats = self._flight_session.to_dict()
+        self._flight_session = None
+        logger.info("Flight session stopped")
+        return {
+            'success': True,
+            'message': 'Sesión de vuelo finalizada',
+            'active': False,
+            'stats': stats,
+        }
+    
+    def record_flight_sample(self) -> Dict:
+        """Record a signal sample during flight session"""
+        if not self._flight_session:
+            return {'success': False, 'message': 'No hay sesión activa'}
+        
+        try:
+            signal = self._get_signal_info_sync()
+            network = self._get_network_info_sync()
+            
+            if not signal:
+                return {'success': False, 'message': 'No signal data available'}
+            
+            # Parse values
+            sinr = None
+            sinr_str = signal.get('sinr', '')
+            if sinr_str:
+                try:
+                    sinr = float(sinr_str.replace('dB', '').strip())
+                except (ValueError, AttributeError):
+                    pass
+            
+            rsrp = None
+            rsrp_str = signal.get('rsrp', '')
+            if rsrp_str:
+                try:
+                    rsrp = float(rsrp_str.replace('dBm', '').strip())
+                except (ValueError, AttributeError):
+                    pass
+            
+            current_band = signal.get('band', '')
+            
+            sample = {
+                'timestamp': datetime.now().isoformat(),
+                'rssi': signal.get('rssi', ''),
+                'rsrp': rsrp_str,
+                'rsrq': signal.get('rsrq', ''),
+                'sinr': sinr_str,
+                'cell_id': signal.get('cell_id', ''),
+                'pci': signal.get('pci', ''),
+                'band': current_band,
+                'network_type': network.get('network_type_ex', '') if network else '',
+                'operator': network.get('operator', '') if network else '',
+                'latency_ms': self._last_latency_ms,
+            }
+            
+            self._flight_session.samples.append(sample)
+            
+            # Update stats
+            if sinr is not None:
+                self._flight_session.min_sinr = min(self._flight_session.min_sinr, sinr)
+                self._flight_session.max_sinr = max(self._flight_session.max_sinr, sinr)
+            if rsrp is not None:
+                self._flight_session.min_rsrp = min(self._flight_session.min_rsrp, rsrp)
+                self._flight_session.max_rsrp = max(self._flight_session.max_rsrp, rsrp)
+            if self._last_latency_ms is not None:
+                self._flight_session.latency_samples.append(self._last_latency_ms)
+                avg = sum(self._flight_session.latency_samples) / len(self._flight_session.latency_samples)
+                self._flight_session.avg_latency_ms = avg
+            
+            # Track band changes
+            if current_band and current_band != self._flight_session.last_band:
+                if self._flight_session.last_band:
+                    self._flight_session.band_changes += 1
+                self._flight_session.last_band = current_band
+            
+            return {
+                'success': True,
+                'sample_count': len(self._flight_session.samples),
+                'sample': sample,
             }
         except Exception as e:
             return {'success': False, 'message': str(e)}

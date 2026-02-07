@@ -207,7 +207,18 @@ class TailscaleProvider(VPNProvider):
             backend_state = status.get('backend_state', '')
             
             if backend_state == 'NeedsLogin' or not status.get('authenticated'):
-                # Use 'timeout' OUTSIDE sudo to prevent tailscale up from blocking forever
+                # If status already contains an auth URL, return it immediately
+                # (tailscale status --json always has AuthURL when in NeedsLogin state)
+                if status.get('needs_auth') and status.get('auth_url'):
+                    logger.info(f"Auth URL already available from status: {status['auth_url'][:60]}...")
+                    return {
+                        'success': True,
+                        'needs_auth': True,
+                        'auth_url': status['auth_url'],
+                        'message': 'Authentication required'
+                    }
+                
+                # No auth URL in status; run tailscale up to generate one
                 # timeout wraps sudo so it can kill it without needing sudoers entry for timeout
                 cmd = ['timeout', '5', 'sudo', '-n', 'tailscale', 'up']
                 
@@ -223,11 +234,10 @@ class TailscaleProvider(VPNProvider):
                     combined_output = result.stdout + result.stderr
                     logger.info(f"Tailscale up result: returncode={result.returncode}, output={combined_output[:200]}")
                 except subprocess.TimeoutExpired:
-                    # If Python timeout fires, try to get partial output
                     combined_output = ''
                     logger.warning("Tailscale up timed out at Python level")
                 
-                # Extract auth URL from output
+                # Try extract auth URL from subprocess output
                 auth_url = self._extract_auth_url(combined_output)
                 
                 if auth_url:
@@ -238,7 +248,28 @@ class TailscaleProvider(VPNProvider):
                         'message': 'Authentication required'
                     }
                 
-                # If no URL in output, check status for auth URL
+                # Fallback: read tailscale status --json directly for AuthURL
+                # (more reliable than going through get_status() wrapper)
+                try:
+                    raw = subprocess.run(
+                        ['tailscale', 'status', '--json'],
+                        capture_output=True, text=True, timeout=5
+                    )
+                    if raw.returncode == 0:
+                        status_json = json.loads(raw.stdout)
+                        fallback_url = status_json.get('AuthURL', '')
+                        if fallback_url:
+                            logger.info(f"Got auth URL from status fallback: {fallback_url[:60]}...")
+                            return {
+                                'success': True,
+                                'needs_auth': True,
+                                'auth_url': fallback_url,
+                                'message': 'Authentication required'
+                            }
+                except Exception as e:
+                    logger.warning(f"Fallback status check failed: {e}")
+                
+                # Last resort: check via get_status()
                 check_status = self.get_status()
                 if check_status.get('needs_auth') and check_status.get('auth_url'):
                     return {

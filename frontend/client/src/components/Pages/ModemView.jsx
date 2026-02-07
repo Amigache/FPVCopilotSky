@@ -3,12 +3,14 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useToast } from '../../contexts/ToastContext'
 import { useModal } from '../../contexts/ModalContext'
+import { useWebSocket } from '../../contexts/WebSocketContext'
 import api from '../../services/api'
 
 const ModemView = () => {
   const { t } = useTranslation()
   const { showToast } = useToast()
   const { showModal } = useModal()
+  const { messages: wsMessages } = useWebSocket()
   
   // State
   const [loading, setLoading] = useState(true)
@@ -23,7 +25,6 @@ const ModemView = () => {
   const [changingMode, setChangingMode] = useState(false)
   const [togglingVideoMode, setTogglingVideoMode] = useState(false)
   const [testingLatency, setTestingLatency] = useState(false)
-  const [reconnecting, setReconnecting] = useState(false)
   const [modemRebooting, setModemRebooting] = useState(false)
   
   // Flight session sampling
@@ -72,7 +73,7 @@ const ModemView = () => {
     }
   }, [])
 
-  // Initial load
+  // Initial load (one-time HTTP for first paint, then WS takes over)
   useEffect(() => {
     const loadAll = async () => {
       setLoading(true)
@@ -82,17 +83,20 @@ const ModemView = () => {
         loadFlightSession()
       ])
       setLoading(false)
+      // Auto-test latency on first load
+      handleTestLatency()
     }
     loadAll()
   }, [loadStatus, loadBandPresets, loadFlightSession])
 
-  // Auto-refresh every 10 seconds
+  // WebSocket: update modem data from server push (replaces polling)
   useEffect(() => {
-    const interval = setInterval(() => {
-      loadStatus()
-    }, 10000)
-    return () => clearInterval(interval)
-  }, [loadStatus])
+    if (wsMessages?.modem_status) {
+      const data = wsMessages.modem_status
+      setStatus(data)
+      if (data.video_quality) setVideoQuality(data.video_quality)
+    }
+  }, [wsMessages?.modem_status])
 
   // Set LTE band
   const handleSetBand = async (preset) => {
@@ -174,30 +178,6 @@ const ModemView = () => {
       showToast(error.message, 'error')
     }
     setTestingLatency(false)
-  }
-
-  // Reconnect network
-  const handleReconnect = async () => {
-    setReconnecting(true)
-    showToast(`⏳ ${t('modem.reconnecting')}`, 'info')
-    try {
-      const response = await api.post('/api/network/hilink/reconnect', {}, 20000)
-      if (response.ok) {
-        showToast(`✅ ${t('modem.reconnectionStarted')}`, 'success')
-        // Wait and refresh
-        setTimeout(async () => {
-          await loadStatus()
-          setReconnecting(false)
-        }, 5000)
-        return
-      } else {
-        const data = await response.json()
-        showToast(data.detail || 'Error', 'error')
-      }
-    } catch (error) {
-      showToast(error.message, 'error')
-    }
-    setReconnecting(false)
   }
 
   // Start flight session
@@ -407,9 +387,9 @@ ${t('modem.bandChanges')}: ${stats.band_changes}
         {/* === CARD 1: INFO - Operador & Dispositivo === */}
         <div className="card info-card">
           <h2>📡 {t('modem.information')}</h2>
-          <div className="info-sections">
-            {/* Operador Section */}
-            <div className="info-section operator-section">
+          <div className="info-columns">
+            {/* Left Column: Operator */}
+            <div className="info-column">
               <div className="section-header">
                 <span className="section-title">{t('modem.operatorSection')}</span>
                 <span className={`connection-badge ${network.connection_status === 'Connected' ? 'connected' : 'disconnected'}`}>
@@ -442,10 +422,8 @@ ${t('modem.bandChanges')}: ${stats.band_changes}
               </div>
             </div>
 
-            <div className="section-divider"></div>
-
-            {/* Dispositivo Section */}
-            <div className="info-section device-section">
+            {/* Right Column: Device */}
+            <div className="info-column">
               <div className="section-header">
                 <span className="section-title">{t('modem.deviceSection')}</span>
               </div>
@@ -515,7 +493,12 @@ ${t('modem.bandChanges')}: ${stats.band_changes}
                   {testingLatency ? '...' : '🔄'}
                 </button>
               </div>
-              {latency?.success ? (
+              {testingLatency && !latency?.success ? (
+                <div className="kpi-no-data">
+                  <div className="spinner-small"></div>
+                  {t('modem.testing')}...
+                </div>
+              ) : latency?.success ? (
                 <div className="kpi-content">
                   <div className={`latency-badge ${getQualityColorClass(latency.quality?.level)}`}>
                     <span className="latency-main">{latency.avg_ms} ms</span>
@@ -528,11 +511,7 @@ ${t('modem.bandChanges')}: ${stats.band_changes}
                   </div>
                 </div>
               ) : (
-                <div className="kpi-no-data">
-                  <button className="btn-small" onClick={handleTestLatency} disabled={testingLatency}>
-                    {testingLatency ? t('modem.testing') : t('modem.test')}
-                  </button>
-                </div>
+                <div className="kpi-no-data">{t('modem.noData')}</div>
               )}
             </div>
 
@@ -600,14 +579,6 @@ ${t('modem.bandChanges')}: ${stats.band_changes}
             <div className="config-section">
               <div className="config-header">
                 <span className="config-title">📡 {t('modem.lteBand')}</span>
-                <button 
-                  className="btn-mini" 
-                  onClick={handleReconnect}
-                  disabled={reconnecting}
-                  title={t('modem.reconnect')}
-                >
-                  {reconnecting ? '...' : '🔁'}
-                </button>
               </div>
               
               {changingBand && (

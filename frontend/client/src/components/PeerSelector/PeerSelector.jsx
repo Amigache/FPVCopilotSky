@@ -43,12 +43,11 @@ export const PeerSelector = ({
     setLoading(true)
     try {
       const data = await api.getVPNPeers()
-      console.log('VPN Peers received:', data)
-      // Extract peers array and only include online peers
+      // Extract peers array and include all peers (online and offline for selection)
       const peersList = data.peers || []
-      setPeers(peersList.filter(peer => peer.online))
+      setPeers(peersList.filter(peer => !peer.is_self))
     } catch (error) {
-      console.error('Error loading peers:', error)
+      // Silently handle - VPN may not be connected
       setPeers([])
     } finally {
       setLoading(false)

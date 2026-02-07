@@ -36,7 +36,6 @@ from services.websocket_manager import websocket_manager
 from services.preferences import get_preferences
 from services.serial_detector import get_detector
 from services.gstreamer_service import init_gstreamer_service, get_gstreamer_service
-from services.vpn_service import init_vpn_service, get_vpn_service
 from services.video_stream_info import init_video_stream_info_service, get_video_stream_info_service
 from api.routes import mavlink, system
 from api.routes import router as router_routes
@@ -63,7 +62,6 @@ mavlink_service = None
 router_service = None
 preferences_service = None
 video_service = None
-vpn_service = None
 
 # Include routers
 app.include_router(mavlink.router, prefix="/api/mavlink", tags=["mavlink"])
@@ -93,9 +91,27 @@ async def websocket_endpoint(websocket: WebSocket):
         if video_service:
             await websocket_manager.broadcast("video_status", video_service.get_status())
         
-        # Send initial VPN status
-        if vpn_service:
-            await websocket_manager.broadcast("vpn_status", vpn_service.get_status())
+        # Send initial VPN status (from provider registry)
+        try:
+            from providers import get_provider_registry
+            from services.preferences import get_preferences
+            registry = get_provider_registry()
+            prefs = get_preferences()
+            config = prefs.get_vpn_config()
+            provider_name = config.get('provider')
+            # Auto-detect first installed provider if not configured
+            if not provider_name:
+                available = registry.get_available_vpn_providers()
+                installed = [p for p in available if p.get('installed')]
+                if installed:
+                    provider_name = installed[0]['name']
+            if provider_name:
+                vpn_provider = registry.get_vpn_provider(provider_name)
+                if vpn_provider:
+                    status = vpn_provider.get_status()
+                    await websocket_manager.broadcast("vpn_status", status)
+        except Exception as e:
+            pass  # VPN status not critical for startup
         
         # Keep connection alive and handle client messages
         while True:
@@ -172,23 +188,8 @@ async def periodic_stats_broadcast():
                 }
                 await websocket_manager.broadcast("status", status_data)
             
-            # Network status every 10 seconds
-            if counter % 10 == 0:
-                from services.network_service import get_network_service
-                network_service = get_network_service()
-                network_status = await network_service.get_status()
-                await websocket_manager.broadcast("network_status", {"success": True, **network_status})
-            
-            # Auto-adjust network priority every 30 seconds (transparent, only if needed)
-            if counter % 30 == 0:
-                from services.network_service import get_network_service
-                network_service = get_network_service()
-                result = await network_service.auto_adjust_priority()
-                if result.get('changed'):
-                    logger.info(f"Network priority auto-adjusted: {result.get('reason')}")
-                    # Broadcast updated network status after change
-                    network_status = await network_service.get_status()
-                    await websocket_manager.broadcast("network_status", {"success": True, **network_status})
+            # Network status broadcasting removed - use API endpoints instead
+            # This functionality is now handled on-demand by the frontend calling API endpoints
             
             # System resources (CPU/Memory) every 3 seconds
             if counter % 3 == 0:
@@ -206,6 +207,115 @@ async def periodic_stats_broadcast():
                     "services": services,
                     "count": len(services)
                 })
+            
+            # VPN status every 10 seconds
+            if counter % 10 == 0:
+                try:
+                    from providers import get_provider_registry
+                    from services.preferences import get_preferences
+                    registry = get_provider_registry()
+                    prefs = get_preferences()
+                    config = prefs.get_vpn_config()
+                    provider_name = config.get('provider')
+                    if not provider_name:
+                        available = registry.get_available_vpn_providers()
+                        installed = [p for p in available if p.get('installed')]
+                        if installed:
+                            provider_name = installed[0]['name']
+                    if provider_name:
+                        vpn_provider = registry.get_vpn_provider(provider_name)
+                        if vpn_provider:
+                            loop = asyncio.get_event_loop()
+                            vpn_status = await loop.run_in_executor(None, vpn_provider.get_status)
+                            await websocket_manager.broadcast("vpn_status", vpn_status)
+                except Exception as e:
+                    logger.debug(f"VPN status broadcast error: {e}")
+
+            # Modem status every 10 seconds (avoid hammering modem API)
+            if counter % 10 == 0:
+                try:
+                    from providers import get_provider_registry
+                    registry = get_provider_registry()
+                    modem_provider = registry.get_modem_provider('huawei_e3372h')
+                    if modem_provider and modem_provider.is_available:
+                        # Use raw async methods for full data
+                        import asyncio as _asyncio
+                        device_task = modem_provider.async_get_raw_device_info() if hasattr(modem_provider, 'async_get_raw_device_info') else _asyncio.sleep(0)
+                        signal_task = modem_provider.async_get_signal_info() if hasattr(modem_provider, 'async_get_signal_info') else _asyncio.sleep(0)
+                        network_task = modem_provider.async_get_raw_network_info() if hasattr(modem_provider, 'async_get_raw_network_info') else _asyncio.sleep(0)
+                        traffic_task = modem_provider.async_get_traffic_stats() if hasattr(modem_provider, 'async_get_traffic_stats') else _asyncio.sleep(0)
+                        
+                        results = await _asyncio.gather(device_task, signal_task, network_task, traffic_task, return_exceptions=True)
+                        
+                        device_info = results[0] if not isinstance(results[0], Exception) else {}
+                        signal_info = results[1] if not isinstance(results[1], Exception) else {}
+                        network_info = results[2] if not isinstance(results[2], Exception) else {}
+                        traffic_info = results[3] if not isinstance(results[3], Exception) else {}
+                        
+                        device_info = device_info or {}
+                        signal_info = signal_info or {}
+                        network_info = network_info or {}
+                        traffic_info = traffic_info or {}
+                        
+                        available = any([device_info, signal_info, network_info, traffic_info])
+                        conn_status = network_info.get('connection_status', '')
+                        signal_percent = signal_info.get('signal_percent', 0) or 0
+                        signal_bars = min(5, max(0, int(signal_percent / 20))) if signal_percent else 0
+                        
+                        modem_data = {
+                            "success": True,
+                            "available": available,
+                            "connected": conn_status == 'Connected',
+                            "video_mode_active": getattr(modem_provider, 'video_mode_active', False),
+                        }
+                        
+                        if device_info:
+                            modem_data["device"] = {
+                                "device_name": device_info.get('device_name', ''),
+                                "model": device_info.get('device_name', ''),
+                                "imei": device_info.get('imei', ''),
+                                "imsi": device_info.get('imsi', ''),
+                                "iccid": device_info.get('iccid', ''),
+                                "serial_number": device_info.get('serial_number', ''),
+                                "hardware_version": device_info.get('hardware_version', ''),
+                                "software_version": device_info.get('software_version', ''),
+                                "product_family": device_info.get('product_family', ''),
+                            }
+                        if signal_info:
+                            modem_data["signal"] = {**signal_info, "signal_bars": signal_bars}
+                        if network_info:
+                            modem_data["network"] = {
+                                "operator": network_info.get('operator', ''),
+                                "operator_code": network_info.get('operator_code', ''),
+                                "network_type": network_info.get('network_type', ''),
+                                "network_type_ex": network_info.get('network_type_ex', ''),
+                                "connection_status": conn_status,
+                                "signal_icon": network_info.get('signal_icon', signal_bars),
+                                "roaming": network_info.get('roaming', False),
+                                "primary_dns": network_info.get('primary_dns', ''),
+                                "secondary_dns": network_info.get('secondary_dns', ''),
+                            }
+                        if traffic_info:
+                            modem_data["traffic"] = traffic_info
+                        
+                        # Add band/mode data (single extra call, reuses connection)
+                        loop = asyncio.get_event_loop()
+                        band_data = await loop.run_in_executor(None, modem_provider.get_current_band)
+                        if band_data:
+                            modem_data["current_band"] = band_data
+                            modem_data["mode"] = {
+                                "network_mode": band_data.get("network_mode", "00"),
+                                "network_mode_name": band_data.get("network_mode_name", "Auto"),
+                            }
+                        
+                        # Add video quality
+                        vq = await loop.run_in_executor(None, modem_provider.get_video_quality_assessment)
+                        if vq and vq.get('available'):
+                            modem_data["video_quality"] = vq
+                        
+                        await websocket_manager.broadcast("modem_status", modem_data)
+                except Exception as e:
+                    logger.debug(f"Modem broadcast error: {e}")
             
         except Exception as e:
             logger.error(f"Error in periodic broadcast: {e}")
@@ -262,7 +372,7 @@ def auto_connect_serial():
 @app.on_event("startup")
 async def startup_event():
     """Initialize services on startup"""
-    global mavlink_service, router_service, preferences_service, video_service, vpn_service
+    global mavlink_service, router_service, preferences_service, video_service
     loop = asyncio.get_event_loop()
     
     # Initialize preferences first
@@ -305,34 +415,7 @@ async def startup_event():
     video_stream_info_service = init_video_stream_info_service(mavlink_service, video_service)
     video_stream_info_service.start()
     
-    # Initialize VPN service
-    vpn_service = init_vpn_service(websocket_manager, loop)
-    vpn_routes.set_vpn_service(vpn_service)
-    vpn_routes.set_preferences_service(preferences_service)
-    
-    # Auto-connect to VPN on startup (if not already connected)
-    def auto_connect_vpn():
-        try:
-            time.sleep(2)  # Wait for system to stabilize
-            status = vpn_service.get_status()
-            if status.get('installed') and status.get('authenticated') and not status.get('connected'):
-                logger.info("Attempting auto-connect to VPN...")
-                result = vpn_service.connect()
-                if result.get('success'):
-                    logger.info("VPN auto-connect successful")
-                    # Broadcast updated status
-                    asyncio.run_coroutine_threadsafe(
-                        websocket_manager.broadcast("vpn_status", vpn_service.get_status()),
-                        loop
-                    )
-                elif result.get('needs_auth'):
-                    logger.info("VPN requires authentication")
-        except Exception as e:
-            logger.error(f"Error during VPN auto-connect: {e}")
-    
-    # Start auto-connect in background thread
-    vpn_thread = threading.Thread(target=auto_connect_vpn, daemon=True)
-    vpn_thread.start()
+    # Auto-connect to VPN not needed - handled by VPN provider/routes on demand
     
     # Load video config from preferences
     video_config = preferences_service.get_video_config()

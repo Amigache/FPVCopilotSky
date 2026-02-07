@@ -16,6 +16,8 @@ i18n
     fallbackLng: 'en',
     supportedLngs: ['en', 'es'],
     load: 'languageOnly', // Importante: ignora el código de región (es-ES -> es)
+    debug: false, // Silenciar mensajes de debug/warning
+    saveMissing: false, // No mostrar mensajes sobre claves faltantes
     interpolation: {
       escapeValue: false
     },

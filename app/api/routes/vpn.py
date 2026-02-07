@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 from providers import get_provider_registry
+from services.preferences import get_preferences
 
 router = APIRouter(prefix="/api/vpn", tags=["vpn"])
 
@@ -16,7 +17,7 @@ _preferences_service = None
 
 
 def set_vpn_service(service):
-    """Set the VPN service instance"""
+    """Deprecated: Set the VPN service instance (kept for compatibility)"""
     global _vpn_service
     _vpn_service = service
 
@@ -25,6 +26,41 @@ def set_preferences_service(service):
     """Set the preferences service instance"""
     global _preferences_service
     _preferences_service = service
+
+
+def _get_preferences_service():
+    """Get preferences service instance"""
+    global _preferences_service
+    if _preferences_service:
+        return _preferences_service
+    return get_preferences()
+
+
+def _get_vpn_provider(provider_name: Optional[str] = None):
+    """Get VPN provider from registry"""
+    registry = get_provider_registry()
+    
+    # If provider_name not specified, get from preferences
+    if not provider_name:
+        prefs = _get_preferences_service()
+        config = prefs.get_vpn_config()
+        provider_name = config.get('provider')
+    
+    # If still no provider, auto-detect first installed one
+    if not provider_name:
+        available = registry.get_available_vpn_providers()
+        installed = [p for p in available if p.get('installed')]
+        if installed:
+            provider_name = installed[0]['name']
+    
+    if not provider_name:
+        raise HTTPException(status_code=400, detail="No VPN provider configured")
+    
+    provider = registry.get_vpn_provider(provider_name)
+    if not provider:
+        raise HTTPException(status_code=503, detail=f"VPN provider '{provider_name}' not available")
+    
+    return provider
 
 
 class VPNConnectRequest(BaseModel):
@@ -48,11 +84,9 @@ class VPNPreferencesModel(BaseModel):
 @router.get("/providers")
 async def get_providers():
     """Get list of available VPN providers"""
-    if not _vpn_service:
-        raise HTTPException(status_code=503, detail="VPN service not initialized")
-    
     try:
-        providers = _vpn_service.get_available_providers()
+        registry = get_provider_registry()
+        providers = registry.get_available_vpn_providers()
         return {
             "success": True,
             "providers": providers
@@ -64,12 +98,12 @@ async def get_providers():
 @router.get("/status")
 async def get_status(provider: Optional[str] = None):
     """Get VPN connection status"""
-    if not _vpn_service:
-        raise HTTPException(status_code=503, detail="VPN service not initialized")
-    
     try:
-        status = _vpn_service.get_status(provider)
+        vpn_provider = _get_vpn_provider(provider)
+        status = vpn_provider.get_status()
         return status
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -85,16 +119,23 @@ async def get_peers(provider: Optional[str] = None):
     Returns:
         List of peers in the VPN network with their status and information
     """
-    if not _vpn_service:
-        raise HTTPException(status_code=503, detail="VPN service not initialized")
-    
     try:
-        peers = _vpn_service.get_peers(provider)
+        vpn_provider = _get_vpn_provider(provider)
+        peers = vpn_provider.get_peers()
         return {
             "success": True,
             "peers": peers,
             "count": len(peers)
         }
+    except HTTPException as e:
+        # If no VPN provider configured, return empty list instead of error
+        if e.status_code == 400 and "No VPN provider configured" in str(e.detail):
+            return {
+                "success": True,
+                "peers": [],
+                "count": 0
+            }
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -110,13 +151,11 @@ async def connect_vpn(request: VPNConnectRequest):
     Returns:
         Connection result with auth_url if authentication is needed
     """
-    if not _vpn_service:
-        raise HTTPException(status_code=503, detail="VPN service not initialized")
-    
     try:
-        result = _vpn_service.connect(request.provider)
+        vpn_provider = _get_vpn_provider(request.provider)
+        result = vpn_provider.connect()
         
-        if not result.get("success") and not result.get("needs_auth") and not result.get("needs_logout"):
+        if not result.get("success") and not result.get("needs_auth"):
             raise HTTPException(status_code=400, detail=result.get("error", "Connection failed"))
         
         return result
@@ -134,11 +173,9 @@ async def disconnect_vpn(request: VPNDisconnectRequest):
     Args:
         provider: VPN provider name (optional, uses current if not specified)
     """
-    if not _vpn_service:
-        raise HTTPException(status_code=503, detail="VPN service not initialized")
-    
     try:
-        result = _vpn_service.disconnect(request.provider)
+        vpn_provider = _get_vpn_provider(request.provider)
+        result = vpn_provider.disconnect()
         
         if not result.get("success"):
             raise HTTPException(status_code=400, detail=result.get("error", "Disconnection failed"))
@@ -161,11 +198,9 @@ async def logout_vpn(request: VPNDisconnectRequest):
     This is useful when you need to re-authenticate with fresh credentials,
     for example when the device has been deleted from the admin panel.
     """
-    if not _vpn_service:
-        raise HTTPException(status_code=503, detail="VPN service not initialized")
-    
     try:
-        result = _vpn_service.logout(request.provider)
+        vpn_provider = _get_vpn_provider(request.provider)
+        result = vpn_provider.logout()
         
         if not result.get("success"):
             raise HTTPException(status_code=400, detail=result.get("error", "Logout failed"))
@@ -185,14 +220,12 @@ async def get_vpn_preferences():
     Returns:
         VPN configuration including provider, enabled state, and auto-connect settings
     """
-    if not _preferences_service:
-        raise HTTPException(status_code=503, detail="Preferences service not initialized")
-    
     try:
+        prefs = _get_preferences_service()
         # Run synchronous code in thread pool to avoid blocking
         import asyncio
         loop = asyncio.get_event_loop()
-        config = await loop.run_in_executor(None, _preferences_service.get_vpn_config)
+        config = await loop.run_in_executor(None, prefs.get_vpn_config)
         return {
             "success": True,
             "preferences": config
@@ -212,15 +245,13 @@ async def save_vpn_preferences(preferences: VPNPreferencesModel):
     Returns:
         Success status and saved preferences
     """
-    if not _preferences_service:
-        raise HTTPException(status_code=503, detail="Preferences service not initialized")
-    
     try:
+        prefs = _get_preferences_service()
         config = preferences.model_dump()
         # Run synchronous code in thread pool to avoid blocking
         import asyncio
         loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, lambda: _preferences_service.set_vpn_config(config))
+        await loop.run_in_executor(None, lambda: prefs.set_vpn_config(config))
         
         return {
             "success": True,

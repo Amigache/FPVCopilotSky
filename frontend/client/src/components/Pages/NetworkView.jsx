@@ -262,7 +262,7 @@ const NetworkView = () => {
               {interfaces.map((iface) => (
                 <div 
                   key={iface.name} 
-                  className={`interface-item ${iface.state}`}
+                  className={`interface-item ${iface.state === 'UP' ? 'connected' : 'disconnected'}`}
                 >
                   <div className="interface-info">
                     <span className="interface-name">
@@ -420,7 +420,7 @@ const NetworkView = () => {
                       {[1, 2, 3, 4, 5].map((bar) => (
                         <div 
                           key={bar}
-                          className={`signal-bar-large ${bar <= (hilinkStatus.network?.signal_icon || 0) ? 'active' : ''}`}
+                          className={`signal-bar-large ${bar <= (hilinkStatus.signal?.signal_bars || Math.ceil((hilinkStatus.signal?.signal_percent || 0) / 20)) ? 'active' : ''}`}
                         />
                       ))}
                     </div>
