@@ -322,6 +322,54 @@ async def periodic_stats_broadcast():
             pass
 
 
+def auto_connect_vpn():
+    """
+    Auto-connect to VPN based on preferences.
+    Runs in a separate thread to not block startup.
+    """
+    global preferences_service
+    
+    try:
+        prefs = preferences_service
+        vpn_config = prefs.get_vpn_config()
+        
+        if not vpn_config.get("auto_connect", False):
+            print("⏭️ VPN auto-connect disabled in preferences")
+            return
+        
+        provider_name = vpn_config.get("provider")
+        if not provider_name:
+            print("⏭️ No VPN provider configured")
+            return
+        
+        from providers import get_provider_registry
+        registry = get_provider_registry()
+        vpn_provider = registry.get_vpn_provider(provider_name)
+        
+        if not vpn_provider:
+            print(f"⚠️ VPN provider '{provider_name}' not available")
+            return
+        
+        # Check if already connected
+        status = vpn_provider.get_status()
+        if status.get("connected"):
+            print(f"✅ VPN already connected ({provider_name})")
+            return
+        
+        # Try to connect
+        print(f"🔄 Auto-connecting to VPN ({provider_name})...")
+        result = vpn_provider.connect()
+        
+        if result.get("success"):
+            print(f"✅ Auto-connected to VPN ({provider_name})")
+        elif result.get("needs_auth"):
+            print(f"ℹ️ VPN requires authentication: {result.get('auth_url', 'Check VPN settings')}")
+        else:
+            print(f"⚠️ VPN auto-connect failed: {result.get('error', 'Unknown error')}")
+    except Exception as e:
+        print(f"⚠️ VPN auto-connect error: {e}")
+
+
 def auto_connect_serial():
     """
     Auto-detect and connect to flight controller.
@@ -333,7 +381,7 @@ def auto_connect_serial():
     serial_config = prefs.get_serial_config()
     
     if not serial_config.auto_connect:
-        print("⏭️ Auto-connect disabled in preferences")
+        print("⏭️ Serial auto-connect disabled in preferences")
         return
     
     # If we have a saved successful connection, try that first
@@ -464,6 +512,14 @@ async def startup_event():
         
         video_thread = threading.Thread(target=start_video, daemon=True, name="VideoAutoStart")
         video_thread.start()
+    
+    # Start auto-connect VPN in background thread (non-blocking)
+    vpn_thread = threading.Thread(
+        target=auto_connect_vpn,
+        daemon=True,
+        name="VPNAutoConnect"
+    )
+    vpn_thread.start()
     
     # Start auto-connect in background thread (non-blocking)
     auto_connect_thread = threading.Thread(

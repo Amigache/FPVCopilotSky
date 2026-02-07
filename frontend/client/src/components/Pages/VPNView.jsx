@@ -29,6 +29,8 @@ const VPNView = () => {
   const [connecting, setConnecting] = useState(false)
   const [authUrl, setAuthUrl] = useState(null)
   const [authPolling, setAuthPolling] = useState(false)
+  const [vpnPreferences, setVpnPreferences] = useState({ auto_connect: false })
+  const [savingPreferences, setSavingPreferences] = useState(false)
   
   // Refs to avoid infinite loops
   const authPollingRef = useRef(false)
@@ -58,6 +60,44 @@ const VPNView = () => {
       console.error('Error loading VPN providers:', error)
     }
   }, [])
+
+  // Load VPN preferences
+  const loadPreferences = useCallback(async () => {
+    try {
+      const response = await api.get('/api/vpn/preferences')
+      if (response.ok) {
+        const data = await response.json()
+        setVpnPreferences(data.preferences || { auto_connect: false })
+      }
+    } catch (error) {
+      console.error('Error loading VPN preferences:', error)
+    }
+  }, [])
+
+  // Save VPN preferences
+  const savePreferences = useCallback(async (newPrefs) => {
+    setSavingPreferences(true)
+    try {
+      const response = await api.post('/api/vpn/preferences', newPrefs)
+      if (response.ok) {
+        const data = await response.json()
+        setVpnPreferences(data.preferences || newPrefs)
+        showToast(t('vpn.preferencesSaved'), 'success')
+      }
+    } catch (error) {
+      console.error('Error saving VPN preferences:', error)
+      showToast(t('vpn.preferencesError'), 'error')
+    } finally {
+      setSavingPreferences(false)
+    }
+  }, [showToast, t])
+
+  // Toggle auto-connect
+  const handleAutoConnectChange = async (enabled) => {
+    const newPrefs = { ...vpnPreferences, auto_connect: enabled }
+    setVpnPreferences(newPrefs)
+    await savePreferences(newPrefs)
+  }
 
   // Load status
   const loadStatus = useCallback(async () => {
@@ -121,11 +161,11 @@ const VPNView = () => {
     const loadData = async () => {
       setLoading(true)
       await loadProviders()
-      await loadStatus()
+      await loadPreferences()
       setLoading(false)
     }
     loadData()
-  }, [loadProviders, selectedProvider])
+  }, [loadProviders, loadPreferences])
 
   // Refresh status when provider changes (without dependency on loadStatus)
   useEffect(() => {
@@ -597,6 +637,24 @@ const VPNView = () => {
           )}
         </div>
       )}
+
+      {/* Preferences Card */}
+      <div className="card">
+        <h2>⚙️ {t('vpn.preferences')}</h2>
+        
+        <div className="form-group auto-start-toggle">
+          <label className="toggle-label">
+            <input 
+              type="checkbox" 
+              checked={vpnPreferences.auto_connect || false}
+              onChange={(e) => handleAutoConnectChange(e.target.checked)}
+              disabled={savingPreferences}
+            />
+            <span className="toggle-switch"></span>
+            <span className="toggle-text">{t('vpn.autoConnect')}</span>
+          </label>
+        </div>
+      </div>
 
       {/* Control Buttons */}
       <div className="card">

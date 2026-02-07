@@ -171,7 +171,10 @@
       "detectingVehicle": "Detectando tipo de vehículo...",
       "notConnected": "No conectado",
       "loadingParams": "Cargando parámetros...",
-      "vehicleParams": "Parámetros del Vehículo"
+      "vehicleParams": "Parámetros del Vehículo",
+      "autoConnect": "Conectar automáticamente al arrancar",
+      "preferencesSaved": "Preferencias guardadas",
+      "preferencesError": "Error al guardar las preferencias"
     },
     "system": {
       "title": "⚙️ Sistema",
@@ -390,7 +393,11 @@
     "deviceDeleted": "El dispositivo parece haber sido eliminado del panel de administración. Por favor, cierra sesión y vuelve a autenticarte.",
     "peersTitle": "Nodos de la Red",
     "loadingPeers": "Cargando nodos...",
-    "noPeers": "No se encontraron otros nodos en la red"
+    "noPeers": "No se encontraron otros nodos en la red",
+    "preferences": "Preferencias",
+    "autoConnect": "Conectar automáticamente al arrancar",
+    "preferencesSaved": "Preferencias guardadas",
+    "preferencesError": "Error al guardar las preferencias"
   },
   "common": {
     "cancel": "Cancelar",

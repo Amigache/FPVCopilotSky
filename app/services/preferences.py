@@ -82,6 +82,8 @@ class PreferencesService:
             },
             "video": {
                 "device": "",  # Will be auto-detected when user saves first time
+                "device_name": "",  # Camera card name (e.g. "Brio 100") for stable identification
+                "device_bus_info": "",  # USB bus info for disambiguation
                 "width": 960,
                 "height": 720,
                 "framerate": 30,
@@ -226,50 +228,90 @@ class PreferencesService:
     # ==================== Video Configuration ====================
     
     def get_video_config(self) -> Dict[str, Any]:
-        """Get video configuration."""
+        """Get video configuration with smart device matching.
+        
+        If the saved device path doesn't exist or doesn't match the saved camera name,
+        attempts to find the correct device by matching device_name and bus_info.
+        This handles device path changes between reboots (e.g. /dev/video1 → /dev/video0).
+        """
         with self._lock:
             config = self._preferences.get("video", {})
             device = config.get("device", "")
+            saved_name = config.get("device_name", "")
+            saved_bus = config.get("device_bus_info", "")
             
-            # If device is empty or doesn't exist, try to auto-detect
-            if not device or not os.path.exists(device):
-                # Find first available video device
-                import glob
-                devices = sorted(glob.glob('/dev/video*'))
-                if devices:
-                    # Filter out metadata devices (e.g., video0 might be metadata, video1 actual camera)
-                    for dev in devices:
-                        try:
-                            # Quick check if it's a capture device
-                            import subprocess
-                            result = subprocess.run(
-                                ['v4l2-ctl', '--device', dev, '--info'],
-                                capture_output=True,
-                                text=True,
-                                timeout=2
-                            )
-                            if result.returncode == 0 and 'video capture' in result.stdout.lower():
-                                config["device"] = dev
-                                if device:  # Only warn if there was a previous device configured
-                                    print(f"⚠️ Video device {device} not found, using {dev}")
-                                else:
-                                    print(f"ℹ️ Auto-detected video device: {dev}")
-                                break
-                        except Exception:
-                            continue
-                    else:
-                        # No valid capture device found
-                        if device:
-                            print(f"⚠️ Video device {device} not found and no alternative detected")
-                        else:
-                            print(f"ℹ️ No video capture devices detected")
+            # If we have a saved camera identity, use it for smart matching
+            if saved_name:
+                from .video_config import get_device_identity, find_device_by_identity
+                
+                needs_rematch = False
+                
+                if not device or not os.path.exists(device):
+                    # Device path doesn't exist at all
+                    needs_rematch = True
                 else:
-                    if device:
-                        print(f"⚠️ Video device {device} not found, no /dev/video* devices available")
+                    # Device path exists - verify it's the same camera
+                    current_identity = get_device_identity(device)
+                    if not current_identity or current_identity.get("name") != saved_name:
+                        # Device path exists but is a different camera or not a capture device
+                        needs_rematch = True
+                
+                if needs_rematch:
+                    # Find the camera by its name/bus_info
+                    new_device = find_device_by_identity(saved_name, saved_bus)
+                    if new_device:
+                        print(f"🔄 Camera '{saved_name}' moved: {device} → {new_device}")
+                        config["device"] = new_device
+                        # Persist the corrected device path
+                        self._preferences["video"]["device"] = new_device
+                        self._save()
                     else:
-                        print(f"ℹ️ No video devices detected")
+                        print(f"⚠️ Camera '{saved_name}' not found on any /dev/video* device")
+                        # Fallback: find any capture device
+                        self._fallback_detect_device(config, device)
+            elif device and not os.path.exists(device):
+                # Legacy: no saved name, device doesn't exist - basic fallback
+                self._fallback_detect_device(config, device)
+            elif not device:
+                # No device configured at all - auto-detect
+                self._fallback_detect_device(config, device)
             
             return config
+    
+    def _fallback_detect_device(self, config: Dict, old_device: str):
+        """Fallback device detection when smart matching isn't possible."""
+        import glob
+        import subprocess
+        
+        devices = sorted(glob.glob('/dev/video*'))
+        if devices:
+            for dev in devices:
+                try:
+                    result = subprocess.run(
+                        ['v4l2-ctl', '--device', dev, '--info'],
+                        capture_output=True,
+                        text=True,
+                        timeout=2
+                    )
+                    if result.returncode == 0 and 'video capture' in result.stdout.lower():
+                        config["device"] = dev
+                        if old_device:
+                            print(f"⚠️ Video device {old_device} not found, using {dev}")
+                        else:
+                            print(f"ℹ️ Auto-detected video device: {dev}")
+                        break
+                except Exception:
+                    continue
+            else:
+                if old_device:
+                    print(f"⚠️ Video device {old_device} not found and no alternative detected")
+                else:
+                    print(f"ℹ️ No video capture devices detected")
+        else:
+            if old_device:
+                print(f"⚠️ Video device {old_device} not found, no /dev/video* devices available")
+            else:
+                print(f"ℹ️ No video devices detected")
     
     def set_video_config(self, config: Dict[str, Any]):
         """Set video configuration."""

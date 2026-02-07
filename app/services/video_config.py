@@ -4,11 +4,79 @@ Supports MJPEG and H.264 encoding with UDP output
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 import subprocess
 import glob
 import os
 import re
+
+
+def get_device_identity(device: str) -> Optional[Dict[str, str]]:
+    """
+    Get identifying information for a video device (name, driver, bus_info).
+    Returns None if the device is not a valid capture device.
+    """
+    try:
+        result = subprocess.run(
+            ['v4l2-ctl', '--device', device, '--info'],
+            capture_output=True,
+            text=True,
+            timeout=2
+        )
+        if result.returncode != 0:
+            return None
+
+        info = {"device": device}
+        is_capture = False
+
+        for line in result.stdout.split('\n'):
+            if 'Card type' in line:
+                parts = line.split(':', 1)
+                if len(parts) > 1:
+                    info["name"] = parts[1].strip()
+            elif 'Driver name' in line:
+                parts = line.split(':', 1)
+                if len(parts) > 1:
+                    info["driver"] = parts[1].strip()
+            elif 'Bus info' in line:
+                parts = line.split(':', 1)
+                if len(parts) > 1:
+                    info["bus_info"] = parts[1].strip()
+            elif 'Video Capture' in line:
+                is_capture = True
+
+        if not is_capture:
+            return None
+
+        return info
+    except Exception:
+        return None
+
+
+def find_device_by_identity(name: str, bus_info: str = "") -> Optional[str]:
+    """
+    Find a video device path that matches the given camera name (and optionally bus_info).
+    Scans all /dev/video* devices and returns the first match.
+    Priority: match both name+bus_info > match name only.
+    """
+    devices = sorted(glob.glob('/dev/video*'))
+    name_match = None
+
+    for device in devices:
+        identity = get_device_identity(device)
+        if not identity:
+            continue
+        dev_name = identity.get("name", "")
+        dev_bus = identity.get("bus_info", "")
+
+        if dev_name == name:
+            if bus_info and dev_bus == bus_info:
+                # Exact match on name + bus_info
+                return device
+            if name_match is None:
+                name_match = device
+
+    return name_match
 
 
 def auto_detect_camera() -> str:
@@ -67,6 +135,7 @@ def get_device_resolutions(device: str) -> Dict:
         device_name = device
         device_type = "Dispositivo de captura"
         driver = "unknown"
+        bus_info = ""
         is_capture = False
         
         for line in info_result.stdout.split('\n'):
@@ -80,6 +149,10 @@ def get_device_resolutions(device: str) -> Dict:
                 parts = line.split(':', 1)
                 if len(parts) > 1:
                     driver = parts[1].strip()
+            elif 'Bus info' in line:
+                parts = line.split(':', 1)
+                if len(parts) > 1:
+                    bus_info = parts[1].strip()
             elif 'Video Capture' in line:
                 is_capture = True
         
@@ -141,6 +214,7 @@ def get_device_resolutions(device: str) -> Dict:
             "name": device_name,
             "type": device_type,
             "driver": driver,
+            "bus_info": bus_info,
             "is_usb": driver == "uvcvideo",
             "resolutions": sorted_resolutions,
             "resolutions_fps": resolutions_fps

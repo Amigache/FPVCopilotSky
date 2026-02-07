@@ -22,6 +22,8 @@ def set_video_service(service):
 class VideoConfigRequest(BaseModel):
     """Video configuration request"""
     device: Optional[str] = None
+    device_name: Optional[str] = None
+    device_bus_info: Optional[str] = None
     width: Optional[int] = None
     height: Optional[int] = None
     framerate: Optional[int] = None
@@ -116,14 +118,36 @@ async def configure_video(config: VideoConfigRequest):
     if not config_dict:
         raise HTTPException(status_code=400, detail="No configuration provided")
     
+    # Separate identity fields from GStreamer config
+    identity_fields = {}
+    for field in ("device_name", "device_bus_info"):
+        if field in config_dict:
+            identity_fields[field] = config_dict.pop(field)
+    
     _video_service.configure(video_config=config_dict)
     
-    # Save to preferences
+    # Save to preferences (including identity fields for smart matching)
     try:
         from services.preferences import get_preferences
         prefs = get_preferences()
         current = prefs.get_video_config()
         current.update(config_dict)
+        
+        # If identity fields were provided, save them
+        if identity_fields:
+            current.update(identity_fields)
+        elif "device" in config_dict:
+            # Auto-detect identity from the device path if not provided by frontend
+            try:
+                from services.video_config import get_device_identity
+                identity = get_device_identity(config_dict["device"])
+                if identity:
+                    current["device_name"] = identity.get("name", "")
+                    current["device_bus_info"] = identity.get("bus_info", "")
+                    print(f"📹 Saved camera identity: {identity.get('name')} ({identity.get('bus_info', 'N/A')})")
+            except Exception as e:
+                print(f"⚠️ Failed to detect camera identity: {e}")
+        
         prefs.set_video_config(current)
     except Exception as e:
         print(f"⚠️ Failed to save video config: {e}")

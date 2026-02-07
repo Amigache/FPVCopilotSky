@@ -33,6 +33,22 @@ const VideoView = () => {
   const [hasChanges, setHasChanges] = useState(false)
   const initialLoadDone = useRef(false)
 
+  // Build video config payload including camera identity for stable device matching
+  const buildVideoConfigPayload = () => {
+    const camera = cameras.find(cam => cam.device === config.device)
+    return {
+      device: config.device,
+      device_name: camera?.name || '',
+      device_bus_info: camera?.bus_info || '',
+      width: parseInt(config.width),
+      height: parseInt(config.height),
+      framerate: parseInt(config.framerate),
+      codec: config.codec,
+      quality: parseInt(config.quality),
+      h264_bitrate: parseInt(config.h264_bitrate)
+    }
+  }
+
   // Get video status from WebSocket
   const status = messages.video_status || {
     available: false,
@@ -88,15 +104,7 @@ const VideoView = () => {
     setActionLoading('start')
     try {
       // First apply video config
-      await api.post('/api/video/config/video', {
-        device: config.device,
-        width: parseInt(config.width),
-        height: parseInt(config.height),
-        framerate: parseInt(config.framerate),
-        codec: config.codec,
-        quality: parseInt(config.quality),
-        h264_bitrate: parseInt(config.h264_bitrate)
-      })
+      await api.post('/api/video/config/video', buildVideoConfigPayload())
       
       // Then start
       const response = await api.post('/api/video/start')
@@ -132,15 +140,7 @@ const VideoView = () => {
     setActionLoading('restart')
     try {
       // Apply config first, then restart
-      await api.post('/api/video/config/video', {
-        device: config.device,
-        width: parseInt(config.width),
-        height: parseInt(config.height),
-        framerate: parseInt(config.framerate),
-        codec: config.codec,
-        quality: parseInt(config.quality),
-        h264_bitrate: parseInt(config.h264_bitrate)
-      })
+      await api.post('/api/video/config/video', buildVideoConfigPayload())
       
       const response = await api.post('/api/video/restart')
       const data = await response.json()
@@ -159,15 +159,7 @@ const VideoView = () => {
     setActionLoading('apply')
     try {
       // Apply video config
-      const videoRes = await api.post('/api/video/config/video', {
-        device: config.device,
-        width: parseInt(config.width),
-        height: parseInt(config.height),
-        framerate: parseInt(config.framerate),
-        codec: config.codec,
-        quality: parseInt(config.quality),
-        h264_bitrate: parseInt(config.h264_bitrate)
-      })
+      const videoRes = await api.post('/api/video/config/video', buildVideoConfigPayload())
       
       // Apply streaming config (including auto_start)
       const streamRes = await api.post('/api/video/config/streaming', {

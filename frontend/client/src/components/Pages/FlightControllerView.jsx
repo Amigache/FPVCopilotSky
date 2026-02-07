@@ -139,6 +139,8 @@ const FlightControllerView = () => {
   const [loading, setLoading] = useState(false)
   const [availablePorts, setAvailablePorts] = useState([])
   const [loadingPorts, setLoadingPorts] = useState(true)
+  const [serialPreferences, setSerialPreferences] = useState({ auto_connect: false })
+  const [savingSerialPreferences, setSavingSerialPreferences] = useState(false)
   
   // Vehicle type detected from heartbeat
   const [vehicleType, setVehicleType] = useState(null)
@@ -216,7 +218,53 @@ const FlightControllerView = () => {
     }
 
     fetchPorts()
+    
+    // Load serial preferences
+    const loadSerialPreferences = async () => {
+      try {
+        const response = await fetchWithTimeout(`${API_MAVLINK}/preferences`)
+        const data = await response.json()
+        if (data.success) {
+          setSerialPreferences(data.preferences || { auto_connect: false })
+        }
+      } catch (error) {
+        console.error('Error loading serial preferences:', error)
+      }
+    }
+    
+    loadSerialPreferences()
   }, [])
+
+  // Save serial preferences
+  const saveSerialPreferences = async (newPrefs) => {
+    setSavingSerialPreferences(true)
+    try {
+      const response = await fetchWithTimeout(`${API_MAVLINK}/preferences`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(newPrefs)
+      })
+      const data = await response.json()
+      if (data.success) {
+        setSerialPreferences(data.preferences || newPrefs)
+        showToast(t('views.flightController.preferencesSaved'), 'success')
+      }
+    } catch (error) {
+      console.error('Error saving serial preferences:', error)
+      showToast(t('views.flightController.preferencesError'), 'error')
+    } finally {
+      setSavingSerialPreferences(false)
+    }
+  }
+
+  // Toggle auto-connect
+  const handleAutoConnectChange = async (enabled) => {
+    const newPrefs = { ...serialPreferences, auto_connect: enabled }
+    setSerialPreferences(newPrefs)
+    await saveSerialPreferences(newPrefs)
+  }
 
   const handleConnect = async () => {
     setLoading(true)
@@ -649,6 +697,19 @@ const FlightControllerView = () => {
               🔌 {t('views.flightController.disconnect')}
             </button>
           )}
+        </div>
+
+        <div className="form-group auto-start-toggle">
+          <label className="toggle-label">
+            <input 
+              type="checkbox" 
+              checked={serialPreferences.auto_connect || false}
+              onChange={(e) => handleAutoConnectChange(e.target.checked)}
+              disabled={savingSerialPreferences}
+            />
+            <span className="toggle-switch"></span>
+            <span className="toggle-text">{t('views.flightController.autoConnect')}</span>
+          </label>
         </div>
       </div>
 

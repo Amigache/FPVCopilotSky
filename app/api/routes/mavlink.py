@@ -22,6 +22,10 @@ class ConnectRequest(BaseModel):
     port: str
     baudrate: int = 115200
 
+class SerialPreferencesModel(BaseModel):
+    """Serial connection preferences"""
+    auto_connect: bool = False
+
 @router.post("/connect")
 async def connect(request: ConnectRequest):
     """Connect to MAVLink device and save configuration"""
@@ -237,3 +241,50 @@ async def apply_gcs_only_params(custom_values: Optional[dict] = None):
     
     result = mavlink_service.set_parameters_batch(params_to_set)
     return result
+
+@router.get("/preferences")
+async def get_serial_preferences():
+    """
+    Get serial connection preferences from persistent storage
+    
+    Returns:
+        Serial configuration including auto_connect settings
+    """
+    try:
+        from services.preferences import get_preferences
+        prefs = get_preferences()
+        config = prefs.get_serial_config()
+        return {
+            "success": True,
+            "preferences": {
+                "auto_connect": config.auto_connect
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/preferences")
+async def save_serial_preferences(preferences: SerialPreferencesModel):
+    """
+    Save serial connection preferences to persistent storage
+    
+    Args:
+        preferences: Serial preferences including auto_connect
+    
+    Returns:
+        Success status and saved preferences
+    """
+    try:
+        from services.preferences import get_preferences
+        prefs = get_preferences()
+        prefs.set_serial_auto_connect(preferences.auto_connect)
+        
+        return {
+            "success": True,
+            "message": "Serial preferences saved",
+            "preferences": {
+                "auto_connect": preferences.auto_connect
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

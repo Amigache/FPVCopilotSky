@@ -72,17 +72,30 @@ const NetworkView = () => {
     setWifiScanning(false)
   }, [])
 
-  // Initial load
+  // Initial load - load essentials first, then lazy load heavy components
   useEffect(() => {
     const loadAll = async () => {
       setLoading(true)
+      // Load essential network status first
       await loadStatus()
-      await loadHilinkStatus()
-      await loadWifiNetworks()
       setLoading(false)
     }
     loadAll()
-  }, [loadStatus, loadHilinkStatus, loadWifiNetworks])
+  }, [loadStatus])
+
+  // Lazy load WiFi networks after initial load
+  useEffect(() => {
+    if (!loading) {
+      loadWifiNetworks()
+    }
+  }, [loading, loadWifiNetworks])
+
+  // Lazy load modem status after initial load
+  useEffect(() => {
+    if (!loading) {
+      loadHilinkStatus()
+    }
+  }, [loading, loadHilinkStatus])
 
   // Update from WebSocket - network status
   useEffect(() => {
