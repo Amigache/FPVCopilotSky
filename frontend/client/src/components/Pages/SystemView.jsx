@@ -196,6 +196,25 @@ const SystemView = () => {
               <InfoRow label={t('views.system.storageType', 'Storage Type')} value={boardData.variant?.storage_type || 'N/A'} />
               <InfoRow label={t('views.system.distro', 'Distro')} value={boardData.variant?.distro || 'N/A'} />
               <InfoRow label={t('views.system.kernel', 'Kernel')} value={boardData.variant?.kernel || 'N/A'} />
+              
+              {/* Kernel family recommendation warning */}
+              {boardData.variant?.kernel && boardData.variant.kernel.includes('-current-') && 
+               !boardData.features?.video_encoders?.includes('hardware_h264') && (
+                <div style={{
+                  marginTop: '12px',
+                  padding: '10px 12px',
+                  background: 'rgba(255, 152, 0, 0.15)',
+                  border: '1px solid rgba(255, 152, 0, 0.5)',
+                  borderRadius: '4px',
+                  fontSize: '0.85em',
+                  lineHeight: '1.4',
+                  color: '#ffcc80'
+                }}>
+                  <div style={{fontWeight: '600', marginBottom: '4px'}}>⚠️ {t('views.system.kernelInfo', 'Kernel Info')}</div>
+                  <div>{t('views.system.hwEncoderNotAvailable', 'HW H.264 not available on mainline kernel. For hardware encoding, use Armbian legacy kernel.')}</div>
+                </div>
+              )}
+              
               <div className="board-features">
                 <div className="board-feature-group">
                   <div className="board-feature-label">{t('views.system.videoSources', 'Video Sources')}</div>

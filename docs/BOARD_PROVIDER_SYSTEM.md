@@ -121,6 +121,50 @@ DetectedBoard(board_name, board_model, hardware, variant, features)
 
 ## 💾 Implementación RadxaZero
 
+### Característica clave: Auto-detección de kernel families
+
+La implementación del **RadxaZeroProvider** ahora **detecta automáticamente** la familia de kernel Armbian (`legacy`, `current` o `edge`) y adapta los features disponibles consecuentemente.
+
+**¿Por qué es importante?** El soporte HW H.264 encoder en Amlogic S905Y2 varía **significativamente** según la rama de kernel:
+
+| Familia | Kernel | HW H.264 | Support Level |
+|---------|--------|----------|---|
+| **legacy** | Vendor BSP (5.15.x) | ✅ Disponible | Máximo (vendor integrado) |
+| **current** | Mainline estable (6.12.x) | ❌ NO disponible | Bueno (pero sin VPU HW) |
+| **edge** | Mainline latest (6.13+) | ❌ NO disponible | Experimental |
+
+**⚠️ Insight importante**: En Amlogic, el soporte HW H.264 depende de integración vendor VPU que solo existe en BSP kernels (legacy). Mainline current NO tiene encoder HW confiable.
+
+#### Variantes soportadas (2 principales)
+
+1. **Armbian current kernel** (default, recomendado)
+   - Kernel: 6.12.58-current-meson64
+   - HW H.264: ❌ NO disponible (mainline no tiene integración VPU)
+   - Encoders: MJPEG, x264 software
+   - Ventajas: Mantenimiento activo, estable
+   - Usa: Si necesitas estabilidad y fallback a software encoding está OK
+
+2. **Armbian legacy kernel** (máximo HW support)
+   - Kernel: 5.15.x-legacy-meson64
+   - HW H.264: ✅ Disponible (vendor BSP tiene integración VPU Amlogic)
+   - Encoders: H.264 HW, MJPEG, x264 software
+   - Ventajas: Máximo soporte de hardware
+   - Usa: Si necesitas H.264 HW encoding por eficiencia
+
+#### Cómo funciona la detección
+
+El **`_detect_kernel_family()`** método parsea la versión del kernel y busca los marcadores:
+
+```python
+kernel_version = "6.12.58-current-meson64"
+# ↓ parsea ↓
+family = _detect_kernel_family(kernel_version)
+# ↓ detecta "current" ↓
+return ArmbiankernelFamily.CURRENT
+```
+
+Luego **`_get_variant_for_kernel_family()`** retorna la variante apropiada con features correctos.
+
 ### Archivo: `app/providers/board/implementations/radxa/zero.py`
 
 ```python
@@ -229,18 +273,46 @@ class RadxaZeroProvider(BoardProvider):
 
 ### Salida esperada al iniciar
 
+**Con kernel current (default, recomendado - SIN HW H.264):**
 ```
-2024-02-07 12:34:56 - app.providers.board.board_registry - INFO
+2026-02-07 15:30:45 - app.providers.board.board_registry - INFO
     Discovering board providers in 'implementations/'...
 
-2024-02-07 12:34:56 - app.providers.board.implementations.radxa.zero - INFO
+2026-02-07 15:30:45 - app.providers.board.implementations.radxa.zero - INFO
     ✅ Detected via device-tree: Radxa Zero
 
-2024-02-07 12:34:56 - app.providers.board.board_registry - INFO
-    Detected board: Radxa Zero
-    - Hardware: Amlogic S905Y2, 4 cores, 4GB RAM, 29GB storage
-    - Variant: Ubuntu 24.04, kernel 6.1.63-current-meson64
-    - Features: V4L2, LibCamera, HW-H264, MJPEG, WiFi, USB3, GPIO, I2C, SPI
+2026-02-07 15:30:45 - app.providers.board.implementations.radxa.zero - INFO
+    Detected Armbian CURRENT kernel: 6.12.58-current-meson64
+
+2026-02-07 15:30:45 - app.providers.board.implementations.radxa.zero - INFO
+    Using CURRENT kernel variant (recommended)
+
+2026-02-07 15:30:45 - app.providers.board.board_registry - INFO
+    ✅ Board detected: Radxa Zero (Amlogic S905Y2)
+    - Hardware: 4 cores, 4GB RAM, 29GB storage, Mali-G31 MP2 GPU
+    - Variant: Armbian current kernel
+    - Kernel: 6.12.58-current-meson64
+    - Video: V4L2, LibCamera → MJPEG, x264 software (sin HW H.264 en mainline)
+    - Network: WiFi, USB modem, USB 3.x, Ethernet
+    - Peripherals: GPIO, I2C, SPI
+```
+
+**Con kernel legacy (máximo HW support - CON HW H.264):**
+```
+2026-02-07 15:30:45 - app.providers.board.implementations.radxa.zero - INFO
+    Detected Armbian LEGACY kernel: 5.15.25-legacy-meson64
+
+2026-02-07 15:30:45 - app.providers.board.implementations.radxa.zero - INFO
+    Using LEGACY kernel variant (máximo HW support)
+
+2026-02-07 15:30:45 - app.providers.board.board_registry - INFO
+    ✅ Board detected: Radxa Zero (Amlogic S905Y2)
+    - Hardware: 4 cores, 4GB RAM, 29GB storage, Mali-G31 MP2 GPU
+    - Variant: Armbian legacy kernel (máximo HW support)
+    - Kernel: 5.15.25-legacy-meson64
+    - Video: V4L2, LibCamera → H.264 HW ✅, MJPEG, x264 software
+    - Network: WiFi, USB modem, USB 3.x, Ethernet
+    - Peripherals: GPIO, I2C, SPI
 ```
 
 ---

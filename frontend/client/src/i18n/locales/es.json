@@ -194,7 +194,24 @@
       "cores": "Núcleos",
       "frequency": "Frecuencia",
       "temperature": "Temp",
-      "loadAvg": "Carga"
+      "loadAvg": "Carga",
+      "board": "Board",
+      "boardName": "Board",
+      "boardModel": "Modelo",
+      "cpuModel": "CPU",
+      "cpuCores": "Núcleos",
+      "ram": "RAM",
+      "storage": "Almacenamiento",
+      "storageType": "Tipo Almacenamiento",
+      "distro": "Distribución",
+      "kernel": "Kernel",
+      "kernelInfo": "Información del Kernel",
+      "videoSources": "Fuentes de Video",
+      "videoEncoders": "Codificadores de Video",
+      "connectivity": "Conectividad",
+      "systemFeatures": "Características del Sistema",
+      "boardUnknown": "Board no detectado",
+      "hwEncoderNotAvailable": "HW H.264 no disponible en kernel mainline. Para codificación por hardware, usa kernel Armbian legacy."
     }
   },
   "router": {
