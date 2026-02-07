@@ -290,14 +290,31 @@ async def save_serial_preferences(preferences: SerialPreferencesModel, request: 
         lang = get_language_from_request(request)
         from services.preferences import get_preferences
         prefs = get_preferences()
-        prefs.set_serial_auto_connect(preferences.auto_connect)
         
-        return {
-            "success": True,
-            "message": translate("serial.preferences_saved", lang),
-            "preferences": {
-                "auto_connect": preferences.auto_connect
+        try:
+            prefs.set_serial_auto_connect(preferences.auto_connect)
+            
+            # Verify the save
+            saved_config = prefs.get_serial_config()
+            if saved_config.auto_connect != preferences.auto_connect:
+                print(f"⚠️ Verification failed: requested auto_connect={preferences.auto_connect}, saved={saved_config.auto_connect}")
+                return {
+                    "success": False,
+                    "message": "Failed to verify saved preferences",
+                    "preferences": {
+                        "auto_connect": saved_config.auto_connect
+                    }
+                }
+            
+            return {
+                "success": True,
+                "message": translate("serial.preferences_saved", lang),
+                "preferences": {
+                    "auto_connect": preferences.auto_connect
+                }
             }
-        }
+        except Exception as e:
+            print(f"❌ Error in set_serial_auto_connect: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to save preferences: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

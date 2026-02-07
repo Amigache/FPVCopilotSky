@@ -175,7 +175,7 @@
       "notConnected": "Not connected",
       "loadingParams": "Loading parameters...",
       "vehicleParams": "Vehicle Parameters",
-      "autoConnect": "Auto-connect on startup",
+      "autoConnect": "Connect on Startup",
       "preferencesSaved": "Preferences saved",
       "preferencesError": "Error saving preferences"
     },
@@ -419,7 +419,7 @@
     "loadingPeers": "Loading nodes...",
     "noPeers": "No other nodes found in the network",
     "preferences": "Preferences",
-    "autoConnect": "Auto-connect on startup",
+    "autoConnect": "Connect on Startup",
     "preferencesSaved": "Preferences saved",
     "preferencesError": "Error saving preferences"
   },

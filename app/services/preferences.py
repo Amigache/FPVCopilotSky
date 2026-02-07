@@ -57,7 +57,7 @@ class PreferencesService:
     COMMON_BAUDRATES = [115200, 57600, 921600, 460800, 230400]
     
     def __init__(self):
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()  # RLock allows re-entrant locking from same thread
         self._preferences: Dict[str, Any] = self._default_preferences()
         self._config_path = self._get_config_path()
         self._load()
@@ -145,10 +145,15 @@ class PreferencesService:
                 base[key] = value
     
     def _save(self):
-        """Save preferences to file."""
+        """Save preferences to file with synchronization."""
         try:
-            with open(self._config_path, 'w') as f:
-                json.dump(self._preferences, f, indent=2)
+            with self._lock:
+                with open(self._config_path, 'w') as f:
+                    json.dump(self._preferences, f, indent=2)
+                    # Force OS to write to disk while file is still open
+                    f.flush()
+                    import os
+                    os.fsync(f.fileno())
         except Exception as e:
             print(f"⚠️ Failed to save preferences: {e}")
     
@@ -166,14 +171,26 @@ class PreferencesService:
             )
     
     def set_serial_config(self, port: str, baudrate: int, successful: bool = False):
-        """Update serial configuration."""
-        with self._lock:
-            self._preferences["serial"]["port"] = port
-            self._preferences["serial"]["baudrate"] = baudrate
-            self._preferences["serial"]["last_successful"] = successful
-            if successful:
-                self._preferences["system"]["first_run"] = False
-            self._save()
+        """Update serial configuration with verification."""
+        try:
+            with self._lock:
+                self._preferences["serial"]["port"] = port
+                self._preferences["serial"]["baudrate"] = baudrate
+                self._preferences["serial"]["last_successful"] = successful
+                if successful:
+                    self._preferences["system"]["first_run"] = False
+                self._save()
+                
+                # Verify the save was successful
+                saved_config = self._preferences.get("serial", {})
+                if (saved_config.get("port") == port and 
+                    saved_config.get("baudrate") == baudrate and
+                    saved_config.get("last_successful") == successful):
+                    print(f"✅ Serial preferences saved: {port} @ {baudrate} baud (successful={successful})")
+                else:
+                    print(f"⚠️ Serial preferences save verification failed")
+        except Exception as e:
+            print(f"⚠️ Failed to save serial config: {e}")
     
     def set_serial_auto_connect(self, enabled: bool):
         """Enable/disable auto-connect."""
@@ -329,12 +346,26 @@ class PreferencesService:
             return self._preferences.get("streaming", {})
     
     def set_streaming_config(self, config: Dict[str, Any]):
-        """Set streaming configuration."""
-        with self._lock:
-            if "streaming" not in self._preferences:
-                self._preferences["streaming"] = {}
-            self._preferences["streaming"].update(config)
-            self._save()
+        """Set streaming configuration with verification."""
+        try:
+            with self._lock:
+                if "streaming" not in self._preferences:
+                    self._preferences["streaming"] = {}
+                self._preferences["streaming"].update(config)
+                self._save()
+                
+                # Verify the save was successful
+                saved = self._preferences.get("streaming", {})
+                enabled = config.get("enabled", False)
+                auto_start = config.get("auto_start", False)
+                
+                if (saved.get("enabled") == enabled and
+                    saved.get("auto_start") == auto_start):
+                    print(f"✅ Streaming preferences saved: enabled={enabled}, auto_start={auto_start}")
+                else:
+                    print(f"⚠️ Streaming preferences save verification failed")
+        except Exception as e:
+            print(f"⚠️ Failed to save streaming config: {e}")
     
     # ==================== VPN Configuration ====================
     
@@ -344,12 +375,28 @@ class PreferencesService:
             return self._preferences.get("vpn", {})
     
     def set_vpn_config(self, config: Dict[str, Any]):
-        """Set VPN configuration."""
-        with self._lock:
-            if "vpn" not in self._preferences:
-                self._preferences["vpn"] = {}
-            self._preferences["vpn"].update(config)
-            self._save()
+        """Set VPN configuration with verification."""
+        try:
+            with self._lock:
+                if "vpn" not in self._preferences:
+                    self._preferences["vpn"] = {}
+                self._preferences["vpn"].update(config)
+                self._save()
+                
+                # Verify the save was successful
+                saved = self._preferences.get("vpn", {})
+                provider = config.get("provider", "")
+                enabled = config.get("enabled", False)
+                auto_connect = config.get("auto_connect", False)
+                
+                if (saved.get("provider") == provider and 
+                    saved.get("enabled") == enabled and
+                    saved.get("auto_connect") == auto_connect):
+                    print(f"✅ VPN preferences saved: provider={provider}, enabled={enabled}, auto_connect={auto_connect}")
+                else:
+                    print(f"⚠️ VPN preferences save verification failed")
+        except Exception as e:
+            print(f"⚠️ Failed to save VPN config: {e}")
     
     def set_vpn_provider(self, provider: str):
         """Set VPN provider (e.g., 'tailscale', 'zerotier', 'wireguard', or '' for none)."""

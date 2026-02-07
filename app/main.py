@@ -334,9 +334,22 @@ def auto_connect_vpn():
     global preferences_service
     
     try:
+        # Wait a bit to ensure preferences are loaded
+        import time
+        time.sleep(0.5)
+        
         prefs = preferences_service
+        if not prefs:
+            print("⚠️ Preferences not initialized for VPN auto-connect")
+            return
+            
         vpn_config = prefs.get_vpn_config()
         
+        # Check enabled AND auto_connect
+        if not vpn_config.get("enabled", False):
+            print("⏭️ VPN not enabled in preferences")
+            return
+            
         if not vpn_config.get("auto_connect", False):
             print("⏭️ VPN auto-connect disabled in preferences")
             return
@@ -378,47 +391,97 @@ def auto_connect_serial():
     """
     Auto-detect and connect to flight controller.
     Runs in a separate thread to not block startup.
+    Verifies connection persistence and saves preferences only if successful.
     """
     global mavlink_service, preferences_service
     
-    prefs = preferences_service
-    serial_config = prefs.get_serial_config()
+    import time
     
-    if not serial_config.auto_connect:
-        print("⏭️ Serial auto-connect disabled in preferences")
-        return
-    
-    # If we have a saved successful connection, try that first
-    if serial_config.last_successful and serial_config.port:
-        print(f"🔄 Trying saved connection: {serial_config.port} @ {serial_config.baudrate}")
-        result = mavlink_service.connect(serial_config.port, serial_config.baudrate)
-        if result["success"]:
-            print(f"✅ Auto-connected to {serial_config.port}")
+    try:
+        # Wait a bit to ensure services are initialized
+        time.sleep(1)
+        
+        if not preferences_service or not mavlink_service:
+            print("⚠️ Services not initialized for serial auto-connect")
             return
-        print(f"⚠️ Saved connection failed, scanning for flight controller...")
-    
-    # Auto-detect flight controller
-    detector = get_detector()
-    detection = detector.detect_flight_controller(
-        preferred_port=serial_config.port,
-        preferred_baudrate=serial_config.baudrate
-    )
-    
-    if detection:
-        # Connect with detected settings
-        result = mavlink_service.connect(detection["port"], detection["baudrate"])
-        if result["success"]:
-            # Save successful connection
-            prefs.set_serial_config(
-                port=detection["port"],
-                baudrate=detection["baudrate"],
-                successful=True
-            )
-            print(f"✅ Auto-connected and saved: {detection['port']} @ {detection['baudrate']}")
+        
+        prefs = preferences_service
+        serial_config = prefs.get_serial_config()
+        
+        # Check if auto-connect is enabled
+        if not serial_config.auto_connect:
+            print("⏭️ Serial auto-connect disabled in preferences")
+            return
+        
+        print("🔄 Starting serial auto-connect sequence...")
+        
+        # If we have a previously successful connection, try that first
+        if serial_config.last_successful and serial_config.port:
+            print(f"🔄 Attempting saved connection: {serial_config.port} @ {serial_config.baudrate} baud")
+            result = mavlink_service.connect(serial_config.port, serial_config.baudrate)
+            
+            if result.get("success"):
+                # Verify connection is stable
+                time.sleep(1)
+                status = mavlink_service.get_status()
+                if status.get("connected"):
+                    print(f"✅ Auto-connected to saved port: {serial_config.port}")
+                    return
+                else:
+                    print(f"⚠️ Saved connection unstable, scanning for alternatives...")
+            else:
+                print(f"⚠️ Saved connection failed: {result.get('message', 'Unknown error')}")
+        
+        # Auto-detect flight controller
+        print("🔍 Scanning for flight controller...")
+        detector = get_detector()
+        
+        if not detector:
+            print("⚠️ Serial detector not available")
+            return
+        
+        detection = detector.detect_flight_controller(
+            preferred_port=serial_config.port if not serial_config.last_successful else None,
+            preferred_baudrate=serial_config.baudrate if not serial_config.last_successful else None
+        )
+        
+        if detection:
+            print(f"📍 Found flight controller: {detection.get('description', detection['port'])}")
+            print(f"   Port: {detection['port']} @ {detection['baudrate']} baud")
+            
+            # Try to connect
+            result = mavlink_service.connect(detection["port"], detection["baudrate"])
+            
+            if result.get("success"):
+                # Verify connection is stable before saving
+                time.sleep(1)
+                status = mavlink_service.get_status()
+                
+                if status.get("connected"):
+                    # Save successful connection to preferences
+                    try:
+                        prefs.set_serial_config(
+                            port=detection["port"],
+                            baudrate=detection["baudrate"],
+                            successful=True
+                        )
+                        print(f"✅ Auto-connected and saved: {detection['port']} @ {detection['baudrate']} baud")
+                        return
+                    except Exception as e:
+                        print(f"⚠️ Connected but failed to save preferences: {e}")
+                        # Connection is good, so don't disconnect
+                else:
+                    print(f"⚠️ Detection succeeded and initial connect returned success, but connection unstable")
+            else:
+                print(f"⚠️ Connection attempt failed: {result.get('message', 'Unknown error')}")
         else:
-            print(f"⚠️ Detection succeeded but connection failed: {result['message']}")
-    else:
-        print("⚠️ No flight controller found - waiting for manual connection")
+            print("⚠️ No flight controller detected - the system is ready for manual connection")
+            print("ℹ️  Connect a flight controller via serial and use the UI to establish connection")
+    
+    except Exception as e:
+        print(f"⚠️ Serial auto-connect error: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 @app.on_event("startup")
@@ -537,18 +600,39 @@ async def startup_event():
     
     # Auto-start video if configured
     if streaming_config and streaming_config.get("auto_start", False):
+        print("📹 Video auto-start enabled in preferences")
         def start_video():
             import time
             time.sleep(2)  # Wait for system to settle
-            if video_service.is_available():
+            try:
+                if not video_service:
+                    print("⚠️ Video service not available for auto-start")
+                    return
+                    
+                if not video_service.is_available():
+                    print("⚠️ No video devices available for auto-start")
+                    return
+                    
+                print("🔄 Attempting to auto-start video stream...")
                 result = video_service.start()
-                if result["success"]:
-                    print("🎥 Video streaming auto-started")
+                
+                if result.get("success"):
+                    # Verify stream is actually running
+                    time.sleep(1)
+                    status = video_service.get_status()
+                    if status.get("streaming"):
+                        print("✅ Video streaming auto-started successfully")
+                    else:
+                        print("⚠️ Video start returned success but stream not confirmed")
                 else:
-                    print(f"⚠️ Video auto-start failed: {result['message']}")
+                    print(f"⚠️ Video auto-start failed: {result.get('message', 'Unknown error')}")
+            except Exception as e:
+                print(f"⚠️ Video auto-start exception: {e}")
         
         video_thread = threading.Thread(target=start_video, daemon=True, name="VideoAutoStart")
         video_thread.start()
+    else:
+        print("⏭️ Video auto-start disabled in preferences")
     
     # Start auto-connect VPN in background thread (non-blocking)
     vpn_thread = threading.Thread(

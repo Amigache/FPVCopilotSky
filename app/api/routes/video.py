@@ -216,8 +216,17 @@ async def configure_video(config: VideoConfigRequest, request: Request):
                 print(f"⚠️ Failed to detect camera identity: {e}")
         
         prefs.set_video_config(current)
+        
+        # Verify the save
+        saved = prefs.get_video_config()
+        if "device" in config_dict and saved.get("device") == config_dict["device"]:
+            print(f"✅ Video device preference verified: {saved.get('device')}")
+        elif "width" in config_dict and saved.get("width") == config_dict["width"]:
+            print(f"✅ Video config preference verified: {config_dict['width']}x{config_dict.get('height')}")
     except Exception as e:
         print(f"⚠️ Failed to save video config: {e}")
+    
+    return {"success": True, "message": translate("video.configuration_updated", lang), "config": config_dict}
     
     return {"success": True, "message": translate("video.configuration_updated", lang), "config": config_dict}
 
@@ -235,6 +244,7 @@ async def configure_streaming(config: StreamingConfigRequest, request: Request):
     if not config_dict:
         raise HTTPException(status_code=400, detail="No configuration provided")
     
+    # Update video service
     _video_service.configure(streaming_config=config_dict)
     
     # Save to preferences
@@ -244,6 +254,13 @@ async def configure_streaming(config: StreamingConfigRequest, request: Request):
         current = prefs.get_streaming_config()
         current.update(config_dict)
         prefs.set_streaming_config(current)
+        
+        # Verify the save
+        saved = prefs.get_streaming_config()
+        if saved.get("auto_start") == config_dict.get("auto_start", saved.get("auto_start")):
+            print(f"✅ Streaming auto_start preference verified: {saved.get('auto_start')}")
+        else:
+            print(f"⚠️ Streaming preference save verification failed")
     except Exception as e:
         print(f"⚠️ Failed to save streaming config: {e}")
     

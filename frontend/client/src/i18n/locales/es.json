@@ -82,7 +82,7 @@
       "networkUdpRtp": "🌐 Red (UDP/RTP)",
       "destinationIp": "IP Destino",
       "udpPort": "Puerto UDP",
-      "autoStart": "Iniciar automáticamente al arrancar",
+      "autoStart": "Inicio automático",
       "streamControl": "🎮 Control de Stream",
       "apply": "💾 Aplicar",
       "restart": "🔄 Reiniciar",
@@ -175,7 +175,7 @@
       "notConnected": "No conectado",
       "loadingParams": "Cargando parámetros...",
       "vehicleParams": "Parámetros del Vehículo",
-      "autoConnect": "Conectar automáticamente al arrancar",
+      "autoConnect": "Conectar al Iniciar",
       "preferencesSaved": "Preferencias guardadas",
       "preferencesError": "Error al guardar las preferencias"
     },
@@ -419,7 +419,7 @@
     "loadingPeers": "Cargando nodos...",
     "noPeers": "No se encontraron otros nodos en la red",
     "preferences": "Preferencias",
-    "autoConnect": "Conectar automáticamente al arrancar",
+    "autoConnect": "Conectar al Iniciar",
     "preferencesSaved": "Preferencias guardadas",
     "preferencesError": "Error al guardar las preferencias"
   },

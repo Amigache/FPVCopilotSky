@@ -258,17 +258,35 @@ async def save_vpn_preferences(preferences: VPNPreferencesModel, request: Reques
         lang = get_language_from_request(request)
         prefs = _get_preferences_service()
         config = preferences.model_dump()
+        
         # Run synchronous code in thread pool to avoid blocking
         import asyncio
         loop = asyncio.get_event_loop()
+        
+        # Save the config
         await loop.run_in_executor(None, lambda: prefs.set_vpn_config(config))
         
-        return {
-            "success": True,
-            "message": translate("vpn.preferences_saved", lang),
-            "preferences": config
-        }
+        # Verify the save
+        saved_config = await loop.run_in_executor(None, prefs.get_vpn_config)
+        
+        if (saved_config.get("provider") == config.get("provider") and
+            saved_config.get("enabled") == config.get("enabled") and
+            saved_config.get("auto_connect") == config.get("auto_connect")):
+            return {
+                "success": True,
+                "message": translate("vpn.preferences_saved", lang),
+                "preferences": config
+            }
+        else:
+            print(f"⚠️ VPN preferences verification failed")
+            return {
+                "success": False,
+                "message": "Failed to verify saved preferences",
+                "preferences": saved_config
+            }
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
