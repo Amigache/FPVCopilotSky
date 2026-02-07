@@ -4,20 +4,12 @@ Radxa Zero board provider
 Hardware: Amlogic S905Y2 CPU, 4GB RAM, 32GB eMMC, WiFi 5 (or 4)
 Supported Storage: eMMC, SD Card, USB
 Distros: Armbian, Ubuntu, Debian
-
-⚠️ Kernel families (Armbian-specific):
-   - legacy:  Vendor BSP kernel (máximo soporte HW, menos mantenimiento)
-   - current: Kernel mainline estable (buen balance, recomendado)
-   - edge:    Kernel mainline más reciente (experimental, posibles issues)
-
-El soporte para HW H.264 encoder en Amlogic depende MUCHO del kernel.
 """
 
 import os
 import logging
 import subprocess
 from typing import Optional, List
-from enum import Enum
 from ...board_provider import BoardProvider
 from ...board_definitions import (
     HardwareInfo, VariantInfo, DetectionCriteria,
@@ -25,14 +17,6 @@ from ...board_definitions import (
     VideoSourceFeature, VideoEncoderFeature, ConnectivityFeature, SystemFeature
 )
 logger = logging.getLogger(__name__)
-
-
-class ArmbiankernelFamily(Enum):
-    """Armbian kernel families for Amlogic SoC"""
-    LEGACY = "legacy"      # Vendor BSP, máximo HW support
-    CURRENT = "current"    # Mainline estable (recomendado)
-    EDGE = "edge"          # Mainline latest (experimental)
-    UNKNOWN = "unknown"    # No se pudo determinar
 
 
 class RadxaZeroProvider(BoardProvider):
@@ -44,17 +28,11 @@ class RadxaZeroProvider(BoardProvider):
     - CPU cores from /proc/cpuinfo
     - RAM from /proc/meminfo
     - Storage capacity from df
-    - Kernel family (legacy/current/edge) from version string
+    - Kernel version from uname
     
     Variants managed:
     - Storage: eMMC (internal), SD Card (external), USB (external)
     - Distro: Armbian (primary), Ubuntu, Debian
-    - Kernel family: legacy (max HW support) vs current (recommended)
-    
-    ⚠️ HW H.264 encoder support varies by kernel family:
-       - legacy: máximo soporte VPU/encoder (vendor BSP)
-       - current: buen balance, encoder funciona bien (recomendado)
-       - edge: experimental, puede faltar soporte
     """
     
     @property
@@ -103,34 +81,27 @@ class RadxaZeroProvider(BoardProvider):
     
     def get_variants(self) -> List[VariantInfo]:
         """
-        Define all supported variants for Radxa Zero.
+        Define supported variants for Radxa Zero.
         
-        Focus en las dos familias principales de kernel Armbian:
-        1. current: mainline estable, buen balance (pero SIN HW H.264 confiable)
-        2. legacy: vendor BSP, máximo soporte HW para VPU/encoder
-        
-        ⚠️ IMPORTANTE: HW H.264 solo en legacy. Current es mainline y no tiene
-        soporte VPU H.264 confiable en Amlogic S905Y2.
+        Mainline kernel only (no legacy kernel support).
         """
         variants = []
         
-        # Variant 1: Armbian current kernel (RECOMENDADO para estabilidad)
-        # Mainline estable, buen balance, pero SIN HW H.264
+        # Armbian mainline kernel (recommended)
         armbian_current = VariantInfo(
-            name="Armbian current kernel",
+            name="Armbian mainline kernel",
             storage_type=StorageType.EMMC,
             distro_family=DistroFamily.ARMBIAN,
             distro_version="25.11.2",
             kernel_version="6.12.58-current-meson64",
             is_default=True,
             
-            # Video capabilities (current kernel - SIN HW H.264)
+            # Video capabilities (mainline kernel - no HW H.264)
             video_sources=[
                 VideoSourceFeature.V4L2,
                 VideoSourceFeature.LIBCAMERA,
             ],
             video_encoders=[
-                # ⚠️ NO hardware_h264 en mainline current
                 VideoEncoderFeature.MJPEG,
                 VideoEncoderFeature.X264_SOFTWARE,
             ],
@@ -152,51 +123,13 @@ class RadxaZeroProvider(BoardProvider):
         )
         variants.append(armbian_current)
         
-        # Variant 2: Armbian legacy kernel
-        # Vendor BSP kernel, máximo soporte de HW/VPU (incluyendo H.264)
-        armbian_legacy = VariantInfo(
-            name="Armbian legacy kernel (máximo HW support)",
-            storage_type=StorageType.EMMC,
-            distro_family=DistroFamily.ARMBIAN,
-            distro_version="25.11.2",
-            kernel_version="5.15-legacy-meson64",
-            is_default=False,
-            
-            # Video: legacy kernel tiene soporte completo VPU/encoder
-            video_sources=[
-                VideoSourceFeature.V4L2,
-                VideoSourceFeature.LIBCAMERA,
-            ],
-            video_encoders=[
-                VideoEncoderFeature.HARDWARE_H264,  # ✅ Disponible en legacy (vendor BSP)
-                VideoEncoderFeature.MJPEG,
-                VideoEncoderFeature.X264_SOFTWARE,
-            ],
-            
-            connectivity=[
-                ConnectivityFeature.WIFI,
-                ConnectivityFeature.ETHERNET,
-                ConnectivityFeature.USB_MODEM,
-                ConnectivityFeature.USB_3,
-            ],
-            
-            system_features=[
-                SystemFeature.GPIO,
-                SystemFeature.I2C,
-                SystemFeature.SPI,
-            ]
-        )
-        variants.append(armbian_legacy)
-        
         return variants
     
     def detect_running_variant(self) -> Optional[VariantInfo]:
         """
         Detect which variant is currently running.
         
-        Especial care para Armbian: detecta la familia de kernel
-        (legacy/current/edge) y retorna la variante apropiada
-        con los features correctos para esa rama.
+        Detects distro + kernel version and fills in runtime values.
         """
         try:
             distro_info = self._read_os_release()
@@ -212,13 +145,12 @@ class RadxaZeroProvider(BoardProvider):
             
             # Match Radxa Zero - Armbian es la distro principal
             if 'armbian' in distro_name:
-                kernel_family = self._detect_kernel_family(kernel_version)
                 logger.info(
-                    f"Detected Armbian Radxa Zero with {kernel_family.value} kernel: {kernel_version}"
+                    f"Detected Armbian Radxa Zero kernel: {kernel_version}"
                 )
                 
-                # Selecciona variante según kernel family
-                variant = self._get_variant_for_kernel_family(kernel_family)
+                # Use default mainline variant
+                variant = self.get_variants()[0]
                 
                 # Actualiza valores detectados en runtime
                 variant.storage_type = storage_type
@@ -257,69 +189,6 @@ class RadxaZeroProvider(BoardProvider):
         except Exception as e:
             logger.error(f"Error detecting Radxa Zero variant: {e}")
             return None
-    
-    def _detect_kernel_family(self, kernel_version: str) -> ArmbiankernelFamily:
-        """
-        Detecta la familia de kernel de Armbian desde la versión string.
-        
-        Formato Armbian: X.Y.Z-FAMILIA-meson64
-        Ejemplos:
-        - 6.12.58-current-meson64  → CURRENT
-        - 5.15.25-legacy-meson64   → LEGACY
-        - 6.13-edge-meson64        → EDGE
-        
-        Returns:
-            ArmbiankernelFamily: legacy, current, edge, o unknown
-        """
-        if not kernel_version:
-            logger.warning("Empty kernel version, assuming current")
-            return ArmbiankernelFamily.CURRENT
-        
-        kernel_lower = kernel_version.lower()
-        
-        # Look for family marker in kernel version string
-        if 'legacy' in kernel_lower:
-            logger.info(f"Detected Armbian LEGACY kernel: {kernel_version}")
-            return ArmbiankernelFamily.LEGACY
-        elif 'current' in kernel_lower:
-            logger.info(f"Detected Armbian CURRENT kernel: {kernel_version}")
-            return ArmbiankernelFamily.CURRENT
-        elif 'edge' in kernel_lower:
-            logger.info(f"Detected Armbian EDGE kernel: {kernel_version}")
-            return ArmbiankernelFamily.EDGE
-        else:
-            # Non-Armbian kernel or unknown format
-            logger.debug(
-                f"Cannot determine kernel family from: {kernel_version}, "
-                "assuming current characteristics"
-            )
-            return ArmbiankernelFamily.CURRENT
-    
-    def _get_variant_for_kernel_family(self, family: ArmbiankernelFamily) -> VariantInfo:
-        """
-        Retorna la configuración de variante para la familia de kernel detectada.
-        
-        - legacy: máximo soporte HW, encoder funciona muy bien (index 1)
-        - current: recomendado, buen balance (index 0, default)
-        - edge: experimental, puede faltar soporte (no implementado aún)
-        """
-        variants = self.get_variants()
-        
-        if family == ArmbiankernelFamily.LEGACY:
-            logger.info("Using LEGACY kernel variant (máximo HW support)")
-            return variants[1]
-        elif family == ArmbiankernelFamily.EDGE:
-            # Por ahora, usa current para edge también
-            # Se puede extender con variant edge cuando se tenga más info
-            logger.warning(
-                "EDGE kernel detected, using current variant as fallback "
-                "(edge support not fully implemented yet)"
-            )
-            return variants[0]
-        else:
-            # Default: current (index 0)
-            logger.info("Using CURRENT kernel variant (recommended)")
-            return variants[0]
     
     def _get_hardware_info(self) -> HardwareInfo:
         """Return hardware specs - auto-detects RAM and storage at runtime"""

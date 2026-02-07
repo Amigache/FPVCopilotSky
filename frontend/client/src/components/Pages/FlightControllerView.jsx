@@ -283,13 +283,14 @@ const FlightControllerView = () => {
 
       const data = await response.json()
       
-      if (data.success) {
+      if (response.ok && data.success) {
         setIsConnected(true)
         setStatus(t('views.flightController.connected'))
         showToast(t('views.flightController.connectSuccess'), 'success')
       } else {
-        setStatus(data.message || 'Connection failed')
-        showToast(`${t('views.flightController.connectError')}: ${data.message || 'Connection failed'}`, 'error')
+        const message = data.message || data.detail || 'Connection failed'
+        setStatus(message)
+        showToast(`${t('views.flightController.connectError')}: ${message}`, 'error')
       }
     } catch (error) {
       console.error('Error connecting:', error)
@@ -309,8 +310,9 @@ const FlightControllerView = () => {
       })
 
       const data = await response.json()
+      const notConnected = !response.ok && data.detail === 'Not connected'
       
-      if (data.success) {
+      if (data.success || notConnected) {
         setIsConnected(false)
         setStatus(t('views.flightController.disconnected'))
         showToast(t('views.flightController.disconnectSuccess'), 'success')

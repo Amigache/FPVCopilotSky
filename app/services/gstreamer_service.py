@@ -48,6 +48,8 @@ class GStreamerService:
         self.main_loop_thread: Optional[threading.Thread] = None
         self.is_streaming: bool = False
         self.last_error: Optional[str] = None
+        self.stats_thread: Optional[threading.Thread] = None
+        self.stats_stop_event = threading.Event()
         
         # Provider tracking
         self.current_encoder_provider: Optional[str] = None
@@ -153,6 +155,10 @@ class GStreamerService:
             
             print(f"📊 Board supports encoders: {available_encoders}")
             print(f"   User requested: {codec_id}")
+
+            # Normalize UI/alias codec IDs to registry codec IDs
+            requested_codec_id = codec_id
+            normalized_codec_id = "h264" if requested_codec_id == "x264" else requested_codec_id
             
             # Map codec ID to board feature names
             codec_to_feature = {
@@ -164,27 +170,27 @@ class GStreamerService:
                 'openh264': 'openh264'
             }
             
-            requested_feature = codec_to_feature.get(codec_id)
+            requested_feature = codec_to_feature.get(requested_codec_id)
             
             # If requested codec is supported, use it
             if requested_feature and requested_feature in available_encoders:
-                print(f"✅ Using requested {codec_id} (supported on board)")
-                return codec_id
+                print(f"✅ Using requested {requested_codec_id} (supported on board)")
+                return normalized_codec_id
             
             # If not supported, fallback strategy:
             # hardware_h264 → x264 → mjpeg
             if requested_feature == 'hardware_h264' and 'x264' in available_encoders:
-                print(f"⚠️ {codec_id} not supported, falling back to x264")
-                return 'x264'
+                print(f"⚠️ {requested_codec_id} not supported, falling back to x264")
+                return 'h264'
             
             if requested_feature in ['hardware_h264', 'x264'] and 'mjpeg' in available_encoders:
-                print(f"⚠️ {codec_id} not supported, falling back to mjpeg")
+                print(f"⚠️ {requested_codec_id} not supported, falling back to mjpeg")
                 return 'mjpeg'
             
             # If we got here, just use what was requested
             # Provider will handle errors if truly not available
-            print(f"⚠️ {codec_id} not in board features, attempting anyway")
-            return codec_id
+            print(f"⚠️ {requested_codec_id} not in board features, attempting anyway")
+            return normalized_codec_id
             
         except Exception as e:
             print(f"⚠️ Board adaptation error: {e}, using requested codec")
@@ -395,47 +401,91 @@ class GStreamerService:
             return
         
         try:
-            # Get the udpsink element to count bytes
+            probe_types = Gst.PadProbeType.BUFFER | Gst.PadProbeType.BUFFER_LIST
+
+            # Count encoded frames (one buffer per frame) from encoder src pad
+            encoder = self.pipeline.get_by_name("encoder")
+            if encoder:
+                pad = encoder.get_static_pad("src")
+                if pad:
+                    pad.add_probe(probe_types, self._on_frame_probe)
+
+            # Count bytes on the wire from udpsink sink pad
             udpsink = self.pipeline.get_by_name("udpsink")
             if udpsink:
                 pad = udpsink.get_static_pad("sink")
                 if pad:
-                    pad.add_probe(Gst.PadProbeType.BUFFER, self._on_buffer_probe)
+                    pad.add_probe(probe_types, self._on_bytes_probe)
+            else:
+                # Fallback: count bytes at RTP payloader if udpsink is unavailable
+                rtppay = self.pipeline.get_by_name("rtppay")
+                if rtppay:
+                    pad = rtppay.get_static_pad("src")
+                    if pad:
+                        pad.add_probe(probe_types, self._on_bytes_probe)
         except Exception as e:
             print(f"⚠️ Failed to setup stats probes: {e}")
-    
-    def _on_buffer_probe(self, pad, info):
-        """Pad probe callback to count buffers (frames) and bytes"""
+
+    def _update_rates_locked(self, now: float) -> None:
+        if self.stats["last_stats_time"] is None:
+            self.stats["last_stats_time"] = now
+            return
+
+        elapsed = now - self.stats["last_stats_time"]
+        if elapsed < 0.5:
+            return
+
+        frames_delta = self.stats["frames_sent"] - self.stats["last_frames_count"]
+        bytes_delta = self.stats["bytes_sent"] - self.stats["last_bytes_count"]
+
+        self.stats["current_fps"] = int(frames_delta / elapsed)
+        self.stats["current_bitrate"] = int((bytes_delta * 8) / (elapsed * 1000))
+
+        self.stats["last_stats_time"] = now
+        self.stats["last_frames_count"] = self.stats["frames_sent"]
+        self.stats["last_bytes_count"] = self.stats["bytes_sent"]
+
+    def _on_frame_probe(self, pad, info):
+        """Pad probe callback to count encoded frames"""
         try:
+            buffer_list = info.get_buffer_list()
             buffer = info.get_buffer()
+
             with self.stats_lock:
-                self.stats["frames_sent"] += 1
-                self.stats["bytes_sent"] += buffer.get_size()
-                
-                # Calculate current FPS and bitrate every 500ms
+                if buffer_list:
+                    self.stats["frames_sent"] += buffer_list.length()
+                elif buffer:
+                    self.stats["frames_sent"] += 1
+
                 import time
-                now = time.time()
-                if self.stats["last_stats_time"] is None:
-                    self.stats["last_stats_time"] = now
-                else:
-                    elapsed = now - self.stats["last_stats_time"]
-                    if elapsed >= 0.5:  # Update every 500ms
-                        frames_delta = self.stats["frames_sent"] - self.stats["last_frames_count"]
-                        bytes_delta = self.stats["bytes_sent"] - self.stats["last_bytes_count"]
-                        
-                        # FPS: frames in the last interval
-                        self.stats["current_fps"] = int(frames_delta / elapsed)
-                        
-                        # Bitrate in kbps: (bytes * 8 bits) / (seconds * 1000)
-                        self.stats["current_bitrate"] = int((bytes_delta * 8) / (elapsed * 1000))
-                        
-                        # Reset for next interval
-                        self.stats["last_stats_time"] = now
-                        self.stats["last_frames_count"] = self.stats["frames_sent"]
-                        self.stats["last_bytes_count"] = self.stats["bytes_sent"]
+                self._update_rates_locked(time.time())
         except Exception as e:
-            print(f"⚠️ Error in buffer probe: {e}")
-        
+            print(f"⚠️ Error in frame probe: {e}")
+
+        return Gst.PadProbeReturn.OK
+
+    def _on_bytes_probe(self, pad, info):
+        """Pad probe callback to count transmitted bytes"""
+        try:
+            buffer_list = info.get_buffer_list()
+            buffer = info.get_buffer()
+
+            with self.stats_lock:
+                if buffer_list:
+                    total = 0
+                    for i in range(buffer_list.length()):
+                        buf = buffer_list.get(i)
+                        if buf:
+                            total += buf.get_size()
+                    self.stats["bytes_sent"] += total
+                elif buffer:
+                    self.stats["bytes_sent"] += buffer.get_size()
+
+                import time
+                self._update_rates_locked(time.time())
+        except Exception as e:
+            print(f"⚠️ Error in bytes probe: {e}")
+
         return Gst.PadProbeReturn.OK
     
     def _on_bus_message(self, bus, message):
@@ -569,6 +619,8 @@ class GStreamerService:
         
         self.is_streaming = True
         print(f"🎥 Video streaming started: {self.video_config.codec.upper()} → {self.streaming_config.udp_host}:{self.streaming_config.udp_port}")
+
+        self._start_stats_broadcast()
         
         self._broadcast_status()
         
@@ -597,6 +649,7 @@ class GStreamerService:
         self.is_streaming = False
         self.current_encoder_provider = None
         self.current_source_provider = None
+        self._stop_stats_broadcast()
         self._restore_cpu_mode()
         
         self._broadcast_status()
@@ -784,6 +837,32 @@ class GStreamerService:
             )
         except Exception:
             pass
+
+    def _start_stats_broadcast(self):
+        if self.stats_thread and self.stats_thread.is_alive():
+            return
+
+        self.stats_stop_event.clear()
+
+        def _loop():
+            import time
+            while not self.stats_stop_event.is_set():
+                if self.is_streaming:
+                    self._broadcast_status()
+                time.sleep(1.0)
+
+        self.stats_thread = threading.Thread(
+            target=_loop,
+            daemon=True,
+            name="VideoStatsBroadcast"
+        )
+        self.stats_thread.start()
+
+    def _stop_stats_broadcast(self):
+        self.stats_stop_event.set()
+        if self.stats_thread and self.stats_thread.is_alive():
+            self.stats_thread.join(timeout=1.0)
+        self.stats_thread = None
     
     def shutdown(self):
         """Cleanup on shutdown"""

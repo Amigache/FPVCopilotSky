@@ -44,6 +44,7 @@ class MAVLinkBridge:
         # State
         self.running: bool = False
         self.connected: bool = False
+        self._disconnecting: bool = False
         
         # Threads
         self.serial_reader_thread: Optional[threading.Thread] = None
@@ -58,10 +59,16 @@ class MAVLinkBridge:
         self.source_system_id: int = 1  # Same as autopilot (part of same vehicle)
         self.source_component_id: int = 191  # MAV_COMP_ID_ONBOARD_COMPUTER
         
-        # MAVLink sender (set source IDs for outgoing messages)
+        # MAVLink sender for heartbeats/video (same system as FC for camera identity)
         self.mav_sender = mavlink2.MAVLink(None)
         self.mav_sender.srcSystem = self.source_system_id
         self.mav_sender.srcComponent = self.source_component_id
+        
+        # Separate sender for GCS-like operations (params, commands)
+        # Uses sysid=255 (standard GCS ID) so ArduPilot treats it as a GCS link
+        self.gcs_sender = mavlink2.MAVLink(None)
+        self.gcs_sender.srcSystem = 255
+        self.gcs_sender.srcComponent = 0  # MAV_COMP_ID_ALL
         
         # Target system (from heartbeat)
         self.target_system: int = 0
@@ -71,6 +78,8 @@ class MAVLinkBridge:
         # HEARTBEAT thread
         self.heartbeat_thread: Optional[threading.Thread] = None
         self.heartbeat_interval: float = 1.0  # Send every 1 second
+        self.heartbeat_timeout: float = 15.0
+        self._connect_time: float = 0  # Track connection start for grace period
         
         # WebSocket manager for UI updates
         self.websocket_manager = websocket_manager
@@ -160,6 +169,25 @@ class MAVLinkBridge:
             
             print(f"✅ Heartbeat received from system {self.target_system}")
             
+            # Reset parser for serial reader (clean state after heartbeat detection)
+            self.mav_parser = mavlink2.MAVLink(None)
+            self.mav_parser.robust_parsing = True
+            self._parse_error_count = 0
+            self._serial_heartbeat_count = 0
+            self._parsed_msg_count = 0
+            self._unparsed_msg_count = 0
+            
+            # Drain any stale data from serial buffer so reader starts clean
+            try:
+                stale = self.serial_port.in_waiting
+                if stale > 0:
+                    self.serial_port.read(stale)
+                    print(f"🧹 Drained {stale} stale bytes from serial buffer")
+            except Exception:
+                pass
+            
+            self._connect_time = time.time()
+            
             # Start TCP server only if port > 0 (disabled by default)
             self.tcp_port = tcp_port
             if tcp_port > 0:
@@ -220,62 +248,81 @@ class MAVLinkBridge:
     
     def disconnect(self) -> Dict[str, Any]:
         """Stop the bridge and disconnect."""
+        if self._disconnecting:
+            return {"success": False, "message": "Disconnect already in progress"}
         if not self.connected:
             return {"success": False, "message": "Not connected"}
-        
-        print("🔌 Disconnecting...")
-        
-        self.running = False
-        
-        # Close TCP clients
-        with self.tcp_clients_lock:
-            for client in self.tcp_clients:
+        self._disconnecting = True
+        try:
+            print("🔌 Disconnecting...")
+            
+            self.running = False
+
+            # Close TCP clients
+            with self.tcp_clients_lock:
+                for client in self.tcp_clients:
+                    try:
+                        client.close()
+                    except:
+                        pass
+                self.tcp_clients.clear()
+            
+            # Close TCP server
+            if self.tcp_server:
                 try:
-                    client.close()
+                    self.tcp_server.close()
                 except:
                     pass
-            self.tcp_clients.clear()
-        
-        # Close TCP server
-        if self.tcp_server:
-            try:
-                self.tcp_server.close()
-            except:
-                pass
-            self.tcp_server = None
-        
-        # Close serial
-        if self.serial_port:
-            try:
-                self.serial_port.close()
-            except:
-                pass
-            self.serial_port = None
-        
-        self.connected = False
-        
-        print(f"📊 Final stats: Serial RX={self.stats['serial_rx']}, TX={self.stats['serial_tx']}, "
-              f"TCP RX={self.stats['tcp_rx']}, TX={self.stats['tcp_tx']}")
-        print("✅ Disconnected")
-        
-        self._broadcast_status()
-        
-        return {"success": True, "message": "Disconnected"}
+                self.tcp_server = None
+            
+            # Close serial
+            if self.serial_port:
+                try:
+                    self.serial_port.close()
+                except:
+                    pass
+                self.serial_port = None
+            
+            self.connected = False
+            self.last_heartbeat = 0
+            
+            print(f"📊 Final stats: Serial RX={self.stats['serial_rx']}, TX={self.stats['serial_tx']}, "
+                  f"TCP RX={self.stats['tcp_rx']}, TX={self.stats['tcp_tx']}, "
+                  f"parsed={getattr(self, '_parsed_msg_count', 0)}, unparsed={getattr(self, '_unparsed_msg_count', 0)}, "
+                  f"heartbeats={getattr(self, '_serial_heartbeat_count', 0)}")
+            print("✅ Disconnected")
+            
+            # Reset stats for next connection
+            self.stats = {"serial_rx": 0, "serial_tx": 0, "tcp_rx": 0, "tcp_tx": 0}
+            
+            self._broadcast_status()
+            
+            return {"success": True, "message": "Disconnected"}
+        finally:
+            self._disconnecting = False
+
+    def _handle_serial_failure(self, reason: str):
+        """Handle unexpected serial failures and update status."""
+        if not self.connected:
+            return
+        print(f"❌ Serial connection lost: {reason}")
+        try:
+            self.disconnect()
+        except Exception as e:
+            print(f"⚠️ Error during disconnect after serial failure: {e}")
     
     def _wait_for_heartbeat(self, timeout: float = 10) -> bool:
         """Wait for first heartbeat from autopilot."""
         start = time.time()
-        buffer = b''
         
         while time.time() - start < timeout:
             if self.serial_port.in_waiting > 0:
                 data = self.serial_port.read(self.serial_port.in_waiting)
-                buffer += data
                 
-                # Try to parse heartbeat
-                for i, byte in enumerate(buffer):
+                # Feed only newly-read bytes to the parser (never re-feed)
+                for byte_val in data:
                     try:
-                        msg = self.mav_parser.parse_char(bytes([byte]))
+                        msg = self.mav_parser.parse_char(bytes([byte_val]))
                         if msg and msg.get_type() == 'HEARTBEAT':
                             self.target_system = msg.get_srcSystem()
                             self.target_component = msg.get_srcComponent()
@@ -288,10 +335,6 @@ class MAVLinkBridge:
                             return True
                     except Exception:
                         pass
-                
-                # Keep only last 1KB in buffer
-                if len(buffer) > 1024:
-                    buffer = buffer[-1024:]
             
             time.sleep(0.01)
         
@@ -397,35 +440,42 @@ class MAVLinkBridge:
                     time.sleep(0.5)
                     continue
                 
-                # Build HEARTBEAT message
-                # type: MAV_TYPE_CAMERA (30) - we're broadcasting video stream info
-                # autopilot: MAV_AUTOPILOT_INVALID (8) - we're not an autopilot
-                # base_mode: 0
-                # custom_mode: 0
-                # system_status: MAV_STATE_ACTIVE (4)
-                msg = self.mav_sender.heartbeat_encode(
+                # Build HEARTBEAT messages
+                # Camera heartbeat (SysID=1, CompID=191) for video stream identity
+                camera_hb = self.mav_sender.heartbeat_encode(
                     type=30,  # MAV_TYPE_CAMERA
                     autopilot=8,  # MAV_AUTOPILOT_INVALID
                     base_mode=0,
                     custom_mode=0,
                     system_status=4  # MAV_STATE_ACTIVE
                 )
+                # GCS heartbeat (SysID=255) to establish GCS link for param operations
+                gcs_hb = self.gcs_sender.heartbeat_encode(
+                    type=6,  # MAV_TYPE_GCS
+                    autopilot=8,  # MAV_AUTOPILOT_INVALID
+                    base_mode=0,
+                    custom_mode=0,
+                    system_status=4  # MAV_STATE_ACTIVE
+                )
                 
-                # Send via serial AND router (so Mission Planner receives it too)
-                packed_msg = msg.pack(self.mav_sender)
+                # Send both heartbeats via serial AND router
+                packed_camera = camera_hb.pack(self.mav_sender)
+                packed_gcs = gcs_hb.pack(self.gcs_sender)
                 
                 try:
                     acquired = self.serial_lock.acquire(timeout=0.1)
                     if acquired:
                         try:
                             if self.serial_port and self.serial_port.is_open:
-                                self.serial_port.write(packed_msg)
-                                # Also broadcast to router so UDP clients receive it
+                                self.serial_port.write(packed_camera)
+                                self.serial_port.write(packed_gcs)
+                                # Also broadcast to router so UDP clients receive them
                                 if self.router:
-                                    self.router.forward_to_outputs(packed_msg)
+                                    self.router.forward_to_outputs(packed_camera)
+                                    self.router.forward_to_outputs(packed_gcs)
                                     # Debug log (first heartbeat of each session)
                                     if not hasattr(self, '_heartbeat_logged'):
-                                        print(f"💓 Sending HEARTBEAT: SysID={self.mav_sender.srcSystem}, CompID={self.mav_sender.srcComponent}, Size={len(packed_msg)} bytes")
+                                        print(f"💓 Sending HEARTBEATs: Camera(SysID={self.mav_sender.srcSystem}, CompID={self.mav_sender.srcComponent}), GCS(SysID={self.gcs_sender.srcSystem})")
                                         self._heartbeat_logged = True
                         finally:
                             self.serial_lock.release()
@@ -443,53 +493,71 @@ class MAVLinkBridge:
         print("💓 HEARTBEAT sender stopped")
     
     def _serial_reader_loop(self):
-        """Read from serial and forward to all TCP clients."""
+        """Read from serial, forward raw bytes, and parse for telemetry."""
         print("🔄 Serial reader started")
-        
-        buffer = b''
         
         while self.running:
             try:
+                if self.connected and (not self.serial_port or not self.serial_port.is_open):
+                    self._handle_serial_failure("serial port closed")
+                    break
+
+                if self.connected and self.last_heartbeat:
+                    elapsed = time.time() - self.last_heartbeat
+                    # Use longer timeout (30s) during first 30 seconds after connect
+                    effective_timeout = 30.0 if (time.time() - self._connect_time < 30.0) else self.heartbeat_timeout
+                    if elapsed > effective_timeout:
+                        print(f"⏱️ Heartbeat elapsed: {elapsed:.1f}s > {effective_timeout:.1f}s (parsed HBs: {getattr(self, '_serial_heartbeat_count', 0)}, msgs: {self.stats['serial_rx']})")
+                        self._handle_serial_failure("heartbeat timeout")
+                        break
+
                 if not self.serial_port or not self.serial_port.is_open:
                     time.sleep(0.1)
                     continue
                 
-                # Read available data - use larger read with timeout to reduce CPU usage
-                # The serial port has timeout=0.1, so this blocks up to 100ms if no data
+                # Read available data
                 bytes_waiting = self.serial_port.in_waiting
                 if bytes_waiting > 0:
-                    # Data available, read it immediately
                     data = self.serial_port.read(bytes_waiting)
                 else:
-                    # No data, do a blocking read with timeout (more CPU efficient than polling)
                     data = self.serial_port.read(256)
                 
                 if data:
-                    buffer += data
+                    # Forward ALL raw bytes immediately to TCP clients and router
+                    self._forward_to_tcp_clients(data)
                     
-                    # Extract and forward complete messages
-                    while True:
-                        msg_bytes, remaining, parsed_msg = self._extract_mavlink_message(buffer)
-                        if msg_bytes is None:
-                            break
-                        
-                        buffer = remaining
-                        self.stats["serial_rx"] += 1
-                        
-                        # Forward to all TCP clients
-                        self._forward_to_tcp_clients(msg_bytes)
-                        
-                        # Process for telemetry
-                        if parsed_msg:
-                            self._process_telemetry(parsed_msg)
-                        
-                        # Log only first message
-                        if self.stats["serial_rx"] == 1:
-                            print(f"📡 First serial message ({len(msg_bytes)} bytes)")
+                    # Feed bytes to parser one at a time for telemetry processing
+                    for byte_val in data:
+                        try:
+                            parsed_msg = self.mav_parser.parse_char(bytes([byte_val]))
+                            if parsed_msg:
+                                self.stats["serial_rx"] += 1
+                                msg_type = parsed_msg.get_type()
+                                
+                                # Track message types
+                                if not hasattr(self, '_msg_type_counts'):
+                                    self._msg_type_counts = {}
+                                self._msg_type_counts[msg_type] = self._msg_type_counts.get(msg_type, 0) + 1
+                                
+                                self._process_telemetry(parsed_msg)
+                                
+                                # Log first message and periodic stats
+                                if self.stats["serial_rx"] == 1:
+                                    print(f"📡 First serial message: {msg_type}")
+                                elif self.stats["serial_rx"] == 100:
+                                    types_summary = ', '.join(sorted(self._msg_type_counts.keys()))
+                                    print(f"📊 Serial: {self.stats['serial_rx']} msgs, types: {types_summary}")
+                        except Exception as e:
+                            if not hasattr(self, '_parse_error_count'):
+                                self._parse_error_count = 0
+                            self._parse_error_count += 1
+                            if self._parse_error_count <= 3:
+                                print(f"⚠️ MAVLink parse error #{self._parse_error_count}: {e}")
                     
             except serial.SerialException as e:
                 print(f"⚠️ Serial error: {e}")
-                time.sleep(0.1)
+                self._handle_serial_failure(str(e))
+                break
             except Exception as e:
                 print(f"⚠️ Serial reader error: {e}")
                 time.sleep(0.1)
@@ -530,71 +598,18 @@ class MAVLinkBridge:
         if self.router:
             self.router.forward_to_outputs(data)
     
-    def _extract_mavlink_message(self, buffer: bytes):
-        """
-        Extract one complete MAVLink message from buffer.
-        Returns (message_bytes, remaining_buffer, parsed_message) or (None, buffer, None).
-        """
-        if len(buffer) < 2:
-            return None, buffer, None
-        
-        # Find MAVLink start byte
-        start_idx = -1
-        for i, b in enumerate(buffer):
-            if b == 0xFD or b == 0xFE:
-                start_idx = i
-                break
-        
-        if start_idx == -1:
-            return None, b'', None
-        
-        # Remove garbage before start
-        if start_idx > 0:
-            buffer = buffer[start_idx:]
-        
-        if len(buffer) < 2:
-            return None, buffer, None
-        
-        # Determine message length
-        if buffer[0] == 0xFD:  # MAVLink v2
-            if len(buffer) < 10:
-                return None, buffer, None
-            
-            payload_len = buffer[1]
-            incompat_flags = buffer[2]
-            has_signature = (incompat_flags & 0x01) != 0
-            msg_len = 12 + payload_len + (13 if has_signature else 0)
-        else:  # MAVLink v1
-            if len(buffer) < 6:
-                return None, buffer, None
-            
-            payload_len = buffer[1]
-            msg_len = 8 + payload_len
-        
-        if len(buffer) < msg_len:
-            return None, buffer, None
-        
-        # Extract message
-        msg_bytes = buffer[:msg_len]
-        remaining = buffer[msg_len:]
-        
-        # Try to parse
-        parsed = None
-        try:
-            for byte in msg_bytes:
-                result = self.mav_parser.parse_char(bytes([byte]))
-                if result:
-                    parsed = result
-        except Exception:
-            pass
-        
-        return msg_bytes, remaining, parsed
-    
     def _process_telemetry(self, msg):
         """Process parsed message for telemetry updates."""
         msg_type = msg.get_type()
         
         if msg_type == 'HEARTBEAT':
+            # Track heartbeat count for debugging
+            if not hasattr(self, '_serial_heartbeat_count'):
+                self._serial_heartbeat_count = 0
+            self._serial_heartbeat_count += 1
+            if self._serial_heartbeat_count == 1:
+                print(f"💓 First HEARTBEAT parsed in serial reader (system {msg.get_srcSystem()})")
+            
             self.last_heartbeat = time.time()
             mav_type = msg.type
             custom_mode = msg.custom_mode
@@ -684,6 +699,8 @@ class MAVLinkBridge:
                 param_value = msg.param_value
                 param_type = msg.param_type
                 
+                print(f"📥 PARAM_VALUE received: {param_id} = {param_value}")
+                
                 # Store the value and signal any waiting threads
                 with self._param_lock:
                     if param_id in self._param_callbacks:
@@ -746,7 +763,7 @@ class MAVLinkBridge:
             # Encode param name as bytes (16 chars max, null-padded)
             param_id = param_name.encode('utf-8')[:16].ljust(16, b'\x00')
             
-            msg = self.mav_parser.param_request_read_encode(
+            msg = self.gcs_sender.param_request_read_encode(
                 target_system=self.target_system,
                 target_component=self.target_component,
                 param_id=param_id,
@@ -755,9 +772,8 @@ class MAVLinkBridge:
             
             # Send message
             with self.serial_lock:
-                self.serial_port.write(msg.pack(self.mav_parser))
-            
-            # Wait for response
+                packed = msg.pack(self.gcs_sender)
+                self.serial_port.write(packed)
             if event.wait(timeout):
                 with self._param_lock:
                     result = self._param_values.get(param_name)
@@ -805,7 +821,7 @@ class MAVLinkBridge:
             param_id = param_name.encode('utf-8')[:16].ljust(16, b'\x00')
             
             # Build PARAM_SET message
-            msg = self.mav_parser.param_set_encode(
+            msg = self.gcs_sender.param_set_encode(
                 target_system=self.target_system,
                 target_component=self.target_component,
                 param_id=param_id,
@@ -815,7 +831,7 @@ class MAVLinkBridge:
             
             # Send message
             with self.serial_lock:
-                self.serial_port.write(msg.pack(self.mav_parser))
+                self.serial_port.write(msg.pack(self.gcs_sender))
             
             # Wait for PARAM_VALUE response (confirmation)
             if event.wait(timeout):

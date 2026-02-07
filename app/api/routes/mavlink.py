@@ -123,7 +123,7 @@ class ParametersBatchRequest(BaseModel):
     params: dict  # {param_name: value}
 
 @router.get("/param/{param_name}")
-async def get_parameter(param_name: str):
+def get_parameter(param_name: str):
     """Get a single parameter value from the flight controller"""
     if not mavlink_service:
         raise HTTPException(status_code=500, detail="MAVLink service not initialized")
@@ -139,7 +139,7 @@ async def get_parameter(param_name: str):
     return result
 
 @router.post("/param")
-async def set_parameter(request: ParameterSetRequest):
+def set_parameter(request: ParameterSetRequest):
     """Set a parameter on the flight controller"""
     if not mavlink_service:
         raise HTTPException(status_code=500, detail="MAVLink service not initialized")
@@ -155,7 +155,7 @@ async def set_parameter(request: ParameterSetRequest):
     return result
 
 @router.post("/params/batch/get")
-async def get_parameters_batch(request: ParametersBatchGetRequest):
+def get_parameters_batch(request: ParametersBatchGetRequest):
     """Get multiple parameters at once"""
     if not mavlink_service:
         raise HTTPException(status_code=500, detail="MAVLink service not initialized")
@@ -167,7 +167,7 @@ async def get_parameters_batch(request: ParametersBatchGetRequest):
     return result
 
 @router.post("/params/batch/set")
-async def set_parameters_batch(request: ParametersBatchRequest):
+def set_parameters_batch(request: ParametersBatchRequest):
     """Set multiple parameters at once"""
     if not mavlink_service:
         raise HTTPException(status_code=500, detail="MAVLink service not initialized")

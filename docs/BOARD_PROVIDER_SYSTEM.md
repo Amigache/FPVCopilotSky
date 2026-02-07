@@ -121,49 +121,17 @@ DetectedBoard(board_name, board_model, hardware, variant, features)
 
 ## 💾 Implementación RadxaZero
 
-### Característica clave: Auto-detección de kernel families
+### Característica clave: Detección de distro + kernel
 
-La implementación del **RadxaZeroProvider** ahora **detecta automáticamente** la familia de kernel Armbian (`legacy`, `current` o `edge`) y adapta los features disponibles consecuentemente.
+La implementación del **RadxaZeroProvider** detecta la distro y la versión de kernel en runtime para completar la variante activa.
 
-**¿Por qué es importante?** El soporte HW H.264 encoder en Amlogic S905Y2 varía **significativamente** según la rama de kernel:
+#### Variante soportada
 
-| Familia | Kernel | HW H.264 | Support Level |
-|---------|--------|----------|---|
-| **legacy** | Vendor BSP (5.15.x) | ✅ Disponible | Máximo (vendor integrado) |
-| **current** | Mainline estable (6.12.x) | ❌ NO disponible | Bueno (pero sin VPU HW) |
-| **edge** | Mainline latest (6.13+) | ❌ NO disponible | Experimental |
-
-**⚠️ Insight importante**: En Amlogic, el soporte HW H.264 depende de integración vendor VPU que solo existe en BSP kernels (legacy). Mainline current NO tiene encoder HW confiable.
-
-#### Variantes soportadas (2 principales)
-
-1. **Armbian current kernel** (default, recomendado)
-   - Kernel: 6.12.58-current-meson64
-   - HW H.264: ❌ NO disponible (mainline no tiene integración VPU)
-   - Encoders: MJPEG, x264 software
-   - Ventajas: Mantenimiento activo, estable
-   - Usa: Si necesitas estabilidad y fallback a software encoding está OK
-
-2. **Armbian legacy kernel** (máximo HW support)
-   - Kernel: 5.15.x-legacy-meson64
-   - HW H.264: ✅ Disponible (vendor BSP tiene integración VPU Amlogic)
-   - Encoders: H.264 HW, MJPEG, x264 software
-   - Ventajas: Máximo soporte de hardware
-   - Usa: Si necesitas H.264 HW encoding por eficiencia
-
-#### Cómo funciona la detección
-
-El **`_detect_kernel_family()`** método parsea la versión del kernel y busca los marcadores:
-
-```python
-kernel_version = "6.12.58-current-meson64"
-# ↓ parsea ↓
-family = _detect_kernel_family(kernel_version)
-# ↓ detecta "current" ↓
-return ArmbiankernelFamily.CURRENT
-```
-
-Luego **`_get_variant_for_kernel_family()`** retorna la variante apropiada con features correctos.
+1. **Armbian mainline kernel** (default)
+  - Kernel: 6.12.x-current-meson64 (ejemplo)
+  - Encoders: MJPEG, x264 software
+  - Ventajas: Mantenimiento activo, estable
+  - Nota: El encoder H.264 hardware no se expone en mainline
 
 ### Archivo: `app/providers/board/implementations/radxa/zero.py`
 
@@ -269,11 +237,11 @@ class RadxaZeroProvider(BoardProvider):
     
     @staticmethod
     def _detect_cpu_cores() -> int:
-        """Detecta número de CPU cores\n        \n        Intenta:\n        1. os.cpu_count() (recomendado)\n        2. Fallback: 4 cores (spec Radxa Zero)\n        \"\"\"\n        try:\n            cores = os.cpu_count()\n            if cores:\n                logger.debug(f\"Detected CPU cores: {cores}\")\n                return cores\n        except Exception as e:\n            logger.warning(f\"Error detecting CPU cores: {e}\")\n        \n        logger.warning(\"Using fallback CPU cores: 4\")\n        return 4\n    \n    @staticmethod\n    def _detect_ram_gb() -> int:\n        \"\"\"Detecta GB de RAM desde /proc/meminfo\n        \n        Lee MemTotal y convierte de KB a GB.\n        \n        Returns:\n            int: GB de RAM (mínimo 1)\n        \"\"\"\n        try:\n            with open('/proc/meminfo', 'r') as f:\n                for line in f:\n                    if line.startswith('MemTotal:'):\n                        kb = int(line.split()[1])\n                        gb = max(1, int(round(kb / (1024 * 1024))))\n                        logger.debug(f\"Detected RAM: {gb}GB\")\n                        return gb\n        except Exception as e:\n            logger.warning(f\"Error reading /proc/meminfo: {e}\")\n        \n        logger.warning(\"Using fallback RAM: 4GB\")\n        return 4\n    \n    @staticmethod\n    def _detect_storage_gb() -> int:\n        \"\"\"Detecta GB de almacenamiento en root filesystem\n        \n        Ejecuta `df /` y extrae tamaño del bloque 1K (en KB).\n        Convierte de KB a GB.\n        \n        Returns:\n            int: GB de storage (mínimo 1)\n        \"\"\"\n        try:\n            output = subprocess.check_output(['df', '/'], text=True)\n            lines = output.strip().split('\\n')\n            if len(lines) >= 2:\n                # Formato: Filesystem 1K-blocks Used Available Use% Mounted\n                parts = lines[1].split()\n                kb = int(parts[1])  # 1K-blocks\n                gb = max(1, int(round(kb / (1024 * 1024))))\n                logger.debug(f\"Detected storage: {gb}GB\")\n                return gb\n        except Exception as e:\n            logger.warning(f\"Error executing df: {e}\")\n        \n        logger.warning(\"Using fallback storage: 32GB\")\n        return 32\n    \n    def detect_running_variant(self) -> Optional[VariantInfo]:\n        \"\"\"Detecta variante SO actual\n        \n        Lee /etc/os-release para nombre y versión, luego uname -r\n        para kernel.\n        \n        Soporta: Armbian, Ubuntu, Debian (cualquier distro arm64)\n        \n        Returns:\n            VariantInfo con SO/kernel detectados, None si error\n        \"\"\"\n        try:\n            # Lee /etc/os-release\n            distro = None\n            version = None\n            \n            with open('/etc/os-release', 'r') as f:\n                for line in f:\n                    if line.startswith('ID='):\n                        distro = line.split('=')[1].strip().strip('\"')\n                    elif line.startswith('VERSION_ID='):\n                        version = line.split('=')[1].strip().strip('\"')\n            \n            logger.debug(f\"Detected distro: {distro} {version}\")\n            \n            # Valida que sea soportado (arm64 basado en Debian/Armbian)\n            if not distro or distro.lower() not in ['armbian', 'ubuntu', 'debian']:\n                logger.warning(f\"Unsupported distro: {distro}\")\n                return None\n            \n            # Detecta kernel version\n            kernel_version = subprocess.check_output(\n                ['uname', '-r'], text=True\n            ).strip()\n            logger.debug(f\"Detected kernel: {kernel_version}\")\n            \n            # Retorna variante\n            return VariantInfo(\n                name=f\"{distro.capitalize()} {version or 'unknown'}\",\n                storage_type=StorageType.EMMC,  # Radxa Zero usa eMMC integrado\n                distro_family=(\n                    DistroFamily.ARMBIAN if distro.lower() == 'armbian'\n                    else DistroFamily.DEBIAN\n                ),\n                distro_version=version or \"unknown\",\n                kernel_version=kernel_version,\n                is_default=True,\n                \n                # Features soportados por Radxa Zero\n                video_sources=[\n                    VideoSourceFeature.V4L2,       # Cámaras USB, CSI\n                    VideoSourceFeature.LIBCAMERA,  # Libcamera (Armbian/Ubuntu)\n                ],\n                video_encoders=[\n                    VideoEncoderFeature.HARDWARE_H264,  # Hardware H.264 (SoC)\n                    VideoEncoderFeature.MJPEG,          # MJPEG (fallback)\n                    VideoEncoderFeature.X264_SOFTWARE,  # Software x264\n                ],\n                connectivity=[\n                    ConnectivityFeature.WIFI,       # WiFi 6\n                    ConnectivityFeature.USB_MODEM,  # Módems USB (E3372, etc)\n                    ConnectivityFeature.USB_3,      # USB 3.1 Type-C\n                ],\n                system_features=[\n                    SystemFeature.GPIO,  # GPIO via /sys/class/gpio\n                    SystemFeature.I2C,   # I2C para sensores\n                    SystemFeature.SPI,   # SPI para LCD/EEPROM\n                ]\n            )\n        \n        except FileNotFoundError:\n            logger.error(\"/etc/os-release not found\")\n            return None\n        except Exception as e:\n            logger.error(f\"Error detecting running variant: {e}\")\n            return None\n```
+        """Detecta número de CPU cores\n        \n        Intenta:\n        1. os.cpu_count() (recomendado)\n        2. Fallback: 4 cores (spec Radxa Zero)\n        \"\"\"\n        try:\n            cores = os.cpu_count()\n            if cores:\n                logger.debug(f\"Detected CPU cores: {cores}\")\n                return cores\n        except Exception as e:\n            logger.warning(f\"Error detecting CPU cores: {e}\")\n        \n        logger.warning(\"Using fallback CPU cores: 4\")\n        return 4\n    \n    @staticmethod\n    def _detect_ram_gb() -> int:\n        \"\"\"Detecta GB de RAM desde /proc/meminfo\n        \n        Lee MemTotal y convierte de KB a GB.\n        \n        Returns:\n            int: GB de RAM (mínimo 1)\n        \"\"\"\n        try:\n            with open('/proc/meminfo', 'r') as f:\n                for line in f:\n                    if line.startswith('MemTotal:'):\n                        kb = int(line.split()[1])\n                        gb = max(1, int(round(kb / (1024 * 1024))))\n                        logger.debug(f\"Detected RAM: {gb}GB\")\n                        return gb\n        except Exception as e:\n            logger.warning(f\"Error reading /proc/meminfo: {e}\")\n        \n        logger.warning(\"Using fallback RAM: 4GB\")\n        return 4\n    \n    @staticmethod\n    def _detect_storage_gb() -> int:\n        \"\"\"Detecta GB de almacenamiento en root filesystem\n        \n        Ejecuta `df /` y extrae tamaño del bloque 1K (en KB).\n        Convierte de KB a GB.\n        \n        Returns:\n            int: GB de storage (mínimo 1)\n        \"\"\"\n        try:\n            output = subprocess.check_output(['df', '/'], text=True)\n            lines = output.strip().split('\\n')\n            if len(lines) >= 2:\n                # Formato: Filesystem 1K-blocks Used Available Use% Mounted\n                parts = lines[1].split()\n                kb = int(parts[1])  # 1K-blocks\n                gb = max(1, int(round(kb / (1024 * 1024))))\n                logger.debug(f\"Detected storage: {gb}GB\")\n                return gb\n        except Exception as e:\n            logger.warning(f\"Error executing df: {e}\")\n        \n        logger.warning(\"Using fallback storage: 32GB\")\n        return 32\n    \n    def detect_running_variant(self) -> Optional[VariantInfo]:\n        \"\"\"Detecta variante SO actual\n        \n        Lee /etc/os-release para nombre y versión, luego uname -r\n        para kernel.\n        \n        Soporta: Armbian, Ubuntu, Debian (cualquier distro arm64)\n        \n        Returns:\n            VariantInfo con SO/kernel detectados, None si error\n        \"\"\"\n        try:\n            # Lee /etc/os-release\n            distro = None\n            version = None\n            \n            with open('/etc/os-release', 'r') as f:\n                for line in f:\n                    if line.startswith('ID='):\n                        distro = line.split('=')[1].strip().strip('\"')\n                    elif line.startswith('VERSION_ID='):\n                        version = line.split('=')[1].strip().strip('\"')\n            \n            logger.debug(f\"Detected distro: {distro} {version}\")\n            \n            # Valida que sea soportado (arm64 basado en Debian/Armbian)\n            if not distro or distro.lower() not in ['armbian', 'ubuntu', 'debian']:\n                logger.warning(f\"Unsupported distro: {distro}\")\n                return None\n            \n            # Detecta kernel version\n            kernel_version = subprocess.check_output(\n                ['uname', '-r'], text=True\n            ).strip()\n            logger.debug(f\"Detected kernel: {kernel_version}\")\n            \n            # Retorna variante\n            return VariantInfo(\n                name=f\"{distro.capitalize()} {version or 'unknown'}\",\n                storage_type=StorageType.EMMC,  # Radxa Zero usa eMMC integrado\n                distro_family=(\n                    DistroFamily.ARMBIAN if distro.lower() == 'armbian'\n                    else DistroFamily.DEBIAN\n                ),\n                distro_version=version or \"unknown\",\n                kernel_version=kernel_version,\n                is_default=True,\n                \n                # Features soportados por Radxa Zero\n                video_sources=[\n                    VideoSourceFeature.V4L2,       # Cámaras USB, CSI\n                    VideoSourceFeature.LIBCAMERA,  # Libcamera (Armbian/Ubuntu)\n                ],\n                video_encoders=[\n                    VideoEncoderFeature.MJPEG,          # MJPEG (fallback)\n                    VideoEncoderFeature.X264_SOFTWARE,  # Software x264\n                ],\n                connectivity=[\n                    ConnectivityFeature.WIFI,       # WiFi 6\n                    ConnectivityFeature.USB_MODEM,  # Módems USB (E3372, etc)\n                    ConnectivityFeature.USB_3,      # USB 3.1 Type-C\n                ],\n                system_features=[\n                    SystemFeature.GPIO,  # GPIO via /sys/class/gpio\n                    SystemFeature.I2C,   # I2C para sensores\n                    SystemFeature.SPI,   # SPI para LCD/EEPROM\n                ]\n            )\n        \n        except FileNotFoundError:\n            logger.error(\"/etc/os-release not found\")\n            return None\n        except Exception as e:\n            logger.error(f\"Error detecting running variant: {e}\")\n            return None\n```
 
 ### Salida esperada al iniciar
 
-**Con kernel current (default, recomendado - SIN HW H.264):**
+**Con kernel mainline (default):**
 ```
 2026-02-07 15:30:45 - app.providers.board.board_registry - INFO
     Discovering board providers in 'implementations/'...
@@ -281,41 +249,18 @@ class RadxaZeroProvider(BoardProvider):
 2026-02-07 15:30:45 - app.providers.board.implementations.radxa.zero - INFO
     ✅ Detected via device-tree: Radxa Zero
 
-2026-02-07 15:30:45 - app.providers.board.implementations.radxa.zero - INFO
-    Detected Armbian CURRENT kernel: 6.12.58-current-meson64
-
-2026-02-07 15:30:45 - app.providers.board.implementations.radxa.zero - INFO
-    Using CURRENT kernel variant (recommended)
-
 2026-02-07 15:30:45 - app.providers.board.board_registry - INFO
     ✅ Board detected: Radxa Zero (Amlogic S905Y2)
     - Hardware: 4 cores, 4GB RAM, 29GB storage, Mali-G31 MP2 GPU
-    - Variant: Armbian current kernel
+    - Variant: Armbian mainline kernel
     - Kernel: 6.12.58-current-meson64
     - Video: V4L2, LibCamera → MJPEG, x264 software (sin HW H.264 en mainline)
     - Network: WiFi, USB modem, USB 3.x, Ethernet
     - Peripherals: GPIO, I2C, SPI
 ```
 
-**Con kernel legacy (máximo HW support - CON HW H.264):**
-```
-2026-02-07 15:30:45 - app.providers.board.implementations.radxa.zero - INFO
-    Detected Armbian LEGACY kernel: 5.15.25-legacy-meson64
-
-2026-02-07 15:30:45 - app.providers.board.implementations.radxa.zero - INFO
-    Using LEGACY kernel variant (máximo HW support)
-
-2026-02-07 15:30:45 - app.providers.board.board_registry - INFO
-    ✅ Board detected: Radxa Zero (Amlogic S905Y2)
-    - Hardware: 4 cores, 4GB RAM, 29GB storage, Mali-G31 MP2 GPU
-    - Variant: Armbian legacy kernel (máximo HW support)
-    - Kernel: 5.15.25-legacy-meson64
-    - Video: V4L2, LibCamera → H.264 HW ✅, MJPEG, x264 software
-    - Network: WiFi, USB modem, USB 3.x, Ethernet
-    - Peripherals: GPIO, I2C, SPI
-```
-
 ---
+
 
 ## 🔧 Cómo usar BoardRegistry
 
@@ -437,7 +382,7 @@ Respuesta ejemplo:
     },
     "features": {
       "video_sources": ["v4l2", "libcamera"],
-      "video_encoders": ["hardware_h264", "mjpeg", "x264"],
+      "video_encoders": ["mjpeg", "x264"],
       "connectivity": ["wifi", "usb_modem", "usb3"],
       "system_features": ["gpio", "i2c", "spi"]
     }

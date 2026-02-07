@@ -137,10 +137,10 @@ const VideoView = () => {
       // Then start
       const response = await api.post('/api/video/start')
       const data = await response.json()
-      if (data.success) {
+      if (response.ok && data.success) {
         showToast(t('views.video.streamStarted'), 'success')
       } else {
-        showToast(data.message || t('views.video.errorStarting'), 'error')
+        showToast(data.detail || data.message || t('views.video.errorStarting'), 'error')
       }
     } catch (error) {
       showToast(error.message || t('views.video.errorStarting'), 'error')
@@ -153,10 +153,10 @@ const VideoView = () => {
     try {
       const response = await api.post('/api/video/stop')
       const data = await response.json()
-      if (data.success) {
+      if (response.ok && data.success) {
         showToast(t('views.video.streamStopped'), 'success')
       } else {
-        showToast(data.message || t('views.video.errorStopping'), 'error')
+        showToast(data.detail || data.message || t('views.video.errorStopping'), 'error')
       }
     } catch (error) {
       showToast(error.message || t('views.video.errorStopping'), 'error')
@@ -172,10 +172,10 @@ const VideoView = () => {
       
       const response = await api.post('/api/video/restart')
       const data = await response.json()
-      if (data.success) {
+      if (response.ok && data.success) {
         showToast(t('views.video.streamRestarted'), 'success')
       } else {
-        showToast(data.message || t('views.video.errorRestarting'), 'error')
+        showToast(data.detail || data.message || t('views.video.errorRestarting'), 'error')
       }
     } catch (error) {
       showToast(error.message || t('views.video.errorRestarting'), 'error')
@@ -199,23 +199,24 @@ const VideoView = () => {
       const videoData = await videoRes.json()
       const streamData = await streamRes.json()
 
-      if (videoData.success && streamData.success) {
+      if (videoRes.ok && streamRes.ok && videoData.success && streamData.success) {
         setHasChanges(false)  // Reset changes flag after successful save
         
         // If currently streaming, restart to apply changes
         if (status.streaming) {
           const restartRes = await api.post('/api/video/restart')
           const restartData = await restartRes.json()
-          if (restartData.success) {
+          if (restartRes.ok && restartData.success) {
             showToast(t('views.video.configAppliedAndRestarted'), 'success')
           } else {
-            showToast(t('views.video.configSavedRestartError'), 'warning')
+            showToast(restartData.detail || t('views.video.configSavedRestartError'), 'warning')
           }
         } else {
           showToast(t('views.video.configAppliedAndSaved'), 'success')
         }
       } else {
-        showToast(videoData.message || streamData.message || 'Error', 'error')
+        const errMsg = videoData.detail || streamData.detail || videoData.message || streamData.message || 'Error'
+        showToast(errMsg, 'error')
       }
     } catch (error) {
       showToast(error.message || t('views.video.errorApplying'), 'error')
@@ -228,8 +229,8 @@ const VideoView = () => {
     try {
       const response = await api.post('/api/video/live-update', { property, value: parseInt(value) })
       const data = await response.json()
-      if (!data.success) {
-        showToast(data.message || t('views.video.errorLiveUpdate'), 'error')
+      if (!response.ok || !data.success) {
+        showToast(data.detail || data.message || t('views.video.errorLiveUpdate'), 'error')
       }
     } catch (error) {
       showToast(error.message || t('views.video.errorLiveUpdate'), 'error')

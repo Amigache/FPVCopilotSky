@@ -90,10 +90,10 @@ const StatusView = () => {
           const response = await api.post('/api/system/preferences/reset')
           const data = await response.json()
           
-          if (data.success) {
+          if (response.ok && data.success) {
             showToast(t('status.preferences.resetSuccess'), 'success')
           } else {
-            showToast(data.message || t('status.preferences.resetError'), 'error')
+            showToast(data.detail || data.message || t('status.preferences.resetError'), 'error')
           }
         } catch (error) {
           console.error('Error resetting preferences:', error)
