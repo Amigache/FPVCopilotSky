@@ -212,7 +212,6 @@ FPVCopilotSky/
 │   ├── install-production.sh    # Configurar nginx + systemd
 │   ├── status.sh                # Diagnóstico completo
 │   ├── configure-modem.sh       # Configurar modem USB
-│   ├── fix-nginx.sh             # Arreglar configuración nginx
 │   ├── setup-system-sudoers.sh  # Permisos sudo sistema
 │   └── setup-tailscale-sudoers.sh # Permisos sudo Tailscale
 │

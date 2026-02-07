@@ -23,6 +23,48 @@ FPV Copilot Sky convierte un SBC Linux (Radxa Zero, Raspberry Pi, Orange Pi…) 
 | **🌐 Red inteligente** | Priorización WiFi/4G automática, failover, métricas de ruta |
 | **💻 WebUI** | Interfaz responsive en español e inglés, tiempo real por WebSocket |
 
+## 🏗️ Flujo de datos
+
+```
+            ┌─────────────────────────────────────────┐
+            │      NAVEGADOR / CONTROL REMOTO         │
+            │    (Dashboard, Telemetría, Video)       │
+            └──────────────────┬──────────────────────┘
+                               │ HTTPS / HTTP
+                    ┌──────────▼──────────┐
+                    │   FPV Copilot Sky   │
+                    │  (SBC: Radxa/RPi)   │
+                    └──────┬──┬──┬──┬─────┘
+        ┌───────────────────┘  │  │  └────────────────┐
+        │                      │  │                    │
+    ┌───▼──────┐    ┌─────────▼──▼───────┐    ┌──────▼────┐
+    │ FC       │    │   Video Stream    │    │  Modem    │
+    │ MAVLink  │    │   GStreamer UDP   │    │  4G/LTE   │
+    │ Telemetry│    │   H.264 / MJPEG   │    │  Huawei   │
+    └──────────┘    └─────────┬─────────┘    └──────┬────┘
+                              │                      │
+                              ▼                      ▼
+                    ┌────────────────────────────────────┐
+                    │  RED LOCAL / 4G / INTERNET        │
+                    │  WiFi • Ethernet • LTE • Tailscale │
+                    └────────────────────────────────────┘
+                              │
+                              ▼
+                    ┌────────────────────┐
+                    │ Controlador de GCS  │
+                    │ QGroundControl /    │
+                    │ Mission Planner     │
+                    └────────────────────┘
+```
+
+### Arquitectura de componentes
+
+- **Backend (Python/FastAPI)**: Maneja MAVLink, video, VPN, modem
+- **Frontend (React/Vite)**: Interfaz web responsive, WebSocket en tiempo real  
+- **Servicios (systemd)**: Arranque automático, gestor de procesos
+- **Nginx**: Proxy inverso, hosting de estáticos, compresión gzip
+- **Providers**: Sistema modular agnóstico de hardware (modem, VPN, network)
+
 ## 📦 ¿Qué necesitas?
 
 ### Hardware

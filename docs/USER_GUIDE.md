@@ -307,7 +307,8 @@ Estado de los servicios del sistema: fpvcopilot-sky, nginx, NetworkManager, Mode
 curl -I http://localhost
 
 # Si dice "Welcome to nginx":
-bash scripts/fix-nginx.sh
+sudo rm /etc/nginx/sites-enabled/default
+sudo systemctl reload nginx
 ```
 
 ### El controlador de vuelo no conecta

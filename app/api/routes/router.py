@@ -161,3 +161,42 @@ async def get_router_status(request: Request):
         raise HTTPException(status_code=500, detail=translate("router.service_not_initialized", lang))
     
     return _router_service.get_status()
+
+@router.get("/presets")
+async def get_router_presets(request: Request):
+    """
+    Get predefined router output presets.
+    
+    Returns common configurations for different Ground Control Stations:
+    - QGroundControl UDP
+    - Mission Planner TCP Server
+    - Custom TCP Client
+    """
+    lang = get_language_from_request(request)
+    return {
+        "success": True,
+        "presets": {
+            "qgc_udp": {
+                "name": "QGroundControl UDP",
+                "type": "udp",
+                "host": "0.0.0.0",
+                "port": 14550,
+                "description": "Standard QGroundControl UDP endpoint"
+            },
+            "mission_planner_tcp": {
+                "name": "Mission Planner TCP",
+                "type": "tcp_server",
+                "host": "0.0.0.0",
+                "port": 5760,
+                "description": "For Mission Planner GCS"
+            },
+            "custom_tcp_client": {
+                "name": "Custom TCP Client",
+                "type": "tcp_client",
+                "host": "192.168.1.100",
+                "port": 5760,
+                "description": "For remote GCS (edit host/port as needed)"
+            }
+        },
+        "message": translate("router.presets_loaded", lang)
+    }

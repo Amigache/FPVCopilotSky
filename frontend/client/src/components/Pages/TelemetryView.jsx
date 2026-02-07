@@ -15,6 +15,7 @@ const TelemetryView = () => {
   
   // Router state
   const [outputs, setOutputs] = useState([])
+  const [presets, setPresets] = useState({})
   const [loading, setLoading] = useState(false)
   
   // Form state
@@ -23,12 +24,26 @@ const TelemetryView = () => {
   const [port, setPort] = useState('14550')
   const [editingId, setEditingId] = useState(null)
   
-  // Presets
-  const presets = {
-    qgc_udp: { type: 'udp', host: '0.0.0.0', port: '14550' },
-    mission_planner_tcp: { type: 'tcp_server', host: '0.0.0.0', port: '5760' },
-    tcp_client: { type: 'tcp_client', host: '192.168.1.100', port: '5760' }
-  }
+  // Load presets from API
+  const loadPresets = useCallback(async () => {
+    try {
+      const response = await fetchWithTimeout(`${API_MAVLINK_ROUTER}/presets`)
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success && data.presets) {
+          setPresets(data.presets)
+        }
+      }
+    } catch (error) {
+      console.error('Error loading presets:', error)
+      // Fallback to defaults
+      setPresets({
+        qgc_udp: { type: 'udp', host: '0.0.0.0', port: '14550' },
+        mission_planner_tcp: { type: 'tcp_server', host: '0.0.0.0', port: '5760' },
+        tcp_client: { type: 'tcp_client', host: '192.168.1.100', port: '5760' }
+      })
+    }
+  }, [])
   
   const fetchOutputs = useCallback(async () => {
     try {
@@ -45,10 +60,11 @@ const TelemetryView = () => {
     }
   }, [])
   
-  // Load outputs on mount only (updates come via WebSocket)
+  // Load outputs and presets on mount
   useEffect(() => {
     fetchOutputs()
-  }, [fetchOutputs])
+    loadPresets()
+  }, [fetchOutputs, loadPresets])
   
   // Listen for router updates via WebSocket
   useEffect(() => {
@@ -167,12 +183,12 @@ const TelemetryView = () => {
   }
   
   const getTypeLabel = (type) => {
-    const labels = {
-      'tcp_server': 'TCP Server',
-      'tcp_client': 'TCP Client',
-      'udp': 'UDP'
+    const typeMap = {
+      'tcp_server': t('router.tcpServer'),
+      'tcp_client': t('router.tcpClient'),
+      'udp': t('router.udp')
     }
-    return labels[type] || type
+    return typeMap[type] || type
   }
 
   return (

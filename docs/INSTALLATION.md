@@ -230,12 +230,12 @@ sudo journalctl -u fpvcopilot-sky -f    # Logs
 ### "Welcome to nginx" en vez de la WebUI
 
 ```bash
-bash scripts/fix-nginx.sh
-# o manualmente:
 sudo rm /etc/nginx/sites-enabled/default
 sudo ln -sf /etc/nginx/sites-available/fpvcopilot-sky /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 ```
+
+> Esto ya lo hace `install-production.sh`, pero puede reaparecer tras actualizar nginx.
 
 ### Backend no arranca
 
@@ -266,6 +266,47 @@ sudo systemctl disable serial-getty@ttyAML0
 groups                                  # Debe incluir dialout, video
 sudo usermod -aG dialout,video $(whoami)
 # Requiere cerrar sesión y volver a entrar
+```
+
+---
+
+## 4. Scripts de utilidad
+
+Después de instalar, tienes scripts auxiliares disponibles en `scripts/`:
+
+| Script | Propósito | Cuándo usarlo |
+|--------|-----------|---------------|
+| **`deploy.sh`** | Compila frontend, reinstala systemd/nginx, reinicia servicio | Después de cambios en frontend o backend; despliegue a producción |
+| **`dev.sh`** | Inicia backend con hot-reload y frontend dev server | Desarrollo local; requiere dos terminales |
+| **`status.sh`** | Diagnosis completa: servicios, logs, conexiones, recursos | Troubleshooting; para entender el estado actual |
+| **`configure-modem.sh`** | Detecta e inicializa modem Huawei HiLink y CSQ/RSSI | Si el modem no se detecta automáticamente en `status.sh` |
+| **`setup-system-sudoers.sh`** | Configura permisos sudo para network/modem/tailscale | Reparar permisos si algunos comandos fallan; `install.sh` lo hace automáticamente |
+| **`setup-tailscale-sudoers.sh`** | Configura permisos sudo específicos para Tailscale | Reparar permisos de Tailscale si `install.sh` falló |
+
+### Troubleshooting común
+
+**Si ves "Welcome to nginx" en lugar del frontend:**
+```bash
+sudo rm /etc/nginx/sites-enabled/default
+sudo systemctl reload nginx
+```
+> Esto ya lo hace `install-production.sh`, pero puede reaparecer si actualizas nginx.
+
+### Flujo típico de instalación:
+
+```bash
+# 1. Instalación inicial (obligatorio)
+bash install.sh
+
+# 2. Elegir uno de estos:
+bash scripts/dev.sh                    # Para desarrollo local
+# O
+sudo bash scripts/install-production.sh && bash scripts/deploy.sh  # Para producción
+
+# 3. Troubleshooting (si es necesario)
+bash scripts/status.sh                 # Ver estado completo
+sudo bash scripts/configure-modem.sh   # Si modem no funciona
+# Si ves "Welcome to nginx": sudo rm /etc/nginx/sites-enabled/default && sudo systemctl reload nginx
 ```
 
 ---

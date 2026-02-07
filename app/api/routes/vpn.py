@@ -13,14 +13,7 @@ from app.i18n import get_language_from_request, translate
 router = APIRouter(prefix="/api/vpn", tags=["vpn"])
 
 # Service references (will be set by main.py)
-_vpn_service = None
 _preferences_service = None
-
-
-def set_vpn_service(service):
-    """Deprecated: Set the VPN service instance (kept for compatibility)"""
-    global _vpn_service
-    _vpn_service = service
 
 
 def set_preferences_service(service):
