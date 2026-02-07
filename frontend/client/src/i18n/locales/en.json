@@ -470,7 +470,8 @@
     },
     "frontend": {
       "dependencies": "Dependencies",
-      "npmDeps": "NPM Dependencies"
+      "npmDeps": "NPM Dependencies",
+      "nodeVersion": "Node Version"
     },
     "permissions": {
       "username": "Username",

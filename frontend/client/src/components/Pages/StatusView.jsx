@@ -230,6 +230,10 @@ const StatusView = () => {
               value={backend?.app_version?.status === 'ok' ? `v${backend?.app_version?.version}` : 'unknown'}
               status={backend?.app_version?.status}
             />
+            <InfoRow
+              label={t('status.system.pythonVersion')}
+              value={backend?.system?.system?.python_version || 'N/A'}
+            />
           </div>
 
           <div className="info-section">
@@ -296,6 +300,11 @@ const StatusView = () => {
               label="WebUI Version" 
               value={frontend?.frontend_version?.status === 'ok' ? `v${frontend?.frontend_version?.version}` : 'unknown'}
               status={frontend?.frontend_version?.status}
+            />
+            <InfoRow
+              label={t('status.frontend.nodeVersion')}
+              value={frontend?.node_version?.status === 'ok' ? `v${frontend?.node_version?.version}` : frontend?.node_version?.version || 'unknown'}
+              status={frontend?.node_version?.status}
             />
           </div>
           

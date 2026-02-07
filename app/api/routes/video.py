@@ -49,19 +49,21 @@ class StreamingConfigRequest(BaseModel):
 
 
 @router.get("/status")
-async def get_status():
+async def get_status(request: Request):
     """Get video streaming status"""
+    lang = get_language_from_request(request)
     if not _video_service:
-        raise HTTPException(status_code=503, detail="Video service not initialized")
+        raise HTTPException(status_code=503, detail=translate("services.video_not_initialized", lang))
     
     return _video_service.get_status()
 
 
 @router.get("/cameras")
-async def get_cameras():
+async def get_cameras(request: Request):
     """Get available cameras from all video source providers"""
+    lang = get_language_from_request(request)
     if not _video_service:
-        raise HTTPException(status_code=503, detail="Video service not initialized")
+        raise HTTPException(status_code=503, detail=translate("services.video_not_initialized", lang))
     
     # Import here to avoid circular dependency
     from app.providers.registry import get_provider_registry
@@ -90,10 +92,11 @@ async def get_cameras():
 
 
 @router.get("/codecs")
-async def get_codecs():
+async def get_codecs(request: Request):
     """Get available video codecs/encoders"""
+    lang = get_language_from_request(request)
     if not _video_service:
-        raise HTTPException(status_code=503, detail="Video service not initialized")
+        raise HTTPException(status_code=503, detail=translate("services.video_not_initialized", lang))
     
     # Import here to avoid circular dependency
     from app.providers.registry import get_provider_registry
@@ -125,10 +128,11 @@ async def get_codecs():
 
 
 @router.post("/start")
-async def start_streaming():
+async def start_streaming(request: Request):
     """Start video streaming"""
+    lang = get_language_from_request(request)
     if not _video_service:
-        raise HTTPException(status_code=503, detail="Video service not initialized")
+        raise HTTPException(status_code=503, detail=translate("services.video_not_initialized", lang))
     
     result = _video_service.start()
     
@@ -139,10 +143,11 @@ async def start_streaming():
 
 
 @router.post("/stop")
-async def stop_streaming():
+async def stop_streaming(request: Request):
     """Stop video streaming"""
+    lang = get_language_from_request(request)
     if not _video_service:
-        raise HTTPException(status_code=503, detail="Video service not initialized")
+        raise HTTPException(status_code=503, detail=translate("services.video_not_initialized", lang))
     
     result = _video_service.stop()
     
@@ -153,10 +158,11 @@ async def stop_streaming():
 
 
 @router.post("/restart")
-async def restart_streaming():
+async def restart_streaming(request: Request):
     """Restart video streaming with current configuration"""
+    lang = get_language_from_request(request)
     if not _video_service:
-        raise HTTPException(status_code=503, detail="Video service not initialized")
+        raise HTTPException(status_code=503, detail=translate("services.video_not_initialized", lang))
     
     result = _video_service.restart()
     
@@ -169,10 +175,9 @@ async def restart_streaming():
 @router.post("/config/video")
 async def configure_video(config: VideoConfigRequest, request: Request):
     """Update video configuration"""
-    if not _video_service:
-        raise HTTPException(status_code=503, detail="Video service not initialized")
-    
     lang = get_language_from_request(request)
+    if not _video_service:
+        raise HTTPException(status_code=503, detail=translate("services.video_not_initialized", lang))
     
     # Convert to dict, excluding None values
     config_dict = {k: v for k, v in config.model_dump().items() if v is not None}
@@ -220,13 +225,9 @@ async def configure_video(config: VideoConfigRequest, request: Request):
 @router.post("/config/streaming")
 async def configure_streaming(config: StreamingConfigRequest, request: Request):
     """Update streaming configuration"""
-    if not _video_service:
-        raise HTTPException(status_code=503, detail="Video service not initialized")
-    
     lang = get_language_from_request(request)
-    """Update streaming configuration"""
     if not _video_service:
-        raise HTTPException(status_code=503, detail="Video service not initialized")
+        raise HTTPException(status_code=503, detail=translate("services.video_not_initialized", lang))
     
     # Convert to dict, excluding None values
     config_dict = {k: v for k, v in config.model_dump().items() if v is not None}
@@ -250,11 +251,12 @@ async def configure_streaming(config: StreamingConfigRequest, request: Request):
 
 
 @router.post("/live-update")
-async def live_update(req: LivePropertyRequest):
+async def live_update(req: LivePropertyRequest, request: Request):
     """Update a pipeline property on-the-fly without restarting.
     Only quality (MJPEG) or h264_bitrate (H.264) are allowed."""
+    lang = get_language_from_request(request)
     if not _video_service:
-        raise HTTPException(status_code=503, detail="Video service not initialized")
+        raise HTTPException(status_code=503, detail=translate("services.video_not_initialized", lang))
     
     result = _video_service.update_live_property(req.property, req.value)
     
@@ -275,10 +277,11 @@ async def live_update(req: LivePropertyRequest):
 
 
 @router.get("/pipeline-string")
-async def get_pipeline_string():
+async def get_pipeline_string(request: Request):
     """Get GStreamer pipeline string for Mission Planner"""
+    lang = get_language_from_request(request)
     if not _video_service:
-        raise HTTPException(status_code=503, detail="Video service not initialized")
+        raise HTTPException(status_code=503, detail=translate("services.video_not_initialized", lang))
     
     return {
         "pipeline": _video_service.get_pipeline_string(),

@@ -170,7 +170,8 @@ async def periodic_stats_broadcast():
                     check_system_info,
                     get_app_version,
                     get_frontend_version,
-                    get_user_permissions
+                    get_user_permissions,
+                    get_node_version
                 )
                 
                 status_data = {
@@ -183,7 +184,8 @@ async def periodic_stats_broadcast():
                     },
                     "frontend": {
                         "npm_deps": check_npm_dependencies(),
-                        "frontend_version": get_frontend_version()
+                        "frontend_version": get_frontend_version(),
+                        "node_version": get_node_version()
                     },
                     "permissions": get_user_permissions(),
                     "timestamp": int(time.time())

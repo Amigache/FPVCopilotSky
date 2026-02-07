@@ -4,10 +4,11 @@ Endpoints for managing router outputs (UDP, TCP server/client)
 Auto-starts outputs on creation, only allows delete (no start/stop)
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from typing import Literal, List
 import uuid
+from app.i18n import get_language_from_request, translate
 
 router = APIRouter(prefix="/api/mavlink-router", tags=["mavlink-router"])
 
@@ -40,20 +41,22 @@ class OutputResponse(BaseModel):
 
 
 @router.get("/outputs")
-async def list_outputs() -> List[dict]:
+async def list_outputs(request: Request) -> List[dict]:
     """List all router outputs with their status."""
+    lang = get_language_from_request(request)
     if not _router_service:
-        raise HTTPException(status_code=500, detail="Router service not initialized")
+        raise HTTPException(status_code=500, detail=translate("router.service_not_initialized", lang))
     
     status = _router_service.get_status()
     return status.get("outputs", [])
 
 
 @router.post("/outputs")
-async def add_output(request: AddOutputRequest):
+async def add_output(request: AddOutputRequest, req: Request):
     """Add a new router output and auto-start it."""
+    lang = get_language_from_request(req)
     if not _router_service:
-        raise HTTPException(status_code=500, detail="Router service not initialized")
+        raise HTTPException(status_code=500, detail=translate("router.service_not_initialized", lang))
     
     from app.services.mavlink_router import OutputConfig, OutputType
     
@@ -88,17 +91,18 @@ async def add_output(request: AddOutputRequest):
 
 
 @router.put("/outputs/{output_id}")
-async def update_output(output_id: str, request: AddOutputRequest):
+async def update_output(output_id: str, request: AddOutputRequest, req: Request):
     """Update a router output configuration."""
+    lang = get_language_from_request(req)
     if not _router_service:
-        raise HTTPException(status_code=500, detail="Router service not initialized")
+        raise HTTPException(status_code=500, detail=translate("router.service_not_initialized", lang))
     
     from app.services.mavlink_router import OutputConfig, OutputType
     
     # Check if output exists
     outputs = _router_service.outputs
     if output_id not in outputs:
-        raise HTTPException(status_code=404, detail=f"Output {output_id} not found")
+        raise HTTPException(status_code=404, detail=translate("router.output_not_found", lang, output_id=output_id))
     
     # Remove the old output
     success, message = _router_service.remove_output(output_id)
@@ -135,10 +139,11 @@ async def update_output(output_id: str, request: AddOutputRequest):
 
 
 @router.delete("/outputs/{output_id}")
-async def remove_output(output_id: str):
+async def remove_output(output_id: str, request: Request):
     """Remove a router output (stops it first if running)."""
+    lang = get_language_from_request(request)
     if not _router_service:
-        raise HTTPException(status_code=500, detail="Router service not initialized")
+        raise HTTPException(status_code=500, detail=translate("router.service_not_initialized", lang))
     
     success, message = _router_service.remove_output(output_id)
     
@@ -149,9 +154,10 @@ async def remove_output(output_id: str):
 
 
 @router.get("/status")
-async def get_router_status():
+async def get_router_status(request: Request):
     """Get full router status and statistics."""
+    lang = get_language_from_request(request)
     if not _router_service:
-        raise HTTPException(status_code=500, detail="Router service not initialized")
+        raise HTTPException(status_code=500, detail=translate("router.service_not_initialized", lang))
     
     return _router_service.get_status()

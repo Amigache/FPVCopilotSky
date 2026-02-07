@@ -1,13 +1,42 @@
 {
+  "services": {
+    "mavlink_not_initialized": "Servicio MAVLink no inicializado",
+    "video_not_initialized": "Servicio de vídeo no inicializado",
+    "router_not_initialized": "Servicio de router no inicializado",
+    "gstreamer_not_available": "GStreamer no disponible"
+  },
+  "mavlink": {
+    "already_connected": "Ya está conectado",
+    "no_heartbeat": "No se recibió heartbeat",
+    "not_connected": "No conectado a controlador de vuelo",
+    "parameter_get_failed": "Error al obtener parámetro",
+    "parameter_set_failed": "Error al configurar parámetro",
+    "enum_not_found": "Enumeración {enum_name} no encontrada"
+  },
   "serial": {
     "preferences_saved": "Preferencias de serie guardadas"
   },
   "vpn": {
-    "preferences_saved": "Preferencias de VPN guardadas"
+    "preferences_saved": "Preferencias de VPN guardadas",
+    "no_provider_configured": "No hay proveedor de VPN configurado",
+    "provider_not_found": "Proveedor de VPN '{provider}' no encontrado",
+    "provider_not_available": "Proveedor de VPN '{provider}' no disponible",
+    "connection_failed": "Error al conectar VPN",
+    "disconnection_failed": "Error al desconectar VPN",
+    "logout_failed": "Error al cerrar sesión VPN"
+  },
+  "modem": {
+    "provider_not_found": "Proveedor de módem '{provider}' no encontrado",
+    "provider_not_available": "Proveedor de módem no disponible",
+    "connection_failed": "Error de conexión",
+    "disconnection_failed": "Error de desconexión",
+    "band_configuration_failed": "Error al configurar banda",
+    "reboot_failed": "Error al reiniciar"
   },
   "video": {
     "configuration_updated": "Configuración de vídeo actualizada",
-    "streaming_configuration_updated": "Configuración de streaming actualizada"
+    "streaming_configuration_updated": "Configuración de streaming actualizada",
+    "no_cameras_found": "No se encontraron cámaras"
   },
   "system": {
     "preferences_reset_success": "Preferencias restauradas a valores por defecto. Se recomienda reiniciar.",
@@ -38,6 +67,8 @@
     "reboot_failed": "Error al reiniciar"
   },
   "router": {
+    "service_not_initialized": "Servicio de router no inicializado",
+    "output_not_found": "Salida {output_id} no encontrada",
     "rtmp_output_added": "Salida RTMP añadida",
     "rtmp_output_add_failed": "Error al añadir salida RTMP",
     "rtmp_output_removed": "Salida RTMP eliminada",

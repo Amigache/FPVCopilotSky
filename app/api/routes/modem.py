@@ -3,10 +3,11 @@ Modem API Routes
 Endpoints for managing modem connections and providers
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 from providers import get_provider_registry
+from app.i18n import get_language_from_request, translate
 
 router = APIRouter(prefix="/api/modem", tags=["modem"])
 
@@ -35,7 +36,7 @@ async def get_available_providers():
 
 
 @router.get("/status/{provider_name}")
-async def get_modem_status(provider_name: str):
+async def get_modem_status(provider_name: str, request: Request):
     """
     Get status of a specific modem provider
     
@@ -45,12 +46,13 @@ async def get_modem_status(provider_name: str):
     Returns:
         Modem status including availability, connection state, signal info, etc.
     """
+    lang = get_language_from_request(request)
     try:
         registry = get_provider_registry()
         provider = registry.get_modem_provider(provider_name)
         
         if not provider:
-            raise HTTPException(status_code=404, detail=f"Modem provider '{provider_name}' not found")
+            raise HTTPException(status_code=404, detail=translate("modem.provider_not_found", lang, provider=provider_name))
         
         status = provider.get_status()
         return {
@@ -65,7 +67,7 @@ async def get_modem_status(provider_name: str):
 
 
 @router.post("/connect/{provider_name}")
-async def connect_modem(provider_name: str):
+async def connect_modem(provider_name: str, request: Request):
     """
     Connect/activate a specific modem
     
@@ -75,17 +77,19 @@ async def connect_modem(provider_name: str):
     Returns:
         Connection result with success status and network info
     """
+    lang = get_language_from_request(request)
     try:
         registry = get_provider_registry()
         provider = registry.get_modem_provider(provider_name)
         
         if not provider:
-            raise HTTPException(status_code=404, detail=f"Modem provider '{provider_name}' not found")
+            raise HTTPException(status_code=404, detail=translate("modem.provider_not_found", lang, provider=provider_name))
         
         result = provider.connect()
         
         if not result.get("success"):
-            raise HTTPException(status_code=400, detail=result.get("message", "Connection failed"))
+            msg = result.get("message", translate("modem.connection_failed", lang))
+            raise HTTPException(status_code=400, detail=msg)
         
         return {
             "success": True,
@@ -99,7 +103,7 @@ async def connect_modem(provider_name: str):
 
 
 @router.post("/disconnect/{provider_name}")
-async def disconnect_modem(provider_name: str):
+async def disconnect_modem(provider_name: str, request: Request):
     """
     Disconnect/deactivate a specific modem
     
@@ -109,17 +113,19 @@ async def disconnect_modem(provider_name: str):
     Returns:
         Disconnection result with success status
     """
+    lang = get_language_from_request(request)
     try:
         registry = get_provider_registry()
         provider = registry.get_modem_provider(provider_name)
         
         if not provider:
-            raise HTTPException(status_code=404, detail=f"Modem provider '{provider_name}' not found")
+            raise HTTPException(status_code=404, detail=translate("modem.provider_not_found", lang, provider=provider_name))
         
         result = provider.disconnect()
         
         if not result.get("success"):
-            raise HTTPException(status_code=400, detail=result.get("message", "Disconnection failed"))
+            msg = result.get("message", translate("modem.disconnection_failed", lang))
+            raise HTTPException(status_code=400, detail=msg)
         
         return {
             "success": True,
@@ -138,7 +144,7 @@ class BandConfigRequest(BaseModel):
 
 
 @router.post("/configure-band/{provider_name}")
-async def configure_modem_band(provider_name: str, request: BandConfigRequest):
+async def configure_modem_band(provider_name: str, request: BandConfigRequest, req: Request):
     """
     Configure LTE band for a specific modem
     
@@ -149,17 +155,19 @@ async def configure_modem_band(provider_name: str, request: BandConfigRequest):
     Returns:
         Configuration result with success status
     """
+    lang = get_language_from_request(req)
     try:
         registry = get_provider_registry()
         provider = registry.get_modem_provider(provider_name)
         
         if not provider:
-            raise HTTPException(status_code=404, detail=f"Modem provider '{provider_name}' not found")
+            raise HTTPException(status_code=404, detail=translate("modem.provider_not_found", lang, provider=provider_name))
         
         result = provider.configure_band(request.band_mask)
         
         if not result.get("success"):
-            raise HTTPException(status_code=400, detail=result.get("message", "Band configuration failed"))
+            msg = result.get("message", translate("modem.band_configuration_failed", lang))
+            raise HTTPException(status_code=400, detail=msg)
         
         return {
             "success": True,
@@ -173,7 +181,7 @@ async def configure_modem_band(provider_name: str, request: BandConfigRequest):
 
 
 @router.post("/reboot/{provider_name}")
-async def reboot_modem(provider_name: str):
+async def reboot_modem(provider_name: str, request: Request):
     """
     Reboot a specific modem
     
@@ -183,17 +191,19 @@ async def reboot_modem(provider_name: str):
     Returns:
         Reboot result with success status
     """
+    lang = get_language_from_request(request)
     try:
         registry = get_provider_registry()
         provider = registry.get_modem_provider(provider_name)
         
         if not provider:
-            raise HTTPException(status_code=404, detail=f"Modem provider '{provider_name}' not found")
+            raise HTTPException(status_code=404, detail=translate("modem.provider_not_found", lang, provider=provider_name))
         
         result = provider.reboot()
         
         if not result.get("success"):
-            raise HTTPException(status_code=400, detail=result.get("message", "Reboot failed"))
+            msg = result.get("message", translate("modem.reboot_failed", lang))
+            raise HTTPException(status_code=400, detail=msg)
         
         return {
             "success": True,
@@ -207,7 +217,7 @@ async def reboot_modem(provider_name: str):
 
 
 @router.get("/info/{provider_name}")
-async def get_modem_info(provider_name: str):
+async def get_modem_info(provider_name: str, request: Request):
     """
     Get detailed information about a modem provider
     
@@ -217,12 +227,13 @@ async def get_modem_info(provider_name: str):
     Returns:
         Provider information including features and capabilities
     """
+    lang = get_language_from_request(request)
     try:
         registry = get_provider_registry()
         provider = registry.get_modem_provider(provider_name)
         
         if not provider:
-            raise HTTPException(status_code=404, detail=f"Modem provider '{provider_name}' not found")
+            raise HTTPException(status_code=404, detail=translate("modem.provider_not_found", lang, provider=provider_name))
         
         info = provider.get_info()
         return {

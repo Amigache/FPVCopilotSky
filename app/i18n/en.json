@@ -1,13 +1,42 @@
 {
+  "services": {
+    "mavlink_not_initialized": "MAVLink service not initialized",
+    "video_not_initialized": "Video service not initialized",
+    "router_not_initialized": "Router service not initialized",
+    "gstreamer_not_available": "GStreamer not available"
+  },
+  "mavlink": {
+    "already_connected": "Already connected",
+    "no_heartbeat": "No heartbeat received",
+    "not_connected": "Not connected to flight controller",
+    "parameter_get_failed": "Failed to get parameter",
+    "parameter_set_failed": "Failed to set parameter",
+    "enum_not_found": "Enum {enum_name} not found"
+  },
   "serial": {
     "preferences_saved": "Serial preferences saved"
   },
   "vpn": {
-    "preferences_saved": "VPN preferences saved"
+    "preferences_saved": "VPN preferences saved",
+    "no_provider_configured": "No VPN provider configured",
+    "provider_not_found": "VPN provider '{provider}' not found",
+    "provider_not_available": "VPN provider '{provider}' not available",
+    "connection_failed": "VPN connection failed",
+    "disconnection_failed": "VPN disconnection failed",
+    "logout_failed": "VPN logout failed"
+  },
+  "modem": {
+    "provider_not_found": "Modem provider '{provider}' not found",
+    "provider_not_available": "Modem provider not available",
+    "connection_failed": "Connection failed",
+    "disconnection_failed": "Disconnection failed",
+    "band_configuration_failed": "Band configuration failed",
+    "reboot_failed": "Reboot failed"
   },
   "video": {
     "configuration_updated": "Video configuration updated",
-    "streaming_configuration_updated": "Streaming configuration updated"
+    "streaming_configuration_updated": "Streaming configuration updated",
+    "no_cameras_found": "No cameras found"
   },
   "system": {
     "preferences_reset_success": "Preferences reset to defaults. Restart recommended.",
@@ -38,6 +67,8 @@
     "reboot_failed": "Reboot failed"
   },
   "router": {
+    "service_not_initialized": "Router service not initialized",
+    "output_not_found": "Output {output_id} not found",
     "rtmp_output_added": "RTMP output added",
     "rtmp_output_add_failed": "Failed to add RTMP output",
     "rtmp_output_removed": "RTMP output removed",

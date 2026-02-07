@@ -176,7 +176,6 @@ const SystemView = () => {
             <InfoRow label={t('status.system.platform')} value={backend?.system?.system?.platform || 'N/A'} />
             <InfoRow label={t('status.system.hostname')} value={backend?.system?.system?.hostname || 'N/A'} />
             <InfoRow label={t('status.system.architecture')} value={backend?.system?.system?.architecture || 'N/A'} />
-            <InfoRow label={t('status.system.pythonVersion')} value={backend?.system?.system?.python_version || 'N/A'} />
           </div>
         </div>
 

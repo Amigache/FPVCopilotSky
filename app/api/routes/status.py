@@ -177,6 +177,25 @@ def get_frontend_version():
         return {"status": "error", "message": str(e)}
 
 
+def get_node_version():
+    """Get Node.js version from the runtime if available."""
+    try:
+        result = subprocess.run([
+            "node",
+            "-v"
+        ], capture_output=True, text=True, check=True)
+        version = result.stdout.strip()
+        if version.startswith("v"):
+            version = version[1:]
+        return {"status": "ok", "version": version or "unknown"}
+    except FileNotFoundError:
+        return {"status": "warning", "version": "not installed"}
+    except subprocess.CalledProcessError as e:
+        return {"status": "error", "message": e.stderr.strip() or str(e)}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
 @router.get("/health")
 async def health_check():
     """Get overall application health status."""
@@ -190,7 +209,8 @@ async def health_check():
         
         frontend = {
             "npm_deps": check_npm_dependencies(),
-            "frontend_version": get_frontend_version()
+            "frontend_version": get_frontend_version(),
+            "node_version": get_node_version()
         }
         
         permissions = get_user_permissions()

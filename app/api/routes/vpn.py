@@ -37,7 +37,7 @@ def _get_preferences_service():
     return get_preferences()
 
 
-def _get_vpn_provider(provider_name: Optional[str] = None):
+def _get_vpn_provider(provider_name: Optional[str] = None, lang: str = 'en'):
     """Get VPN provider from registry"""
     registry = get_provider_registry()
     
@@ -55,11 +55,11 @@ def _get_vpn_provider(provider_name: Optional[str] = None):
             provider_name = installed[0]['name']
     
     if not provider_name:
-        raise HTTPException(status_code=400, detail="No VPN provider configured")
+        raise HTTPException(status_code=400, detail=translate("vpn.no_provider_configured", lang))
     
     provider = registry.get_vpn_provider(provider_name)
     if not provider:
-        raise HTTPException(status_code=503, detail=f"VPN provider '{provider_name}' not available")
+        raise HTTPException(status_code=503, detail=translate("vpn.provider_not_available", lang, provider=provider_name))
     
     return provider
 
@@ -97,10 +97,11 @@ async def get_providers():
 
 
 @router.get("/status")
-async def get_status(provider: Optional[str] = None):
+async def get_status(request: Request, provider: Optional[str] = None):
     """Get VPN connection status"""
+    lang = get_language_from_request(request)
     try:
-        vpn_provider = _get_vpn_provider(provider)
+        vpn_provider = _get_vpn_provider(provider, lang)
         status = vpn_provider.get_status()
         return status
     except HTTPException:
@@ -110,7 +111,7 @@ async def get_status(provider: Optional[str] = None):
 
 
 @router.get("/peers")
-async def get_peers(provider: Optional[str] = None):
+async def get_peers(request: Request, provider: Optional[str] = None):
     """
     Get list of VPN peers/nodes
     
@@ -120,8 +121,9 @@ async def get_peers(provider: Optional[str] = None):
     Returns:
         List of peers in the VPN network with their status and information
     """
+    lang = get_language_from_request(request)
     try:
-        vpn_provider = _get_vpn_provider(provider)
+        vpn_provider = _get_vpn_provider(provider, lang)
         peers = vpn_provider.get_peers()
         return {
             "success": True,
@@ -130,7 +132,7 @@ async def get_peers(provider: Optional[str] = None):
         }
     except HTTPException as e:
         # If no VPN provider configured, return empty list instead of error
-        if e.status_code == 400 and "No VPN provider configured" in str(e.detail):
+        if e.status_code == 400 and translate("vpn.no_provider_configured", lang) in str(e.detail):
             return {
                 "success": True,
                 "peers": [],
@@ -142,7 +144,7 @@ async def get_peers(provider: Optional[str] = None):
 
 
 @router.post("/connect")
-async def connect_vpn(request: VPNConnectRequest):
+async def connect_vpn(request: VPNConnectRequest, req: Request):
     """
     Connect to VPN
     
@@ -152,12 +154,14 @@ async def connect_vpn(request: VPNConnectRequest):
     Returns:
         Connection result with auth_url if authentication is needed
     """
+    lang = get_language_from_request(req)
     try:
-        vpn_provider = _get_vpn_provider(request.provider)
+        vpn_provider = _get_vpn_provider(request.provider, lang)
         result = vpn_provider.connect()
         
         if not result.get("success") and not result.get("needs_auth"):
-            raise HTTPException(status_code=400, detail=result.get("error", "Connection failed"))
+            msg = result.get("error", translate("vpn.connection_failed", lang))
+            raise HTTPException(status_code=400, detail=msg)
         
         return result
     except HTTPException:
@@ -167,19 +171,21 @@ async def connect_vpn(request: VPNConnectRequest):
 
 
 @router.post("/disconnect")
-async def disconnect_vpn(request: VPNDisconnectRequest):
+async def disconnect_vpn(request: VPNDisconnectRequest, req: Request):
     """
     Disconnect from VPN
     
     Args:
         provider: VPN provider name (optional, uses current if not specified)
     """
+    lang = get_language_from_request(req)
     try:
-        vpn_provider = _get_vpn_provider(request.provider)
+        vpn_provider = _get_vpn_provider(request.provider, lang)
         result = vpn_provider.disconnect()
         
         if not result.get("success"):
-            raise HTTPException(status_code=400, detail=result.get("error", "Disconnection failed"))
+            msg = result.get("error", translate("vpn.disconnection_failed", lang))
+            raise HTTPException(status_code=400, detail=msg)
         
         return result
     except HTTPException:
@@ -189,7 +195,7 @@ async def disconnect_vpn(request: VPNDisconnectRequest):
 
 
 @router.post("/logout")
-async def logout_vpn(request: VPNDisconnectRequest):
+async def logout_vpn(request: VPNDisconnectRequest, req: Request):
     """
     Logout from VPN (clears local credentials)
     
@@ -199,12 +205,14 @@ async def logout_vpn(request: VPNDisconnectRequest):
     This is useful when you need to re-authenticate with fresh credentials,
     for example when the device has been deleted from the admin panel.
     """
+    lang = get_language_from_request(req)
     try:
-        vpn_provider = _get_vpn_provider(request.provider)
+        vpn_provider = _get_vpn_provider(request.provider, lang)
         result = vpn_provider.logout()
         
         if not result.get("success"):
-            raise HTTPException(status_code=400, detail=result.get("error", "Logout failed"))
+            msg = result.get("error", translate("vpn.logout_failed", lang))
+            raise HTTPException(status_code=400, detail=msg)
         
         return result
     except HTTPException:
