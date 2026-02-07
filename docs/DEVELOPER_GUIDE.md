@@ -137,18 +137,34 @@ FPVCopilotSky/
 │   │   ├── base/                # Clases abstractas
 │   │   │   ├── modem_provider.py
 │   │   │   ├── vpn_provider.py
-│   │   │   └── network_interface.py
+│   │   │   ├── network_interface.py
+│   │   │   ├── video_source_provider.py     # [NUEVO] Para fuentes de video
+│   │   │   └── video_encoder_provider.py    # [NUEVO] Para codificadores
 │   │   ├── modem/               # Implementaciones de modem
 │   │   │   ├── hilink/huawei.py # HuaweiE3372hProvider (~1500 líneas)
 │   │   │   ├── usb_dongle.py
 │   │   │   └── router.py
 │   │   ├── vpn/
 │   │   │   └── tailscale.py     # TailscaleProvider
-│   │   └── network/
-│   │       ├── ethernet.py
-│   │       ├── wifi.py
-│   │       ├── vpn_interface.py
-│   │       └── modem_interface.py
+│   │   ├── network/
+│   │   │   ├── ethernet.py
+│   │   │   ├── wifi.py
+│   │   │   ├── vpn_interface.py
+│   │   │   └── modem_interface.py
+│   │   ├── video_source/        # [NUEVO] Proveedores de fuentes de video
+│   │   │   ├── v4l2_camera.py           # V4L2CameraSource (USB, CSI)
+│   │   │   ├── libcamera_source.py      # LibCameraSource (Raspberry Pi)
+│   │   │   ├── hdmi_capture.py          # HDMICaptureSource (captura HDMI)
+│   │   │   ├── network_stream.py        # NetworkStreamSource (RTSP, HLS)
+│   │   │   ├── __init__.py
+│   │   │   └── video_source_registry_init.py
+│   │   └── video/               # [NUEVO] Proveedores de codificadores
+│   │       ├── mjpeg_encoder.py         # MJPEGEncoder
+│   │       ├── x264_encoder.py          # X264Encoder (H.264 software)
+│   │       ├── openh264_encoder.py      # OpenH264Encoder (deshabilitado)
+│   │       ├── hardware_h264_encoder.py # HardwareH264Encoder (SoC)
+│   │       ├── __init__.py
+│   │       └── video_registry_init.py
 │   │
 │   ├── services/                # Servicios core (no hardware-specific)
 │   │   ├── mavlink_bridge.py    # Bridge serie ↔ red
@@ -369,6 +385,346 @@ class TPLinkM7200Provider(ModemProvider):
 
 ---
 
+## 6.3 Proveedores de Video: Fuentes (Cámaras) y Codificadores
+
+FPV Copilot Sky usa una arquitectura basada en proveedores para **fuentes de video** (cámaras) y **codificadores** (H.264, MJPEG, etc.), permitiendo soporte flexible para múltiples hardware.
+
+### Estructura de proveedores de video
+
+```
+providers/video_source/           # Proveedores de fuentes de video
+├── v4l2_camera.py               # Cámaras USB, CSI (video4linux2)
+├── libcamera_source.py          # LibCamera (Raspberry Pi, Radxa)
+├── hdmi_capture.py              # Captura HDMI (USB, PCIe)
+├── network_stream.py            # Streams remotos (RTSP, HTTP, HLS)
+└── __init__.py
+
+providers/video/                  # Proveedores de codificadores
+├── mjpeg_encoder.py             # MJPEG (baja latencia, alto ancho de banda)
+├── x264_encoder.py              # H.264 software (calidad/latencia)
+├── openh264_encoder.py          # H.264 software (OpenH264, deshabilitado)
+├── hardware_h264_encoder.py     # H.264 hardware (v4l2h264enc, meson_venc)
+└── __init__.py
+```
+
+### VideoSourceProvider — Estructura base
+
+```python
+# app/providers/base/video_source_provider.py
+from abc import ABC, abstractmethod
+
+class VideoSourceProvider(ABC):
+    """
+    Proveedor abstracto para fuentes de video (cámaras, streams).
+    Detecta dispositivos disponibles y construye elementos GStreamer.
+    """
+    
+    def __init__(self):
+        self.name: str = ""              # ID único: "v4l2", "libcamera", etc.
+        self.display_name: str = ""      # Nombre visible: "V4L2 Camera"
+        self.priority: int = 50          # Mayor = preferencia (0-100)
+    
+    @abstractmethod
+    def is_available(self) -> bool:
+        """Verificar si el proveedor puede funcionar en este hardware."""
+        ...
+    
+    @abstractmethod
+    def discover_sources(self) -> list[dict]:
+        """
+        Listar todas las fuentes disponibles.
+        
+        Retorna:
+        [
+            {
+                "device": "/dev/video0",
+                "name": "USB Camera Brio 100",
+                "provider": "V4L2 Camera",
+                "resolutions": ["1920x1080", "1280x720", ...],
+                "framerates": [30, 24, 15]
+            },
+            ...
+        ]
+        """
+        ...
+    
+    @abstractmethod
+    def build_source_element(self, device: str, config: dict) -> dict:
+        """
+        Construir un elemento GStreamer para esta fuente.
+        
+        Args:
+            device: Identificador del dispositivo (ej: "/dev/video0")
+            config: {"width": 1920, "height": 1080, "framerate": 30, ...}
+        
+        Retorna:
+        {
+            "success": True,
+            "source_element": {
+                "element": "v4l2src",
+                "name": "source",
+                "properties": {"device": "/dev/video0", ...}
+            },
+            "caps_filter": "video/x-raw,width=1920,height=1080,framerate=30/1",
+            "post_elements": [...]  # Escalado, conversión de color, etc.
+        }
+        """
+        ...
+```
+
+### Ejemplo: Implementar V4L2CameraSource
+
+```python
+# app/providers/video_source/v4l2_camera.py
+class V4L2CameraSource(VideoSourceProvider):
+    def __init__(self):
+        super().__init__()
+        self.name = "v4l2"
+        self.display_name = "V4L2 Camera"
+        self.priority = 70
+    
+    def is_available(self) -> bool:
+        """V4L2 está disponible si hay /dev/video*"""
+        import glob
+        return len(glob.glob('/dev/video*')) > 0
+    
+    def discover_sources(self) -> list[dict]:
+        """
+        Detectar cámaras USB/CSI disponibles.
+        
+        Filtra duplicados agrupando por bus_info (mismo dispositivo físico).
+        """
+        cameras = []
+        for device_path in glob.glob('/dev/video*'):
+            try:
+                # Leer propiedades con v4l2-ctl
+                cap = v4l2_get_capabilities(device_path)
+                bus_info = cap.get('bus_info')
+                
+                # Agrupar por bus_info para evitar duplicados
+                if bus_info not in seen_buses:
+                    cameras.append({
+                        "device": device_path,
+                        "name": cap.get('name', 'Unknown'),
+                        "provider": self.display_name,
+                        "resolutions": extract_resolutions(device_path),
+                        "framerates": extract_framerates(device_path)
+                    })
+                    seen_buses.add(bus_info)
+            except Exception as e:
+                logger.warning(f"Error probing {device_path}: {e}")
+        
+        return cameras
+    
+    def build_source_element(self, device: str, config: dict) -> dict:
+        """Construir elemento v4l2src con propiedades de cámara."""
+        return {
+            "success": True,
+            "source_element": {
+                "element": "v4l2src",
+                "name": "source",
+                "properties": {
+                    "device": device,
+                    "do-timestamp": True
+                }
+            },
+            "caps_filter": (
+                f"video/x-raw,width={config['width']},"
+                f"height={config['height']},"
+                f"framerate={config['framerate']}/1"
+            ),
+            "post_elements": []
+        }
+```
+
+### VideoEncoderProvider — Estructura base
+
+```python
+# app/providers/base/video_encoder_provider.py
+class VideoEncoderProvider(ABC):
+    """
+    Proveedor abstracto para codificadores de video (H.264, MJPEG, etc).
+    Detecta codificadores disponibles y construye elementos GStreamer.
+    """
+    
+    def __init__(self):
+        self.name: str = ""              # ID: "x264", "mjpeg", "h264", etc.
+        self.display_name: str = ""      # Nombre visible
+        self.priority: int = 50          # Mayor = preferencia
+        self.available: bool = False
+    
+    @abstractmethod
+    def is_available(self) -> bool:
+        """Verificar si el codificador está disponible en el sistema."""
+        ...
+    
+    @abstractmethod
+    def validate_config(self, config: dict) -> dict:
+        """
+        Validar que la configuración es válida para este codificador.
+        
+        Retorna:
+        {
+            "valid": True,
+            "errors": [],
+            "warnings": []
+        }
+        """
+        ...
+    
+    @abstractmethod
+    def build_pipeline_elements(self, config: dict) -> dict:
+        """
+        Construir elementos GStreamer para este codificador.
+        
+        Retorna:
+        {
+            "success": True,
+            "elements": [
+                {
+                    "element": "x264enc",
+                    "name": "encoder",
+                    "properties": {
+                        "bitrate": 2000,
+                        "speed-preset": "ultrafast",
+                        "key-int-max": 60
+                    }
+                },
+                ...
+            ],
+            "rtp_payloader": "rtph264pay",
+            "rtp_payloader_properties": {"config-interval": 1}
+        }
+        """
+        ...
+    
+    def update_property(self, element, property_name: str, value):
+        """
+        Actualizar una propiedad en vivo (durante transmisión).
+        Usado para cambiar bitrate, quality, etc. sin reiniciar.
+        """
+        ...
+```
+
+### Ejemplo: Implementar X264Encoder
+
+```python
+# app/providers/video/x264_encoder.py
+class X264Encoder(VideoEncoderProvider):
+    def __init__(self):
+        super().__init__()
+        self.name = "h264"
+        self.display_name = "H.264 (x264)"
+        self.priority = 60
+    
+    def is_available(self) -> bool:
+        """x264enc disponible si GStreamer lo tiene compilado."""
+        return Gst.ElementFactory.make("x264enc", None) is not None
+    
+    def validate_config(self, config: dict) -> dict:
+        bitrate = config.get('bitrate', 2000)
+        errors = []
+        warnings = []
+        
+        if not 100 <= bitrate <= 10000:
+            errors.append(f"Bitrate fuera de rango: {bitrate} kbps (debe ser 100-10000)")
+        
+        if bitrate < 500:
+            warnings.append(f"Bitrate muy bajo ({bitrate}), puede afectar calidad")
+        
+        return {
+            "valid": len(errors) == 0,
+            "errors": errors,
+            "warnings": warnings
+        }
+    
+    def build_pipeline_elements(self, config: dict) -> dict:
+        """Construir pipeline: x264enc → rtph264pay → udpsink"""
+        bitrate = config.get('bitrate', 2000)
+        gop_size = config.get('gop_size', 2)
+        
+        return {
+            "success": True,
+            "elements": [
+                {
+                    "element": "x264enc",
+                    "name": "encoder",
+                    "properties": {
+                        "bitrate": bitrate,           # kbps
+                        "speed-preset": "ultrafast", # Para baja latencia
+                        "key-int-max": 30 * gop_size,  # Keyframes cada N segundos
+                        "tune": "zerolatency"
+                    }
+                }
+            ],
+            "rtp_payloader": "rtph264pay",
+            "rtp_payloader_properties": {"config-interval": 1}
+        }
+```
+
+### Registrar proveedores en main.py
+
+```python
+# app/main.py
+from providers.video_source import v4l2_camera, libcamera_source, hdmi_capture, network_stream
+from providers.video import mjpeg_encoder, x264_encoder, hardware_h264_encoder
+
+def init_provider_registry():
+    registry = get_provider_registry()
+    
+    # Registrar proveedores de fuentes (orden = prioridad)
+    registry.register_video_source(hardware_h264_encoder.HardwareH264Encoder())
+    registry.register_video_source(libcamera_source.LibCameraSource())
+    registry.register_video_source(hdmi_capture.HDMICaptureSource())
+    registry.register_video_source(v4l2_camera.V4L2CameraSource())
+    registry.register_video_source(network_stream.NetworkStreamSource())
+    
+    # Registrar proveedores de codificadores (orden = prioridad)
+    registry.register_video_encoder(hardware_h264_encoder.HardwareH264Encoder())
+    registry.register_video_encoder(mjpeg_encoder.MJPEGEncoder())
+    registry.register_video_encoder(x264_encoder.X264Encoder())
+    registry.register_video_encoder(openh264_encoder.OpenH264Encoder())
+```
+
+### Tabla de proveedores disponibles
+
+| Tipo | Nombre | ID | Prioridad | Descripción |
+|------|--------|----|-----------|----|
+| **Source** | V4L2 Camera | `v4l2` | 70 | Cámaras USB, CSI (video4linux2) |
+| | LibCamera | `libcamera` | 80 | CSI en Raspberry Pi 4+, Radxa |
+| | HDMI Capture | `hdmi` | 75 | Captura HDMI (USB/PCIe) |
+| | Network Stream | `network` | 50 | RTSP, HTTP, HLS, RTMP |
+| **Encoder** | Hardware H.264 | `h264_hw` | 100 | v4l2h264enc, meson_venc (SoC) |
+| | MJPEG | `mjpeg` | 70 | Baja latencia (~30ms) |
+| | x264 | `h264` | 60 | H.264 software, buena calidad |
+| | OpenH264 | `h264_openh264` | 0 | Deshabilitado (lento sin HW) |
+
+### Flujo de selección automática
+
+```
+1. Usuario selecciona dispositivo: /dev/video0
+2. API llama: registry.get_available_video_sources()
+3. Todos los proveedores hacen discover_sources()
+4. Se devuelve lista con provider name: "V4L2 Camera"
+5. En transmisión:
+   - API selecciona automáticamente encoder de prioridad más alta
+   - Ejemplo: HW H.264 > x264 > MJPEG > OpenH264
+6. gstreamer_service.py nota provider usado:
+   - current_encoder_provider = "x264 Encoder"
+   - current_source_provider = "V4L2 Camera"
+7. Frontend muestra: "x264 Encoder from V4L2 Camera @ 1920x1080 30fps"
+```
+
+### Para añadir un nuevo proveedor de video
+
+1. **Crear clase** en `app/providers/video_source/<nombre>.py` o `app/providers/video/<nombre>.py`
+2. **Heredar** de `VideoSourceProvider` o `VideoEncoderProvider`
+3. **Implementar** métodos abstractos
+4. **Registrar** en `app/main.py` (init_provider_registry)
+5. **Auto-detectado** en API `/api/video/cameras` y `/api/video/codecs`
+
+---
+
 ## 7. API REST — Referencia rápida
 
 ### Telemetría / MAVLink
@@ -383,12 +739,84 @@ GET  /api/mavlink/telemetry           # Datos de telemetría
 ### Video
 
 ```
-GET  /api/video/status                # Estado del stream
-POST /api/video/start                 # Iniciar streaming
+GET  /api/video/status                # Estado del stream (incluye providers activos)
+POST /api/video/start                 # Iniciar streaming (auto-selecciona providers)
 POST /api/video/stop                  # Detener streaming
-POST /api/video/configure             # Aplicar configuración
-GET  /api/video/cameras               # Cámaras detectadas
+POST /api/video/configure             # Aplicar configuración (codec, bitrate, etc.)
+GET  /api/video/cameras               # Cámaras detectadas (todos los providers)
+GET  /api/video/codecs                # Codificadores disponibles (todos los providers)
+PUT  /api/video/update-property       # Cambiar bitrate/quality en vivo
 ```
+
+**Ejemplo: Respuesta de `/api/video/status`**
+
+```json
+{
+  "streaming": true,
+  "config": {
+    "device": "/dev/video0",
+    "codec": "h264",
+    "width": 1920,
+    "height": 1080,
+    "framerate": 30,
+    "h264_bitrate": 2000
+  },
+  "providers": {
+    "encoder": "x264 Encoder",      // Proveedor activo
+    "source": "V4L2 Camera"         // Fuente activa
+  },
+  "stats": {
+    "current_fps": 29,
+    "current_bitrate": 2100,
+    "frames_sent": 15420,
+    "health": "good"
+  }
+}
+```
+
+**Ejemplo: Respuesta de `/api/video/cameras`**
+
+```json
+[
+  {
+    "device": "/dev/video0",
+    "name": "Brio 100",
+    "provider": "V4L2 Camera",       // Proveedor que la detecó
+    "resolutions": ["1920x1080", "1280x720", "640x480"],
+    "framerates": [30, 24, 15]
+  }
+]
+```
+
+**Ejemplo: Respuesta de `/api/video/codecs`**
+
+```json
+[
+  {
+    "id": "h264_hw",
+    "name": "H.264 Hardware",
+    "available": false,              // No disponible en este SoC
+    "priority": 100,
+    "description": "v4l2h264enc (hardware)"
+  },
+  {
+    "id": "mjpeg",
+    "name": "MJPEG",
+    "available": true,
+    "priority": 70,
+    "description": "Motion JPEG (baja latencia)"
+  },
+  {
+    "id": "h264",
+    "name": "H.264 (x264)",
+    "available": true,
+    "priority": 60,
+    "description": "x264 software encoding"
+  }
+]
+```
+
+---
 
 ### Red / Modem
 
