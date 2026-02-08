@@ -9,6 +9,7 @@ from typing import List
 
 class StorageType(Enum):
     """Where system is running from"""
+
     EMMC = "eMMC"
     SD_CARD = "SD Card"
     NVME = "NVMe"
@@ -17,6 +18,7 @@ class StorageType(Enum):
 
 class DistroFamily(Enum):
     """Linux distribution family"""
+
     UBUNTU = "ubuntu"
     DEBIAN = "debian"
     ARMBIAN = "armbian"
@@ -26,6 +28,7 @@ class DistroFamily(Enum):
 
 class CPUArch(Enum):
     """CPU architecture"""
+
     ARMV7 = "armv7l"
     ARMV8 = "aarch64"
     X86_64 = "x86_64"
@@ -34,6 +37,7 @@ class CPUArch(Enum):
 
 class VideoSourceFeature(Enum):
     """Video source capabilities"""
+
     V4L2 = "v4l2"
     LIBCAMERA = "libcamera"
     HDMI_IN = "hdmi_in"
@@ -42,6 +46,7 @@ class VideoSourceFeature(Enum):
 
 class VideoEncoderFeature(Enum):
     """Video encoder capabilities"""
+
     HARDWARE_H264 = "hardware_h264"
     MJPEG = "mjpeg"
     X264_SOFTWARE = "x264"
@@ -50,6 +55,7 @@ class VideoEncoderFeature(Enum):
 
 class ConnectivityFeature(Enum):
     """Connectivity options"""
+
     WIFI = "wifi"
     ETHERNET = "ethernet"
     USB_MODEM = "usb_modem"
@@ -58,6 +64,7 @@ class ConnectivityFeature(Enum):
 
 class SystemFeature(Enum):
     """System capabilities"""
+
     GPIO = "gpio"
     SPI = "spi"
     I2C = "i2c"
@@ -68,24 +75,26 @@ class SystemFeature(Enum):
 @dataclass
 class HardwareInfo:
     """Hardware specifications"""
-    cpu_model: str              # e.g., "Amlogic S905Y2"
-    cpu_cores: int              # Number of CPU cores
-    cpu_arch: CPUArch           # Architecture
-    ram_gb: int                 # RAM in GB
-    storage_gb: int             # Primary storage in GB
-    has_gpu: bool               # GPU present
-    gpu_model: str = None       # e.g., "Mali-G31", None if no GPU
+
+    cpu_model: str  # e.g., "Amlogic S905Y2"
+    cpu_cores: int  # Number of CPU cores
+    cpu_arch: CPUArch  # Architecture
+    ram_gb: int  # RAM in GB
+    storage_gb: int  # Primary storage in GB
+    has_gpu: bool  # GPU present
+    gpu_model: str = None  # e.g., "Mali-G31", None if no GPU
 
 
 @dataclass
 class VariantInfo:
     """Board variant configuration"""
-    name: str                               # e.g., "eMMC Storage"
-    storage_type: StorageType              # Where system runs from
-    distro_family: DistroFamily            # Linux distro
-    distro_version: str                    # Version (e.g., "25.11.2")
-    kernel_version: str                    # Kernel (e.g., "6.12.58-current-meson64")
-    is_default: bool = False               # Default variant for detection
+
+    name: str  # e.g., "eMMC Storage"
+    storage_type: StorageType  # Where system runs from
+    distro_family: DistroFamily  # Linux distro
+    distro_version: str  # Version (e.g., "25.11.2")
+    kernel_version: str  # Kernel (e.g., "6.12.58-current-meson64")
+    is_default: bool = False  # Default variant for detection
     video_sources: List[VideoSourceFeature] = None
     video_encoders: List[VideoEncoderFeature] = None
     connectivity: List[ConnectivityFeature] = None
@@ -105,8 +114,9 @@ class VariantInfo:
 @dataclass
 class DetectionCriteria:
     """How to detect a board in runtime"""
-    cpu_model_contains: str = None         # Check /proc/cpuinfo
-    device_tree_contains: str = None       # Check /proc/device-tree/model
-    dmesg_contains: str = None            # Check kernel logs
-    distro_name: str = None               # Check /etc/os-release
-    check_files: List[str] = None         # Files that should exist
+
+    cpu_model_contains: str = None  # Check /proc/cpuinfo
+    device_tree_contains: str = None  # Check /proc/device-tree/model
+    dmesg_contains: str = None  # Check kernel logs
+    distro_name: str = None  # Check /etc/os-release
+    check_files: List[str] = None  # Files that should exist

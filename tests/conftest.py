@@ -15,7 +15,7 @@ from pathlib import Path
 def mock_serial_port():
     """
     Mock pyserial.Serial for tests without hardware
-    
+
     Returns a mock serial port with MAVLink-like behavior
     """
     with patch("serial.Serial") as mock:
@@ -36,7 +36,7 @@ def mock_serial_port():
 def mock_mavlink_connection():
     """
     Mock pymavlink.mavutil.mavlink_connection
-    
+
     Provides mock MAVLink connection with heartbeat and basic message support
     """
     with patch("pymavlink.mavutil.mavlink_connection") as mock:
@@ -63,7 +63,7 @@ def mock_mavlink_connection():
 def mock_hilink_modem():
     """
     Mock Huawei HiLink API for modem tests
-    
+
     Provides realistic modem responses without physical hardware
     """
     with patch("huawei_lte_api.Connection") as mock:
@@ -116,7 +116,7 @@ def mock_hilink_modem():
 def mock_gstreamer():
     """
     Mock GStreamer (gi.repository.Gst) for video tests
-    
+
     Provides mock GStreamer pipeline without camera hardware
     """
     with patch("gi.repository.Gst") as mock_gst:
@@ -144,7 +144,7 @@ def mock_gstreamer():
 def mock_subprocess():
     """
     Mock subprocess.run for system command tests
-    
+
     Returns successful execution by default
     """
     with patch("subprocess.run") as mock:
@@ -160,10 +160,10 @@ def mock_subprocess():
 def temp_preferences(tmp_path):
     """
     Create temporary preferences.json file for testing
-    
+
     Args:
         tmp_path: pytest's temporary directory fixture
-    
+
     Returns:
         Path to temporary preferences file
     """
@@ -191,7 +191,7 @@ def temp_preferences(tmp_path):
 def mock_network_manager():
     """
     Mock NetworkManager D-Bus interface
-    
+
     Provides mock network management without system access
     """
     with patch("subprocess.run") as mock_subprocess:
@@ -219,7 +219,7 @@ def mock_network_manager():
 def mock_tailscale():
     """
     Mock Tailscale CLI commands
-    
+
     Provides mock VPN functionality for testing
     """
     with patch("subprocess.run") as mock_subprocess:
@@ -257,7 +257,7 @@ def mock_tailscale():
 def sample_mavlink_messages():
     """
     Provide sample MAVLink messages for testing
-    
+
     Returns dict with common message types
     """
     return {
@@ -294,7 +294,7 @@ def sample_mavlink_messages():
 def pytest_configure(config):
     """
     Pytest configuration hook
-    
+
     Add custom markers and configuration
     """
     config.addinivalue_line("markers", "hardware: tests requiring physical hardware (deselect in CI)")

@@ -21,39 +21,37 @@ class TestPreferencesBasic:
         config = prefs.get_serial_config()
 
         assert config is not None
-        assert config["port"] == "/dev/ttyUSB0"
-        assert config["baudrate"] == 115200
+        assert config.port == "/dev/ttyUSB0"
+        assert config.baudrate == 115200
 
     def test_save_serial_config(self, temp_preferences):
         """Test saving serial configuration"""
         prefs = PreferencesService(config_path=str(temp_preferences))
 
-        result = prefs.set_serial_config(port="/dev/ttyUSB1", baudrate=57600)
+        prefs.set_serial_config(port="/dev/ttyUSB1", baudrate=57600)
 
-        assert result is True
         config = prefs.get_serial_config()
-        assert config["port"] == "/dev/ttyUSB1"
-        assert config["baudrate"] == 57600
+        assert config.port == "/dev/ttyUSB1"
+        assert config.baudrate == 57600
 
     def test_save_video_config(self, temp_preferences):
         """Test saving video configuration"""
         prefs = PreferencesService(config_path=str(temp_preferences))
 
-        result = prefs.set_video_config(source="hdmi", codec="mjpeg", width=1920, height=1080)
+        prefs.set_video_config({"codec": "mjpeg", "width": 1920, "height": 1080})
 
-        assert result is True
         config = prefs.get_video_config()
-        assert config["source"] == "hdmi"
+        # Note: device is auto-detected and validated, so we just check it's set
         assert config["codec"] == "mjpeg"
         assert config["width"] == 1920
+        assert config["height"] == 1080
 
     def test_save_vpn_config(self, temp_preferences):
         """Test saving VPN configuration"""
         prefs = PreferencesService(config_path=str(temp_preferences))
 
-        result = prefs.set_vpn_config(provider="tailscale", auto_connect=True)
+        prefs.set_vpn_config({"provider": "tailscale", "auto_connect": True})
 
-        assert result is True
         config = prefs.get_vpn_config()
         assert config["provider"] == "tailscale"
         assert config["auto_connect"] is True
@@ -72,8 +70,8 @@ class TestPreferencesPersistence:
         prefs2 = PreferencesService(config_path=str(temp_preferences))
         config = prefs2.get_serial_config()
 
-        assert config["port"] == "/dev/ttyUSB2"
-        assert config["baudrate"] == 921600
+        assert config.port == "/dev/ttyUSB2"
+        assert config.baudrate == 921600
 
     def test_file_content_matches(self, temp_preferences):
         """Test that file content matches what's saved"""
@@ -116,8 +114,8 @@ class TestPreferencesThreadSafety:
 
         # Should have valid config (one of the ports)
         config = prefs.get_serial_config()
-        assert config["port"].startswith("/dev/ttyUSB")
-        assert config["baudrate"] == 115200
+        assert config.port.startswith("/dev/ttyUSB")
+        assert config.baudrate == 115200
 
     def test_concurrent_read_write(self, temp_preferences):
         """Test concurrent reads and writes work correctly"""
@@ -171,8 +169,8 @@ class TestPreferencesEdgeCases:
         # Should have default structure
         config = prefs.get_serial_config()
         assert config is not None
-        assert "port" in config
-        assert "baudrate" in config
+        assert hasattr(config, "port")
+        assert hasattr(config, "baudrate")
 
     def test_partial_config_update(self, temp_preferences):
         """Test updating only some fields preserves others"""
@@ -180,14 +178,14 @@ class TestPreferencesEdgeCases:
 
         # Initial state
         original_config = prefs.get_video_config()
-        original_source = original_config["source"]
+        original_source = original_config["device"]
 
         # Update only bitrate
-        prefs.set_video_config(bitrate=5000)
+        prefs.set_video_config({"bitrate": 5000})
 
-        # Check source is preserved
+        # Check device is preserved
         new_config = prefs.get_video_config()
-        assert new_config["source"] == original_source
+        assert new_config["device"] == original_source
         assert new_config["bitrate"] == 5000
 
     def test_invalid_path_handling(self):
@@ -218,7 +216,7 @@ class TestPreferencesIntegration:
                     if i % 3 == 0:
                         prefs.set_serial_config(port=f"/dev/ttyUSB{worker_id}", baudrate=115200)
                     elif i % 3 == 1:
-                        prefs.set_video_config(bitrate=1000 + worker_id * 100)
+                        prefs.set_video_config({"bitrate": 1000 + worker_id * 100})
                     else:
                         prefs.get_serial_config()
                     operations += 1

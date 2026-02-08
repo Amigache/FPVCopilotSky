@@ -10,20 +10,17 @@ from .video_source_provider import VideoSourceProvider
 
 __all__ = [
     # Modem
-    'ModemProvider',
-    'ModemStatus',
-    'ModemInfo',
-    'NetworkInfo',
-    
+    "ModemProvider",
+    "ModemStatus",
+    "ModemInfo",
+    "NetworkInfo",
     # VPN
-    'VPNProvider',
-    
+    "VPNProvider",
     # Network
-    'NetworkInterface',
-    'InterfaceStatus',
-    'InterfaceType',
-    
+    "NetworkInterface",
+    "InterfaceStatus",
+    "InterfaceType",
     # Video
-    'VideoEncoderProvider',
-    'VideoSourceProvider',
+    "VideoEncoderProvider",
+    "VideoSourceProvider",
 ]

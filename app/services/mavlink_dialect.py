@@ -7,9 +7,10 @@ from pymavlink import mavutil
 from pymavlink.dialects.v20 import ardupilotmega as apm
 from typing import Dict, List, Optional
 
+
 class MAVLinkDialect:
     """Service for accessing MAVLink dialect information"""
-    
+
     # Flight modes for different vehicle types
     PLANE_MODES = {
         0: "MANUAL",
@@ -37,9 +38,9 @@ class MAVLinkDialect:
         23: "QACRO",
         24: "THERMAL",
         25: "LOITER2QLAND",
-        26: "AUTOLAND"
+        26: "AUTOLAND",
     }
-    
+
     COPTER_MODES = {
         0: "STABILIZE",
         1: "ACRO",
@@ -67,9 +68,9 @@ class MAVLinkDialect:
         26: "AUTOROTATE",
         27: "AUTO_RTL",
         28: "TURTLE",
-        29: "RATE_ACRO"
+        29: "RATE_ACRO",
     }
-    
+
     ROVER_MODES = {
         0: "MANUAL",
         1: "ACRO",
@@ -84,9 +85,9 @@ class MAVLinkDialect:
         11: "RTL",
         12: "SMART_RTL",
         15: "GUIDED",
-        16: "INITIALISING"
+        16: "INITIALISING",
     }
-    
+
     SUB_MODES = {
         0: "STABILIZE",
         1: "ACRO",
@@ -98,32 +99,24 @@ class MAVLinkDialect:
         16: "POSHOLD",
         19: "MANUAL",
         20: "MOTORDETECT",
-        21: "SURFTRAK"
+        21: "SURFTRAK",
     }
-    
-    TRACKER_MODES = {
-        0: "MANUAL",
-        1: "STOP",
-        2: "SCAN",
-        3: "SERVO_TEST",
-        4: "GUIDED",
-        10: "AUTO",
-        16: "INITIALISING"
-    }
-    
+
+    TRACKER_MODES = {0: "MANUAL", 1: "STOP", 2: "SCAN", 3: "SERVO_TEST", 4: "GUIDED", 10: "AUTO", 16: "INITIALISING"}
+
     # MAV_TYPE to mode mapping
     MAV_TYPE_MODES = {
-        1: PLANE_MODES,      # MAV_TYPE_FIXED_WING
-        2: COPTER_MODES,     # MAV_TYPE_QUADROTOR
-        10: ROVER_MODES,     # MAV_TYPE_GROUND_ROVER
-        12: COPTER_MODES,    # MAV_TYPE_HEXAROTOR
-        13: COPTER_MODES,    # MAV_TYPE_OCTOROTOR
-        14: COPTER_MODES,    # MAV_TYPE_TRICOPTER
-        19: PLANE_MODES,     # MAV_TYPE_VTOL
-        20: SUB_MODES,       # MAV_TYPE_SUBMARINE
-        26: TRACKER_MODES,   # MAV_TYPE_ANTENNA_TRACKER
+        1: PLANE_MODES,  # MAV_TYPE_FIXED_WING
+        2: COPTER_MODES,  # MAV_TYPE_QUADROTOR
+        10: ROVER_MODES,  # MAV_TYPE_GROUND_ROVER
+        12: COPTER_MODES,  # MAV_TYPE_HEXAROTOR
+        13: COPTER_MODES,  # MAV_TYPE_OCTOROTOR
+        14: COPTER_MODES,  # MAV_TYPE_TRICOPTER
+        19: PLANE_MODES,  # MAV_TYPE_VTOL
+        20: SUB_MODES,  # MAV_TYPE_SUBMARINE
+        26: TRACKER_MODES,  # MAV_TYPE_ANTENNA_TRACKER
     }
-    
+
     # System status messages
     MAV_STATE = {
         0: "UNINIT",
@@ -134,9 +127,9 @@ class MAVLinkDialect:
         5: "CRITICAL",
         6: "EMERGENCY",
         7: "POWEROFF",
-        8: "FLIGHT_TERMINATION"
+        8: "FLIGHT_TERMINATION",
     }
-    
+
     # Autopilot types
     MAV_AUTOPILOT = {
         0: "GENERIC",
@@ -159,9 +152,9 @@ class MAVLinkDialect:
         17: "ASLUAV",
         18: "SMARTAP",
         19: "AIRRAILS",
-        20: "REFLEX"
+        20: "REFLEX",
     }
-    
+
     # Vehicle types
     MAV_TYPE = {
         0: "GENERIC",
@@ -206,61 +199,61 @@ class MAVLinkDialect:
         39: "OSD",
         40: "IMU",
         41: "GPS",
-        42: "WINCH"
+        42: "WINCH",
     }
-    
+
     @staticmethod
     def get_mode_string(mav_type: int, custom_mode: int) -> str:
         """
         Get human-readable flight mode string
-        
+
         Args:
             mav_type: MAV_TYPE from heartbeat
             custom_mode: Custom mode from heartbeat
-            
+
         Returns:
             Mode name as string
         """
         modes = MAVLinkDialect.MAV_TYPE_MODES.get(mav_type, {})
         return modes.get(custom_mode, f"UNKNOWN({custom_mode})")
-    
+
     @staticmethod
     def get_state_string(system_status: int) -> str:
         """Get human-readable system status string"""
         return MAVLinkDialect.MAV_STATE.get(system_status, f"UNKNOWN({system_status})")
-    
+
     @staticmethod
     def get_autopilot_string(autopilot: int) -> str:
         """Get human-readable autopilot type string"""
         return MAVLinkDialect.MAV_AUTOPILOT.get(autopilot, f"UNKNOWN({autopilot})")
-    
+
     @staticmethod
     def get_type_string(mav_type: int) -> str:
         """Get human-readable vehicle type string"""
         return MAVLinkDialect.MAV_TYPE.get(mav_type, f"UNKNOWN({mav_type})")
-    
+
     @staticmethod
     def get_all_modes_for_type(mav_type: int) -> Dict[int, str]:
         """
         Get all available modes for a vehicle type
-        
+
         Args:
             mav_type: MAV_TYPE from heartbeat
-            
+
         Returns:
             Dictionary of {mode_number: mode_name}
         """
         return MAVLinkDialect.MAV_TYPE_MODES.get(mav_type, {})
-    
+
     @staticmethod
     def get_enum_value(enum_name: str, value_name: str) -> Optional[int]:
         """
         Get numeric value for an enum entry
-        
+
         Args:
             enum_name: Name of the enum (e.g., 'MAV_CMD')
             value_name: Name of the value (e.g., 'MAV_CMD_NAV_WAYPOINT')
-            
+
         Returns:
             Numeric value or None if not found
         """
@@ -272,16 +265,16 @@ class MAVLinkDialect:
             return None
         except:
             return None
-    
+
     @staticmethod
     def get_enum_name(enum_name: str, value: int) -> Optional[str]:
         """
         Get name for an enum value (reverse lookup)
-        
+
         Args:
             enum_name: Name of the enum
             value: Numeric value
-            
+
         Returns:
             Enum entry name or None if not found
         """

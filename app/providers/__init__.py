@@ -30,28 +30,24 @@ from .network import (
 
 __all__ = [
     # Base abstractions
-    'ModemProvider',
-    'ModemStatus',
-    'ModemInfo',
-    'ModemNetworkInfo',
-    'VPNProvider',
-    'NetworkInterface',
-    'InterfaceStatus',
-    
+    "ModemProvider",
+    "ModemStatus",
+    "ModemInfo",
+    "ModemNetworkInfo",
+    "VPNProvider",
+    "NetworkInterface",
+    "InterfaceStatus",
     # Registry
-    'ProviderRegistry',
-    'get_provider_registry',
-    'init_provider_registry',
-    
+    "ProviderRegistry",
+    "get_provider_registry",
+    "init_provider_registry",
     # VPN providers
-    'TailscaleProvider',
-    
+    "TailscaleProvider",
     # Modem providers
-    'HuaweiE3372hProvider',
-    
+    "HuaweiE3372hProvider",
     # Network Interface providers
-    'EthernetInterface',
-    'WiFiInterface',
-    'VPNInterface',
-    'ModemInterface',
+    "EthernetInterface",
+    "WiFiInterface",
+    "VPNInterface",
+    "ModemInterface",
 ]

@@ -30,45 +30,50 @@ def _get_preferences_service():
     return get_preferences()
 
 
-def _get_vpn_provider(provider_name: Optional[str] = None, lang: str = 'en'):
+def _get_vpn_provider(provider_name: Optional[str] = None, lang: str = "en"):
     """Get VPN provider from registry"""
     registry = get_provider_registry()
-    
+
     # If provider_name not specified, get from preferences
     if not provider_name:
         prefs = _get_preferences_service()
         config = prefs.get_vpn_config()
-        provider_name = config.get('provider')
-    
+        provider_name = config.get("provider")
+
     # If still no provider, auto-detect first installed one
     if not provider_name:
         available = registry.get_available_vpn_providers()
-        installed = [p for p in available if p.get('installed')]
+        installed = [p for p in available if p.get("installed")]
         if installed:
-            provider_name = installed[0]['name']
-    
+            provider_name = installed[0]["name"]
+
     if not provider_name:
         raise HTTPException(status_code=400, detail=translate("vpn.no_provider_configured", lang))
-    
+
     provider = registry.get_vpn_provider(provider_name)
     if not provider:
-        raise HTTPException(status_code=503, detail=translate("vpn.provider_not_available", lang, provider=provider_name))
-    
+        raise HTTPException(
+            status_code=503, detail=translate("vpn.provider_not_available", lang, provider=provider_name)
+        )
+
     return provider
 
 
 class VPNConnectRequest(BaseModel):
     """VPN connection request"""
+
     provider: Optional[str] = None
 
 
 class VPNDisconnectRequest(BaseModel):
     """VPN disconnection request"""
+
     provider: Optional[str] = None
 
 
 class VPNPreferencesModel(BaseModel):
     """VPN preferences model"""
+
     provider: str = ""  # "tailscale", "zerotier", "wireguard", or "" for none
     enabled: bool = False
     auto_connect: bool = False
@@ -81,10 +86,7 @@ async def get_providers():
     try:
         registry = get_provider_registry()
         providers = registry.get_available_vpn_providers()
-        return {
-            "success": True,
-            "providers": providers
-        }
+        return {"success": True, "providers": providers}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -107,10 +109,10 @@ async def get_status(request: Request, provider: Optional[str] = None):
 async def get_peers(request: Request, provider: Optional[str] = None):
     """
     Get list of VPN peers/nodes
-    
+
     Args:
         provider: VPN provider name (optional, uses current if not specified)
-    
+
     Returns:
         List of peers in the VPN network with their status and information
     """
@@ -118,19 +120,11 @@ async def get_peers(request: Request, provider: Optional[str] = None):
     try:
         vpn_provider = _get_vpn_provider(provider, lang)
         peers = vpn_provider.get_peers()
-        return {
-            "success": True,
-            "peers": peers,
-            "count": len(peers)
-        }
+        return {"success": True, "peers": peers, "count": len(peers)}
     except HTTPException as e:
         # If no VPN provider configured, return empty list instead of error
         if e.status_code == 400 and translate("vpn.no_provider_configured", lang) in str(e.detail):
-            return {
-                "success": True,
-                "peers": [],
-                "count": 0
-            }
+            return {"success": True, "peers": [], "count": 0}
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -140,10 +134,10 @@ async def get_peers(request: Request, provider: Optional[str] = None):
 async def connect_vpn(request: VPNConnectRequest, req: Request):
     """
     Connect to VPN
-    
+
     Args:
         provider: VPN provider name (optional, uses current if not specified)
-    
+
     Returns:
         Connection result with auth_url if authentication is needed
     """
@@ -151,11 +145,11 @@ async def connect_vpn(request: VPNConnectRequest, req: Request):
     try:
         vpn_provider = _get_vpn_provider(request.provider, lang)
         result = vpn_provider.connect()
-        
+
         if not result.get("success") and not result.get("needs_auth"):
             msg = result.get("error", translate("vpn.connection_failed", lang))
             raise HTTPException(status_code=400, detail=msg)
-        
+
         return result
     except HTTPException:
         raise
@@ -167,7 +161,7 @@ async def connect_vpn(request: VPNConnectRequest, req: Request):
 async def disconnect_vpn(request: VPNDisconnectRequest, req: Request):
     """
     Disconnect from VPN
-    
+
     Args:
         provider: VPN provider name (optional, uses current if not specified)
     """
@@ -175,11 +169,11 @@ async def disconnect_vpn(request: VPNDisconnectRequest, req: Request):
     try:
         vpn_provider = _get_vpn_provider(request.provider, lang)
         result = vpn_provider.disconnect()
-        
+
         if not result.get("success"):
             msg = result.get("error", translate("vpn.disconnection_failed", lang))
             raise HTTPException(status_code=400, detail=msg)
-        
+
         return result
     except HTTPException:
         raise
@@ -191,10 +185,10 @@ async def disconnect_vpn(request: VPNDisconnectRequest, req: Request):
 async def logout_vpn(request: VPNDisconnectRequest, req: Request):
     """
     Logout from VPN (clears local credentials)
-    
+
     Args:
         provider: VPN provider name (optional, uses current if not specified)
-    
+
     This is useful when you need to re-authenticate with fresh credentials,
     for example when the device has been deleted from the admin panel.
     """
@@ -202,11 +196,11 @@ async def logout_vpn(request: VPNDisconnectRequest, req: Request):
     try:
         vpn_provider = _get_vpn_provider(request.provider, lang)
         result = vpn_provider.logout()
-        
+
         if not result.get("success"):
             msg = result.get("error", translate("vpn.logout_failed", lang))
             raise HTTPException(status_code=400, detail=msg)
-        
+
         return result
     except HTTPException:
         raise
@@ -218,7 +212,7 @@ async def logout_vpn(request: VPNDisconnectRequest, req: Request):
 async def get_vpn_preferences():
     """
     Get VPN preferences from persistent storage
-    
+
     Returns:
         VPN configuration including provider, enabled state, and auto-connect settings
     """
@@ -226,12 +220,10 @@ async def get_vpn_preferences():
         prefs = _get_preferences_service()
         # Run synchronous code in thread pool to avoid blocking
         import asyncio
+
         loop = asyncio.get_event_loop()
         config = await loop.run_in_executor(None, prefs.get_vpn_config)
-        return {
-            "success": True,
-            "preferences": config
-        }
+        return {"success": True, "preferences": config}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -240,10 +232,10 @@ async def get_vpn_preferences():
 async def save_vpn_preferences(preferences: VPNPreferencesModel, request: Request):
     """
     Save VPN preferences to persistent storage
-    
+
     Args:
         preferences: VPN preferences including provider, enabled, auto_connect, and provider_settings
-    
+
     Returns:
         Success status and saved preferences
     """
@@ -251,34 +243,30 @@ async def save_vpn_preferences(preferences: VPNPreferencesModel, request: Reques
         lang = get_language_from_request(request)
         prefs = _get_preferences_service()
         config = preferences.model_dump()
-        
+
         # Run synchronous code in thread pool to avoid blocking
         import asyncio
+
         loop = asyncio.get_event_loop()
-        
+
         # Save the config
         await loop.run_in_executor(None, lambda: prefs.set_vpn_config(config))
-        
+
         # Verify the save
         saved_config = await loop.run_in_executor(None, prefs.get_vpn_config)
-        
-        if (saved_config.get("provider") == config.get("provider") and
-            saved_config.get("enabled") == config.get("enabled") and
-            saved_config.get("auto_connect") == config.get("auto_connect")):
-            return {
-                "success": True,
-                "message": translate("vpn.preferences_saved", lang),
-                "preferences": config
-            }
+
+        if (
+            saved_config.get("provider") == config.get("provider")
+            and saved_config.get("enabled") == config.get("enabled")
+            and saved_config.get("auto_connect") == config.get("auto_connect")
+        ):
+            return {"success": True, "message": translate("vpn.preferences_saved", lang), "preferences": config}
         else:
             print(f"⚠️ VPN preferences verification failed")
-            return {
-                "success": False,
-                "message": "Failed to verify saved preferences",
-                "preferences": saved_config
-            }
+            return {"success": False, "message": "Failed to verify saved preferences", "preferences": saved_config}
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -287,20 +275,16 @@ async def save_vpn_preferences(preferences: VPNPreferencesModel, request: Reques
 async def get_available_providers():
     """
     Get list of available VPN providers from the provider registry
-    
+
     This endpoint uses the new modular provider registry system.
     Returns all registered VPN providers with their installation status.
-    
+
     Returns:
         List of VPN providers with their names, display names, installation status, and class
     """
     try:
         registry = get_provider_registry()
         providers = registry.get_available_vpn_providers()
-        return {
-            "success": True,
-            "providers": providers,
-            "count": len(providers)
-        }
+        return {"success": True, "providers": providers, "count": len(providers)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
