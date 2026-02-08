@@ -7,7 +7,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import TabBarComponent from './TabBar'
+import TabBar from './TabBar'
 
 describe('TabBar Component', () => {
   const mockTabs = [
@@ -19,7 +19,7 @@ describe('TabBar Component', () => {
 
   it('renders all tabs', () => {
     const mockOnChange = vi.fn()
-    render(<TabBarComponent tabs={mockTabs} activeTab="dashboard" onTabChange={mockOnChange} />)
+    render(<TabBar tabs={mockTabs} activeTab="dashboard" onTabChange={mockOnChange} />)
 
     expect(screen.getByRole('button', { name: 'Dashboard' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Telemetry' })).toBeInTheDocument()
@@ -29,7 +29,7 @@ describe('TabBar Component', () => {
 
   it('highlights the active tab', () => {
     const mockOnChange = vi.fn()
-    render(<TabBarComponent tabs={mockTabs} activeTab="video" onTabChange={mockOnChange} />)
+    render(<TabBar tabs={mockTabs} activeTab="video" onTabChange={mockOnChange} />)
 
     const videoTab = screen.getByRole('button', { name: 'Video' })
     expect(videoTab).toHaveClass('active')
@@ -38,7 +38,7 @@ describe('TabBar Component', () => {
   it('calls onTabChange when tab is clicked', async () => {
     const mockOnChange = vi.fn()
     const user = userEvent.setup()
-    render(<TabBarComponent tabs={mockTabs} activeTab="dashboard" onTabChange={mockOnChange} />)
+    render(<TabBar tabs={mockTabs} activeTab="dashboard" onTabChange={mockOnChange} />)
 
     const networkTab = screen.getByRole('button', { name: 'Network' })
     await user.click(networkTab)
@@ -49,7 +49,7 @@ describe('TabBar Component', () => {
   it('handles multiple tab clicks', async () => {
     const mockOnChange = vi.fn()
     const user = userEvent.setup()
-    render(<TabBarComponent tabs={mockTabs} activeTab="dashboard" onTabChange={mockOnChange} />)
+    render(<TabBar tabs={mockTabs} activeTab="dashboard" onTabChange={mockOnChange} />)
 
     await user.click(screen.getByRole('button', { name: 'Video' }))
     expect(mockOnChange).toHaveBeenCalledWith('video')
@@ -63,26 +63,26 @@ describe('TabBar Component', () => {
   it('renders single tab correctly', () => {
     const mockOnChange = vi.fn()
     const singleTab = [{ id: 'dashboard', label: 'Dashboard' }]
-    render(<TabBarComponent tabs={singleTab} activeTab="dashboard" onTabChange={mockOnChange} />)
+    render(<TabBar tabs={singleTab} activeTab="dashboard" onTabChange={mockOnChange} />)
 
     expect(screen.getByRole('button', { name: 'Dashboard' })).toHaveClass('active')
   })
 
   it('handles empty tabs array', () => {
     const mockOnChange = vi.fn()
-    const { container } = render(<TabBarComponent tabs={[]} activeTab="" onTabChange={mockOnChange} />)
+    const { container } = render(<TabBar tabs={[]} activeTab="" onTabChange={mockOnChange} />)
 
     expect(container.querySelectorAll('.tab-button')).toHaveLength(0)
   })
 
   it('updates active tab when activeTab prop changes', () => {
     const mockOnChange = vi.fn()
-    const { rerender } = render(<TabBarComponent tabs={mockTabs} activeTab="dashboard" onTabChange={mockOnChange} />)
+    const { rerender } = render(<TabBar tabs={mockTabs} activeTab="dashboard" onTabChange={mockOnChange} />)
 
     let dashboardTab = screen.getByRole('button', { name: 'Dashboard' })
     expect(dashboardTab).toHaveClass('active')
 
-    rerender(<TabBarComponent tabs={mockTabs} activeTab="telemetry" onTabChange={mockOnChange} />)
+    rerender(<TabBar tabs={mockTabs} activeTab="telemetry" onTabChange={mockOnChange} />)
 
     dashboardTab = screen.getByRole('button', { name: 'Dashboard' })
     expect(dashboardTab).not.toHaveClass('active')
