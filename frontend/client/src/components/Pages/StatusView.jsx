@@ -26,10 +26,27 @@ const StatusView = () => {
   const [restartingService, setRestartingService] = useState('') // 'backend' or 'frontend'
   const [wasDisconnected, setWasDisconnected] = useState(false)
 
+  const loadStatus = async () => {
+    try {
+      const response = await api.get('/api/status/health')
+      if (response.ok) {
+        const data = await response.json()
+        setStatusData(data)
+      } else {
+        showToast(t('status.error.loadingStatus'), 'error')
+      }
+    } catch (error) {
+      console.error('Error loading status:', error)
+      showToast(t('status.error.loadingStatus'), 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   // Load initial status
   useEffect(() => {
     loadStatus()
-  }, [loadStatus])
+  }, [])
 
   // Update from WebSocket
   useEffect(() => {
@@ -59,23 +76,6 @@ const StatusView = () => {
       }
     }
   }, [isConnected, isRestarting, wasDisconnected, restartingService, showToast, t])
-
-  const loadStatus = async () => {
-    try {
-      const response = await api.get('/api/status/health')
-      if (response.ok) {
-        const data = await response.json()
-        setStatusData(data)
-      } else {
-        showToast(t('status.error.loadingStatus'), 'error')
-      }
-    } catch (error) {
-      console.error('Error loading status:', error)
-      showToast(t('status.error.loadingStatus'), 'error')
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const handleResetPreferences = () => {
     showModal({

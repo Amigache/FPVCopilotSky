@@ -25,7 +25,7 @@ class TestMAVLinkConnection:
     def test_connect_invalid_port(self, mock_serial_port):
         """Test connection with invalid port"""
         bridge = MAVLinkBridge()
-        
+
         try:
             result = bridge.connect("/dev/invalid", 115200)
             assert isinstance(result, dict)
@@ -39,7 +39,7 @@ class TestMAVLinkConnection:
         mock_mavlink_connection.wait_heartbeat = Mock(side_effect=TimeoutError("No heartbeat"))
 
         bridge = MAVLinkBridge()
-        
+
         try:
             result = bridge.connect("/dev/ttyUSB0", 115200)
             # Should handle timeout gracefully or return failure
@@ -51,11 +51,11 @@ class TestMAVLinkConnection:
     def test_disconnect(self, mock_mavlink_connection):
         """Test clean disconnection"""
         bridge = MAVLinkBridge()
-        
+
         try:
             bridge.connect("/dev/ttyUSB0", 115200)
             result = bridge.disconnect()
-            
+
             assert isinstance(result, dict)
             assert bridge.is_connected() is False
         except Exception as e:
@@ -93,7 +93,7 @@ class TestMAVLinkStatus:
     def test_get_status_connected(self, mock_mavlink_connection):
         """Test status when connected"""
         bridge = MAVLinkBridge()
-        
+
         try:
             bridge.connect("/dev/ttyUSB0", 115200)
             status = bridge.get_status()
@@ -106,11 +106,11 @@ class TestMAVLinkStatus:
     def test_get_system_id(self, mock_mavlink_connection):
         """Test getting system ID"""
         bridge = MAVLinkBridge()
-        
+
         try:
             bridge.connect("/dev/ttyUSB0", 115200)
             system_id = bridge.get_system_id()
-            
+
             # Should return a value or None
             assert system_id is None or isinstance(system_id, int)
         except Exception as e:
@@ -123,7 +123,7 @@ class TestMAVLinkMessages:
     def test_receive_heartbeat(self, mock_mavlink_connection, sample_mavlink_messages):
         """Test receiving heartbeat message"""
         bridge = MAVLinkBridge()
-        
+
         # Verify bridge instance is created
         assert bridge is not None
         # Bridge handles heartbeat internally during connect
@@ -147,14 +147,14 @@ class TestMAVLinkParameters:
     def test_parameter_methods_exist(self, mock_mavlink_connection):
         """Test that parameter handling methods exist"""
         bridge = MAVLinkBridge()
-        
+
         # Check methods exist
-        assert hasattr(bridge, 'set_param') or hasattr(bridge, 'param_set')
+        assert hasattr(bridge, "set_param") or hasattr(bridge, "param_set")
 
     def test_get_parameter(self, mock_mavlink_connection):
         """Test getting a parameter from FC"""
         bridge = MAVLinkBridge()
-        
+
         try:
             bridge.connect("/dev/ttyUSB0", 115200)
             # Parameter reading depends on actual implementation
@@ -167,7 +167,7 @@ class TestMAVLinkParameters:
     def test_set_parameter(self, mock_mavlink_connection):
         """Test setting a parameter on FC"""
         bridge = MAVLinkBridge()
-        
+
         try:
             bridge.connect("/dev/ttyUSB0", 115200)
             # Just verify connection works
@@ -247,10 +247,10 @@ class TestMAVLinkEdgeCases:
     def test_multiple_status_checks(self, mock_mavlink_connection):
         """Test multiple status checks"""
         bridge = MAVLinkBridge()
-        
+
         try:
             bridge.connect("/dev/ttyUSB0", 115200)
-            
+
             # Multiple status checks should work
             for _ in range(10):
                 status = bridge.get_status()

@@ -8,12 +8,6 @@ const LogsModal = ({ show, onClose, type, onRefresh }) => {
   const [loading, setLoading] = useState(false);
   const logsRef = useRef(null);
 
-  useEffect(() => {
-    if (show) {
-      loadLogs();
-    }
-  }, [show, type]);
-
   const loadLogs = async () => {
     setLoading(true);
     try {
@@ -25,6 +19,12 @@ const LogsModal = ({ show, onClose, type, onRefresh }) => {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (show) {
+      loadLogs();
+    }
+  }, [show, type, loadLogs]);
 
   const handleRefresh = () => {
     loadLogs();

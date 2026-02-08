@@ -66,7 +66,7 @@ class TestStatusEndpoints:
 
         # Accept success or service unavailable
         assert response.status_code in [200, 503, 500]
-        
+
         if response.status_code == 200:
             data = response.json()
             assert isinstance(data, list)
