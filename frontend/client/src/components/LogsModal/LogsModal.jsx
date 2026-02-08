@@ -13,7 +13,7 @@ const LogsModal = ({ show, onClose, type, onRefresh }) => {
     try {
       const result = await onRefresh();
       setLogs(result || t('status.logs.noLogs'));
-    } catch (error) {
+    } catch (_error) {
       setLogs(t('status.logs.errorLoading'));
     } finally {
       setLoading(false);
