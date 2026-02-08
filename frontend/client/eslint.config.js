@@ -27,17 +27,15 @@ export default [
       'react-refresh': reactRefresh,
     },
     rules: {
-      // Phase 1: Relaxed rules for CI/CD infrastructure validation
-      // TODO: Gradually tighten these rules in Phase 2
-      'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
-      'no-prototype-builtins': 'warn',
-      'no-undef': 'warn',
-      'no-use-before-define': 'warn',
-      // Convert all react-hooks rules to warnings for Phase 1
-      ...Object.keys(reactHooks.configs.recommended.rules || {}).reduce((acc, key) => {
-        acc[key] = 'warn';
-        return acc;
-      }, {}),
+      // Phase 2: Tightened rules - warnings converted to errors
+      'no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      'no-prototype-builtins': 'error',
+      'no-undef': 'error',
+      'no-use-before-define': 'error',
+      // React hooks rules - some relaxed for pragmatic React patterns
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn', // Keep as warning - can be overly strict
+      'react-hooks/set-state-in-effect': 'warn', // Keep as warning - sometimes necessary
     },
   },
 ]

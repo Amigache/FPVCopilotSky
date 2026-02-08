@@ -29,7 +29,7 @@ const StatusView = () => {
   // Load initial status
   useEffect(() => {
     loadStatus()
-  }, [])
+  }, [loadStatus])
 
   // Update from WebSocket
   useEffect(() => {

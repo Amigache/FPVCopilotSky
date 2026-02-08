@@ -176,7 +176,7 @@ const NetworkView = () => {
   }
 
   // Get signal strength category
-  const getSignalCategory = (signal) => {
+  const _getSignalCategory = (signal) => {
     if (signal >= 75) return 'excellent'
     if (signal >= 50) return 'good'
     if (signal >= 25) return 'fair'

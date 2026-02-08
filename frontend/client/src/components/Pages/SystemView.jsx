@@ -26,7 +26,7 @@ const SystemView = () => {
     loadResources()
     loadBoard()
     // No polling needed - all updates come via WebSocket
-  }, [])
+  }, [loadStatus, loadServices, loadResources, loadBoard])
 
   // Update from WebSocket
   useEffect(() => {
@@ -148,7 +148,7 @@ const SystemView = () => {
   }
 
   const { backend } = statusData
-  const connectedColor = 'rgba(102, 102, 102, 0.3)'
+  const _connectedColor = 'rgba(102, 102, 102, 0.3)'
   const boardData = boardInfo?.data
   
   // Memory colors
