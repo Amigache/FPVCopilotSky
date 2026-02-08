@@ -22,6 +22,7 @@ def set_video_service(service):
 
 class VideoConfigRequest(BaseModel):
     """Video configuration request"""
+
     device: Optional[str] = None
     device_name: Optional[str] = None
     device_bus_info: Optional[str] = None
@@ -36,12 +37,14 @@ class VideoConfigRequest(BaseModel):
 
 class LivePropertyRequest(BaseModel):
     """Live property change request (no pipeline restart)"""
+
     property: str
     value: int
 
 
 class StreamingConfigRequest(BaseModel):
     """Streaming configuration request"""
+
     udp_host: Optional[str] = None
     udp_port: Optional[int] = None
     enabled: Optional[bool] = None
@@ -54,7 +57,7 @@ async def get_status(request: Request):
     lang = get_language_from_request(request)
     if not _video_service:
         raise HTTPException(status_code=503, detail=translate("services.video_not_initialized", lang))
-    
+
     return _video_service.get_status()
 
 
@@ -64,31 +67,32 @@ async def get_cameras(request: Request):
     lang = get_language_from_request(request)
     if not _video_service:
         raise HTTPException(status_code=503, detail=translate("services.video_not_initialized", lang))
-    
+
     # Import here to avoid circular dependency
     from app.providers.registry import get_provider_registry
-    
+
     registry = get_provider_registry()
     sources = registry.get_available_video_sources()
-    
+
     # Format for frontend consumption (maintain compatibility)
     cameras = []
     for source in sources:
-        caps = source.get('capabilities', {})
-        cameras.append({
-            'device': source['device'],
-            'name': source['name'],
-            'type': caps.get('identity', {}).get('driver', source['type']),
-            'driver': caps.get('identity', {}).get('driver', 'unknown'),
-            'bus_info': caps.get('identity', {}).get('bus_info', ''),
-            'is_usb': caps.get('is_usb', False),
-            'resolutions': caps.get('supported_resolutions', []),
-            'resolutions_fps': caps.get('supported_framerates', {}),
-            'provider': source['provider']
-        })
-    
-    return {"cameras": cameras}
+        caps = source.get("capabilities", {})
+        cameras.append(
+            {
+                "device": source["device"],
+                "name": source["name"],
+                "type": caps.get("identity", {}).get("driver", source["type"]),
+                "driver": caps.get("identity", {}).get("driver", "unknown"),
+                "bus_info": caps.get("identity", {}).get("bus_info", ""),
+                "is_usb": caps.get("is_usb", False),
+                "resolutions": caps.get("supported_resolutions", []),
+                "resolutions_fps": caps.get("supported_framerates", {}),
+                "provider": source["provider"],
+            }
+        )
 
+    return {"cameras": cameras}
 
 
 @router.get("/codecs")
@@ -97,33 +101,35 @@ async def get_codecs(request: Request):
     lang = get_language_from_request(request)
     if not _video_service:
         raise HTTPException(status_code=503, detail=translate("services.video_not_initialized", lang))
-    
+
     # Import here to avoid circular dependency
     from app.providers.registry import get_provider_registry
-    
+
     registry = get_provider_registry()
     available_encoders = registry.get_available_video_encoders()
-    
+
     # Format for frontend consumption
     codecs = []
     for encoder in available_encoders:
-        if encoder['available']:  # Only return actually available codecs
-            caps = encoder['capabilities']
-            codecs.append({
-                'id': encoder['codec_id'],
-                'name': encoder['display_name'],
-                'family': encoder['codec_family'],
-                'type': encoder['encoder_type'],
-                'description': caps.get('description', ''),
-                'latency': caps.get('latency_estimate', 'medium'),
-                'cpu_usage': caps.get('cpu_usage', 'medium'),
-                'default_bitrate': caps.get('default_bitrate', 2000),
-                'min_bitrate': caps.get('min_bitrate', 0),
-                'max_bitrate': caps.get('max_bitrate', 10000),
-                'quality_control': caps.get('quality_control', False),
-                'priority': caps.get('priority', 50)
-            })
-    
+        if encoder["available"]:  # Only return actually available codecs
+            caps = encoder["capabilities"]
+            codecs.append(
+                {
+                    "id": encoder["codec_id"],
+                    "name": encoder["display_name"],
+                    "family": encoder["codec_family"],
+                    "type": encoder["encoder_type"],
+                    "description": caps.get("description", ""),
+                    "latency": caps.get("latency_estimate", "medium"),
+                    "cpu_usage": caps.get("cpu_usage", "medium"),
+                    "default_bitrate": caps.get("default_bitrate", 2000),
+                    "min_bitrate": caps.get("min_bitrate", 0),
+                    "max_bitrate": caps.get("max_bitrate", 10000),
+                    "quality_control": caps.get("quality_control", False),
+                    "priority": caps.get("priority", 50),
+                }
+            )
+
     return {"codecs": codecs}
 
 
@@ -133,12 +139,12 @@ async def start_streaming(request: Request):
     lang = get_language_from_request(request)
     if not _video_service:
         raise HTTPException(status_code=503, detail=translate("services.video_not_initialized", lang))
-    
+
     result = _video_service.start()
-    
+
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result["message"])
-    
+
     return result
 
 
@@ -148,12 +154,12 @@ async def stop_streaming(request: Request):
     lang = get_language_from_request(request)
     if not _video_service:
         raise HTTPException(status_code=503, detail=translate("services.video_not_initialized", lang))
-    
+
     result = _video_service.stop()
-    
+
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result["message"])
-    
+
     return result
 
 
@@ -163,12 +169,12 @@ async def restart_streaming(request: Request):
     lang = get_language_from_request(request)
     if not _video_service:
         raise HTTPException(status_code=503, detail=translate("services.video_not_initialized", lang))
-    
+
     result = _video_service.restart()
-    
+
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result["message"])
-    
+
     return result
 
 
@@ -178,28 +184,29 @@ async def configure_video(config: VideoConfigRequest, request: Request):
     lang = get_language_from_request(request)
     if not _video_service:
         raise HTTPException(status_code=503, detail=translate("services.video_not_initialized", lang))
-    
+
     # Convert to dict, excluding None values
     config_dict = {k: v for k, v in config.model_dump().items() if v is not None}
-    
+
     if not config_dict:
         raise HTTPException(status_code=400, detail="No configuration provided")
-    
+
     # Separate identity fields from GStreamer config
     identity_fields = {}
     for field in ("device_name", "device_bus_info"):
         if field in config_dict:
             identity_fields[field] = config_dict.pop(field)
-    
+
     _video_service.configure(video_config=config_dict)
-    
+
     # Save to preferences (including identity fields for smart matching)
     try:
         from services.preferences import get_preferences
+
         prefs = get_preferences()
         current = prefs.get_video_config()
         current.update(config_dict)
-        
+
         # If identity fields were provided, save them
         if identity_fields:
             current.update(identity_fields)
@@ -207,6 +214,7 @@ async def configure_video(config: VideoConfigRequest, request: Request):
             # Auto-detect identity from the device path if not provided by frontend
             try:
                 from services.video_config import get_device_identity
+
                 identity = get_device_identity(config_dict["device"])
                 if identity:
                     current["device_name"] = identity.get("name", "")
@@ -214,9 +222,9 @@ async def configure_video(config: VideoConfigRequest, request: Request):
                     print(f"📹 Saved camera identity: {identity.get('name')} ({identity.get('bus_info', 'N/A')})")
             except Exception as e:
                 print(f"⚠️ Failed to detect camera identity: {e}")
-        
+
         prefs.set_video_config(current)
-        
+
         # Verify the save
         saved = prefs.get_video_config()
         if "device" in config_dict and saved.get("device") == config_dict["device"]:
@@ -225,9 +233,9 @@ async def configure_video(config: VideoConfigRequest, request: Request):
             print(f"✅ Video config preference verified: {config_dict['width']}x{config_dict.get('height')}")
     except Exception as e:
         print(f"⚠️ Failed to save video config: {e}")
-    
+
     return {"success": True, "message": translate("video.configuration_updated", lang), "config": config_dict}
-    
+
     return {"success": True, "message": translate("video.configuration_updated", lang), "config": config_dict}
 
 
@@ -237,24 +245,25 @@ async def configure_streaming(config: StreamingConfigRequest, request: Request):
     lang = get_language_from_request(request)
     if not _video_service:
         raise HTTPException(status_code=503, detail=translate("services.video_not_initialized", lang))
-    
+
     # Convert to dict, excluding None values
     config_dict = {k: v for k, v in config.model_dump().items() if v is not None}
-    
+
     if not config_dict:
         raise HTTPException(status_code=400, detail="No configuration provided")
-    
+
     # Update video service
     _video_service.configure(streaming_config=config_dict)
-    
+
     # Save to preferences
     try:
         from services.preferences import get_preferences
+
         prefs = get_preferences()
         current = prefs.get_streaming_config()
         current.update(config_dict)
         prefs.set_streaming_config(current)
-        
+
         # Verify the save
         saved = prefs.get_streaming_config()
         if saved.get("auto_start") == config_dict.get("auto_start", saved.get("auto_start")):
@@ -263,7 +272,7 @@ async def configure_streaming(config: StreamingConfigRequest, request: Request):
             print(f"⚠️ Streaming preference save verification failed")
     except Exception as e:
         print(f"⚠️ Failed to save streaming config: {e}")
-    
+
     return {"success": True, "message": translate("video.streaming_configuration_updated", lang), "config": config_dict}
 
 
@@ -274,22 +283,23 @@ async def live_update(req: LivePropertyRequest, request: Request):
     lang = get_language_from_request(request)
     if not _video_service:
         raise HTTPException(status_code=503, detail=translate("services.video_not_initialized", lang))
-    
+
     result = _video_service.update_live_property(req.property, req.value)
-    
+
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result["message"])
-    
+
     # Save to preferences
     try:
         from services.preferences import get_preferences
+
         prefs = get_preferences()
         current = prefs.get_video_config()
         current[req.property] = req.value
         prefs.set_video_config(current)
     except Exception as e:
         print(f"⚠️ Failed to save live update: {e}")
-    
+
     return result
 
 
@@ -299,9 +309,9 @@ async def get_pipeline_string(request: Request):
     lang = get_language_from_request(request)
     if not _video_service:
         raise HTTPException(status_code=503, detail=translate("services.video_not_initialized", lang))
-    
+
     return {
         "pipeline": _video_service.get_pipeline_string(),
         "codec": _video_service.video_config.codec,
-        "port": _video_service.streaming_config.udp_port
+        "port": _video_service.streaming_config.udp_port,
     }

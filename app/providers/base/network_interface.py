@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 class InterfaceStatus(Enum):
     """Network interface status"""
+
     UP = "up"
     DOWN = "down"
     CONNECTING = "connecting"
@@ -23,6 +24,7 @@ class InterfaceStatus(Enum):
 
 class InterfaceType(Enum):
     """Network interface type"""
+
     ETHERNET = "ethernet"
     WIFI = "wifi"
     VPN = "vpn"
@@ -35,6 +37,7 @@ class InterfaceType(Enum):
 @dataclass
 class InterfaceMetrics:
     """Network interface metrics"""
+
     status: InterfaceStatus
     ip_v4: Optional[str] = None
     ip_v6: Optional[str] = None
@@ -52,12 +55,12 @@ class NetworkInterface(ABC):
     Abstract base class for network interfaces.
     Represents a logical network connection point.
     """
-    
+
     def __init__(self):
         self.name: str = ""
         self.display_name: str = ""
         self.interface_type: InterfaceType = InterfaceType.UNKNOWN
-    
+
     @abstractmethod
     def detect(self) -> bool:
         """
@@ -65,14 +68,14 @@ class NetworkInterface(ABC):
         Returns True if interface exists and is accessible.
         """
         pass
-    
+
     @abstractmethod
     def get_status(self) -> InterfaceMetrics:
         """
         Get current interface status and metrics.
         """
         pass
-    
+
     @abstractmethod
     def bring_up(self) -> Dict:
         """
@@ -81,7 +84,7 @@ class NetworkInterface(ABC):
             {'success': bool, 'message': str}
         """
         pass
-    
+
     @abstractmethod
     def bring_down(self) -> Dict:
         """
@@ -90,12 +93,12 @@ class NetworkInterface(ABC):
             {'success': bool, 'message': str}
         """
         pass
-    
+
     @abstractmethod
     def get_ip_address(self) -> Optional[str]:
         """Get IPv4 address"""
         pass
-    
+
     @abstractmethod
     def set_metric(self, metric: int) -> Dict:
         """
@@ -103,22 +106,22 @@ class NetworkInterface(ABC):
         Lower metric = higher priority.
         """
         pass
-    
+
     def is_available(self) -> bool:
         """Check if interface is available"""
         metrics = self.get_status()
         return metrics.status in [InterfaceStatus.UP, InterfaceStatus.CONNECTING]
-    
+
     def is_connected(self) -> bool:
         """Check if interface has active connection"""
         metrics = self.get_status()
         return metrics.status == InterfaceStatus.UP and metrics.ip_v4 is not None
-    
+
     def get_capabilities(self) -> Dict[str, bool]:
         """Get interface capabilities"""
         return {
-            'dhcp': False,
-            'static_ip': False,
-            'ipv6': False,
-            'metric_configuration': True,
+            "dhcp": False,
+            "static_ip": False,
+            "ipv6": False,
+            "metric_configuration": True,
         }

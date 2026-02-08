@@ -9,5 +9,5 @@ Implementations for various modem types:
 from .hilink import HuaweiE3372hProvider
 
 __all__ = [
-    'HuaweiE3372hProvider',
+    "HuaweiE3372hProvider",
 ]

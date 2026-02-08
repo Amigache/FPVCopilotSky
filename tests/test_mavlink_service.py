@@ -238,7 +238,9 @@ class TestMAVLinkEdgeCases:
 
         # Multiple status checks concurrently
         tasks = [bridge.get_status() for _ in range(10)]
-        results = await asyncio.gather(*[asyncio.create_task(asyncio.to_thread(lambda: bridge.get_status())) for _ in range(10)])
+        results = await asyncio.gather(
+            *[asyncio.create_task(asyncio.to_thread(lambda: bridge.get_status())) for _ in range(10)]
+        )
 
         # All should succeed
         assert all(isinstance(r, dict) for r in results)

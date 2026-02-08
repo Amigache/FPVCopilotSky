@@ -9,8 +9,8 @@ from .vpn_interface import VPNInterface
 from .modem_interface import ModemInterface
 
 __all__ = [
-    'EthernetInterface',
-    'WiFiInterface',
-    'VPNInterface',
-    'ModemInterface',
+    "EthernetInterface",
+    "WiFiInterface",
+    "VPNInterface",
+    "ModemInterface",
 ]

@@ -12,16 +12,16 @@ logger = logging.getLogger(__name__)
 
 class VPNProvider(ABC):
     """Abstract base class for VPN providers"""
-    
+
     def __init__(self):
         self.name: str = ""
         self.display_name: str = ""
-    
+
     @abstractmethod
     def is_installed(self) -> bool:
         """Check if VPN provider is installed on the system"""
         pass
-    
+
     @abstractmethod
     def get_status(self) -> Dict:
         """
@@ -39,7 +39,7 @@ class VPNProvider(ABC):
             }
         """
         pass
-    
+
     @abstractmethod
     def connect(self) -> Dict:
         """
@@ -53,7 +53,7 @@ class VPNProvider(ABC):
             }
         """
         pass
-    
+
     @abstractmethod
     def disconnect(self) -> Dict:
         """
@@ -65,7 +65,7 @@ class VPNProvider(ABC):
             }
         """
         pass
-    
+
     @abstractmethod
     def get_info(self) -> Dict:
         """
@@ -79,7 +79,7 @@ class VPNProvider(ABC):
             }
         """
         pass
-    
+
     @abstractmethod
     def get_peers(self) -> List[Dict]:
         """
@@ -97,18 +97,18 @@ class VPNProvider(ABC):
             ]
         """
         pass
-    
+
     def get_interface_name(self) -> Optional[str]:
         """Get the VPN interface name (e.g., 'tailscale0', 'tun0')"""
         status = self.get_status()
-        return status.get('interface')
-    
+        return status.get("interface")
+
     def get_capabilities(self) -> Dict[str, bool]:
         """Get provider capabilities"""
         return {
-            'exit_node_selection': False,
-            'subnet_routes': False,
-            'split_tunnel': False,
-            'dns_override': False,
-            'peer_management': False,
+            "exit_node_selection": False,
+            "subnet_routes": False,
+            "split_tunnel": False,
+            "dns_override": False,
+            "peer_management": False,
         }

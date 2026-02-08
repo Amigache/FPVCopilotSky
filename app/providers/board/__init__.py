@@ -8,4 +8,4 @@ Each board provider declares supported features, hardware specs, and capabilitie
 from .board_registry import BoardRegistry
 from .detected_board import DetectedBoard
 
-__all__ = ['BoardRegistry', 'DetectedBoard']
+__all__ = ["BoardRegistry", "DetectedBoard"]
