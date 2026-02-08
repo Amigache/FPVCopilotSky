@@ -584,7 +584,11 @@ class HuaweiE3372hProvider(ModemProvider):
             success = self._set_lte_band_sync(band_mask)
             return {
                 "success": success,
-                "message": (f"Banda configurada: {hex(band_mask)}" if success else self._last_error),
+                "message": (
+                    f"Banda configurada: {hex(band_mask)}"
+                    if success
+                    else self._last_error
+                ),
             }
         except Exception as e:
             return {"success": False, "message": str(e)}
@@ -740,7 +744,11 @@ class HuaweiE3372hProvider(ModemProvider):
             success = self._reconnect_network_sync()
             return {
                 "success": success,
-                "message": ("Re-registro de red iniciado" if success else (self._last_error or "Error en reconexión")),
+                "message": (
+                    "Re-registro de red iniciado"
+                    if success
+                    else (self._last_error or "Error en reconexión")
+                ),
             }
         except Exception as e:
             return {"success": False, "message": str(e)}
@@ -853,8 +861,12 @@ class HuaweiE3372hProvider(ModemProvider):
             current_mode = self.get_network_mode()
             current_band = self.get_current_band()
             self._original_settings = {
-                "network_mode": (current_mode.get("network_mode", "00") if current_mode else "00"),
-                "lte_band_hex": (current_band.get("lte_band_hex", "") if current_band else ""),
+                "network_mode": (
+                    current_mode.get("network_mode", "00") if current_mode else "00"
+                ),
+                "lte_band_hex": (
+                    current_band.get("lte_band_hex", "") if current_band else ""
+                ),
             }
 
             # Force 4G Only mode

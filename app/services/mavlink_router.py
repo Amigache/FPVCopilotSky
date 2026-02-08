@@ -470,7 +470,9 @@ class MAVLinkRouter:
                         "auto_start": state.config.auto_start,
                         "running": state.running,
                         "clients": (
-                            len(state.clients) if self._get_type_value(state.config.type) == "tcp_server" else 0
+                            len(state.clients)
+                            if self._get_type_value(state.config.type) == "tcp_server"
+                            else 0
                         ),
                         "stats": state.stats.copy(),
                     }

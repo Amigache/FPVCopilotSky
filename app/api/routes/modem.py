@@ -49,7 +49,9 @@ async def get_modem_status(provider_name: str, request: Request):
         if not provider:
             raise HTTPException(
                 status_code=404,
-                detail=translate("modem.provider_not_found", lang, provider=provider_name),
+                detail=translate(
+                    "modem.provider_not_found", lang, provider=provider_name
+                ),
             )
 
         status = provider.get_status()
@@ -79,7 +81,9 @@ async def connect_modem(provider_name: str, request: Request):
         if not provider:
             raise HTTPException(
                 status_code=404,
-                detail=translate("modem.provider_not_found", lang, provider=provider_name),
+                detail=translate(
+                    "modem.provider_not_found", lang, provider=provider_name
+                ),
             )
 
         result = provider.connect()
@@ -114,7 +118,9 @@ async def disconnect_modem(provider_name: str, request: Request):
         if not provider:
             raise HTTPException(
                 status_code=404,
-                detail=translate("modem.provider_not_found", lang, provider=provider_name),
+                detail=translate(
+                    "modem.provider_not_found", lang, provider=provider_name
+                ),
             )
 
         result = provider.disconnect()
@@ -158,7 +164,9 @@ async def configure_modem_band(
         if not provider:
             raise HTTPException(
                 status_code=404,
-                detail=translate("modem.provider_not_found", lang, provider=provider_name),
+                detail=translate(
+                    "modem.provider_not_found", lang, provider=provider_name
+                ),
             )
 
         result = provider.configure_band(request.band_mask)
@@ -195,7 +203,9 @@ async def reboot_modem(provider_name: str, request: Request):
         if not provider:
             raise HTTPException(
                 status_code=404,
-                detail=translate("modem.provider_not_found", lang, provider=provider_name),
+                detail=translate(
+                    "modem.provider_not_found", lang, provider=provider_name
+                ),
             )
 
         result = provider.reboot()
@@ -230,7 +240,9 @@ async def get_modem_info(provider_name: str, request: Request):
         if not provider:
             raise HTTPException(
                 status_code=404,
-                detail=translate("modem.provider_not_found", lang, provider=provider_name),
+                detail=translate(
+                    "modem.provider_not_found", lang, provider=provider_name
+                ),
             )
 
         info = provider.get_info()

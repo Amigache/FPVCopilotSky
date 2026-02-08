@@ -57,7 +57,8 @@ class ModemInterface(NetworkInterface):
                     # Look for interface with modem subnet (e.g., 192.168.8.x)
                     if self.subnet_pattern in line:
                         match = re.search(
-                            r"^\d+:\s+(\S+)\s+inet\s+" + self.subnet_pattern.replace(".", r"\."),
+                            r"^\d+:\s+(\S+)\s+inet\s+"
+                            + self.subnet_pattern.replace(".", r"\."),
                             line,
                         )
                         if match:

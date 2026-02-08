@@ -484,7 +484,9 @@ async def set_priority_mode(request: PriorityModeRequest):
         modem_interface = await _detect_modem_interface()
 
         if not wifi_interface and not modem_interface:
-            raise HTTPException(status_code=503, detail="No network interfaces detected")
+            raise HTTPException(
+                status_code=503, detail="No network interfaces detected"
+            )
 
         # Get current routes
         routes = await _get_routes()
@@ -493,8 +495,12 @@ async def set_priority_mode(request: PriorityModeRequest):
             # Set WiFi as primary (lower metric)
             if wifi_interface:
                 # First, get current routes for both interfaces
-                wifi_routes = [r for r in routes if r.get("interface") == wifi_interface]
-                modem_routes = [r for r in routes if r.get("interface") == modem_interface]
+                wifi_routes = [
+                    r for r in routes if r.get("interface") == wifi_interface
+                ]
+                modem_routes = [
+                    r for r in routes if r.get("interface") == modem_interface
+                ]
 
                 # Delete existing default routes
                 for route in wifi_routes + modem_routes:
@@ -553,14 +559,20 @@ async def set_priority_mode(request: PriorityModeRequest):
                         ]
                         await _run_command(cmd)
             else:
-                raise HTTPException(status_code=503, detail="WiFi interface not detected")
+                raise HTTPException(
+                    status_code=503, detail="WiFi interface not detected"
+                )
 
         elif request.mode == "modem":
             # Set Modem as primary (lower metric)
             if modem_interface:
                 # Get current routes for both interfaces
-                wifi_routes = [r for r in routes if r.get("interface") == wifi_interface]
-                modem_routes = [r for r in routes if r.get("interface") == modem_interface]
+                wifi_routes = [
+                    r for r in routes if r.get("interface") == wifi_interface
+                ]
+                modem_routes = [
+                    r for r in routes if r.get("interface") == modem_interface
+                ]
 
                 # Delete existing default routes
                 for route in wifi_routes + modem_routes:
@@ -619,7 +631,9 @@ async def set_priority_mode(request: PriorityModeRequest):
                         ]
                         await _run_command(cmd)
             else:
-                raise HTTPException(status_code=503, detail="Modem interface not detected")
+                raise HTTPException(
+                    status_code=503, detail="Modem interface not detected"
+                )
 
         elif request.mode == "auto":
             # Auto mode: 4G preferred if available
@@ -918,7 +932,11 @@ async def get_modem_status():
             )
 
             response["network"] = {
-                "network_type": (str(network_info.network_type) if hasattr(network_info, "network_type") else None),
+                "network_type": (
+                    str(network_info.network_type)
+                    if hasattr(network_info, "network_type")
+                    else None
+                ),
                 "signal_icon": signal_icon,
                 "roaming": getattr(network_info, "roaming", False),
                 "primary_dns": dns_servers[0] if len(dns_servers) > 0 else None,
@@ -1113,7 +1131,9 @@ async def set_lte_band(request: LTEBandRequest):
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
             None,
-            lambda: provider.set_lte_band(preset=request.preset, custom_mask=request.custom_mask),
+            lambda: provider.set_lte_band(
+                preset=request.preset, custom_mask=request.custom_mask
+            ),
         )
         if result and result.get("success"):
             return result
@@ -1355,7 +1375,9 @@ async def set_apn(request: APNRequest):
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
             None,
-            lambda: provider.set_apn(preset=request.preset, custom_apn=request.custom_apn),
+            lambda: provider.set_apn(
+                preset=request.preset, custom_apn=request.custom_apn
+            ),
         )
         if result and result.get("success"):
             return result
