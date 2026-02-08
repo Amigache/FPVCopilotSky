@@ -4,6 +4,7 @@ import { useWebSocket } from '../../contexts/WebSocketContext'
 import { useToast } from '../../contexts/ToastContext'
 import { useModal } from '../../contexts/ModalContext'
 import { API_SYSTEM, API_MAVLINK, fetchWithTimeout } from '../../services/api'
+import Toggle from '../Toggle/Toggle'
 import './FlightControllerView.css'
 
 // Base parameters (common to all vehicles)
@@ -704,16 +705,12 @@ const FlightControllerView = () => {
         </div>
 
         <div className="form-group auto-start-toggle">
-          <label className="toggle-label">
-            <input 
-              type="checkbox" 
-              checked={serialPreferences.auto_connect || false}
-              onChange={(e) => handleAutoConnectChange(e.target.checked)}
-              disabled={savingSerialPreferences}
-            />
-            <span className="toggle-switch"></span>
-            <span className="toggle-text">{t('views.flightController.autoConnect')}</span>
-          </label>
+          <Toggle
+            checked={serialPreferences.auto_connect || false}
+            onChange={(e) => handleAutoConnectChange(e.target.checked)}
+            disabled={savingSerialPreferences}
+            label={t('views.flightController.autoConnect')}
+          />
         </div>
       </div>
 

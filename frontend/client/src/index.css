@@ -17,6 +17,7 @@ body {
   min-height: 100vh;
   /* Force scrollbar space to be always reserved */
   overflow-y: scroll;
+  overflow-x: hidden;
 }
 
 code {

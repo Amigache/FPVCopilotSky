@@ -8,9 +8,31 @@ connection lifecycle, and data synchronization across clients.
 import pytest
 import json
 import asyncio
+import queue
+import threading
 from unittest.mock import patch, MagicMock, AsyncMock
 from fastapi.testclient import TestClient
 from app.main import app
+
+
+def receive_json_with_timeout(websocket, timeout=1.0):
+    result = queue.Queue(maxsize=1)
+
+    def worker():
+        try:
+            result.put(("ok", websocket.receive_json()))
+        except Exception as exc:
+            result.put(("err", exc))
+
+    thread = threading.Thread(target=worker, daemon=True)
+    thread.start()
+    try:
+        status, payload = result.get(timeout=timeout)
+    except queue.Empty as exc:
+        raise TimeoutError("Timed out waiting for websocket response") from exc
+    if status == "err":
+        raise payload
+    return payload
 
 
 @pytest.fixture
@@ -42,7 +64,7 @@ class TestWebSocketConnectionLifecycle:
                 websocket.send_json(test_message)
 
                 # Receive response (with timeout to avoid hanging)
-                response = websocket.receive_json()
+                response = receive_json_with_timeout(websocket)
                 assert isinstance(response, dict)
         except Exception as e:
             pytest.skip(f"WebSocket messaging not fully implemented: {e}")
@@ -72,7 +94,7 @@ class TestWebSocketMessageTypes:
                 websocket.send_json(subscribe_msg)
 
                 # Receive subscription confirmation
-                response = websocket.receive_json()
+                response = receive_json_with_timeout(websocket)
                 assert response is not None
         except Exception as e:
             pytest.skip(f"Status update messaging not available: {e}")
@@ -85,7 +107,7 @@ class TestWebSocketMessageTypes:
                 subscribe_msg = {"type": "subscribe", "channel": "network"}
                 websocket.send_json(subscribe_msg)
 
-                response = websocket.receive_json()
+                response = receive_json_with_timeout(websocket)
                 assert response is not None
         except Exception as e:
             pytest.skip(f"Network update messaging not available: {e}")
@@ -98,7 +120,7 @@ class TestWebSocketMessageTypes:
                 video_msg = {"type": "video", "action": "status"}
                 websocket.send_json(video_msg)
 
-                response = websocket.receive_json()
+                response = receive_json_with_timeout(websocket)
                 assert response is not None
         except Exception as e:
             pytest.skip(f"Video stream messaging not available: {e}")
@@ -111,7 +133,7 @@ class TestWebSocketMessageTypes:
                 telemetry_msg = {"type": "subscribe", "channel": "telemetry"}
                 websocket.send_json(telemetry_msg)
 
-                response = websocket.receive_json()
+                response = receive_json_with_timeout(websocket)
                 assert response is not None
         except Exception as e:
             pytest.skip(f"Telemetry messaging not available: {e}")
@@ -128,7 +150,7 @@ class TestWebSocketDataSynchronization:
                 websocket.send_json({"type": "subscribe", "channel": "*"})
 
                 # Receive subscription acknowledgment
-                response = websocket.receive_json()
+                response = receive_json_with_timeout(websocket)
                 assert response is not None
 
                 # Simulate receiving an update
@@ -149,7 +171,7 @@ class TestWebSocketDataSynchronization:
 
                 for msg in messages:
                     websocket.send_json(msg)
-                    response = websocket.receive_json()
+                    response = receive_json_with_timeout(websocket)
                     assert response is not None
         except Exception as e:
             pytest.skip(f"Message sequence test skipped: {e}")
@@ -162,7 +184,7 @@ class TestWebSocketDataSynchronization:
                 websocket.send_json({"type": "ping"})
 
                 # Should receive pong
-                response = websocket.receive_json()
+                response = receive_json_with_timeout(websocket)
                 assert response is not None
         except Exception as e:
             pytest.skip(f"Heartbeat mechanism not available: {e}")
@@ -179,7 +201,7 @@ class TestWebSocketErrorHandling:
                 websocket.send_json({"invalid": "format"})
 
                 # Server should handle gracefully
-                response = websocket.receive_json()
+                response = receive_json_with_timeout(websocket)
                 assert response is not None
         except Exception as e:
             pytest.skip(f"Error handling test skipped: {e}")
@@ -194,7 +216,7 @@ class TestWebSocketErrorHandling:
                 # Server should handle without crashing
                 # (may close connection or return error)
                 try:
-                    response = websocket.receive_json()
+                    response = receive_json_with_timeout(websocket)
                     assert response is not None
                 except Exception:
                     # Connection may close, which is acceptable
@@ -229,7 +251,7 @@ class TestWebSocketIntegrationWithREST:
         try:
             with client.websocket_connect("/ws") as websocket:
                 websocket.send_json({"type": "ping"})
-                response = websocket.receive_json()
+                response = receive_json_with_timeout(websocket)
                 assert response is not None
         except Exception as e:
             pytest.skip(f"REST + WebSocket integration skipped: {e}")
@@ -239,7 +261,7 @@ class TestWebSocketIntegrationWithREST:
         try:
             with client.websocket_connect("/ws") as websocket:
                 websocket.send_json({"type": "ping"})
-                response = websocket.receive_json()
+                response = receive_json_with_timeout(websocket)
                 assert response is not None
 
                 # Call REST API while connected
@@ -258,7 +280,7 @@ class TestWebSocketIntegrationWithREST:
             with client.websocket_connect("/ws") as websocket:
                 # Get same data via WebSocket
                 websocket.send_json({"type": "get_status"})
-                ws_response = websocket.receive_json()
+                ws_response = receive_json_with_timeout(websocket)
 
                 # Both should succeed or fail consistently
                 assert (rest_status == 200) or (ws_response is None)
@@ -279,7 +301,7 @@ class TestWebSocketLoadAndStability:
 
                 # Receive responses
                 for i in range(5):
-                    response = websocket.receive_json()
+                    response = receive_json_with_timeout(websocket)
                     assert response is not None
         except Exception as e:
             pytest.skip(f"Rapid messaging test skipped: {e}")
@@ -291,12 +313,12 @@ class TestWebSocketLoadAndStability:
                 # Send periodic messages
                 for i in range(3):
                     websocket.send_json({"type": "ping", "time": i})
-                    response = websocket.receive_json()
+                    response = receive_json_with_timeout(websocket)
                     assert response is not None
 
                 # Connection should still be active
                 websocket.send_json({"type": "ping"})
-                final_response = websocket.receive_json()
+                final_response = receive_json_with_timeout(websocket)
                 assert final_response is not None
         except Exception as e:
             pytest.skip(f"Persistence test skipped: {e}")

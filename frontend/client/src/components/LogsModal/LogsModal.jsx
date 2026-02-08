@@ -8,6 +8,9 @@ const LogsModal = ({ show, onClose, type, onRefresh }) => {
   const [loading, setLoading] = useState(false);
   const logsRef = useRef(null);
 
+  // Throttle para evitar refresco excesivo
+  const lastRefresh = useRef(0);
+
   const loadLogs = useCallback(async () => {
     setLoading(true);
     try {
@@ -22,19 +25,31 @@ const LogsModal = ({ show, onClose, type, onRefresh }) => {
 
   useEffect(() => {
     if (show) {
-      loadLogs();
+      const now = Date.now();
+      if (now - lastRefresh.current > 500) {
+        loadLogs();
+        lastRefresh.current = now;
+      }
     }
-     
   }, [show, type, loadLogs]);
 
   const handleRefresh = () => {
     loadLogs();
   };
 
+  // Copiar logs al portapapeles con fallback
   const handleCopy = () => {
     if (logs) {
-      navigator.clipboard.writeText(logs);
-      // Could add a toast notification here
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(logs);
+      } else {
+        const input = document.createElement('input');
+        input.value = logs;
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand('copy');
+        document.body.removeChild(input);
+      }
     }
   };
 

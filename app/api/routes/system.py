@@ -50,6 +50,58 @@ async def get_system_resources():
     return {"cpu": SystemService.get_cpu_info(), "memory": SystemService.get_memory_info()}
 
 
+@router.get("/preferences")
+async def get_preferences_all():
+    """Get all preferences"""
+    try:
+        from services.preferences import get_preferences
+
+        prefs = get_preferences()
+        return prefs.get_all_preferences()
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@router.post("/preferences")
+async def update_preferences(request: Request):
+    """Update preferences (partial update)"""
+    try:
+        from services.preferences import get_preferences
+
+        prefs = get_preferences()
+        data = await request.json()
+
+        # Update each preference section provided
+        for key, value in data.items():
+            if key == "flight_session":
+                # Deep merge flight_session preferences
+                current = prefs.get_all_preferences().get("flight_session", {})
+                current.update(value)
+                prefs._preferences["flight_session"] = current
+            elif key == "serial":
+                if "port" in value and "baudrate" in value:
+                    prefs.set_serial_config(value["port"], value["baudrate"])
+                if "auto_connect" in value:
+                    prefs.set_serial_auto_connect(value["auto_connect"])
+            elif key == "video":
+                prefs.set_video_config(value)
+            elif key == "streaming":
+                prefs.set_streaming_config(value)
+            elif key == "vpn":
+                prefs.set_vpn_config(value)
+            elif key == "ui":
+                for ui_key, ui_value in value.items():
+                    prefs.set_ui_preference(ui_key, ui_value)
+            else:
+                # Generic update for other keys
+                prefs._preferences[key] = value
+
+        prefs._save()
+        return {"success": True, "message": "Preferences updated"}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+
 @router.post("/preferences/reset")
 async def reset_preferences(request: Request):
     """Reset all preferences to defaults"""

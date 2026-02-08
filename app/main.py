@@ -28,6 +28,7 @@ from providers.network import (
     VPNInterface,
     ModemInterface,
 )
+from services.flight_data_logger import FlightDataLogger
 from providers.board import BoardRegistry  # Board/platform detection
 
 # Use simplified MAVLink bridge and router
@@ -192,8 +193,14 @@ async def periodic_stats_broadcast():
                 }
                 await websocket_manager.broadcast("status", status_data)
 
-            # Network status broadcasting removed - use API endpoints instead
-            # This functionality is now handled on-demand by the frontend calling API endpoints
+            # Network status every 5 seconds
+            if counter % 5 == 0:
+                try:
+                    from api.routes.network import get_network_status
+                    network_status = await get_network_status()
+                    await websocket_manager.broadcast("network_status", network_status)
+                except Exception as e:
+                    logger.debug(f"Network status broadcast error: {e}")
 
             # System resources (CPU/Memory) every 3 seconds
             if counter % 3 == 0:
@@ -572,6 +579,17 @@ async def startup_event():
 
     # Connect router to bridge for forwarding
     mavlink_service.set_router(router_service)
+
+    # Initialize flight data logger for CSV recording
+    flight_prefs = preferences_service.get_all_preferences().get("flight_session", {})
+    log_directory = flight_prefs.get("log_directory", "")
+    flight_logger = FlightDataLogger(mavlink_service, log_directory)
+    
+    # Configure modem provider with flight logger
+    modem_provider = provider_registry.get_modem_provider("huawei_e3372h")
+    if modem_provider:
+        modem_provider.set_flight_logger(flight_logger)
+        print(f"✅ Flight data logger configured: {flight_logger.log_directory}")
 
     # Initialize video streaming service
     video_service = init_gstreamer_service(websocket_manager, loop)

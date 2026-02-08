@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useToast } from '../../contexts/ToastContext'
 import { useWebSocket } from '../../contexts/WebSocketContext'
 import api from '../../services/api'
+import Toggle from '../Toggle/Toggle'
 
 // Helper function to format bytes
 const formatBytes = (bytes) => {
@@ -352,8 +353,17 @@ const VPNView = () => {
         })
         const data = await response.json()
         if (data.needs_auth && data.auth_url) {
-          setAuthUrl(data.auth_url)
-          await navigator.clipboard.writeText(data.auth_url)
+          // Copiar al portapapeles con fallback
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(data.auth_url)
+          } else {
+            const input = document.createElement('input');
+            input.value = data.auth_url;
+            document.body.appendChild(input);
+            input.select();
+            document.execCommand('copy');
+            document.body.removeChild(input);
+          }
           showToast(t('vpn.urlCopied'), 'success')
         } else if (!response.ok) {
           const errorMsg = data.detail || data.error || t('vpn.connectError')
@@ -643,16 +653,12 @@ const VPNView = () => {
         <h2>⚙️ {t('vpn.preferences')}</h2>
         
         <div className="form-group auto-start-toggle">
-          <label className="toggle-label">
-            <input 
-              type="checkbox" 
-              checked={vpnPreferences.auto_connect || false}
-              onChange={(e) => handleAutoConnectChange(e.target.checked)}
-              disabled={savingPreferences}
-            />
-            <span className="toggle-switch"></span>
-            <span className="toggle-text">{t('vpn.autoConnect')}</span>
-          </label>
+          <Toggle
+            checked={vpnPreferences.auto_connect || false}
+            onChange={(e) => handleAutoConnectChange(e.target.checked)}
+            disabled={savingPreferences}
+            label={t('vpn.autoConnect')}
+          />
         </div>
       </div>
 

@@ -803,6 +803,27 @@ class MAVLinkBridge:
         if not self.connected or not self.serial_port:
             return {"success": False, "error": "Not connected"}
 
+    # Alias for compatibility with test expectations
+    def param_set(self, param_name: str, value: float, param_type: int = 9, timeout: float = 3.0) -> Dict[str, Any]:
+        """Alias for set_parameter() for compatibility."""
+        return self.set_parameter(param_name, value, param_type, timeout)
+
+    def set_parameter(self, param_name: str, value: float, param_type: int = 9, timeout: float = 3.0) -> Dict[str, Any]:
+        """
+        Set a parameter on the flight controller and verify it was saved (actual implementation).
+
+        Args:
+            param_name: Parameter name (e.g., 'FS_THR_ENABLE')
+            value: New value (float, will be converted as needed)
+            param_type: MAV_PARAM_TYPE (9 = REAL32 is most common)
+            timeout: Timeout in seconds
+
+        Returns:
+            Dict with success status and verified value
+        """
+        if not self.connected or not self.serial_port:
+            return {"success": False, "error": "Not connected"}
+
         # Create event for this parameter
         event = threading.Event()
         with self._param_lock:
@@ -855,6 +876,10 @@ class MAVLinkBridge:
             # Cleanup
             with self._param_lock:
                 self._param_callbacks.pop(param_name, None)
+
+    def set_param(self, param_name: str, value: float, param_type: int = 9, timeout: float = 3.0) -> Dict[str, Any]:
+        """Compatibility alias for set_parameter."""
+        return self.set_parameter(param_name, value, param_type=param_type, timeout=timeout)
 
     def get_parameters_batch(self, param_names: List[str], timeout: float = 5.0) -> Dict[str, Any]:
         """

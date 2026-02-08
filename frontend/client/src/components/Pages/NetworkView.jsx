@@ -24,6 +24,9 @@ const NetworkView = () => {
   const [connectModal, setConnectModal] = useState({ open: false, ssid: '', security: '' })
   const [wifiPassword, setWifiPassword] = useState('')
   const [connecting, setConnecting] = useState(false)
+  
+  // Mode Change Confirmation Modal
+  const [modeChangeModal, setModeChangeModal] = useState({ open: false, targetMode: '' })
 
   // Load network status
   const loadStatus = useCallback(async () => {
@@ -110,7 +113,17 @@ const NetworkView = () => {
 
   // Set priority mode
   const handleSetMode = async (mode) => {
+    // Always show confirmation modal when changing mode
+    if (mode !== status?.mode) {
+      setModeChangeModal({ open: true, targetMode: mode })
+      return
+    }
+  }
+  
+  // Perform the actual mode change
+  const performModeChange = async (mode) => {
     setChangingMode(true)
+    setModeChangeModal({ open: false, targetMode: '' })
     try {
       const response = await api.post('/api/network/priority', { mode })
       if (response.ok) {
@@ -235,7 +248,7 @@ const NetworkView = () => {
           <button 
             className={`mode-btn ${currentMode === 'wifi' ? 'active' : ''}`}
             onClick={() => handleSetMode('wifi')}
-            disabled={changingMode || currentMode === 'wifi'}
+            disabled={changingMode || currentMode === 'wifi' || !status?.wifi_interface}
           >
             📡 WiFi
           </button>
@@ -540,6 +553,43 @@ const NetworkView = () => {
                 disabled={connecting}
               >
                 {connecting ? t('network.connecting', 'Connecting...') : t('network.connect', 'Connect')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mode Change Confirmation Modal */}
+      {modeChangeModal.open && (
+        <div className="wifi-modal-overlay" onClick={() => setModeChangeModal({ open: false, targetMode: '' })}>
+          <div className="wifi-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>⚠️ {t('network.confirmModeChange', 'Confirm Mode Change')}</h3>
+            
+            <div style={{ marginTop: '16px', marginBottom: '20px', lineHeight: '1.5' }}>
+              <p>
+                {modeChangeModal.targetMode === 'modem'
+                  ? t('network.confirmModeChangeToModem', '¿Are you sure you want to switch from WiFi to 4G as the primary connection?')
+                  : t('network.confirmModeChangeToWifi', '¿Are you sure you want to switch from 4G to WiFi as the primary connection?')
+                }
+              </p>
+              <p style={{ marginTop: '8px', fontSize: '0.9rem', opacity: 0.8 }}>
+                {t('network.confirmModeChangeWarning', 'This will change your default network route.')}
+              </p>
+            </div>
+            
+            <div className="wifi-modal-buttons">
+              <button 
+                className="btn-cancel" 
+                onClick={() => setModeChangeModal({ open: false, targetMode: '' })}
+              >
+                {t('common.cancel', 'Cancel')}
+              </button>
+              <button 
+                className="btn-connect" 
+                onClick={() => performModeChange(modeChangeModal.targetMode)}
+                disabled={changingMode}
+              >
+                {changingMode ? t('network.changing', 'Changing...') : t('network.confirm', 'Confirm')}
               </button>
             </div>
           </div>

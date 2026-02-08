@@ -187,6 +187,7 @@ class HuaweiE3372hProvider(ModemProvider):
 
         # Flight session tracking
         self._flight_session: Optional[FlightSessionStats] = None
+        self._flight_logger = None  # FlightDataLogger instance
         self._video_mode_active: bool = False
         self._original_settings: Dict = {}
 
@@ -215,6 +216,11 @@ class HuaweiE3372hProvider(ModemProvider):
             return "e3372" in model or "hilink" in model
         except:
             return False
+
+    def set_flight_logger(self, flight_logger):
+        """Set flight data logger for CSV recording"""
+        self._flight_logger = flight_logger
+        logger.info(f"Flight logger configured for {self.display_name}")
 
     # =====================
     # Async Methods
@@ -1042,11 +1048,23 @@ class HuaweiE3372hProvider(ModemProvider):
 
         self._flight_session = FlightSessionStats()
         logger.info("Flight session started")
+
+        # Start CSV logging if logger is available
+        log_result = None
+        if self._flight_logger:
+            log_result = self._flight_logger.start_session()
+            if log_result.get("success"):
+                logger.info(f"Flight CSV logging started: {log_result.get('file_path')}")
+            else:
+                logger.warning(f"Failed to start CSV logging: {log_result.get('message')}")
+
         return {
             "success": True,
             "message": "Sesión de vuelo iniciada",
             "active": True,
             "start_time": self._flight_session.start_time.isoformat(),
+            "csv_logging": log_result.get("success", False) if log_result else False,
+            "csv_file": log_result.get("file_path") if log_result else None,
         }
 
     def stop_flight_session(self) -> Dict:
@@ -1057,11 +1075,22 @@ class HuaweiE3372hProvider(ModemProvider):
         stats = self._flight_session.to_dict()
         self._flight_session = None
         logger.info("Flight session stopped")
+
+        # Stop CSV logging if logger is available
+        log_result = None
+        if self._flight_logger and self._flight_logger.is_active():
+            log_result = self._flight_logger.stop_session()
+            if log_result.get("success"):
+                logger.info(f"Flight CSV logging stopped: {log_result.get('file_path')}")
+            else:
+                logger.warning(f"Failed to stop CSV logging: {log_result.get('message')}")
+
         return {
             "success": True,
             "message": "Sesión de vuelo finalizada",
             "active": False,
             "stats": stats,
+            "csv_file": log_result.get("file_path") if log_result else None,
         }
 
     def record_flight_sample(self) -> Dict:
@@ -1110,6 +1139,12 @@ class HuaweiE3372hProvider(ModemProvider):
             }
 
             self._flight_session.samples.append(sample)
+
+            # Log to CSV if logger is available
+            if self._flight_logger and self._flight_logger.is_active():
+                log_result = self._flight_logger.log_sample(sample)
+                if not log_result.get("success"):
+                    logger.warning(f"Failed to log flight sample to CSV: {log_result.get('message')}")
 
             # Update stats
             if sinr is not None:

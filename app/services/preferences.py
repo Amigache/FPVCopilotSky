@@ -98,6 +98,10 @@ class PreferencesService:
                 "auto_connect": False,  # Don't auto-connect on startup
                 "provider_settings": {},  # Provider-specific settings (e.g., exit_node, etc.)
             },
+            "flight_session": {
+                "auto_start_on_arm": False,  # Auto-start flight session when drone arms
+                "log_directory": os.path.expanduser("~/flight-records"),  # Default log directory
+            },
             "ui": {"language": "es", "theme": "dark"},
             "system": {"version": "1.0.0", "first_run": True},
         }

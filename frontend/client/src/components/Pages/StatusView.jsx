@@ -6,6 +6,7 @@ import { useModal } from '../../contexts/ModalContext'
 import { useWebSocket } from '../../contexts/WebSocketContext'
 import LogsModal from '../LogsModal/LogsModal'
 import api from '../../services/api'
+import Toggle from '../Toggle/Toggle'
 
 const StatusView = () => {
   const { t } = useTranslation()
@@ -16,6 +17,15 @@ const StatusView = () => {
   const [loading, setLoading] = useState(true)
   const [statusData, setStatusData] = useState(null)
   const [resettingPrefs, setResettingPrefs] = useState(false)
+  
+  // Flight session state
+  const [flightSession, setFlightSession] = useState(null)
+  const [samplingInterval, setSamplingInterval] = useState(null)
+  const [autoStartOnArm, setAutoStartOnArm] = useState(false)
+  const [savingPrefs, setSavingPrefs] = useState(false)
+  
+  // Track previous armed state for edge detection
+  const [prevArmed, setPrevArmed] = useState(false)
   
   // Logs state
   const [showLogsModal, setShowLogsModal] = useState(false)
@@ -42,12 +52,6 @@ const StatusView = () => {
       setLoading(false)
     }
   }
-
-  // Load initial status
-  useEffect(() => {
-    loadStatus()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   // Update from WebSocket
   useEffect(() => {
@@ -154,6 +158,180 @@ const StatusView = () => {
     })
   }
 
+  // Flight session handlers
+  const loadFlightSession = async () => {
+    try {
+      const response = await api.get('/api/network/hilink/flight-session')
+      if (response.ok) {
+        const data = await response.json()
+        setFlightSession(data)
+      }
+    } catch (error) {
+      console.error('Error loading flight session:', error)
+    }
+  }
+
+  const loadFlightPreferences = async () => {
+    try {
+      const response = await api.get('/api/system/preferences')
+      if (response.ok) {
+        const data = await response.json()
+        if (data.flight_session) {
+          setAutoStartOnArm(data.flight_session.auto_start_on_arm || false)
+        }
+      }
+    } catch (error) {
+      console.error('Error loading flight preferences:', error)
+    }
+  }
+
+  const handleToggleAutoStart = async (enabled) => {
+    setSavingPrefs(true)
+    // Update state immediately for responsive UI and auto-start to work
+    setAutoStartOnArm(enabled)
+    
+    try {
+      const response = await api.post('/api/system/preferences', {
+        flight_session: {
+          auto_start_on_arm: enabled
+        }
+      })
+      if (response.ok) {
+        showToast(
+          enabled 
+            ? t('status.flightSession.autoStartEnabled', 'Auto-start enabled')
+            : t('status.flightSession.autoStartDisabled', 'Auto-start disabled'),
+          'success'
+        )
+      } else {
+        // If save failed, revert the state
+        setAutoStartOnArm(!enabled)
+        showToast(t('common.saveFailed', 'Failed to save preferences'), 'error')
+      }
+    } catch (error) {
+      // If request failed, revert the state
+      setAutoStartOnArm(!enabled)
+      showToast(error.message, 'error')
+    }
+    setSavingPrefs(false)
+  }
+
+  const handleStartFlightSession = async () => {
+    try {
+      const response = await api.post('/api/network/hilink/flight-session/start')
+      if (response.ok) {
+        showToast(t('status.flightSession.started', 'Flight session started'), 'success')
+        await loadFlightSession()
+        
+        // Sample every 5 seconds
+        const interval = setInterval(async () => {
+          try {
+            const sampleResponse = await api.post('/api/network/hilink/flight-session/sample')
+            if (sampleResponse.ok) {
+              await loadFlightSession()
+            }
+          } catch (error) {
+            console.error('Error sampling:', error)
+          }
+        }, 5000)
+        
+        setSamplingInterval(interval)
+      }
+    } catch (error) {
+      showToast(error.message, 'error')
+    }
+  }
+
+  const handleStopFlightSession = async (autoStop = false) => {
+    const stopSession = async () => {
+      // Clear sampling interval
+      if (samplingInterval) {
+        clearInterval(samplingInterval)
+        setSamplingInterval(null)
+      }
+      
+      try {
+        const response = await api.post('/api/network/hilink/flight-session/stop')
+        if (response.ok) {
+          const data = await response.json()
+          showToast(t('status.flightSession.stopped', 'Flight session stopped'), 'success')
+          
+          if (data.stats && !autoStop) {
+            showToast(
+              `${t('status.flightSession.totalSamples', 'Total samples')}: ${data.stats.sample_count}`, 
+              'info'
+            )
+          }
+          await loadFlightSession()
+        }
+      } catch (error) {
+        setFlightSession({ active: false })
+        showToast(error.message, 'error')
+      }
+    }
+
+    if (autoStop) {
+      // Auto-stop (on disarm) - no modal confirmation
+      await stopSession()
+    } else {
+      // Manual stop - show confirmation modal
+      showModal({
+        title: t('status.flightSession.confirmStopTitle', 'Stop Flight Session?'),
+        message: t('status.flightSession.confirmStopMessage', 'Do you want to stop the current flight session?'),
+        type: 'confirm',
+        confirmText: t('common.stop', 'Stop'),
+        cancelText: t('common.cancel'),
+        onConfirm: stopSession
+      })
+    }
+  }
+
+  // Load initial status
+  useEffect(() => {
+    loadStatus()
+    loadFlightSession()
+    loadFlightPreferences()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Cleanup sampling interval on unmount
+  useEffect(() => {
+    return () => {
+      if (samplingInterval) {
+        clearInterval(samplingInterval)
+      }
+    }
+  }, [samplingInterval])
+
+  // Monitor armed state for auto-start
+  useEffect(() => {
+    const telemetry = messages.telemetry
+    if (telemetry?.system) {
+      const isArmed = telemetry.system.armed || false
+
+      // Debug log
+      if (isArmed !== prevArmed) {
+        console.log(`[Auto-start] Armed state changed: ${prevArmed} -> ${isArmed}, autoStartOnArm=${autoStartOnArm}, sessionActive=${flightSession?.active}`)
+      }
+
+      // Detect arm transition (false -> true)
+      if (autoStartOnArm && !prevArmed && isArmed && !flightSession?.active) {
+        console.log('[Auto-start] Conditions met, starting flight session...')
+        handleStartFlightSession()
+      }
+
+      // Detect disarm transition (true -> false)
+      if (prevArmed && !isArmed && flightSession?.active) {
+        console.log('[Auto-start] Drone disarmed, stopping flight session...')
+        handleStopFlightSession(true)
+      }
+
+      setPrevArmed(isArmed)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages.telemetry, autoStartOnArm, flightSession])
+
+  // Logs handlers
   const openLogsModal = (type) => {
     setLogsType(type)
     setShowLogsModal(true)
@@ -399,6 +577,54 @@ const StatusView = () => {
               </div>
             </div>
           )}
+        </div>
+
+        {/* Flight Session */}
+        <div className="card">
+          <h2>✈️ {t('status.sections.flightSession', 'Flight Session')}</h2>
+          
+          <div className="info-section">
+            <p className="flight-session-info">
+              {t('status.flightSession.description', 'Record network metrics during flight for analysis and optimization.')}
+            </p>
+            
+            {/* Auto-start on arm toggle */}
+            <div className="preference-item">
+              <Toggle
+                checked={autoStartOnArm}
+                onChange={(e) => handleToggleAutoStart(e.target.checked)}
+                disabled={savingPrefs || flightSession?.active}
+                label={t('status.flightSession.autoStartLabel', 'Auto-start on arm')}
+              />
+              <p className="preference-description">
+                {t('status.flightSession.autoStartDescription', 'Session will automatically start when vehicle is armed and stop when disarmed.')}
+              </p>
+            </div>
+            
+            {flightSession?.active ? (
+              <div className="flight-session-active">
+                <div className="session-status">
+                  <span className="recording-indicator">🔴</span>
+                  <span className="session-text">
+                    {t('status.flightSession.recording', 'Recording')} - {flightSession.stats?.sample_count || 0} {t('status.flightSession.samples', 'samples')}
+                  </span>
+                </div>
+                {!autoStartOnArm && (
+                  <button className="btn-stop-session" onClick={handleStopFlightSession}>
+                    ⏹️ {t('common.stop', 'Stop')}
+                  </button>
+                )}
+              </div>
+            ) : (
+              !autoStartOnArm && (
+                <div className="flight-session-inactive">
+                  <button className="btn-start-session" onClick={handleStartFlightSession}>
+                    ▶️ {t('common.start', 'Start')}
+                  </button>
+                </div>
+              )
+            )}
+          </div>
         </div>
 
         {/* Preferences Management */}

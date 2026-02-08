@@ -349,6 +349,7 @@
   border: 1px solid rgba(120, 138, 190, 0.3);
   max-height: 120px;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .pipeline-box code {
@@ -587,7 +588,7 @@
 }
 
 .toggle-label input:checked + .toggle-switch::before {
-  left: 22px;
+  left: 1px;
   background: #7fa3ff;
 }
 

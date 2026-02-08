@@ -1,5 +1,5 @@
 import './ModemView.css'
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useToast } from '../../contexts/ToastContext'
 import { useModal } from '../../contexts/ModalContext'
@@ -18,7 +18,6 @@ const ModemView = () => {
   const [bandPresets, setBandPresets] = useState(null)
   const [videoQuality, setVideoQuality] = useState(null)
   const [latency, setLatency] = useState(null)
-  const [flightSession, setFlightSession] = useState(null)
   
   // Loading states
   const [changingBand, setChangingBand] = useState(false)
@@ -26,9 +25,6 @@ const ModemView = () => {
   const [togglingVideoMode, setTogglingVideoMode] = useState(false)
   const [testingLatency, setTestingLatency] = useState(false)
   const [modemRebooting, setModemRebooting] = useState(false)
-  
-  // Flight session sampling
-  const sampleIntervalRef = useRef(null)
 
   // Load modem status
   const loadStatus = useCallback(async () => {
@@ -60,19 +56,6 @@ const ModemView = () => {
     }
   }, [])
 
-  // Load flight session status
-  const loadFlightSession = useCallback(async () => {
-    try {
-      const response = await api.get('/api/network/hilink/flight-session')
-      if (response.ok) {
-        const data = await response.json()
-        setFlightSession(data)
-      }
-    } catch (_error) {
-      // Ignore
-    }
-  }, [])
-
   // Test latency
   const handleTestLatency = async () => {
     setTestingLatency(true)
@@ -97,8 +80,7 @@ const ModemView = () => {
       setLoading(true)
       await Promise.all([
         loadStatus(),
-        loadBandPresets(),
-        loadFlightSession()
+        loadBandPresets()
       ])
       setLoading(false)
       // Auto-test latency on first load
@@ -106,7 +88,7 @@ const ModemView = () => {
     }
     loadAll()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadStatus, loadBandPresets, loadFlightSession])
+  }, [loadStatus, loadBandPresets])
 
   // WebSocket: update modem data from server push (replaces polling)
   useEffect(() => {
@@ -181,68 +163,6 @@ const ModemView = () => {
     setTogglingVideoMode(false)
   }
 
-  // Start flight session
-  const handleStartFlightSession = async () => {
-    try {
-      const response = await api.post('/api/network/hilink/flight-session/start')
-      if (response.ok) {
-        showToast(t('modem.flightSessionStarted'), 'success')
-        await loadFlightSession()
-        
-        // Start periodic sampling
-        sampleIntervalRef.current = setInterval(async () => {
-          await api.post('/api/network/hilink/flight-session/sample')
-        }, 5000) // Sample every 5 seconds
-      }
-    } catch (error) {
-      showToast(error.message, 'error')
-    }
-  }
-
-  // Format session summary
-  const formatSessionSummary = (stats) => {
-    if (!stats) return t('modem.noData')
-    
-    const duration = Math.floor(stats.duration_seconds / 60)
-    return `
-${t('modem.duration')}: ${duration} ${t('modem.minutes')}
-${t('modem.samples')}: ${stats.sample_count}
-SINR: ${stats.min_sinr?.toFixed(1) || 'N/A'} - ${stats.max_sinr?.toFixed(1) || 'N/A'} dB
-RSRP: ${stats.min_rsrp?.toFixed(0) || 'N/A'} - ${stats.max_rsrp?.toFixed(0) || 'N/A'} dBm
-${t('modem.avgLatency')}: ${stats.avg_latency_ms?.toFixed(0) || 'N/A'} ms
-${t('modem.bandChanges')}: ${stats.band_changes}
-    `.trim()
-  }
-
-  // Stop flight session
-  const handleStopFlightSession = async () => {
-    // Clear sampling interval
-    if (sampleIntervalRef.current) {
-      clearInterval(sampleIntervalRef.current)
-      sampleIntervalRef.current = null
-    }
-    
-    try {
-      const response = await api.post('/api/network/hilink/flight-session/stop')
-      if (response.ok) {
-        const data = await response.json()
-        showToast(t('modem.flightSessionStopped'), 'success')
-        
-        // Show session summary modal
-        showModal({
-          title: t('modem.sessionSummary'),
-          message: formatSessionSummary(data.session_stats),
-          type: 'info',
-          confirmText: t('modem.close')
-        })
-        
-        setFlightSession({ active: false })
-      }
-    } catch (error) {
-      showToast(error.message, 'error')
-    }
-  }
-
   // Reboot modem
   const handleRebootModem = () => {
     showModal({
@@ -300,15 +220,6 @@ ${t('modem.bandChanges')}: ${stats.band_changes}
       }
     })
   }
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (sampleIntervalRef.current) {
-        clearInterval(sampleIntervalRef.current)
-      }
-    }
-  }, [])
 
   // Get quality color class
   const getQualityColorClass = (level) => {
@@ -648,34 +559,6 @@ ${t('modem.bandChanges')}: ${stats.band_changes}
                   3G Only
                 </button>
               </div>
-            </div>
-
-            <div className="config-divider"></div>
-
-            {/* Flight Session */}
-            <div className="config-section">
-              <div className="config-header">
-                <span className="config-title">✈️ {t('modem.flightSession')}</span>
-              </div>
-              
-              {flightSession?.active ? (
-                <div className="session-active-compact">
-                  <div className="session-status">
-                    <span className="recording-dot">🔴</span>
-                    <span>{t('modem.recording')} - {flightSession.stats?.sample_count || 0} {t('modem.samples')}</span>
-                  </div>
-                  <button className="btn-stop" onClick={handleStopFlightSession}>
-                    ⏹️ {t('modem.stop')}
-                  </button>
-                </div>
-              ) : (
-                <div className="session-inactive">
-                  <span className="session-hint">{t('modem.recordStats')}</span>
-                  <button className="btn-start" onClick={handleStartFlightSession}>
-                    ▶️ {t('modem.start')}
-                  </button>
-                </div>
-              )}
             </div>
           </div>
 

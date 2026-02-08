@@ -437,7 +437,7 @@ async def get_routes():
 @router.post("/priority")
 async def set_priority_mode(request: PriorityModeRequest):
     """
-    Set network priority mode
+    Set network priority mode by adjusting route metrics
 
     Args:
         mode: 'wifi' (WiFi primary), 'modem' (4G primary), or 'auto' (4G preferred)
@@ -445,8 +445,101 @@ async def set_priority_mode(request: PriorityModeRequest):
     if request.mode not in ["wifi", "modem", "auto"]:
         raise HTTPException(status_code=400, detail="Mode must be 'wifi', 'modem', or 'auto'")
 
-    # Simplified - connection priority management
-    return {"success": True, "mode": request.mode, "message": f"Priority set to {request.mode}"}
+    try:
+        # Detect interfaces
+        wifi_interface = await _detect_wifi_interface()
+        modem_interface = await _detect_modem_interface()
+        
+        if not wifi_interface and not modem_interface:
+            raise HTTPException(status_code=503, detail="No network interfaces detected")
+        
+        # Get current routes
+        routes = await _get_routes()
+        
+        if request.mode == "wifi":
+            # Set WiFi as primary (lower metric)
+            if wifi_interface:
+                # First, get current routes for both interfaces
+                wifi_routes = [r for r in routes if r.get("interface") == wifi_interface]
+                modem_routes = [r for r in routes if r.get("interface") == modem_interface]
+                
+                # Delete existing default routes
+                for route in wifi_routes + modem_routes:
+                    gateway = route.get("gateway")
+                    interface = route.get("interface")
+                    if gateway and interface:
+                        cmd = ["sudo", "ip", "route", "del", "default", "via", gateway, "dev", interface]
+                        await _run_command(cmd)
+                
+                # Re-add routes with new metrics (lower = higher priority)
+                # WiFi as primary (metric 100)
+                if wifi_routes:
+                    gateway = wifi_routes[0].get("gateway")
+                    if gateway:
+                        cmd = ["sudo", "ip", "route", "add", "default", "via", gateway, "dev", wifi_interface, "metric", "100"]
+                        await _run_command(cmd)
+                
+                # Modem as backup (metric 200)
+                if modem_interface and modem_routes:
+                    gateway = modem_routes[0].get("gateway")
+                    if gateway:
+                        cmd = ["sudo", "ip", "route", "add", "default", "via", gateway, "dev", modem_interface, "metric", "200"]
+                        await _run_command(cmd)
+            else:
+                raise HTTPException(status_code=503, detail="WiFi interface not detected")
+                
+        elif request.mode == "modem":
+            # Set Modem as primary (lower metric)
+            if modem_interface:
+                # Get current routes for both interfaces
+                wifi_routes = [r for r in routes if r.get("interface") == wifi_interface]
+                modem_routes = [r for r in routes if r.get("interface") == modem_interface]
+                
+                # Delete existing default routes
+                for route in wifi_routes + modem_routes:
+                    gateway = route.get("gateway")
+                    interface = route.get("interface")
+                    if gateway and interface:
+                        cmd = ["sudo", "ip", "route", "del", "default", "via", gateway, "dev", interface]
+                        await _run_command(cmd)
+                
+                # Re-add routes with new metrics
+                # Modem as primary (metric 100)
+                if modem_routes:
+                    gateway = modem_routes[0].get("gateway")
+                    if gateway:
+                        cmd = ["sudo", "ip", "route", "add", "default", "via", gateway, "dev", modem_interface, "metric", "100"]
+                        await _run_command(cmd)
+                
+                # WiFi as backup (metric 200)
+                if wifi_interface and wifi_routes:
+                    gateway = wifi_routes[0].get("gateway")
+                    if gateway:
+                        cmd = ["sudo", "ip", "route", "add", "default", "via", gateway, "dev", wifi_interface, "metric", "200"]
+                        await _run_command(cmd)
+            else:
+                raise HTTPException(status_code=503, detail="Modem interface not detected")
+        
+        elif request.mode == "auto":
+            # Auto mode: 4G preferred if available
+            if modem_interface:
+                return await set_priority_mode(PriorityModeRequest(mode="modem"))
+            elif wifi_interface:
+                return await set_priority_mode(PriorityModeRequest(mode="wifi"))
+            else:
+                raise HTTPException(status_code=503, detail="No interfaces available")
+        
+        # Wait a bit for routes to settle
+        await asyncio.sleep(0.5)
+        
+        logger.info(f"Network priority set to {request.mode}")
+        return {"success": True, "mode": request.mode, "message": f"Priority set to {request.mode}"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error setting network priority: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to set priority: {str(e)}")
 
 
 @router.post("/priority/auto-adjust")
@@ -1175,9 +1268,13 @@ async def record_flight_sample():
     if hasattr(provider, "record_flight_sample"):
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(None, provider.record_flight_sample)
-        if result and result.get("success"):
-            return result
-    raise HTTPException(status_code=400, detail="No active session")
+        if result:
+            if result.get("success"):
+                return result
+            else:
+                # Session not active, return success=False instead of 400 error
+                return {"success": False, "message": result.get("message", "No active session")}
+    return {"success": False, "message": "Flight session not available"}
 
 
 # =============================

@@ -27,11 +27,18 @@ const Header = () => {
     installed: true
   }
   
+  const networkStatus = messages.network_status || {
+    mode: 'unknown',
+    wifi_interface: null,
+    modem_interface: null
+  }
+  
   const isArmed = telemetry.system?.armed || false
   const isStreaming = videoStatus.streaming || false
   const isVpnConnected = vpnStatus.connected || false
   const isVpnAuthenticated = vpnStatus.authenticated || false
   const isVpnInstalled = vpnStatus.installed !== false
+  const networkMode = networkStatus.mode || 'unknown'
 
   // VPN badge logic:
   // - Connected = success (green)
@@ -66,6 +73,11 @@ const Header = () => {
           <div className="info-item-badge">
             <Badge variant={vpnBadgeVariant}>
               {isVpnConnected ? t('header.vpnConnected') : t('header.vpnDisconnected')}
+            </Badge>
+          </div>
+          <div className="info-item-badge">
+            <Badge variant={networkMode === 'wifi' ? 'info' : networkMode === 'modem' ? 'success' : 'secondary'}>
+              {networkMode === 'wifi' ? t('header.internetWifi', 'Internet: WIFI') : networkMode === 'modem' ? t('header.internetModem', 'Internet: MÓDEM') : t('header.noNetwork', 'No Network')}
             </Badge>
           </div>
         </div>

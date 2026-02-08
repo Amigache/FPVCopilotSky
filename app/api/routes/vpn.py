@@ -99,7 +99,17 @@ async def get_status(request: Request, provider: Optional[str] = None):
         vpn_provider = _get_vpn_provider(provider, lang)
         status = vpn_provider.get_status()
         return status
-    except HTTPException:
+    except HTTPException as e:
+        # If no VPN provider configured, return a neutral status instead of 400
+        if e.status_code == 400 and translate("vpn.no_provider_configured", lang) in str(e.detail):
+            return {
+                "success": False,
+                "installed": False,
+                "connected": False,
+                "authenticated": False,
+                "provider": None,
+                "message": translate("vpn.no_provider_configured", lang),
+            }
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

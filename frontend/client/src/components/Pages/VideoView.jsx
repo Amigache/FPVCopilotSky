@@ -5,6 +5,7 @@ import { useWebSocket } from '../../contexts/WebSocketContext'
 import { useToast } from '../../contexts/ToastContext'
 import api from '../../services/api'
 import { PeerSelector } from '../PeerSelector/PeerSelector'
+import Toggle from '../Toggle/Toggle'
 
 const VideoView = () => {
   const { t } = useTranslation()
@@ -264,18 +265,15 @@ const VideoView = () => {
     
     try {
       // Try modern clipboard API first (requires HTTPS)
-      if (navigator.clipboard?.writeText) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
         await navigator.clipboard.writeText(pipeline)
       } else {
-        // Fallback for HTTP: use execCommand
-        const textarea = document.createElement('textarea')
-        textarea.value = pipeline
-        textarea.style.position = 'fixed'
-        textarea.style.opacity = '0'
-        document.body.appendChild(textarea)
-        textarea.select()
-        document.execCommand('copy')
-        document.body.removeChild(textarea)
+        const input = document.createElement('input');
+        input.value = pipeline;
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand('copy');
+        document.body.removeChild(input);
       }
       
       setCopySuccess(true)
@@ -624,16 +622,12 @@ const VideoView = () => {
             </div>
             
             <div className={`form-group auto-start-toggle ${status.streaming ? 'field-disabled' : ''}`}>
-              <label className="toggle-label">
-                <input 
-                  type="checkbox" 
-                  checked={config.auto_start || false}
-                  onChange={(e) => updateConfig(prev => ({ ...prev, auto_start: e.target.checked }))}
-                  disabled={status.streaming}
-                />
-                <span className="toggle-switch"></span>
-                <span className="toggle-text">{t('views.video.autoStart')}</span>
-              </label>
+              <Toggle
+                checked={config.auto_start || false}
+                onChange={(e) => updateConfig(prev => ({ ...prev, auto_start: e.target.checked }))}
+                disabled={status.streaming}
+                label={t('views.video.autoStart')}
+              />
             </div>
           </div>
         </div>

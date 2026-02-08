@@ -31,3 +31,9 @@
   color: #a0a8b8;
   border-color: rgba(120, 125, 140, 0.5);
 }
+
+.badge-info {
+  background: linear-gradient(135deg, rgba(70, 130, 180, 0.3) 0%, rgba(40, 90, 140, 0.22) 100%);
+  color: #a0c4ff;
+  border-color: rgba(70, 130, 180, 0.6);
+}

@@ -8,7 +8,10 @@
     "disarmed": "Disarmed",
     "armed": "Armed",
     "vpnConnected": "VPN: Connected",
-    "vpnDisconnected": "VPN: Disconnected"
+    "vpnDisconnected": "VPN: Disconnected",
+    "internetWifi": "Internet: WIFI",
+    "internetModem": "Internet: MODEM",
+    "noNetwork": "No Network"
   },
   "tabs": {
     "dashboard": "📊 Dashboard",
@@ -290,6 +293,12 @@
     "wifiConnectError": "Connection failed",
     "networkModeSet": "Network mode changed",
     "networkModeError": "Error changing network mode",
+    "confirmModeChange": "Confirm Mode Change",
+    "confirmModeChangeToModem": "Are you sure you want to switch from WiFi to 4G as the primary connection?",
+    "confirmModeChangeToWifi": "Are you sure you want to switch from 4G to WiFi as the primary connection?",
+    "confirmModeChangeWarning": "This will change your default network route.",
+    "changing": "Changing...",
+    "confirm": "Confirm",
     "rebootModem": "Reboot Modem",
     "confirmReboot": "Are you sure you want to reboot the 4G modem? Connection will be lost temporarily.",
     "reboot": "Reboot",
@@ -449,6 +458,7 @@
       "frontend": "WebUI",
       "permissions": "Permissions",
       "preferences": "Preferences",
+      "flightSession": "Flight Session",
       "systemControl": "System Control",
       "logs": "System Logs",
       "comingSoon": "Coming Soon"
@@ -492,6 +502,18 @@
       "resetting": "⏳ Resetting...",
       "resetSuccess": "Preferences reset successfully. Restarting the application is recommended.",
       "resetError": "Error resetting preferences"
+    },
+    "flightSession": {
+      "description": "Record network metrics during flight for analysis and optimization.",
+      "started": "Flight session started",
+      "stopped": "Flight session stopped",
+      "recording": "Recording",
+      "samples": "samples",
+      "totalSamples": "Total samples",
+      "confirmStopTitle": "Stop Flight Session?",
+      "confirmStopMessage": "Do you want to stop the current flight session?",
+      "autoStartLabel": "Auto-start on arm",
+      "autoStartDescription": "Session will automatically start when vehicle is armed and stop when disarmed."
     },
     "restart": {
       "description": "Restart backend (API) or frontend (Nginx) services.",

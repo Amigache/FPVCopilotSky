@@ -5,6 +5,7 @@ This module provides mock objects for hardware dependencies that are not availab
 in CI environments (serial ports, modems, cameras, etc.)
 """
 
+import os
 import pytest
 import json
 from unittest.mock import Mock, patch, MagicMock
@@ -154,6 +155,34 @@ def mock_subprocess():
         mock_result.stderr = ""
         mock.return_value = mock_result
         yield mock
+
+
+@pytest.fixture
+def serial_port():
+    port = os.environ.get("MAVLINK_TEST_SERIAL_PORT")
+    if not port:
+        pytest.skip("Set MAVLINK_TEST_SERIAL_PORT to run serial MAVLink tests")
+    return port
+
+
+@pytest.fixture
+def baudrate():
+    value = os.environ.get("MAVLINK_TEST_BAUDRATE", "115200")
+    try:
+        return int(value)
+    except ValueError:
+        pytest.skip("MAVLINK_TEST_BAUDRATE must be an integer")
+
+
+@pytest.fixture
+def tcp_port():
+    value = os.environ.get("MAVLINK_TEST_TCP_PORT")
+    if not value:
+        pytest.skip("Set MAVLINK_TEST_TCP_PORT to run TCP MAVLink tests")
+    try:
+        return int(value)
+    except ValueError:
+        pytest.skip("MAVLINK_TEST_TCP_PORT must be an integer")
 
 
 @pytest.fixture

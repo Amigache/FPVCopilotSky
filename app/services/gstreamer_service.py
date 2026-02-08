@@ -451,18 +451,21 @@ class GStreamerService:
     def _on_frame_probe(self, pad, info):
         """Pad probe callback to count encoded frames"""
         try:
-            buffer_list = info.get_buffer_list()
-            buffer = info.get_buffer()
-
-            with self.stats_lock:
-                if buffer_list:
-                    self.stats["frames_sent"] += buffer_list.length()
-                elif buffer:
-                    self.stats["frames_sent"] += 1
-
-                import time
-
-                self._update_rates_locked(time.time())
+            # Filtra el tipo de probe para evitar assertions
+            if info.type & Gst.PadProbeType.BUFFER_LIST:
+                buffer_list = info.get_buffer_list()
+                with self.stats_lock:
+                    if buffer_list:
+                        self.stats["frames_sent"] += buffer_list.length()
+                    import time
+                    self._update_rates_locked(time.time())
+            elif info.type & Gst.PadProbeType.BUFFER:
+                buffer = info.get_buffer()
+                with self.stats_lock:
+                    if buffer:
+                        self.stats["frames_sent"] += 1
+                    import time
+                    self._update_rates_locked(time.time())
         except Exception as e:
             print(f"⚠️ Error in frame probe: {e}")
 
@@ -471,23 +474,26 @@ class GStreamerService:
     def _on_bytes_probe(self, pad, info):
         """Pad probe callback to count transmitted bytes"""
         try:
-            buffer_list = info.get_buffer_list()
-            buffer = info.get_buffer()
-
-            with self.stats_lock:
-                if buffer_list:
-                    total = 0
-                    for i in range(buffer_list.length()):
-                        buf = buffer_list.get(i)
-                        if buf:
-                            total += buf.get_size()
-                    self.stats["bytes_sent"] += total
-                elif buffer:
-                    self.stats["bytes_sent"] += buffer.get_size()
-
-                import time
-
-                self._update_rates_locked(time.time())
+            # Filtra el tipo de probe para evitar assertions
+            if info.type & Gst.PadProbeType.BUFFER_LIST:
+                buffer_list = info.get_buffer_list()
+                with self.stats_lock:
+                    if buffer_list:
+                        total = 0
+                        for i in range(buffer_list.length()):
+                            buf = buffer_list.get(i)
+                            if buf:
+                                total += buf.get_size()
+                        self.stats["bytes_sent"] += total
+                    import time
+                    self._update_rates_locked(time.time())
+            elif info.type & Gst.PadProbeType.BUFFER:
+                buffer = info.get_buffer()
+                with self.stats_lock:
+                    if buffer:
+                        self.stats["bytes_sent"] += buffer.get_size()
+                    import time
+                    self._update_rates_locked(time.time())
         except Exception as e:
             print(f"⚠️ Error in bytes probe: {e}")
 
