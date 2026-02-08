@@ -151,9 +151,7 @@ async def get_interface_status(interface_name: str) -> Dict:
 
 
 @router.post("/bring-up/{interface_name}")
-async def bring_up_interface(
-    interface_name: str, request: Request
-) -> InterfaceActionResponse:
+async def bring_up_interface(interface_name: str, request: Request) -> InterfaceActionResponse:
     """
     Bring up a network interface.
 
@@ -190,9 +188,7 @@ async def bring_up_interface(
         return InterfaceActionResponse(
             success=success,
             message=(
-                translate(
-                    "network.interface_brought_up", lang, interface=interface_name
-                )
+                translate("network.interface_brought_up", lang, interface=interface_name)
                 if success
                 else translate("network.interface_up_failed", lang)
             ),
@@ -208,9 +204,7 @@ async def bring_up_interface(
 
 
 @router.post("/bring-down/{interface_name}")
-async def bring_down_interface(
-    interface_name: str, request: Request
-) -> InterfaceActionResponse:
+async def bring_down_interface(interface_name: str, request: Request) -> InterfaceActionResponse:
     """
     Bring down a network interface.
 
@@ -247,9 +241,7 @@ async def bring_down_interface(
         return InterfaceActionResponse(
             success=success,
             message=(
-                translate(
-                    "network.interface_brought_down", lang, interface=interface_name
-                )
+                translate("network.interface_brought_down", lang, interface=interface_name)
                 if success
                 else translate("network.interface_down_failed", lang)
             ),
@@ -307,9 +299,7 @@ async def set_interface_metric(
 
         # Validate metric range
         if request_body.metric < 0 or request_body.metric > 999:
-            raise HTTPException(
-                status_code=400, detail="Metric must be between 0 and 999"
-            )
+            raise HTTPException(status_code=400, detail="Metric must be between 0 and 999")
 
         # Set metric
         success = provider.set_metric(request_body.metric)
@@ -367,9 +357,7 @@ async def scan_wifi_networks() -> Dict:
         provider = registry.get_network_interface("wifi")
 
         if not provider:
-            raise HTTPException(
-                status_code=404, detail="WiFi interface provider not found"
-            )
+            raise HTTPException(status_code=404, detail="WiFi interface provider not found")
 
         # Check if WiFi interface exists
         if not provider.detect():
@@ -413,15 +401,11 @@ async def connect_wifi(request: WiFiConnectRequest) -> InterfaceActionResponse:
         provider = registry.get_network_interface("wifi")
 
         if not provider:
-            raise HTTPException(
-                status_code=404, detail="WiFi interface provider not found"
-            )
+            raise HTTPException(status_code=404, detail="WiFi interface provider not found")
 
         # Check if WiFi interface exists
         if not provider.detect():
-            raise HTTPException(
-                status_code=404, detail="No WiFi interface detected on system"
-            )
+            raise HTTPException(status_code=404, detail="No WiFi interface detected on system")
 
         # Connect to network
         success = provider.connect(request.ssid, request.password)
@@ -431,11 +415,7 @@ async def connect_wifi(request: WiFiConnectRequest) -> InterfaceActionResponse:
 
         return InterfaceActionResponse(
             success=success,
-            message=(
-                f"Connected to '{request.ssid}'"
-                if success
-                else f"Failed to connect to '{request.ssid}'"
-            ),
+            message=(f"Connected to '{request.ssid}'" if success else f"Failed to connect to '{request.ssid}'"),
             interface_name=status.get("interface_name") if status else None,
             status=status,
         )
@@ -460,15 +440,11 @@ async def disconnect_wifi() -> InterfaceActionResponse:
         provider = registry.get_network_interface("wifi")
 
         if not provider:
-            raise HTTPException(
-                status_code=404, detail="WiFi interface provider not found"
-            )
+            raise HTTPException(status_code=404, detail="WiFi interface provider not found")
 
         # Check if WiFi interface exists
         if not provider.detect():
-            raise HTTPException(
-                status_code=404, detail="No WiFi interface detected on system"
-            )
+            raise HTTPException(status_code=404, detail="No WiFi interface detected on system")
 
         # Disconnect
         success = provider.disconnect()

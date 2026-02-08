@@ -15,13 +15,9 @@ logger = logging.getLogger(__name__)
 class VPNInterface(NetworkInterface):
     """VPN network interface provider"""
 
-    def __init__(
-        self, interface_pattern: str = "tailscale", interface_name: Optional[str] = None
-    ):
+    def __init__(self, interface_pattern: str = "tailscale", interface_name: Optional[str] = None):
         super().__init__()
-        self.interface_pattern = (
-            interface_pattern  # Pattern to search for (e.g., "tailscale", "zt", "wg")
-        )
+        self.interface_pattern = interface_pattern  # Pattern to search for (e.g., "tailscale", "zt", "wg")
         self.interface_name = interface_name  # Actual interface name if known
         self.name = f"vpn_{interface_pattern}"
         self.display_name = f"VPN ({interface_pattern})"
@@ -50,9 +46,7 @@ class VPNInterface(NetworkInterface):
     def _find_interface(self) -> Optional[str]:
         """Find VPN interface by pattern"""
         try:
-            result = subprocess.run(
-                ["ip", "link", "show"], capture_output=True, text=True, timeout=2
-            )
+            result = subprocess.run(["ip", "link", "show"], capture_output=True, text=True, timeout=2)
 
             if result.returncode == 0:
                 for line in result.stdout.split("\n"):
@@ -203,9 +197,7 @@ class VPNInterface(NetworkInterface):
                             route_parts = route_parts[:idx] + route_parts[idx + 2 :]
 
                         result = subprocess.run(
-                            ["sudo", "ip", "route", "add"]
-                            + route_parts
-                            + ["metric", str(metric)],
+                            ["sudo", "ip", "route", "add"] + route_parts + ["metric", str(metric)],
                             capture_output=True,
                             text=True,
                             timeout=5,

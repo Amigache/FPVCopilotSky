@@ -27,9 +27,7 @@ class OpenH264Encoder(VideoEncoderProvider):
     def is_available(self) -> bool:
         """Check if openh264enc is available in GStreamer"""
         try:
-            result = subprocess.run(
-                ["gst-inspect-1.0", "openh264enc"], capture_output=True, timeout=2
-            )
+            result = subprocess.run(["gst-inspect-1.0", "openh264enc"], capture_output=True, timeout=2)
             return result.returncode == 0
         except Exception as e:
             logger.error(f"Failed to check openh264enc availability: {e}")
@@ -98,8 +96,7 @@ class OpenH264Encoder(VideoEncoderProvider):
                     "name": "encoder",
                     "element": "openh264enc",
                     "properties": {
-                        "bitrate": bitrate
-                        * 1000,  # OpenH264 expects bps (bits per second)
+                        "bitrate": bitrate * 1000,  # OpenH264 expects bps (bits per second)
                         "rate-control": 1,  # CBR (Constant Bitrate) mode
                         "gop-size": gop_size,  # Keyframe interval from config
                     },

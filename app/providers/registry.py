@@ -36,9 +36,7 @@ class ProviderRegistry:
 
     # ==================== VPN PROVIDERS ====================
 
-    def register_vpn_provider(
-        self, name: str, provider_class: Type[VPNProvider]
-    ) -> None:
+    def register_vpn_provider(self, name: str, provider_class: Type[VPNProvider]) -> None:
         """
         Register a VPN provider class.
 
@@ -111,9 +109,7 @@ class ProviderRegistry:
 
     # ==================== MODEM PROVIDERS ====================
 
-    def register_modem_provider(
-        self, name: str, provider_class: Type[ModemProvider]
-    ) -> None:
+    def register_modem_provider(self, name: str, provider_class: Type[ModemProvider]) -> None:
         """
         Register a Modem provider class.
 
@@ -193,9 +189,7 @@ class ProviderRegistry:
 
     # ==================== NETWORK INTERFACE PROVIDERS ====================
 
-    def register_network_interface(
-        self, name: str, provider_class: Type[NetworkInterface]
-    ) -> None:
+    def register_network_interface(self, name: str, provider_class: Type[NetworkInterface]) -> None:
         """
         Register a Network Interface provider class.
 
@@ -229,9 +223,7 @@ class ProviderRegistry:
             logger.info(f"Instantiated Network Interface provider: {name}")
             return provider
         except Exception as e:
-            logger.error(
-                f"Failed to instantiate Network Interface provider '{name}': {e}"
-            )
+            logger.error(f"Failed to instantiate Network Interface provider '{name}': {e}")
             return None
 
     def list_network_interfaces(self) -> List[str]:
@@ -281,9 +273,7 @@ class ProviderRegistry:
 
     # ==================== VIDEO ENCODER PROVIDERS ====================
 
-    def register_video_encoder(
-        self, codec_id: str, provider_class: Type[VideoEncoderProvider]
-    ) -> None:
+    def register_video_encoder(self, codec_id: str, provider_class: Type[VideoEncoderProvider]) -> None:
         """
         Register a Video Encoder provider class.
 
@@ -317,9 +307,7 @@ class ProviderRegistry:
             logger.info(f"Instantiated Video Encoder provider: {codec_id}")
             return provider
         except Exception as e:
-            logger.error(
-                f"Failed to instantiate Video Encoder provider '{codec_id}': {e}"
-            )
+            logger.error(f"Failed to instantiate Video Encoder provider '{codec_id}': {e}")
             return None
 
     def list_video_encoders(self) -> List[str]:
@@ -366,9 +354,7 @@ class ProviderRegistry:
                         }
                     )
                 except Exception as e:
-                    logger.error(
-                        f"Error getting capabilities for encoder '{codec_id}': {e}"
-                    )
+                    logger.error(f"Error getting capabilities for encoder '{codec_id}': {e}")
 
         # Sort by priority (higher first), then by availability
         available.sort(
@@ -378,9 +364,7 @@ class ProviderRegistry:
 
         return available
 
-    def get_best_video_encoder(
-        self, codec_family: Optional[str] = None
-    ) -> Optional[VideoEncoderProvider]:
+    def get_best_video_encoder(self, codec_family: Optional[str] = None) -> Optional[VideoEncoderProvider]:
         """
         Get the best available video encoder, optionally filtered by codec family.
 
@@ -421,19 +405,11 @@ class ProviderRegistry:
         """
         if provider_type == "vpn":
             provider = self.get_vpn_provider(name)
-            return (
-                provider.get_status()
-                if provider
-                else {"success": False, "error": "Not found"}
-            )
+            return provider.get_status() if provider else {"success": False, "error": "Not found"}
 
         elif provider_type == "modem":
             provider = self.get_modem_provider(name)
-            return (
-                provider.get_status()
-                if provider
-                else {"success": False, "error": "Not found"}
-            )
+            return provider.get_status() if provider else {"success": False, "error": "Not found"}
 
         elif provider_type == "network":
             provider = self.get_network_interface(name)
@@ -451,9 +427,7 @@ class ProviderRegistry:
 
     # ==================== VIDEO SOURCE PROVIDERS ====================
 
-    def register_video_source(
-        self, source_type: str, provider_class: Type[VideoSourceProvider]
-    ) -> None:
+    def register_video_source(self, source_type: str, provider_class: Type[VideoSourceProvider]) -> None:
         """
         Register a video source provider class.
 
@@ -487,9 +461,7 @@ class ProviderRegistry:
             logger.info(f"Instantiated video source provider: {source_type}")
             return provider
         except Exception as e:
-            logger.error(
-                f"Failed to instantiate video source provider '{source_type}': {e}"
-            )
+            logger.error(f"Failed to instantiate video source provider '{source_type}': {e}")
             return None
 
     def list_video_source_providers(self) -> List[str]:
@@ -527,11 +499,7 @@ class ProviderRegistry:
 
         # Sort by provider priority (highest first)
         all_sources.sort(
-            key=lambda s: (
-                self.get_video_source(s["type"]).priority
-                if self.get_video_source(s["type"])
-                else 0
-            ),
+            key=lambda s: (self.get_video_source(s["type"]).priority if self.get_video_source(s["type"]) else 0),
             reverse=True,
         )
 
@@ -546,9 +514,7 @@ class ProviderRegistry:
         sources = self.get_available_video_sources()
         return sources[0] if sources else None
 
-    def find_video_source_by_identity(
-        self, name: str, bus_info: str = "", driver: str = ""
-    ) -> Optional[Dict]:
+    def find_video_source_by_identity(self, name: str, bus_info: str = "", driver: str = "") -> Optional[Dict]:
         """
         Find a video source by identity across all providers.
 

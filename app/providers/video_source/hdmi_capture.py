@@ -38,16 +38,12 @@ class HDMICaptureSource(VideoSourceProvider):
     def is_available(self) -> bool:
         """Check if v4l2-ctl is available (needed to detect HDMI capture)"""
         try:
-            result = subprocess.run(
-                ["which", "v4l2-ctl"], capture_output=True, timeout=2
-            )
+            result = subprocess.run(["which", "v4l2-ctl"], capture_output=True, timeout=2)
             return result.returncode == 0
         except Exception:
             return False
 
-    def _is_hdmi_capture_device(
-        self, device_name: str, driver: str, card_type: str
-    ) -> bool:
+    def _is_hdmi_capture_device(self, device_name: str, driver: str, card_type: str) -> bool:
         """
         Determine if a V4L2 device is an HDMI capture card.
 
@@ -81,11 +77,7 @@ class HDMICaptureSource(VideoSourceProvider):
             return False
 
         # Check for generic "capture" in name but not "camera"
-        if (
-            "capture" in name_lower
-            and "camera" not in name_lower
-            and "webcam" not in name_lower
-        ):
+        if "capture" in name_lower and "camera" not in name_lower and "webcam" not in name_lower:
             return True
 
         return False
@@ -251,11 +243,7 @@ class HDMICaptureSource(VideoSourceProvider):
             )
 
             # Determine default format
-            default_format = (
-                "MJPEG"
-                if "MJPG" in formats or "MJPEG" in formats
-                else formats[0] if formats else "YUYV"
-            )
+            default_format = "MJPEG" if "MJPG" in formats or "MJPEG" in formats else formats[0] if formats else "YUYV"
 
             # Check for hardware encoding
             hardware_encoding = any(fmt in ["H264", "HEVC"] for fmt in formats)
@@ -309,9 +297,7 @@ class HDMICaptureSource(VideoSourceProvider):
             }
 
             gst_format = format_mapping.get(pixel_format, "image/jpeg")
-            caps_str = (
-                f"{gst_format},width={width},height={height},framerate={framerate}/1"
-            )
+            caps_str = f"{gst_format},width={width},height={height},framerate={framerate}/1"
 
             return {
                 "success": True,
@@ -362,9 +348,7 @@ class HDMICaptureSource(VideoSourceProvider):
             resolution = f"{width}x{height}"
             if resolution in caps["supported_framerates"]:
                 if framerate not in caps["supported_framerates"][resolution]:
-                    warnings.append(
-                        f"Framerate {framerate}fps may not be available at {resolution}"
-                    )
+                    warnings.append(f"Framerate {framerate}fps may not be available at {resolution}")
 
         return {
             "valid": len(errors) == 0,

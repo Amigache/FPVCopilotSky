@@ -14,9 +14,7 @@ class TestStatusRouteModule:
 
     def test_status_route_file_exists(self):
         """Test that status route file exists"""
-        route_file = (
-            Path(__file__).parent.parent / "app" / "api" / "routes" / "status.py"
-        )
+        route_file = Path(__file__).parent.parent / "app" / "api" / "routes" / "status.py"
         assert route_file.exists(), "Status route file should exist"
 
     def test_status_route_can_import(self):
@@ -34,9 +32,7 @@ class TestSystemRouteModule:
 
     def test_system_route_file_exists(self):
         """Test that system route file exists"""
-        route_file = (
-            Path(__file__).parent.parent / "app" / "api" / "routes" / "system.py"
-        )
+        route_file = Path(__file__).parent.parent / "app" / "api" / "routes" / "system.py"
         assert route_file.exists(), "System route file should exist"
 
     def test_system_route_can_import(self):
@@ -54,9 +50,7 @@ class TestNetworkRouteModule:
 
     def test_network_route_file_exists(self):
         """Test that network route file exists"""
-        route_file = (
-            Path(__file__).parent.parent / "app" / "api" / "routes" / "network.py"
-        )
+        route_file = Path(__file__).parent.parent / "app" / "api" / "routes" / "network.py"
         assert route_file.exists(), "Network route file should exist"
 
     def test_network_route_can_import(self):
@@ -74,9 +68,7 @@ class TestVideoRouteModule:
 
     def test_video_route_file_exists(self):
         """Test that video route file exists"""
-        route_file = (
-            Path(__file__).parent.parent / "app" / "api" / "routes" / "video.py"
-        )
+        route_file = Path(__file__).parent.parent / "app" / "api" / "routes" / "video.py"
         assert route_file.exists(), "Video route file should exist"
 
     def test_video_route_can_import(self):
@@ -112,9 +104,7 @@ class TestModemRouteModule:
 
     def test_modem_route_file_exists(self):
         """Test that modem route file exists"""
-        route_file = (
-            Path(__file__).parent.parent / "app" / "api" / "routes" / "modem.py"
-        )
+        route_file = Path(__file__).parent.parent / "app" / "api" / "routes" / "modem.py"
         assert route_file.exists(), "Modem route file should exist"
 
     def test_modem_route_can_import(self):
@@ -135,12 +125,8 @@ class TestRouteStructure:
         route_files = ["status", "system", "network", "video", "vpn", "modem"]
         for route_name in route_files:
             try:
-                module = __import__(
-                    f"app.api.routes.{route_name}", fromlist=[route_name]
-                )
-                assert hasattr(
-                    module, "router"
-                ), f"{route_name} module should have router"
+                module = __import__(f"app.api.routes.{route_name}", fromlist=[route_name])
+                assert hasattr(module, "router"), f"{route_name} module should have router"
             except ImportError:
                 pytest.skip(f"Could not import {route_name} route")
 
@@ -148,6 +134,4 @@ class TestRouteStructure:
         """Test that api.routes package exists"""
         routes_dir = Path(__file__).parent.parent / "app" / "api" / "routes"
         assert routes_dir.exists(), "API routes directory should exist"
-        assert (
-            routes_dir / "__init__.py"
-        ).exists(), "Routes package should have __init__.py"
+        assert (routes_dir / "__init__.py").exists(), "Routes package should have __init__.py"

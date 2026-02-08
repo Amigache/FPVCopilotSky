@@ -76,10 +76,7 @@ class HardwareH264Encoder(VideoEncoderProvider):
                             timeout=2,
                         )
 
-                        if (
-                            "h264" in caps_result.stdout.lower()
-                            or "h.264" in caps_result.stdout.lower()
-                        ):
+                        if "h264" in caps_result.stdout.lower() or "h.264" in caps_result.stdout.lower():
                             logger.info(f"Found hardware H.264 encoder: {device}")
                             return device
 
@@ -105,9 +102,7 @@ class HardwareH264Encoder(VideoEncoderProvider):
 
         for element in elements_to_try:
             try:
-                result = subprocess.run(
-                    ["gst-inspect-1.0", element], capture_output=True, timeout=2
-                )
+                result = subprocess.run(["gst-inspect-1.0", element], capture_output=True, timeout=2)
                 if result.returncode == 0:
                     logger.info(f"Found hardware encoder element: {element}")
                     return element
@@ -127,9 +122,7 @@ class HardwareH264Encoder(VideoEncoderProvider):
             logger.debug("No hardware encoder device found")
             return False
 
-        logger.info(
-            f"Hardware H.264 encoder available: {self.gst_encoder_element} on {self.encoder_device}"
-        )
+        logger.info(f"Hardware H.264 encoder available: {self.gst_encoder_element} on {self.encoder_device}")
         return True
 
     def get_capabilities(self) -> Dict:
@@ -200,9 +193,7 @@ class HardwareH264Encoder(VideoEncoderProvider):
                 {
                     "name": "encoder",
                     "element": self.gst_encoder_element,
-                    "properties": {
-                        "extra-controls": f"s,video_bitrate={bitrate * 1000}"
-                    },  # V4L2 control format
+                    "properties": {"extra-controls": f"s,video_bitrate={bitrate * 1000}"},  # V4L2 control format
                 },
                 {
                     "name": "queue_post",

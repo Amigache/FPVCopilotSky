@@ -49,9 +49,7 @@ class BoardRegistry:
         implementations_dir = os.path.join(os.path.dirname(__file__), "implementations")
 
         if not os.path.exists(implementations_dir):
-            logger.warning(
-                f"Implementations directory not found: {implementations_dir}"
-            )
+            logger.warning(f"Implementations directory not found: {implementations_dir}")
             return
 
         package_prefix = __package__ or "providers.board"
@@ -61,9 +59,7 @@ class BoardRegistry:
             for file in files:
                 if file.endswith(".py") and not file.startswith("__"):
                     # Extract module path: implementations/radxa/zero.py -> implementations.radxa.zero
-                    rel_path = os.path.relpath(
-                        os.path.join(root, file), implementations_dir
-                    )
+                    rel_path = os.path.relpath(os.path.join(root, file), implementations_dir)
                     module_path = f"{package_prefix}.implementations.{rel_path[:-3].replace(os.sep, '.')}"
 
                     try:
@@ -73,17 +69,11 @@ class BoardRegistry:
                         # Find BoardProvider subclasses in module
                         for attr_name in dir(module):
                             attr = getattr(module, attr_name)
-                            if (
-                                isinstance(attr, type)
-                                and issubclass(attr, BoardProvider)
-                                and attr is not BoardProvider
-                            ):
+                            if isinstance(attr, type) and issubclass(attr, BoardProvider) and attr is not BoardProvider:
 
                                 provider = attr()
                                 self._providers.append(provider)
-                                logger.info(
-                                    f"Registered board provider: {provider.board_name}"
-                                )
+                                logger.info(f"Registered board provider: {provider.board_name}")
 
                     except Exception as e:
                         logger.error(f"Failed to load board module {module_path}: {e}")

@@ -15,9 +15,7 @@ class VideoEncoderProvider(ABC):
 
     def __init__(self):
         self.codec_id: str = ""  # e.g., 'mjpeg', 'h264', 'h264_openh264'
-        self.display_name: str = (
-            ""  # e.g., 'MJPEG', 'H.264 (x264)', 'H.264 Low CPU (OpenH264)'
-        )
+        self.display_name: str = ""  # e.g., 'MJPEG', 'H.264 (x264)', 'H.264 Low CPU (OpenH264)'
         self.codec_family: str = ""  # e.g., 'mjpeg', 'h264', 'h265'
         self.encoder_type: str = ""  # 'hardware', 'software', 'hybrid'
         self.gst_encoder_element: str = ""  # GStreamer element name
@@ -142,13 +140,9 @@ class VideoEncoderProvider(ABC):
         if self.codec_family in ["h264", "h265"]:
             bitrate = config.get("bitrate", 0)
             if bitrate < caps.get("min_bitrate", 0):
-                warnings.append(
-                    f"Bitrate below minimum ({caps.get('min_bitrate')} kbps)"
-                )
+                warnings.append(f"Bitrate below minimum ({caps.get('min_bitrate')} kbps)")
             if bitrate > caps.get("max_bitrate", 10000):
-                warnings.append(
-                    f"Bitrate above maximum ({caps.get('max_bitrate')} kbps)"
-                )
+                warnings.append(f"Bitrate above maximum ({caps.get('max_bitrate')} kbps)")
 
         return {"valid": len(errors) == 0, "errors": errors, "warnings": warnings}
 

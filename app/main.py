@@ -89,18 +89,14 @@ async def websocket_endpoint(websocket: WebSocket):
 
     try:
         # Send initial status and telemetry
-        await websocket_manager.broadcast(
-            "mavlink_status", mavlink_service.get_status()
-        )
+        await websocket_manager.broadcast("mavlink_status", mavlink_service.get_status())
         telemetry = mavlink_service.get_telemetry()
         if telemetry.get("connected"):
             await websocket_manager.broadcast("telemetry", telemetry)
 
         # Send initial video status
         if video_service:
-            await websocket_manager.broadcast(
-                "video_status", video_service.get_status()
-            )
+            await websocket_manager.broadcast("video_status", video_service.get_status())
 
         # Send initial VPN status (from provider registry)
         try:
@@ -168,9 +164,7 @@ async def periodic_stats_broadcast():
 
             # Video status every 2 seconds (when streaming)
             if counter % 2 == 0 and video_service and video_service.is_streaming:
-                await websocket_manager.broadcast(
-                    "video_status", video_service.get_status()
-                )
+                await websocket_manager.broadcast("video_status", video_service.get_status())
 
             # Status health check every 5 seconds
             if counter % 5 == 0:
@@ -229,9 +223,7 @@ async def periodic_stats_broadcast():
                 from services.system_service import SystemService
 
                 services = SystemService.get_services_status()
-                await websocket_manager.broadcast(
-                    "system_services", {"services": services, "count": len(services)}
-                )
+                await websocket_manager.broadcast("system_services", {"services": services, "count": len(services)})
 
             # VPN status every 10 seconds
             if counter % 10 == 0:
@@ -252,9 +244,7 @@ async def periodic_stats_broadcast():
                         vpn_provider = registry.get_vpn_provider(provider_name)
                         if vpn_provider:
                             loop = asyncio.get_event_loop()
-                            vpn_status = await loop.run_in_executor(
-                                None, vpn_provider.get_status
-                            )
+                            vpn_status = await loop.run_in_executor(None, vpn_provider.get_status)
                             await websocket_manager.broadcast("vpn_status", vpn_status)
                 except Exception as e:
                     logger.debug(f"VPN status broadcast error: {e}")
@@ -299,42 +289,26 @@ async def periodic_stats_broadcast():
                             return_exceptions=True,
                         )
 
-                        device_info = (
-                            results[0] if not isinstance(results[0], Exception) else {}
-                        )
-                        signal_info = (
-                            results[1] if not isinstance(results[1], Exception) else {}
-                        )
-                        network_info = (
-                            results[2] if not isinstance(results[2], Exception) else {}
-                        )
-                        traffic_info = (
-                            results[3] if not isinstance(results[3], Exception) else {}
-                        )
+                        device_info = results[0] if not isinstance(results[0], Exception) else {}
+                        signal_info = results[1] if not isinstance(results[1], Exception) else {}
+                        network_info = results[2] if not isinstance(results[2], Exception) else {}
+                        traffic_info = results[3] if not isinstance(results[3], Exception) else {}
 
                         device_info = device_info or {}
                         signal_info = signal_info or {}
                         network_info = network_info or {}
                         traffic_info = traffic_info or {}
 
-                        available = any(
-                            [device_info, signal_info, network_info, traffic_info]
-                        )
+                        available = any([device_info, signal_info, network_info, traffic_info])
                         conn_status = network_info.get("connection_status", "")
                         signal_percent = signal_info.get("signal_percent", 0) or 0
-                        signal_bars = (
-                            min(5, max(0, int(signal_percent / 20)))
-                            if signal_percent
-                            else 0
-                        )
+                        signal_bars = min(5, max(0, int(signal_percent / 20))) if signal_percent else 0
 
                         modem_data = {
                             "success": True,
                             "available": available,
                             "connected": conn_status == "Connected",
-                            "video_mode_active": getattr(
-                                modem_provider, "video_mode_active", False
-                            ),
+                            "video_mode_active": getattr(modem_provider, "video_mode_active", False),
                         }
 
                         if device_info:
@@ -345,12 +319,8 @@ async def periodic_stats_broadcast():
                                 "imsi": device_info.get("imsi", ""),
                                 "iccid": device_info.get("iccid", ""),
                                 "serial_number": device_info.get("serial_number", ""),
-                                "hardware_version": device_info.get(
-                                    "hardware_version", ""
-                                ),
-                                "software_version": device_info.get(
-                                    "software_version", ""
-                                ),
+                                "hardware_version": device_info.get("hardware_version", ""),
+                                "software_version": device_info.get("software_version", ""),
                                 "product_family": device_info.get("product_family", ""),
                             }
                         if signal_info:
@@ -363,13 +333,9 @@ async def periodic_stats_broadcast():
                                 "operator": network_info.get("operator", ""),
                                 "operator_code": network_info.get("operator_code", ""),
                                 "network_type": network_info.get("network_type", ""),
-                                "network_type_ex": network_info.get(
-                                    "network_type_ex", ""
-                                ),
+                                "network_type_ex": network_info.get("network_type_ex", ""),
                                 "connection_status": conn_status,
-                                "signal_icon": network_info.get(
-                                    "signal_icon", signal_bars
-                                ),
+                                "signal_icon": network_info.get("signal_icon", signal_bars),
                                 "roaming": network_info.get("roaming", False),
                                 "primary_dns": network_info.get("primary_dns", ""),
                                 "secondary_dns": network_info.get("secondary_dns", ""),
@@ -379,22 +345,16 @@ async def periodic_stats_broadcast():
 
                         # Add band/mode data (single extra call, reuses connection)
                         loop = asyncio.get_event_loop()
-                        band_data = await loop.run_in_executor(
-                            None, modem_provider.get_current_band
-                        )
+                        band_data = await loop.run_in_executor(None, modem_provider.get_current_band)
                         if band_data:
                             modem_data["current_band"] = band_data
                             modem_data["mode"] = {
                                 "network_mode": band_data.get("network_mode", "00"),
-                                "network_mode_name": band_data.get(
-                                    "network_mode_name", "Auto"
-                                ),
+                                "network_mode_name": band_data.get("network_mode_name", "Auto"),
                             }
 
                         # Add video quality
-                        vq = await loop.run_in_executor(
-                            None, modem_provider.get_video_quality_assessment
-                        )
+                        vq = await loop.run_in_executor(None, modem_provider.get_video_quality_assessment)
                         if vq and vq.get("available"):
                             modem_data["video_quality"] = vq
 
@@ -463,9 +423,7 @@ def auto_connect_vpn():
         if result.get("success"):
             print(f"✅ Auto-connected to VPN ({provider_name})")
         elif result.get("needs_auth"):
-            print(
-                f"ℹ️ VPN requires authentication: {result.get('auth_url', 'Check VPN settings')}"
-            )
+            print(f"ℹ️ VPN requires authentication: {result.get('auth_url', 'Check VPN settings')}")
         else:
             print(f"⚠️ VPN auto-connect failed: {result.get('error', 'Unknown error')}")
     except Exception as e:
@@ -502,9 +460,7 @@ def auto_connect_serial():
 
         # If we have a previously successful connection, try that first
         if serial_config.last_successful and serial_config.port:
-            print(
-                f"🔄 Attempting saved connection: {serial_config.port} @ {serial_config.baudrate} baud"
-            )
+            print(f"🔄 Attempting saved connection: {serial_config.port} @ {serial_config.baudrate} baud")
             result = mavlink_service.connect(serial_config.port, serial_config.baudrate)
 
             if result.get("success"):
@@ -517,9 +473,7 @@ def auto_connect_serial():
                 else:
                     print(f"⚠️ Saved connection unstable, scanning for alternatives...")
             else:
-                print(
-                    f"⚠️ Saved connection failed: {result.get('message', 'Unknown error')}"
-                )
+                print(f"⚠️ Saved connection failed: {result.get('message', 'Unknown error')}")
 
         # Auto-detect flight controller
         print("🔍 Scanning for flight controller...")
@@ -530,18 +484,12 @@ def auto_connect_serial():
             return
 
         detection = detector.detect_flight_controller(
-            preferred_port=(
-                serial_config.port if not serial_config.last_successful else None
-            ),
-            preferred_baudrate=(
-                serial_config.baudrate if not serial_config.last_successful else None
-            ),
+            preferred_port=(serial_config.port if not serial_config.last_successful else None),
+            preferred_baudrate=(serial_config.baudrate if not serial_config.last_successful else None),
         )
 
         if detection:
-            print(
-                f"📍 Found flight controller: {detection.get('description', detection['port'])}"
-            )
+            print(f"📍 Found flight controller: {detection.get('description', detection['port'])}")
             print(f"   Port: {detection['port']} @ {detection['baudrate']} baud")
 
             # Try to connect
@@ -560,28 +508,18 @@ def auto_connect_serial():
                             baudrate=detection["baudrate"],
                             successful=True,
                         )
-                        print(
-                            f"✅ Auto-connected and saved: {detection['port']} @ {detection['baudrate']} baud"
-                        )
+                        print(f"✅ Auto-connected and saved: {detection['port']} @ {detection['baudrate']} baud")
                         return
                     except Exception as e:
                         print(f"⚠️ Connected but failed to save preferences: {e}")
                         # Connection is good, so don't disconnect
                 else:
-                    print(
-                        f"⚠️ Detection succeeded and initial connect returned success, but connection unstable"
-                    )
+                    print(f"⚠️ Detection succeeded and initial connect returned success, but connection unstable")
             else:
-                print(
-                    f"⚠️ Connection attempt failed: {result.get('message', 'Unknown error')}"
-                )
+                print(f"⚠️ Connection attempt failed: {result.get('message', 'Unknown error')}")
         else:
-            print(
-                "⚠️ No flight controller detected - the system is ready for manual connection"
-            )
-            print(
-                "ℹ️  Connect a flight controller via serial and use the UI to establish connection"
-            )
+            print("⚠️ No flight controller detected - the system is ready for manual connection")
+            print("ℹ️  Connect a flight controller via serial and use the UI to establish connection")
 
     except Exception as e:
         print(f"⚠️ Serial auto-connect error: {e}")
@@ -607,19 +545,11 @@ async def startup_event():
         if detected_board:
             print(f"✅ Board detected: {detected_board.board_name}")
             print(f"   - Variant: {detected_board.variant.name}")
-            print(
-                f"   - CPU: {detected_board.hardware.cpu_cores} cores @ {detected_board.hardware.cpu_model}"
-            )
+            print(f"   - CPU: {detected_board.hardware.cpu_cores} cores @ {detected_board.hardware.cpu_model}")
             print(f"   - RAM: {detected_board.hardware.ram_gb}GB")
-            print(
-                f"   - Storage: {detected_board.hardware.storage_gb}GB ({detected_board.variant.storage_type.value})"
-            )
-            print(
-                f"   - Video Sources: {', '.join([f.value for f in detected_board.variant.video_sources])}"
-            )
-            print(
-                f"   - Video Encoders: {', '.join([f.value for f in detected_board.variant.video_encoders])}"
-            )
+            print(f"   - Storage: {detected_board.hardware.storage_gb}GB ({detected_board.variant.storage_type.value})")
+            print(f"   - Video Sources: {', '.join([f.value for f in detected_board.variant.video_sources])}")
+            print(f"   - Video Encoders: {', '.join([f.value for f in detected_board.variant.video_encoders])}")
         else:
             print("⚠️  No board detected - using generic configuration")
     except Exception as e:
@@ -685,9 +615,7 @@ async def startup_event():
     video_routes.set_video_service(video_service)
 
     # Initialize video stream information service (for MAVLink VIDEO_STREAM_INFORMATION)
-    video_stream_info_service = init_video_stream_info_service(
-        mavlink_service, video_service
-    )
+    video_stream_info_service = init_video_stream_info_service(mavlink_service, video_service)
     video_stream_info_service.start()
 
     # Auto-connect to VPN not needed - handled by VPN provider/routes on demand
@@ -696,17 +624,13 @@ async def startup_event():
     video_config = preferences_service.get_video_config()
     streaming_config = preferences_service.get_streaming_config()
     if video_config or streaming_config:
-        video_service.configure(
-            video_config=video_config, streaming_config=streaming_config
-        )
+        video_service.configure(video_config=video_config, streaming_config=streaming_config)
 
     # Set callback to broadcast router status changes via WebSocket (for immediate updates)
     def broadcast_router_status():
         try:
             outputs = router_service.get_outputs_list()
-            asyncio.run_coroutine_threadsafe(
-                websocket_manager.broadcast("router_status", outputs), loop
-            )
+            asyncio.run_coroutine_threadsafe(websocket_manager.broadcast("router_status", outputs), loop)
         except:
             pass
 
@@ -752,29 +676,21 @@ async def startup_event():
                     else:
                         print("⚠️ Video start returned success but stream not confirmed")
                 else:
-                    print(
-                        f"⚠️ Video auto-start failed: {result.get('message', 'Unknown error')}"
-                    )
+                    print(f"⚠️ Video auto-start failed: {result.get('message', 'Unknown error')}")
             except Exception as e:
                 print(f"⚠️ Video auto-start exception: {e}")
 
-        video_thread = threading.Thread(
-            target=start_video, daemon=True, name="VideoAutoStart"
-        )
+        video_thread = threading.Thread(target=start_video, daemon=True, name="VideoAutoStart")
         video_thread.start()
     else:
         print("⏭️ Video auto-start disabled in preferences")
 
     # Start auto-connect VPN in background thread (non-blocking)
-    vpn_thread = threading.Thread(
-        target=auto_connect_vpn, daemon=True, name="VPNAutoConnect"
-    )
+    vpn_thread = threading.Thread(target=auto_connect_vpn, daemon=True, name="VPNAutoConnect")
     vpn_thread.start()
 
     # Start auto-connect in background thread (non-blocking)
-    auto_connect_thread = threading.Thread(
-        target=auto_connect_serial, daemon=True, name="AutoConnect"
-    )
+    auto_connect_thread = threading.Thread(target=auto_connect_serial, daemon=True, name="AutoConnect")
     auto_connect_thread.start()
 
 

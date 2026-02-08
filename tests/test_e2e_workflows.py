@@ -325,9 +325,7 @@ class TestCompleteSystemWorkflow:
         for endpoint, step_name in workflow_steps:
             response = client.get(endpoint)
             success = response.status_code in [200, 404, 500]
-            results.append(
-                {"step": step_name, "success": success, "status": response.status_code}
-            )
+            results.append({"step": step_name, "success": success, "status": response.status_code})
 
         # All steps should complete
         assert len(results) == len(workflow_steps)

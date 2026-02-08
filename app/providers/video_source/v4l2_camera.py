@@ -34,9 +34,7 @@ class V4L2CameraSource(VideoSourceProvider):
     def is_available(self) -> bool:
         """Check if v4l2-ctl is available"""
         try:
-            result = subprocess.run(
-                ["which", "v4l2-ctl"], capture_output=True, timeout=2
-            )
+            result = subprocess.run(["which", "v4l2-ctl"], capture_output=True, timeout=2)
             return result.returncode == 0
         except Exception as e:
             logger.error(f"Failed to check v4l2-ctl availability: {e}")
@@ -66,9 +64,7 @@ class V4L2CameraSource(VideoSourceProvider):
 
                 # Get identity info
                 identity = caps.get("identity", {})
-                bus_info = identity.get(
-                    "bus_info", device
-                )  # Fallback to device if no bus_info
+                bus_info = identity.get("bus_info", device)  # Fallback to device if no bus_info
 
                 # Group by bus_info - only keep the first device for each physical camera
                 if bus_info not in devices_by_identity:
@@ -79,9 +75,7 @@ class V4L2CameraSource(VideoSourceProvider):
                         "device": device,
                         "capabilities": caps,
                         "provider": self.display_name,
-                        "all_devices": [
-                            device
-                        ],  # Track all /dev/video* for this camera
+                        "all_devices": [device],  # Track all /dev/video* for this camera
                     }
                 else:
                     # Same physical camera, just track the device path
@@ -185,13 +179,8 @@ class V4L2CameraSource(VideoSourceProvider):
                             current_resolution = part
                             if current_resolution not in resolutions_fps:
                                 resolutions_fps[current_resolution] = []
-                            if (
-                                current_resolution
-                                not in format_resolutions[current_format]
-                            ):
-                                format_resolutions[current_format].append(
-                                    current_resolution
-                                )
+                            if current_resolution not in format_resolutions[current_format]:
+                                format_resolutions[current_format].append(current_resolution)
 
                 # Parse FPS line
                 if "Interval: Discrete" in line and current_resolution:
@@ -223,9 +212,7 @@ class V4L2CameraSource(VideoSourceProvider):
                 default_format = formats[0]
 
             # Check for hardware encoding capability
-            hardware_encoding = any(
-                fmt in ["H264", "HEVC", "VP8", "VP9"] for fmt in formats
-            )
+            hardware_encoding = any(fmt in ["H264", "HEVC", "VP8", "VP9"] for fmt in formats)
 
             return {
                 "is_capture_device": True,
@@ -285,9 +272,7 @@ class V4L2CameraSource(VideoSourceProvider):
             gst_format = format_mapping.get(pixel_format, "image/jpeg")
 
             # Build caps filter string
-            caps_str = (
-                f"{gst_format},width={width},height={height},framerate={framerate}/1"
-            )
+            caps_str = f"{gst_format},width={width},height={height},framerate={framerate}/1"
 
             return {
                 "success": True,
@@ -346,9 +331,7 @@ class V4L2CameraSource(VideoSourceProvider):
             if resolution in caps["supported_framerates"]:
                 supported_fps = caps["supported_framerates"][resolution]
                 if framerate not in supported_fps:
-                    warnings.append(
-                        f"Framerate {framerate} may not be supported. Available: {supported_fps}"
-                    )
+                    warnings.append(f"Framerate {framerate} may not be supported. Available: {supported_fps}")
 
         # Check format
         if pixel_format and pixel_format not in caps["supported_formats"]:

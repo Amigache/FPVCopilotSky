@@ -257,13 +257,9 @@ class SystemService:
                                         mem_bytes = int(value)
                                         service_info["memory_bytes"] = mem_bytes
                                         if mem_bytes >= 1024 * 1024 * 1024:
-                                            service_info["memory"] = (
-                                                f"{mem_bytes / (1024*1024*1024):.1f} GB"
-                                            )
+                                            service_info["memory"] = f"{mem_bytes / (1024*1024*1024):.1f} GB"
                                         else:
-                                            service_info["memory"] = (
-                                                f"{mem_bytes // (1024*1024)} MB"
-                                            )
+                                            service_info["memory"] = f"{mem_bytes // (1024*1024)} MB"
                                     except:
                                         pass
                                 elif key == "ActiveEnterTimestamp":
@@ -276,9 +272,7 @@ class SystemService:
 
                     # Get CPU usage for the service's main process
                     if service_info["pid"]:
-                        cpu_percent = SystemService._get_process_cpu(
-                            service_info["pid"]
-                        )
+                        cpu_percent = SystemService._get_process_cpu(service_info["pid"])
                         if cpu_percent is not None:
                             service_info["cpu_percent"] = round(cpu_percent, 1)
 

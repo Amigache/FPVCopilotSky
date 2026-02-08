@@ -41,9 +41,7 @@ class OutputState:
     sock: Optional[socket_module.socket] = None
     clients: List[socket_module.socket] = field(default_factory=list)
     threads: List[threading.Thread] = field(default_factory=list)
-    stats: Dict[str, int] = field(
-        default_factory=lambda: {"tx": 0, "rx": 0, "errors": 0}
-    )
+    stats: Dict[str, int] = field(default_factory=lambda: {"tx": 0, "rx": 0, "errors": 0})
 
 
 class MAVLinkRouter:
@@ -154,9 +152,7 @@ class MAVLinkRouter:
             self.outputs[config.id] = OutputState(config=config)
             self._save_config()
 
-            print(
-                f"✅ Added output: {config.id} ({config.type.value} {config.host}:{config.port})"
-            )
+            print(f"✅ Added output: {config.id} ({config.type.value} {config.host}:{config.port})")
 
             # Auto-start if configured
             if config.auto_start and config.enabled:
@@ -248,9 +244,7 @@ class MAVLinkRouter:
     def _start_tcp_server(self, state: OutputState) -> tuple[bool, str]:
         """Start a TCP server output."""
         try:
-            server = socket_module.socket(
-                socket_module.AF_INET, socket_module.SOCK_STREAM
-            )
+            server = socket_module.socket(socket_module.AF_INET, socket_module.SOCK_STREAM)
             server.setsockopt(socket_module.SOL_SOCKET, socket_module.SO_REUSEADDR, 1)
             server.settimeout(1.0)
             server.bind((state.config.host, state.config.port))
@@ -269,9 +263,7 @@ class MAVLinkRouter:
             accept_thread.start()
             state.threads.append(accept_thread)
 
-            print(
-                f"🌐 TCP Server started on {state.config.host}:{state.config.port} (ID: {state.config.id})"
-            )
+            print(f"🌐 TCP Server started on {state.config.host}:{state.config.port} (ID: {state.config.id})")
             return True, "TCP Server started"
 
         except Exception as e:
@@ -282,14 +274,10 @@ class MAVLinkRouter:
         while state.running and self.running:
             try:
                 client, addr = state.sock.accept()
-                print(
-                    f"✅ Router: TCP client connected from {addr} (output: {state.config.id})"
-                )
+                print(f"✅ Router: TCP client connected from {addr} (output: {state.config.id})")
 
                 client.settimeout(0.1)
-                client.setsockopt(
-                    socket_module.IPPROTO_TCP, socket_module.TCP_NODELAY, 1
-                )
+                client.setsockopt(socket_module.IPPROTO_TCP, socket_module.TCP_NODELAY, 1)
 
                 with self.lock:
                     state.clients.append(client)
@@ -313,9 +301,7 @@ class MAVLinkRouter:
                 if state.running:
                     print(f"⚠️ Router: TCP accept error: {e}")
 
-    def _tcp_client_reader(
-        self, state: OutputState, client: socket_module.socket, addr
-    ):
+    def _tcp_client_reader(self, state: OutputState, client: socket_module.socket, addr):
         """Read from TCP client and forward to serial."""
         while state.running and self.running:
             try:
@@ -352,9 +338,7 @@ class MAVLinkRouter:
     def _start_tcp_client(self, state: OutputState) -> tuple[bool, str]:
         """Start a TCP client output (connect to remote server)."""
         try:
-            sock = socket_module.socket(
-                socket_module.AF_INET, socket_module.SOCK_STREAM
-            )
+            sock = socket_module.socket(socket_module.AF_INET, socket_module.SOCK_STREAM)
             sock.settimeout(5.0)
             sock.connect((state.config.host, state.config.port))
             sock.settimeout(0.1)
@@ -373,9 +357,7 @@ class MAVLinkRouter:
             reader.start()
             state.threads.append(reader)
 
-            print(
-                f"🔗 TCP Client connected to {state.config.host}:{state.config.port} (ID: {state.config.id})"
-            )
+            print(f"🔗 TCP Client connected to {state.config.host}:{state.config.port} (ID: {state.config.id})")
             return True, "TCP Client connected"
 
         except Exception as e:
@@ -427,9 +409,7 @@ class MAVLinkRouter:
             reader.start()
             state.threads.append(reader)
 
-            print(
-                f"📡 UDP output started for {state.config.host}:{state.config.port} (ID: {state.config.id})"
-            )
+            print(f"📡 UDP output started for {state.config.host}:{state.config.port} (ID: {state.config.id})")
             return True, "UDP output started"
 
         except Exception as e:
@@ -470,9 +450,7 @@ class MAVLinkRouter:
                         "auto_start": state.config.auto_start,
                         "running": state.running,
                         "clients": (
-                            len(state.clients)
-                            if self._get_type_value(state.config.type) == "tcp_server"
-                            else 0
+                            len(state.clients) if self._get_type_value(state.config.type) == "tcp_server" else 0
                         ),
                         "stats": state.stats.copy(),
                     }

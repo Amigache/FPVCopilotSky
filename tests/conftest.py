@@ -27,9 +27,7 @@ def mock_serial_port():
         mock_port.port = "/dev/ttyUSB0"
 
         # Mock MAVLink heartbeat packet (minimal valid packet)
-        mock_port.read.return_value = (
-            b"\xfe\x09\x00\x01\x01\x00\x00\x00\x00\x00\x06\x08\x00\x00\x00\x03"
-        )
+        mock_port.read.return_value = b"\xfe\x09\x00\x01\x01\x00\x00\x00\x00\x00\x06\x08\x00\x00\x00\x03"
 
         mock.return_value = mock_port
         yield mock_port
@@ -404,8 +402,6 @@ def pytest_configure(config):
 
     Add custom markers and configuration
     """
-    config.addinivalue_line(
-        "markers", "hardware: tests requiring physical hardware (deselect in CI)"
-    )
+    config.addinivalue_line("markers", "hardware: tests requiring physical hardware (deselect in CI)")
     config.addinivalue_line("markers", "slow: slow running tests")
     config.addinivalue_line("markers", "integration: integration tests")

@@ -15,9 +15,7 @@ logger = logging.getLogger(__name__)
 class ModemInterface(NetworkInterface):
     """Modem network interface provider (USB/HiLink)"""
 
-    def __init__(
-        self, interface_name: Optional[str] = None, subnet_pattern: str = "192.168.8"
-    ):
+    def __init__(self, interface_name: Optional[str] = None, subnet_pattern: str = "192.168.8"):
         super().__init__()
         self.interface_name = interface_name
         self.subnet_pattern = subnet_pattern  # HiLink modems typically use 192.168.8.x
@@ -48,17 +46,14 @@ class ModemInterface(NetworkInterface):
     def _find_modem_interface(self) -> Optional[str]:
         """Find modem interface by subnet pattern"""
         try:
-            result = subprocess.run(
-                ["ip", "-o", "addr", "show"], capture_output=True, text=True, timeout=2
-            )
+            result = subprocess.run(["ip", "-o", "addr", "show"], capture_output=True, text=True, timeout=2)
 
             if result.returncode == 0:
                 for line in result.stdout.split("\n"):
                     # Look for interface with modem subnet (e.g., 192.168.8.x)
                     if self.subnet_pattern in line:
                         match = re.search(
-                            r"^\d+:\s+(\S+)\s+inet\s+"
-                            + self.subnet_pattern.replace(".", r"\."),
+                            r"^\d+:\s+(\S+)\s+inet\s+" + self.subnet_pattern.replace(".", r"\."),
                             line,
                         )
                         if match:

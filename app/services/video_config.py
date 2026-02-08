@@ -143,10 +143,7 @@ def get_device_resolutions(device: str) -> Dict:
                 parts = line.split(":", 1)
                 if len(parts) > 1:
                     device_name = parts[1].strip()
-                    if (
-                        "camera" in device_name.lower()
-                        or "webcam" in device_name.lower()
-                    ):
+                    if "camera" in device_name.lower() or "webcam" in device_name.lower():
                         device_type = "Cámara"
             elif "Driver name" in line:
                 parts = line.split(":", 1)

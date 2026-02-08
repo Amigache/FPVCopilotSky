@@ -191,16 +191,11 @@ class TestMemoryUsage:
             memory_samples.append(process.memory_info().rss / 1024 / 1024)
 
         # Check for memory leaks (increasing trend)
-        differences = [
-            memory_samples[i + 1] - memory_samples[i]
-            for i in range(len(memory_samples) - 1)
-        ]
+        differences = [memory_samples[i + 1] - memory_samples[i] for i in range(len(memory_samples) - 1)]
         avg_increase = sum(differences) / len(differences)
 
         # Should be stable (no consistent increase)
-        assert (
-            avg_increase < 5
-        ), f"Memory leak detected: {avg_increase}MB average increase"
+        assert avg_increase < 5, f"Memory leak detected: {avg_increase}MB average increase"
 
 
 class TestCPUUsage:
@@ -260,9 +255,7 @@ class TestResponseSize:
         if response.status_code == 200:
             content_length = len(response.content)
             # Should be reasonable for info
-            assert (
-                content_length < 100000
-            ), f"Response too large: {content_length} bytes"
+            assert content_length < 100000, f"Response too large: {content_length} bytes"
 
     def test_network_status_response_size(self, client):
         """Measure network status response size"""
@@ -395,9 +388,7 @@ class TestEndpointBottlenecks:
             memory_delta = (final_memory - initial_memory) / 1024
 
             # Memory increase should be minimal
-            assert (
-                memory_delta < 10000
-            ), f"{endpoint} used too much memory: {memory_delta}KB"
+            assert memory_delta < 10000, f"{endpoint} used too much memory: {memory_delta}KB"
 
 
 class TestResponseTimeDistribution:
@@ -440,6 +431,4 @@ class TestResponseTimeDistribution:
         std_dev = variance**0.5
 
         # Should be consistent (low standard deviation)
-        assert (
-            std_dev < mean * 0.5
-        ), f"Inconsistent latency: std_dev={std_dev}ms, mean={mean}ms"
+        assert std_dev < mean * 0.5, f"Inconsistent latency: std_dev={std_dev}ms, mean={mean}ms"

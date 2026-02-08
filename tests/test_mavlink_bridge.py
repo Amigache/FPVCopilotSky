@@ -67,9 +67,7 @@ def test_serial_connection(serial_port: str, baudrate: int):
     log_info(f"Conectando a {serial_port} @ {baudrate}...")
 
     try:
-        conn = mavutil.mavlink_connection(
-            serial_port, baud=baudrate, source_system=255, dialect="ardupilotmega"
-        )
+        conn = mavutil.mavlink_connection(serial_port, baud=baudrate, source_system=255, dialect="ardupilotmega")
         log_success(f"Puerto abierto: {serial_port}")
     except Exception as e:
         log_error(f"No se puede abrir el puerto: {e}")
@@ -233,9 +231,7 @@ class MAVLinkBridge:
         self.accept_thread.start()
 
         # Thread para leer del serial y enviar a TCP
-        self.serial_rx_thread = threading.Thread(
-            target=self._serial_to_tcp, daemon=True
-        )
+        self.serial_rx_thread = threading.Thread(target=self._serial_to_tcp, daemon=True)
         self.serial_rx_thread.start()
 
         log_success("Bridge iniciado correctamente")
@@ -289,9 +285,7 @@ class MAVLinkBridge:
                     self.tcp_clients.append(client)
 
                 # Iniciar thread para leer de este cliente
-                client_thread = threading.Thread(
-                    target=self._tcp_to_serial, args=(client, addr), daemon=True
-                )
+                client_thread = threading.Thread(target=self._tcp_to_serial, args=(client, addr), daemon=True)
                 client_thread.start()
 
             except socket.timeout:
@@ -516,15 +510,9 @@ Ejemplos:
         default="bridge",
         help="Tipo de test a ejecutar",
     )
-    parser.add_argument(
-        "--port", default="/dev/ttyAML0", help="Puerto serial (default: /dev/ttyAML0)"
-    )
-    parser.add_argument(
-        "--baudrate", type=int, default=115200, help="Baudrate (default: 115200)"
-    )
-    parser.add_argument(
-        "--tcp-port", type=int, default=5760, help="Puerto TCP (default: 5760)"
-    )
+    parser.add_argument("--port", default="/dev/ttyAML0", help="Puerto serial (default: /dev/ttyAML0)")
+    parser.add_argument("--baudrate", type=int, default=115200, help="Baudrate (default: 115200)")
+    parser.add_argument("--tcp-port", type=int, default=5760, help="Puerto TCP (default: 5760)")
 
     args = parser.parse_args()
 

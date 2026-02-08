@@ -35,17 +35,13 @@ class LibCameraSource(VideoSourceProvider):
         """Check if libcamera and GStreamer element are available"""
         try:
             # Check if libcamera-hello exists (indicates libcamera is installed)
-            result = subprocess.run(
-                ["which", "libcamera-hello"], capture_output=True, timeout=2
-            )
+            result = subprocess.run(["which", "libcamera-hello"], capture_output=True, timeout=2)
 
             if result.returncode != 0:
                 return False
 
             # Check if GStreamer libcamerasrc element is available
-            gst_result = subprocess.run(
-                ["gst-inspect-1.0", "libcamerasrc"], capture_output=True, timeout=2
-            )
+            gst_result = subprocess.run(["gst-inspect-1.0", "libcamerasrc"], capture_output=True, timeout=2)
 
             return gst_result.returncode == 0
 
@@ -256,18 +252,14 @@ class LibCameraSource(VideoSourceProvider):
 
         # Check if resolution is supported
         if resolution not in caps["supported_resolutions"]:
-            warnings.append(
-                f"Resolution {resolution} may not be optimal for this sensor"
-            )
+            warnings.append(f"Resolution {resolution} may not be optimal for this sensor")
 
         # Check framerate
         if resolution in caps["supported_framerates"]:
             if framerate not in caps["supported_framerates"][resolution]:
                 max_fps = max(caps["supported_framerates"][resolution])
                 if framerate > max_fps:
-                    warnings.append(
-                        f"Framerate {framerate} may be too high. Max recommended: {max_fps}"
-                    )
+                    warnings.append(f"Framerate {framerate} may be too high. Max recommended: {max_fps}")
 
         return {
             "valid": len(errors) == 0,

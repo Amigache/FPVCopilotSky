@@ -28,9 +28,7 @@ class VideoSourceProvider(ABC):
         self.source_type = "unknown"  # 'v4l2', 'libcamera', 'hdmi_capture', 'network'
         self.display_name = "Generic Video Source"
         self.priority = 50  # Higher = preferred when multiple sources available
-        self.gst_source_element = (
-            ""  # GStreamer element name (e.g., 'v4l2src', 'libcamerasrc')
-        )
+        self.gst_source_element = ""  # GStreamer element name (e.g., 'v4l2src', 'libcamerasrc')
 
     @abstractmethod
     def is_available(self) -> bool:
@@ -116,9 +114,7 @@ class VideoSourceProvider(ABC):
         """
         pass
 
-    def find_source_by_identity(
-        self, name: str, bus_info: str = "", driver: str = ""
-    ) -> Optional[str]:
+    def find_source_by_identity(self, name: str, bus_info: str = "", driver: str = "") -> Optional[str]:
         """
         Find a source by its identity information (for stable device matching).
 
@@ -142,9 +138,7 @@ class VideoSourceProvider(ABC):
 
             if source_name == name:
                 # Exact match on all provided fields
-                if (not bus_info or source_bus == bus_info) and (
-                    not driver or source_driver == driver
-                ):
+                if (not bus_info or source_bus == bus_info) and (not driver or source_driver == driver):
                     return source["source_id"]
 
                 # Partial match (name only)

@@ -113,9 +113,7 @@ class SerialDetector:
 
         return baudrates
 
-    def _try_connect(
-        self, port: str, baudrate: int, timeout: float
-    ) -> Optional[Dict[str, Any]]:
+    def _try_connect(self, port: str, baudrate: int, timeout: float) -> Optional[Dict[str, Any]]:
         """
         Try to connect to a specific port/baudrate.
 
@@ -125,9 +123,7 @@ class SerialDetector:
         try:
             print(f"   Trying {port} @ {baudrate}...", end=" ", flush=True)
 
-            ser = serial.Serial(
-                port=port, baudrate=baudrate, timeout=0.1, write_timeout=1
-            )
+            ser = serial.Serial(port=port, baudrate=baudrate, timeout=0.1, write_timeout=1)
 
             # Create parser
             mav = mavlink2.MAVLink(None)

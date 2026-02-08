@@ -50,15 +50,11 @@ class VideoStreamInfoService:
             return True
 
         if not self.mavlink_bridge or not self.gstreamer_service:
-            print(
-                "⚠️ VideoStreamInfo: MAVLink bridge or GStreamer service not available"
-            )
+            print("⚠️ VideoStreamInfo: MAVLink bridge or GStreamer service not available")
             return False
 
         self.running = True
-        self.sender_thread = threading.Thread(
-            target=self._sender_loop, daemon=True, name="VideoStreamInfoSender"
-        )
+        self.sender_thread = threading.Thread(target=self._sender_loop, daemon=True, name="VideoStreamInfoSender")
         self.sender_thread.start()
         print(
             f"✅ Video Stream Information service started (SysID={self.mavlink_bridge.source_system_id}, CompID=100 CAMERA)"
@@ -119,9 +115,7 @@ class VideoStreamInfoService:
                             self.mavlink_bridge.serial_port.write(packed_msg)
                             # Also broadcast to router
                             if self.mavlink_bridge.router:
-                                self.mavlink_bridge.router.forward_to_outputs(
-                                    packed_msg
-                                )
+                                self.mavlink_bridge.router.forward_to_outputs(packed_msg)
                     finally:
                         self.mavlink_bridge.serial_lock.release()
             except Exception as e:
@@ -184,12 +178,7 @@ class VideoStreamInfoService:
                 resolution_h=video_config.width or 960,
                 resolution_v=video_config.height or 720,
                 bitrate=int(
-                    (
-                        (video_config.width or 960)
-                        * (video_config.height or 720)
-                        * (video_config.framerate or 30)
-                        * 12
-                    )
+                    ((video_config.width or 960) * (video_config.height or 720) * (video_config.framerate or 30) * 12)
                     / 1000
                 ),
                 rotation=0,
@@ -213,9 +202,7 @@ class VideoStreamInfoService:
                             self.mavlink_bridge.serial_port.write(packed_msg)
                             # Also broadcast to router so Mission Planner receives it
                             if self.mavlink_bridge.router:
-                                self.mavlink_bridge.router.forward_to_outputs(
-                                    packed_msg
-                                )
+                                self.mavlink_bridge.router.forward_to_outputs(packed_msg)
                     finally:
                         self.mavlink_bridge.serial_lock.release()
                 # If can't acquire lock, just skip this send - don't block
@@ -238,9 +225,7 @@ def init_video_stream_info_service(
 ) -> VideoStreamInfoService:
     """Initialize the video stream info service"""
     global _video_stream_info_service
-    _video_stream_info_service = VideoStreamInfoService(
-        mavlink_bridge, gstreamer_service
-    )
+    _video_stream_info_service = VideoStreamInfoService(mavlink_bridge, gstreamer_service)
     return _video_stream_info_service
 
 

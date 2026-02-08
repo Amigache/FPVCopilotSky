@@ -27,9 +27,7 @@ class X264Encoder(VideoEncoderProvider):
     def is_available(self) -> bool:
         """Check if x264enc is available in GStreamer"""
         try:
-            result = subprocess.run(
-                ["gst-inspect-1.0", "x264enc"], capture_output=True, timeout=2
-            )
+            result = subprocess.run(["gst-inspect-1.0", "x264enc"], capture_output=True, timeout=2)
             return result.returncode == 0
         except Exception as e:
             logger.error(f"Failed to check x264enc availability: {e}")

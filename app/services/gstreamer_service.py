@@ -108,9 +108,7 @@ class GStreamerService:
         print(
             f"📹 Video config updated: {self.video_config.width}x{self.video_config.height}@{self.video_config.framerate}fps"
         )
-        print(
-            f"📡 Streaming to: {self.streaming_config.udp_host}:{self.streaming_config.udp_port}"
-        )
+        print(f"📡 Streaming to: {self.streaming_config.udp_host}:{self.streaming_config.udp_port}")
 
         # Broadcast updated status
         self._broadcast_status()
@@ -129,12 +127,8 @@ class GStreamerService:
             if detected_board:
                 print(f"\n🎯 Building video pipeline for: {detected_board.board_name}")
                 print(f"   - Variant: {detected_board.variant.name}")
-                print(
-                    f"   - Available encoders: {', '.join([f.value for f in detected_board.variant.video_encoders])}"
-                )
-                print(
-                    f"   - Available sources: {', '.join([f.value for f in detected_board.variant.video_sources])}"
-                )
+                print(f"   - Available encoders: {', '.join([f.value for f in detected_board.variant.video_encoders])}")
+                print(f"   - Available sources: {', '.join([f.value for f in detected_board.variant.video_sources])}")
         except Exception as e:
             print(f"   (Board info unavailable: {e})")
 
@@ -168,18 +162,14 @@ class GStreamerService:
                 return codec_id
 
             # Check available encoders on this board
-            available_encoders = [
-                f.value for f in detected_board.variant.video_encoders
-            ]
+            available_encoders = [f.value for f in detected_board.variant.video_encoders]
 
             print(f"📊 Board supports encoders: {available_encoders}")
             print(f"   User requested: {codec_id}")
 
             # Normalize UI/alias codec IDs to registry codec IDs
             requested_codec_id = codec_id
-            normalized_codec_id = (
-                "h264" if requested_codec_id == "x264" else requested_codec_id
-            )
+            normalized_codec_id = "h264" if requested_codec_id == "x264" else requested_codec_id
 
             # Map codec ID to board feature names
             codec_to_feature = {
@@ -204,10 +194,7 @@ class GStreamerService:
                 print(f"⚠️ {requested_codec_id} not supported, falling back to x264")
                 return "h264"
 
-            if (
-                requested_feature in ["hardware_h264", "x264"]
-                and "mjpeg" in available_encoders
-            ):
+            if requested_feature in ["hardware_h264", "x264"] and "mjpeg" in available_encoders:
                 print(f"⚠️ {requested_codec_id} not supported, falling back to mjpeg")
                 return "mjpeg"
 
@@ -264,9 +251,7 @@ class GStreamerService:
             # Get pipeline elements from provider
             pipeline_config = provider.build_pipeline_elements(config)
             if not pipeline_config["success"]:
-                print(
-                    f"❌ Failed to build pipeline elements: {pipeline_config.get('error', 'Unknown error')}"
-                )
+                print(f"❌ Failed to build pipeline elements: {pipeline_config.get('error', 'Unknown error')}")
                 self.last_error = pipeline_config.get("error", "Unknown error")
                 return False
 
@@ -305,21 +290,15 @@ class GStreamerService:
                 self.current_source_provider = source_provider.display_name
 
             if not source_provider:
-                print(
-                    f"❌ No video source provider available for {self.video_config.device}"
-                )
+                print(f"❌ No video source provider available for {self.video_config.device}")
                 self.last_error = "No video source provider available"
                 return False
 
             # Build source element from provider
-            source_config_result = source_provider.build_source_element(
-                self.video_config.device, config
-            )
+            source_config_result = source_provider.build_source_element(self.video_config.device, config)
 
             if not source_config_result["success"]:
-                print(
-                    f"❌ Failed to build source element: {source_config_result.get('error')}"
-                )
+                print(f"❌ Failed to build source element: {source_config_result.get('error')}")
                 self.last_error = source_config_result.get("error", "Unknown error")
                 return False
 
@@ -340,21 +319,15 @@ class GStreamerService:
             # Add caps filter if provided
             if source_config_result["caps_filter"]:
                 caps_filter = Gst.ElementFactory.make("capsfilter", "caps_filter")
-                caps_filter.set_property(
-                    "caps", Gst.Caps.from_string(source_config_result["caps_filter"])
-                )
+                caps_filter.set_property("caps", Gst.Caps.from_string(source_config_result["caps_filter"]))
                 pipeline.add(caps_filter)
                 elements_list.append(caps_filter)
 
             # Add any post-source elements from provider
             for elem_config in source_config_result.get("post_elements", []):
-                element = Gst.ElementFactory.make(
-                    elem_config["element"], elem_config["name"]
-                )
+                element = Gst.ElementFactory.make(elem_config["element"], elem_config["name"])
                 if not element:
-                    print(
-                        f"❌ Failed to create post-source element: {elem_config['element']}"
-                    )
+                    print(f"❌ Failed to create post-source element: {elem_config['element']}")
                     return False
 
                 for prop, value in elem_config.get("properties", {}).items():
@@ -364,9 +337,7 @@ class GStreamerService:
                 elements_list.append(element)
 
             for elem_config in pipeline_config["elements"]:
-                element = Gst.ElementFactory.make(
-                    elem_config["element"], elem_config["name"]
-                )
+                element = Gst.ElementFactory.make(elem_config["element"], elem_config["name"])
                 if not element:
                     print(f"❌ Failed to create element: {elem_config['element']}")
                     return False
@@ -380,9 +351,7 @@ class GStreamerService:
                         else:
                             element.set_property(prop, value)
                     except Exception as e:
-                        print(
-                            f"⚠️ Failed to set property {prop}={value} on {elem_config['name']}: {e}"
-                        )
+                        print(f"⚠️ Failed to set property {prop}={value} on {elem_config['name']}: {e}")
 
                 pipeline.add(element)
                 elements_list.append(element)
@@ -390,9 +359,7 @@ class GStreamerService:
             # Add RTP payloader
             rtppay = Gst.ElementFactory.make(pipeline_config["rtp_payloader"], "rtppay")
             if not rtppay:
-                print(
-                    f"❌ Failed to create RTP payloader: {pipeline_config['rtp_payloader']}"
-                )
+                print(f"❌ Failed to create RTP payloader: {pipeline_config['rtp_payloader']}")
                 return False
 
             for prop, value in pipeline_config["rtp_payloader_properties"].items():
@@ -425,9 +392,7 @@ class GStreamerService:
             bus.connect("message", self._on_bus_message)
 
             self.pipeline = pipeline
-            print(
-                f"✅ Pipeline built successfully using provider: {provider.display_name}"
-            )
+            print(f"✅ Pipeline built successfully using provider: {provider.display_name}")
             return True
 
         except Exception as e:
@@ -623,9 +588,7 @@ class GStreamerService:
                 old_device = self.video_config.device
                 self.video_config.device = detected
                 if old_device:
-                    print(
-                        f"⚠️ Camera {old_device} not found, using detected: {detected}"
-                    )
+                    print(f"⚠️ Camera {old_device} not found, using detected: {detected}")
                 else:
                     print(f"📷 Auto-detected camera: {detected}")
             else:
@@ -658,9 +621,7 @@ class GStreamerService:
 
         # Start GLib main loop in background thread
         self.main_loop = GLib.MainLoop()
-        self.main_loop_thread = threading.Thread(
-            target=self.main_loop.run, daemon=True, name="GLibMainLoop"
-        )
+        self.main_loop_thread = threading.Thread(target=self.main_loop.run, daemon=True, name="GLibMainLoop")
         self.main_loop_thread.start()
 
         # Start pipeline
@@ -770,9 +731,7 @@ class GStreamerService:
                 elif property_name == "bitrate" or property_name == "h264_bitrate":
                     self.video_config.h264_bitrate = value
 
-                print(
-                    f"🎛️ Live update ({provider.display_name}): {property_name} → {value}"
-                )
+                print(f"🎛️ Live update ({provider.display_name}): {property_name} → {value}")
                 self._broadcast_status()
 
                 return {
@@ -923,9 +882,7 @@ class GStreamerService:
                     self._broadcast_status()
                 time.sleep(1.0)
 
-        self.stats_thread = threading.Thread(
-            target=_loop, daemon=True, name="VideoStatsBroadcast"
-        )
+        self.stats_thread = threading.Thread(target=_loop, daemon=True, name="VideoStatsBroadcast")
         self.stats_thread.start()
 
     def _stop_stats_broadcast(self):

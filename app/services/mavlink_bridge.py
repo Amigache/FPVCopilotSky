@@ -142,9 +142,7 @@ class MAVLinkBridge:
             print(f"⚠️ Serial write error: {e}")
             return False
 
-    def connect(
-        self, port: str, baudrate: int = 115200, tcp_port: int = 0
-    ) -> Dict[str, Any]:
+    def connect(self, port: str, baudrate: int = 115200, tcp_port: int = 0) -> Dict[str, Any]:
         """Connect to serial port. TCP server disabled by default (tcp_port=0), use router instead."""
         if self.connected:
             return {"success": False, "message": "Already connected"}
@@ -153,9 +151,7 @@ class MAVLinkBridge:
             print(f"🔌 Connecting to {port} @ {baudrate}...")
 
             # Open serial port
-            self.serial_port = serial.Serial(
-                port=port, baudrate=baudrate, timeout=0.1, write_timeout=1
-            )
+            self.serial_port = serial.Serial(port=port, baudrate=baudrate, timeout=0.1, write_timeout=1)
             self.port = port
             self.baudrate = baudrate
 
@@ -203,9 +199,7 @@ class MAVLinkBridge:
             self.serial_reader_thread.start()
 
             # Start HEARTBEAT sender thread
-            self.heartbeat_thread = threading.Thread(
-                target=self._heartbeat_sender, daemon=True, name="HeartbeatSender"
-            )
+            self.heartbeat_thread = threading.Thread(target=self._heartbeat_sender, daemon=True, name="HeartbeatSender")
             self.heartbeat_thread.start()
             print(
                 f"✅ Started HEARTBEAT transmitter (SysID={self.source_system_id}, CompID={self.source_component_id})"
@@ -213,9 +207,7 @@ class MAVLinkBridge:
 
             # Start TCP accept thread only if TCP server is enabled
             if self.tcp_server:
-                self.tcp_accept_thread = threading.Thread(
-                    target=self._tcp_accept_loop, daemon=True, name="TCPAccept"
-                )
+                self.tcp_accept_thread = threading.Thread(target=self._tcp_accept_loop, daemon=True, name="TCPAccept")
                 self.tcp_accept_thread.start()
 
             if tcp_port > 0:
@@ -329,9 +321,7 @@ class MAVLinkBridge:
                             self.telemetry_data["system"]["mav_type"] = msg.type
                             self.telemetry_data["system"]["autopilot"] = msg.autopilot
 
-                            print(
-                                f"   MAV Type: {msg.type}, Autopilot: {msg.autopilot}"
-                            )
+                            print(f"   MAV Type: {msg.type}, Autopilot: {msg.autopilot}")
                             return True
                     except Exception:
                         pass
@@ -406,9 +396,7 @@ class MAVLinkBridge:
                     self.stats["tcp_rx"] += 1
 
                     if self.stats["tcp_rx"] == 1:
-                        print(
-                            f"📡 First message forwarded to serial ({len(data)} bytes)"
-                        )
+                        print(f"📡 First message forwarded to serial ({len(data)} bytes)")
                     elif self.stats["tcp_rx"] % 50 == 0:
                         print(f"📡 TCP→Serial: {self.stats['tcp_rx']} messages")
 
@@ -438,11 +426,7 @@ class MAVLinkBridge:
 
         while self.running:
             try:
-                if (
-                    not self.serial_port
-                    or not self.serial_port.is_open
-                    or not self.connected
-                ):
+                if not self.serial_port or not self.serial_port.is_open or not self.connected:
                     time.sleep(0.5)
                     continue
 
@@ -506,20 +490,14 @@ class MAVLinkBridge:
 
         while self.running:
             try:
-                if self.connected and (
-                    not self.serial_port or not self.serial_port.is_open
-                ):
+                if self.connected and (not self.serial_port or not self.serial_port.is_open):
                     self._handle_serial_failure("serial port closed")
                     break
 
                 if self.connected and self.last_heartbeat:
                     elapsed = time.time() - self.last_heartbeat
                     # Use longer timeout (30s) during first 30 seconds after connect
-                    effective_timeout = (
-                        30.0
-                        if (time.time() - self._connect_time < 30.0)
-                        else self.heartbeat_timeout
-                    )
+                    effective_timeout = 30.0 if (time.time() - self._connect_time < 30.0) else self.heartbeat_timeout
                     if elapsed > effective_timeout:
                         print(
                             f"⏱️ Heartbeat elapsed: {elapsed:.1f}s > {effective_timeout:.1f}s (parsed HBs: {getattr(self, '_serial_heartbeat_count', 0)}, msgs: {self.stats['serial_rx']})"
@@ -553,9 +531,7 @@ class MAVLinkBridge:
                                 # Track message types
                                 if not hasattr(self, "_msg_type_counts"):
                                     self._msg_type_counts = {}
-                                self._msg_type_counts[msg_type] = (
-                                    self._msg_type_counts.get(msg_type, 0) + 1
-                                )
+                                self._msg_type_counts[msg_type] = self._msg_type_counts.get(msg_type, 0) + 1
 
                                 self._process_telemetry(parsed_msg)
 
@@ -563,20 +539,14 @@ class MAVLinkBridge:
                                 if self.stats["serial_rx"] == 1:
                                     print(f"📡 First serial message: {msg_type}")
                                 elif self.stats["serial_rx"] == 100:
-                                    types_summary = ", ".join(
-                                        sorted(self._msg_type_counts.keys())
-                                    )
-                                    print(
-                                        f"📊 Serial: {self.stats['serial_rx']} msgs, types: {types_summary}"
-                                    )
+                                    types_summary = ", ".join(sorted(self._msg_type_counts.keys()))
+                                    print(f"📊 Serial: {self.stats['serial_rx']} msgs, types: {types_summary}")
                         except Exception as e:
                             if not hasattr(self, "_parse_error_count"):
                                 self._parse_error_count = 0
                             self._parse_error_count += 1
                             if self._parse_error_count <= 3:
-                                print(
-                                    f"⚠️ MAVLink parse error #{self._parse_error_count}: {e}"
-                                )
+                                print(f"⚠️ MAVLink parse error #{self._parse_error_count}: {e}")
 
             except serial.SerialException as e:
                 print(f"⚠️ Serial error: {e}")
@@ -602,9 +572,7 @@ class MAVLinkBridge:
 
                         # Log first successful send
                         if self.stats["tcp_tx"] == 1:
-                            print(
-                                f"📡 First message sent to TCP client ({len(data)} bytes)"
-                            )
+                            print(f"📡 First message sent to TCP client ({len(data)} bytes)")
 
                     except (BrokenPipeError, ConnectionResetError, OSError) as e:
                         print(f"⚠️ TCP send error: {e}")
@@ -618,9 +586,7 @@ class MAVLinkBridge:
                             dead.close()
                         except:
                             pass
-                        print(
-                            f"❌ TCP client disconnected, {len(self.tcp_clients)} remaining"
-                        )
+                        print(f"❌ TCP client disconnected, {len(self.tcp_clients)} remaining")
 
         # Forward to router outputs (UDP, additional TCP servers/clients)
         if self.router:
@@ -636,9 +602,7 @@ class MAVLinkBridge:
                 self._serial_heartbeat_count = 0
             self._serial_heartbeat_count += 1
             if self._serial_heartbeat_count == 1:
-                print(
-                    f"💓 First HEARTBEAT parsed in serial reader (system {msg.get_srcSystem()})"
-                )
+                print(f"💓 First HEARTBEAT parsed in serial reader (system {msg.get_srcSystem()})")
 
             self.last_heartbeat = time.time()
             mav_type = msg.type
@@ -646,18 +610,10 @@ class MAVLinkBridge:
 
             # Convert numeric values to readable strings using MAVLinkDialect
             self.telemetry_data["system"]["armed"] = (msg.base_mode & 128) != 0
-            self.telemetry_data["system"]["mode"] = MAVLinkDialect.get_mode_string(
-                mav_type, custom_mode
-            )
-            self.telemetry_data["system"]["vehicle_type"] = (
-                MAVLinkDialect.get_type_string(mav_type)
-            )
-            self.telemetry_data["system"]["autopilot_type"] = (
-                MAVLinkDialect.get_autopilot_string(msg.autopilot)
-            )
-            self.telemetry_data["system"]["state"] = MAVLinkDialect.get_state_string(
-                msg.system_status
-            )
+            self.telemetry_data["system"]["mode"] = MAVLinkDialect.get_mode_string(mav_type, custom_mode)
+            self.telemetry_data["system"]["vehicle_type"] = MAVLinkDialect.get_type_string(mav_type)
+            self.telemetry_data["system"]["autopilot_type"] = MAVLinkDialect.get_autopilot_string(msg.autopilot)
+            self.telemetry_data["system"]["state"] = MAVLinkDialect.get_state_string(msg.system_status)
 
             # Also keep raw values for reference
             self.telemetry_data["system"]["mav_type"] = mav_type
@@ -716,9 +672,7 @@ class MAVLinkBridge:
 
             # Keep only last N messages
             if len(self.telemetry_data["messages"]) > self.max_messages:
-                self.telemetry_data["messages"] = self.telemetry_data["messages"][
-                    : self.max_messages
-                ]
+                self.telemetry_data["messages"] = self.telemetry_data["messages"][: self.max_messages]
 
             print(f"📨 STATUSTEXT [{severity}]: {text}")
             self._broadcast_telemetry()
@@ -840,9 +794,7 @@ class MAVLinkBridge:
             with self._param_lock:
                 self._param_callbacks.pop(param_name, None)
 
-    def set_parameter(
-        self, param_name: str, value: float, param_type: int = 9, timeout: float = 3.0
-    ) -> Dict[str, Any]:
+    def set_parameter(self, param_name: str, value: float, param_type: int = 9, timeout: float = 3.0) -> Dict[str, Any]:
         """
         Set a parameter on the flight controller and verify it was saved.
 
@@ -859,15 +811,11 @@ class MAVLinkBridge:
             return {"success": False, "error": "Not connected"}
 
     # Alias for compatibility with test expectations
-    def param_set(
-        self, param_name: str, value: float, param_type: int = 9, timeout: float = 3.0
-    ) -> Dict[str, Any]:
+    def param_set(self, param_name: str, value: float, param_type: int = 9, timeout: float = 3.0) -> Dict[str, Any]:
         """Alias for set_parameter() for compatibility."""
         return self.set_parameter(param_name, value, param_type, timeout)
 
-    def set_parameter(
-        self, param_name: str, value: float, param_type: int = 9, timeout: float = 3.0
-    ) -> Dict[str, Any]:
+    def set_parameter(self, param_name: str, value: float, param_type: int = 9, timeout: float = 3.0) -> Dict[str, Any]:
         """
         Set a parameter on the flight controller and verify it was saved (actual implementation).
 
@@ -939,17 +887,11 @@ class MAVLinkBridge:
             with self._param_lock:
                 self._param_callbacks.pop(param_name, None)
 
-    def set_param(
-        self, param_name: str, value: float, param_type: int = 9, timeout: float = 3.0
-    ) -> Dict[str, Any]:
+    def set_param(self, param_name: str, value: float, param_type: int = 9, timeout: float = 3.0) -> Dict[str, Any]:
         """Compatibility alias for set_parameter."""
-        return self.set_parameter(
-            param_name, value, param_type=param_type, timeout=timeout
-        )
+        return self.set_parameter(param_name, value, param_type=param_type, timeout=timeout)
 
-    def get_parameters_batch(
-        self, param_names: List[str], timeout: float = 5.0
-    ) -> Dict[str, Any]:
+    def get_parameters_batch(self, param_names: List[str], timeout: float = 5.0) -> Dict[str, Any]:
         """
         Get multiple parameters in sequence.
 
@@ -976,9 +918,7 @@ class MAVLinkBridge:
             "errors": errors if errors else None,
         }
 
-    def set_parameters_batch(
-        self, params: Dict[str, float], timeout: float = 3.0
-    ) -> Dict[str, Any]:
+    def set_parameters_batch(self, params: Dict[str, float], timeout: float = 3.0) -> Dict[str, Any]:
         """
         Set multiple parameters in sequence.
 
