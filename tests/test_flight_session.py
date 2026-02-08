@@ -46,8 +46,8 @@ class TestFlightSessionAutoStart:
         response = client.post('/api/network/hilink/flight-session/start')
         if response.status_code == 200:
             data = response.json()
-            assert data.get('success') == True
-            assert data.get('active') == True
+            assert data.get('success')
+            assert data.get('active')
             assert 'start_time' in data
 
     def test_flight_session_stops_on_disarm(self, client):
@@ -59,12 +59,8 @@ class TestFlightSessionAutoStart:
             response = client.post('/api/network/hilink/flight-session/stop')
             if response.status_code == 200:
                 data = response.json()
-                assert data.get('success') == True
-                assert data.get('active') == False
-
-    def test_auto_start_preference_persists(self, client):
-        """Auto-start preference should persist to preferences.json"""
-        # Save preference
+            assert data.get('success')
+            assert not data.get('active')
         response = client.post('/api/system/preferences', json={
             'flight_session': {'auto_start_on_arm': True}
         })
@@ -83,7 +79,7 @@ class TestFlightSessionAutoStart:
         response = client.post('/api/network/hilink/flight-session/start')
         if response.status_code == 200:
             data = response.json()
-            assert data.get('success') == True
+            assert data.get('success')
 
 
 class TestFlightDataLogger:

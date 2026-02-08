@@ -33,7 +33,7 @@ class TestNetworkPriorityMode:
         
         if response.status_code == 200:
             data = response.json()
-            assert data.get('success') == True
+            assert data.get('success')
             assert data.get('mode') == 'wifi'
 
     @patch('app.api.routes.network._run_command')
@@ -49,7 +49,7 @@ class TestNetworkPriorityMode:
         
         if response.status_code == 200:
             data = response.json()
-            assert data.get('success') == True
+            assert data.get('success')
             assert data.get('mode') == 'modem'
 
     def test_set_priority_auto_mode(self, client):
