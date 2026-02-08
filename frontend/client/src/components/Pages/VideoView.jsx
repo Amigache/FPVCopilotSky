@@ -66,6 +66,7 @@ const VideoView = () => {
   // Update local config from WebSocket only on initial load or when no pending changes
   useEffect(() => {
     if (messages.video_status?.config && !hasChanges) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setConfig(prev => ({ ...prev, ...messages.video_status.config }))
       initialLoadDone.current = true
     }
@@ -296,6 +297,7 @@ const VideoView = () => {
         const firstRes = firstCam.resolutions[0]
         const [w, h] = firstRes.split('x')
         const fps = firstCam.resolutions_fps?.[firstRes]?.[0] || 30
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setConfig(prev => ({
           ...prev,
           device: firstCam.device,
