@@ -58,17 +58,17 @@ def log_data(direction, msg):
 # ============================================================
 # TEST 1: Conexión serial directa
 # ============================================================
-def test_serial_connection(port: str, baudrate: int):
+def test_serial_connection(serial_port: str, baudrate: int):
     """Prueba la conexión serial directa con MAVLink."""
     print("\n" + "=" * 60)
     print("TEST 1: Conexión serial directa")
     print("=" * 60)
 
-    log_info(f"Conectando a {port} @ {baudrate}...")
+    log_info(f"Conectando a {serial_port} @ {baudrate}...")
 
     try:
-        conn = mavutil.mavlink_connection(port, baud=baudrate, source_system=255, dialect="ardupilotmega")
-        log_success(f"Puerto abierto: {port}")
+        conn = mavutil.mavlink_connection(serial_port, baud=baudrate, source_system=255, dialect="ardupilotmega")
+        log_success(f"Puerto abierto: {serial_port}")
     except Exception as e:
         log_error(f"No se puede abrir el puerto: {e}")
         return False
@@ -107,30 +107,30 @@ def test_serial_connection(port: str, baudrate: int):
 # ============================================================
 # TEST 2: Servidor TCP standalone
 # ============================================================
-def test_tcp_server(port: int):
+def test_tcp_server(tcp_port: int):
     """Prueba un servidor TCP simple."""
     print("\n" + "=" * 60)
     print("TEST 2: Servidor TCP standalone")
     print("=" * 60)
 
-    log_info(f"Iniciando servidor TCP en 0.0.0.0:{port}...")
+    log_info(f"Iniciando servidor TCP en 0.0.0.0:{tcp_port}...")
 
     try:
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server.bind(("0.0.0.0", port))
+        server.bind(("0.0.0.0", tcp_port))
         server.listen(5)
         server.settimeout(30)  # 30 segundos timeout
-        log_success(f"Servidor escuchando en puerto {port}")
+        log_success(f"Servidor escuchando en puerto {tcp_port}")
     except OSError as e:
         if e.errno == 98:
-            log_error(f"Puerto {port} ya está en uso")
+            log_error(f"Puerto {tcp_port} ya está en uso")
         else:
             log_error(f"Error: {e}")
         return False
 
     log_info("Esperando conexión de cliente (30s timeout)...")
-    log_info("Conecta con: nc localhost {port}")
+    log_info(f"Conecta con: nc localhost {tcp_port}")
 
     try:
         client, addr = server.accept()
@@ -191,7 +191,11 @@ class MAVLinkBridge:
         log_info(f"Conectando a serial {self.serial_port}...")
         try:
             self.serial_conn = mavutil.mavlink_connection(
-                self.serial_port, baud=self.baudrate, source_system=255, source_component=0, dialect="ardupilotmega"
+                self.serial_port,
+                baud=self.baudrate,
+                source_system=255,
+                source_component=0,
+                dialect="ardupilotmega",
             )
             log_success("Puerto serial abierto")
         except Exception as e:
@@ -333,7 +337,8 @@ class MAVLinkBridge:
                     # Log periódico
                     if self.stats["serial_to_tcp"] % 100 == 0:
                         log_data(
-                            "S→T", f"{self.stats['serial_to_tcp']} mensajes enviados a {len(self.tcp_clients)} clientes"
+                            "S→T",
+                            f"{self.stats['serial_to_tcp']} mensajes enviados a {len(self.tcp_clients)} clientes",
                         )
 
             except Exception as e:
@@ -408,7 +413,10 @@ class MAVLinkBridge:
 
                             # Log periódico
                             if self.stats["tcp_to_serial"] % 10 == 0:
-                                log_data("T→S", f"{self.stats['tcp_to_serial']} mensajes de TCP a serial")
+                                log_data(
+                                    "T→S",
+                                    f"{self.stats['tcp_to_serial']} mensajes de TCP a serial",
+                                )
 
                     except Exception as e:
                         log_error(f"Error procesando mensaje: {e}")
@@ -487,16 +495,21 @@ def main():
 Ejemplos:
   # Test 1: Probar conexión serial
   python3 test_mavlink_bridge.py --test serial --port /dev/ttyAML0
-  
+
   # Test 2: Probar servidor TCP
   python3 test_mavlink_bridge.py --test tcp --tcp-port 5760
-  
+
   # Test 3: Bridge completo (Serial <-> TCP)
   python3 test_mavlink_bridge.py --test bridge --port /dev/ttyAML0 --tcp-port 5760
         """,
     )
 
-    parser.add_argument("--test", choices=["serial", "tcp", "bridge"], default="bridge", help="Tipo de test a ejecutar")
+    parser.add_argument(
+        "--test",
+        choices=["serial", "tcp", "bridge"],
+        default="bridge",
+        help="Tipo de test a ejecutar",
+    )
     parser.add_argument("--port", default="/dev/ttyAML0", help="Puerto serial (default: /dev/ttyAML0)")
     parser.add_argument("--baudrate", type=int, default=115200, help="Baudrate (default: 115200)")
     parser.add_argument("--tcp-port", type=int, default=5760, help="Puerto TCP (default: 5760)")

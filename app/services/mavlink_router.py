@@ -5,9 +5,6 @@ Uses simplified approach: direct sockets without complex pymavlink connections
 
 import socket as socket_module
 import threading
-import time
-import json
-import os
 from typing import Dict, List, Optional, Any, Callable
 from dataclasses import dataclass, field
 from enum import Enum
@@ -75,7 +72,7 @@ class MAVLinkRouter:
         if self.on_status_change:
             try:
                 self.on_status_change()
-            except:
+            except Exception:
                 pass
 
     def set_serial_callback(self, callback: Callable[[bytes], None]):
@@ -102,7 +99,7 @@ class MAVLinkRouter:
                         self._send_to_tcp_client(state, data)
                     elif output_type == "udp":
                         self._send_to_udp(state, data)
-                except Exception as e:
+                except Exception:
                     state.stats["errors"] += 1
 
     def _send_to_tcp_clients(self, state: OutputState, data: bytes):
@@ -120,7 +117,7 @@ class MAVLinkRouter:
                 state.clients.remove(dead)
                 try:
                     dead.close()
-                except:
+                except Exception:
                     pass
 
     def _send_to_tcp_client(self, state: OutputState, data: bytes):
@@ -222,7 +219,7 @@ class MAVLinkRouter:
         for client in state.clients:
             try:
                 client.close()
-            except:
+            except Exception:
                 pass
         state.clients.clear()
 
@@ -230,7 +227,7 @@ class MAVLinkRouter:
         if state.sock:
             try:
                 state.sock.close()
-            except:
+            except Exception:
                 pass
             state.sock = None
 
@@ -255,7 +252,10 @@ class MAVLinkRouter:
 
             # Start accept thread
             accept_thread = threading.Thread(
-                target=self._tcp_server_accept_loop, args=(state,), daemon=True, name=f"TCPAccept-{state.config.id}"
+                target=self._tcp_server_accept_loop,
+                args=(state,),
+                daemon=True,
+                name=f"TCPAccept-{state.config.id}",
             )
             accept_thread.start()
             state.threads.append(accept_thread)
@@ -284,7 +284,10 @@ class MAVLinkRouter:
 
                 # Start reader thread
                 reader = threading.Thread(
-                    target=self._tcp_client_reader, args=(state, client, addr), daemon=True, name=f"TCPReader-{addr[1]}"
+                    target=self._tcp_client_reader,
+                    args=(state, client, addr),
+                    daemon=True,
+                    name=f"TCPReader-{addr[1]}",
                 )
                 reader.start()
                 state.threads.append(reader)
@@ -320,7 +323,7 @@ class MAVLinkRouter:
                 state.clients.remove(client)
         try:
             client.close()
-        except:
+        except Exception:
             pass
         print(f"📤 Router: TCP client {addr} disconnected (output: {state.config.id})")
 
@@ -395,7 +398,10 @@ class MAVLinkRouter:
 
             # Start reader thread for incoming UDP
             reader = threading.Thread(
-                target=self._udp_reader, args=(state,), daemon=True, name=f"UDPReader-{state.config.id}"
+                target=self._udp_reader,
+                args=(state,),
+                daemon=True,
+                name=f"UDPReader-{state.config.id}",
             )
             reader.start()
             state.threads.append(reader)
@@ -440,7 +446,9 @@ class MAVLinkRouter:
                         "enabled": state.config.enabled,
                         "auto_start": state.config.auto_start,
                         "running": state.running,
-                        "clients": len(state.clients) if self._get_type_value(state.config.type) == "tcp_server" else 0,
+                        "clients": (
+                            len(state.clients) if self._get_type_value(state.config.type) == "tcp_server" else 0
+                        ),
                         "stats": state.stats.copy(),
                     }
                 )

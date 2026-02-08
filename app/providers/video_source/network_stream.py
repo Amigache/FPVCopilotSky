@@ -97,7 +97,11 @@ class NetworkStreamSource(VideoSourceProvider):
                 "is_capture_device": False,
                 "is_network_stream": True,
                 "stream_type": stream_type,
-                "identity": {"name": f"{stream_type} Stream", "driver": "network", "bus_info": uri},
+                "identity": {
+                    "name": f"{stream_type} Stream",
+                    "driver": "network",
+                    "bus_info": uri,
+                },
                 "is_usb": False,
                 "supported_formats": ["auto"],  # Determined by stream
                 "default_format": "auto",
@@ -149,7 +153,11 @@ class NetworkStreamSource(VideoSourceProvider):
                             "properties": {},
                         },
                         {"name": "parse", "element": "h264parse", "properties": {}},
-                        {"name": "decode", "element": "avdec_h264", "properties": {"max-threads": 2}},
+                        {
+                            "name": "decode",
+                            "element": "avdec_h264",
+                            "properties": {"max-threads": 2},
+                        },
                     ],
                     "output_format": "video/x-raw",  # After decoding
                     "error": None,
@@ -196,7 +204,12 @@ class NetworkStreamSource(VideoSourceProvider):
         warnings.append("Network stream requires stable network connection")
         warnings.append("Latency and quality depend on network conditions")
 
-        return {"valid": len(errors) == 0, "errors": errors, "warnings": warnings, "adjusted_config": config}
+        return {
+            "valid": len(errors) == 0,
+            "errors": errors,
+            "warnings": warnings,
+            "adjusted_config": config,
+        }
 
     def add_stream(self, uri: str, name: str = None) -> Optional[Dict]:
         """

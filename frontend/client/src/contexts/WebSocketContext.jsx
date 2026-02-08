@@ -16,7 +16,7 @@ export const useWebSocket = () => {
 const getWebSocketUrl = () => {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   const hostname = window.location.hostname
-  
+
   // In development (localhost:5173), use Vite's proxy or connect directly to backend
   if (import.meta.env.DEV) {
     // Vite proxy handles /ws, but for WebSocket we need to connect directly in some cases
@@ -27,7 +27,7 @@ const getWebSocketUrl = () => {
       return `${protocol}//${hostname}:8000/ws`
     }
   }
-  
+
   // Production mode or same origin - use relative path (nginx will proxy)
   return `${protocol}//${hostname}${window.location.port ? ':' + window.location.port : ''}/ws`
 }
@@ -45,12 +45,11 @@ export const WebSocketProvider = ({ children }) => {
     if (isConnectingRef.current || wsRef.current?.readyState === WebSocket.OPEN) {
       return
     }
-    
+
     isConnectingRef.current = true
 
     const wsUrl = getWebSocketUrl()
 
-    
     try {
       const ws = new WebSocket(wsUrl)
 
@@ -69,13 +68,13 @@ export const WebSocketProvider = ({ children }) => {
         try {
           // Ignore ping/pong messages
           if (event.data === 'pong') return
-          
+
           const message = JSON.parse(event.data)
-          
+
           // Update messages state with the new data
-          setMessages(prev => ({
+          setMessages((prev) => ({
             ...prev,
-            [message.type]: message.data
+            [message.type]: message.data,
           }))
         } catch (_error) {
           // Silently ignore parse errors
@@ -89,9 +88,9 @@ export const WebSocketProvider = ({ children }) => {
       ws.onclose = () => {
         isConnectingRef.current = false
         wsRef.current = null
-        
+
         if (!isMountedRef.current) return
-        
+
         setIsConnected(false)
 
         // Attempt to reconnect after 3 seconds
@@ -149,12 +148,8 @@ export const WebSocketProvider = ({ children }) => {
       if (wsRef.current?.readyState === WebSocket.OPEN) {
         wsRef.current.send(typeof data === 'string' ? data : JSON.stringify(data))
       }
-    }
+    },
   }
 
-  return (
-    <WebSocketContext.Provider value={value}>
-      {children}
-    </WebSocketContext.Provider>
-  )
+  return <WebSocketContext.Provider value={value}>{children}</WebSocketContext.Provider>
 }

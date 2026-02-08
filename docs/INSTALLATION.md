@@ -8,13 +8,13 @@ Guía completa para instalar FPV Copilot Sky en un SBC Linux (Radxa Zero, Raspbe
 
 ### Hardware
 
-| Componente | Mínimo | Recomendado |
-|------------|--------|-------------|
-| SBC Linux | 1 GB RAM, ARM/x86 | Radxa Zero 2 GB |
-| Almacenamiento | MicroSD 16 GB | MicroSD 32 GB |
-| Cámara | USB UVC | Logitech C920 o similar |
-| Modem 4G | — | Huawei E3372h / E8372h (HiLink) |
-| Conexión al FC | UART o USB-serie | Cable directo al UART del FC |
+| Componente     | Mínimo            | Recomendado                     |
+| -------------- | ----------------- | ------------------------------- |
+| SBC Linux      | 1 GB RAM, ARM/x86 | Radxa Zero 2 GB                 |
+| Almacenamiento | MicroSD 16 GB     | MicroSD 32 GB                   |
+| Cámara         | USB UVC           | Logitech C920 o similar         |
+| Modem 4G       | —                 | Huawei E3372h / E8372h (HiLink) |
+| Conexión al FC | UART o USB-serie  | Cable directo al UART del FC    |
 
 ### Software
 
@@ -196,10 +196,10 @@ bash scripts/deploy.sh
 
 ### Systemd
 
-| Servicio | Descripción |
-|----------|-------------|
-| `fpvcopilot-sky.service` | Backend FastAPI (uvicorn :8000) |
-| `nginx` | Servidor web, proxy inverso, WebSocket |
+| Servicio                 | Descripción                            |
+| ------------------------ | -------------------------------------- |
+| `fpvcopilot-sky.service` | Backend FastAPI (uvicorn :8000)        |
+| `nginx`                  | Servidor web, proxy inverso, WebSocket |
 
 ```bash
 sudo systemctl status fpvcopilot-sky    # Estado
@@ -217,11 +217,11 @@ sudo journalctl -u fpvcopilot-sky -f    # Logs
 
 ### Puertos
 
-| Puerto | Servicio |
-|--------|----------|
-| 80 | Nginx (HTTP) |
-| 8000 | FastAPI (backend) |
-| 5600 | Video RTP/UDP (streaming saliente) |
+| Puerto | Servicio                           |
+| ------ | ---------------------------------- |
+| 80     | Nginx (HTTP)                       |
+| 8000   | FastAPI (backend)                  |
+| 5600   | Video RTP/UDP (streaming saliente) |
 
 ---
 
@@ -274,22 +274,24 @@ sudo usermod -aG dialout,video $(whoami)
 
 Después de instalar, tienes scripts auxiliares disponibles en `scripts/`:
 
-| Script | Propósito | Cuándo usarlo |
-|--------|-----------|---------------|
-| **`deploy.sh`** | Compila frontend, reinstala systemd/nginx, reinicia servicio | Después de cambios en frontend o backend; despliegue a producción |
-| **`dev.sh`** | Inicia backend con hot-reload y frontend dev server | Desarrollo local; requiere dos terminales |
-| **`status.sh`** | Diagnosis completa: servicios, logs, conexiones, recursos | Troubleshooting; para entender el estado actual |
-| **`configure-modem.sh`** | Detecta e inicializa modem Huawei HiLink y CSQ/RSSI | Si el modem no se detecta automáticamente en `status.sh` |
-| **`setup-system-sudoers.sh`** | Configura permisos sudo para network/modem/tailscale | Reparar permisos si algunos comandos fallan; `install.sh` lo hace automáticamente |
-| **`setup-tailscale-sudoers.sh`** | Configura permisos sudo específicos para Tailscale | Reparar permisos de Tailscale si `install.sh` falló |
+| Script                           | Propósito                                                    | Cuándo usarlo                                                                     |
+| -------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| **`deploy.sh`**                  | Compila frontend, reinstala systemd/nginx, reinicia servicio | Después de cambios en frontend o backend; despliegue a producción                 |
+| **`dev.sh`**                     | Inicia backend con hot-reload y frontend dev server          | Desarrollo local; requiere dos terminales                                         |
+| **`status.sh`**                  | Diagnosis completa: servicios, logs, conexiones, recursos    | Troubleshooting; para entender el estado actual                                   |
+| **`configure-modem.sh`**         | Detecta e inicializa modem Huawei HiLink y CSQ/RSSI          | Si el modem no se detecta automáticamente en `status.sh`                          |
+| **`setup-system-sudoers.sh`**    | Configura permisos sudo para network/modem/tailscale         | Reparar permisos si algunos comandos fallan; `install.sh` lo hace automáticamente |
+| **`setup-tailscale-sudoers.sh`** | Configura permisos sudo específicos para Tailscale           | Reparar permisos de Tailscale si `install.sh` falló                               |
 
 ### Troubleshooting común
 
 **Si ves "Welcome to nginx" en lugar del frontend:**
+
 ```bash
 sudo rm /etc/nginx/sites-enabled/default
 sudo systemctl reload nginx
 ```
+
 > Esto ya lo hace `install-production.sh`, pero puede reaparecer si actualizas nginx.
 
 ### Flujo típico de instalación:

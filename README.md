@@ -15,14 +15,14 @@ FPV Copilot Sky convierte un SBC Linux (Radxa Zero, Raspberry Pi, Orange Pi…) 
 
 ## ✨ ¿Qué puedes hacer?
 
-| Función | Descripción |
-|---------|-------------|
+| Función                   | Descripción                                                                              |
+| ------------------------- | ---------------------------------------------------------------------------------------- |
 | **📡 Telemetría MAVLink** | Conexión directa al FC, auto-detección de puertos, múltiples salidas UDP/TCP simultáneas |
-| **🎥 Video HD** | Streaming RTP/UDP ultra-baja latencia, H.264 y MJPEG, cámaras USB y CSI |
-| **📱 Modem 4G/LTE** | Gestión completa de Huawei HiLink, bandas LTE, modo video optimizado, test de latencia |
-| **🔐 VPN Tailscale** | Acceso remoto en 1 clic, conexión mesh P2P cifrada desde cualquier lugar |
-| **🌐 Red inteligente** | Priorización WiFi/4G automática, failover, métricas de ruta |
-| **💻 WebUI** | Interfaz responsive en español e inglés, tiempo real por WebSocket |
+| **🎥 Video HD**           | Streaming RTP/UDP ultra-baja latencia, H.264 y MJPEG, cámaras USB y CSI                  |
+| **📱 Modem 4G/LTE**       | Gestión completa de Huawei HiLink, bandas LTE, modo video optimizado, test de latencia   |
+| **🔐 VPN Tailscale**      | Acceso remoto en 1 clic, conexión mesh P2P cifrada desde cualquier lugar                 |
+| **🌐 Red inteligente**    | Priorización WiFi/4G automática, failover, métricas de ruta                              |
+| **💻 WebUI**              | Interfaz responsive en español e inglés, tiempo real por WebSocket                       |
 
 ## 🏗️ Flujo de datos
 
@@ -61,7 +61,7 @@ FPV Copilot Sky convierte un SBC Linux (Radxa Zero, Raspberry Pi, Orange Pi…) 
 ### Arquitectura de componentes
 
 - **Backend (Python/FastAPI)**: Maneja MAVLink, video, VPN, modem
-- **Frontend (React/Vite)**: Interfaz web responsive, WebSocket en tiempo real  
+- **Frontend (React/Vite)**: Interfaz web responsive, WebSocket en tiempo real
 - **Servicios (systemd)**: Arranque automático, gestor de procesos
 - **Nginx**: Proxy inverso, hosting de estáticos, compresión gzip
 - **Providers**: Sistema modular agnóstico de hardware (modem, VPN, network)
@@ -117,20 +117,20 @@ bash scripts/dev.sh                      # Modo desarrollo con hot-reload
 
 Toda la documentación extendida está en la **[Wiki del proyecto](docs/INDEX.md)**:
 
-| Documento | Descripción |
-|-----------|-------------|
-| [📑 Índice](docs/INDEX.md) | Punto de entrada a toda la wiki |
-| [📥 Guía de Instalación](docs/INSTALLATION.md) | Requisitos, instalación paso a paso, verificación |
-| [📖 Guía de Usuario](docs/USER_GUIDE.md) | Uso de cada pestaña, configuración, solución de problemas |
-| [🛠️ Guía de Desarrollo](docs/DEVELOPER_GUIDE.md) | Arquitectura, stack, cómo contribuir y extender |
+| Documento                                        | Descripción                                               |
+| ------------------------------------------------ | --------------------------------------------------------- |
+| [📑 Índice](docs/INDEX.md)                       | Punto de entrada a toda la wiki                           |
+| [📥 Guía de Instalación](docs/INSTALLATION.md)   | Requisitos, instalación paso a paso, verificación         |
+| [📖 Guía de Usuario](docs/USER_GUIDE.md)         | Uso de cada pestaña, configuración, solución de problemas |
+| [🛠️ Guía de Desarrollo](docs/DEVELOPER_GUIDE.md) | Arquitectura, stack, cómo contribuir y extender           |
 
 ## 🏗️ Tecnologías
 
-| Capa | Stack |
-|------|-------|
-| **Backend** | Python 3.12, FastAPI, Uvicorn, PyMAVLink, GStreamer, huawei-lte-api |
-| **Frontend** | React 19, Vite, i18next, WebSocket |
-| **Infra** | Nginx, systemd, NetworkManager, Tailscale |
+| Capa         | Stack                                                               |
+| ------------ | ------------------------------------------------------------------- |
+| **Backend**  | Python 3.12, FastAPI, Uvicorn, PyMAVLink, GStreamer, huawei-lte-api |
+| **Frontend** | React 19, Vite, i18next, WebSocket                                  |
+| **Infra**    | Nginx, systemd, NetworkManager, Tailscale                           |
 
 ## 📄 Licencia
 

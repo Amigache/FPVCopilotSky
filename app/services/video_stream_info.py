@@ -5,14 +5,13 @@ compatible with Mission Planner's "Pop-Out or within Map" video detection
 """
 
 import os
-
-os.environ["MAVLINK20"] = "1"
-
 import threading
 import time
 from typing import Optional, TYPE_CHECKING
 
-from pymavlink.dialects.v20 import ardupilotmega as mavlink2
+# MAVLink environment - set before importing pymavlink
+os.environ["MAVLINK20"] = "1"
+from pymavlink.dialects.v20 import ardupilotmega as mavlink2  # noqa: E402
 
 if TYPE_CHECKING:
     from .mavlink_bridge import MAVLinkBridge
@@ -27,7 +26,9 @@ class VideoStreamInfoService:
     """
 
     def __init__(
-        self, mavlink_bridge: Optional["MAVLinkBridge"] = None, gstreamer_service: Optional["GStreamerService"] = None
+        self,
+        mavlink_bridge: Optional["MAVLinkBridge"] = None,
+        gstreamer_service: Optional["GStreamerService"] = None,
     ):
         self.mavlink_bridge = mavlink_bridge
         self.gstreamer_service = gstreamer_service
@@ -55,7 +56,8 @@ class VideoStreamInfoService:
         self.sender_thread = threading.Thread(target=self._sender_loop, daemon=True, name="VideoStreamInfoSender")
         self.sender_thread.start()
         print(
-            f"✅ Video Stream Information service started (SysID={self.mavlink_bridge.source_system_id}, CompID=100 CAMERA)"
+            f"✅ Video Stream Information service started "
+            f"(SysID={self.mavlink_bridge.source_system_id}, CompID=100 CAMERA)"
         )
         return True
 
@@ -116,11 +118,11 @@ class VideoStreamInfoService:
                                 self.mavlink_bridge.router.forward_to_outputs(packed_msg)
                     finally:
                         self.mavlink_bridge.serial_lock.release()
-            except Exception as e:
+            except Exception:
                 # Silent fail - non-critical
                 pass
 
-        except Exception as e:
+        except Exception:
             # Silently ignore errors
             pass
 
@@ -204,11 +206,11 @@ class VideoStreamInfoService:
                     finally:
                         self.mavlink_bridge.serial_lock.release()
                 # If can't acquire lock, just skip this send - don't block
-            except Exception as e:
+            except Exception:
                 # Silent fail - this is just advisory
                 pass
 
-        except Exception as e:
+        except Exception:
             # Silently ignore errors in this non-critical service
             pass
 
@@ -218,7 +220,8 @@ _video_stream_info_service: Optional[VideoStreamInfoService] = None
 
 
 def init_video_stream_info_service(
-    mavlink_bridge: Optional["MAVLinkBridge"] = None, gstreamer_service: Optional["GStreamerService"] = None
+    mavlink_bridge: Optional["MAVLinkBridge"] = None,
+    gstreamer_service: Optional["GStreamerService"] = None,
 ) -> VideoStreamInfoService:
     """Initialize the video stream info service"""
     global _video_stream_info_service

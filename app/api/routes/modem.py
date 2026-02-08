@@ -5,7 +5,6 @@ Endpoints for managing modem connections and providers
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
 from providers import get_provider_registry
 from app.i18n import get_language_from_request, translate
 
@@ -49,7 +48,8 @@ async def get_modem_status(provider_name: str, request: Request):
 
         if not provider:
             raise HTTPException(
-                status_code=404, detail=translate("modem.provider_not_found", lang, provider=provider_name)
+                status_code=404,
+                detail=translate("modem.provider_not_found", lang, provider=provider_name),
             )
 
         status = provider.get_status()
@@ -78,7 +78,8 @@ async def connect_modem(provider_name: str, request: Request):
 
         if not provider:
             raise HTTPException(
-                status_code=404, detail=translate("modem.provider_not_found", lang, provider=provider_name)
+                status_code=404,
+                detail=translate("modem.provider_not_found", lang, provider=provider_name),
             )
 
         result = provider.connect()
@@ -112,7 +113,8 @@ async def disconnect_modem(provider_name: str, request: Request):
 
         if not provider:
             raise HTTPException(
-                status_code=404, detail=translate("modem.provider_not_found", lang, provider=provider_name)
+                status_code=404,
+                detail=translate("modem.provider_not_found", lang, provider=provider_name),
             )
 
         result = provider.disconnect()
@@ -153,7 +155,8 @@ async def configure_modem_band(provider_name: str, request: BandConfigRequest, r
 
         if not provider:
             raise HTTPException(
-                status_code=404, detail=translate("modem.provider_not_found", lang, provider=provider_name)
+                status_code=404,
+                detail=translate("modem.provider_not_found", lang, provider=provider_name),
             )
 
         result = provider.configure_band(request.band_mask)
@@ -187,7 +190,8 @@ async def reboot_modem(provider_name: str, request: Request):
 
         if not provider:
             raise HTTPException(
-                status_code=404, detail=translate("modem.provider_not_found", lang, provider=provider_name)
+                status_code=404,
+                detail=translate("modem.provider_not_found", lang, provider=provider_name),
             )
 
         result = provider.reboot()
@@ -221,7 +225,8 @@ async def get_modem_info(provider_name: str, request: Request):
 
         if not provider:
             raise HTTPException(
-                status_code=404, detail=translate("modem.provider_not_found", lang, provider=provider_name)
+                status_code=404,
+                detail=translate("modem.provider_not_found", lang, provider=provider_name),
             )
 
         info = provider.get_info()

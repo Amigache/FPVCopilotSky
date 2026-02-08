@@ -4,7 +4,6 @@ Detects and uses SoC hardware video encoding (V4L2 M2M, meson_venc, etc.)
 """
 
 import subprocess
-import os
 import glob
 import logging
 from typing import Dict
@@ -55,7 +54,10 @@ class HardwareH264Encoder(VideoEncoderProvider):
                 try:
                     # Query device capabilities
                     result = subprocess.run(
-                        ["v4l2-ctl", "-d", device, "--info"], capture_output=True, text=True, timeout=2
+                        ["v4l2-ctl", "-d", device, "--info"],
+                        capture_output=True,
+                        text=True,
+                        timeout=2,
                     )
 
                     if result.returncode != 0:
@@ -67,7 +69,10 @@ class HardwareH264Encoder(VideoEncoderProvider):
                     if "video output" in info or "encoder" in info or "codec" in info:
                         # Check capabilities for H.264 encoding
                         caps_result = subprocess.run(
-                            ["v4l2-ctl", "-d", device, "--list-formats-out"], capture_output=True, text=True, timeout=2
+                            ["v4l2-ctl", "-d", device, "--list-formats-out"],
+                            capture_output=True,
+                            text=True,
+                            timeout=2,
                         )
 
                         if "h264" in caps_result.stdout.lower() or "h.264" in caps_result.stdout.lower():
@@ -145,7 +150,9 @@ class HardwareH264Encoder(VideoEncoderProvider):
             "priority": self.priority,
             "device": self.encoder_device,
             "gst_element": self.gst_encoder_element,
-            "description": f"Encoding por hardware del SoC. CPU <10%, latencia ultra-baja. Device: {self.encoder_device}",
+            "description": (
+                "Encoding por hardware del SoC. CPU <10%, latencia ultra-baja. " f"Device: {self.encoder_device}"
+            ),
         }
 
     def build_pipeline_elements(self, config: Dict) -> Dict:
@@ -177,7 +184,12 @@ class HardwareH264Encoder(VideoEncoderProvider):
                 {
                     "name": "queue_pre",
                     "element": "queue",
-                    "properties": {"max-size-buffers": 2, "max-size-time": 0, "max-size-bytes": 0, "leaky": 2},
+                    "properties": {
+                        "max-size-buffers": 2,
+                        "max-size-time": 0,
+                        "max-size-bytes": 0,
+                        "leaky": 2,
+                    },
                 },
                 {
                     "name": "encoder",
@@ -187,7 +199,12 @@ class HardwareH264Encoder(VideoEncoderProvider):
                 {
                     "name": "queue_post",
                     "element": "queue",
-                    "properties": {"max-size-buffers": 2, "max-size-time": 0, "max-size-bytes": 0, "leaky": 2},
+                    "properties": {
+                        "max-size-buffers": 2,
+                        "max-size-time": 0,
+                        "max-size-bytes": 0,
+                        "leaky": 2,
+                    },
                 },
                 {"name": "h264parse", "element": "h264parse", "properties": {}},
             ]
@@ -198,7 +215,11 @@ class HardwareH264Encoder(VideoEncoderProvider):
                 "caps": [],
                 "rtp_payload_type": self.rtp_payload_type,
                 "rtp_payloader": "rtph264pay",
-                "rtp_payloader_properties": {"pt": self.rtp_payload_type, "mtu": 1400, "config-interval": -1},
+                "rtp_payloader_properties": {
+                    "pt": self.rtp_payload_type,
+                    "mtu": 1400,
+                    "config-interval": -1,
+                },
             }
 
         except Exception as e:

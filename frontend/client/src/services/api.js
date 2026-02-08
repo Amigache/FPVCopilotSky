@@ -12,7 +12,7 @@ export const getApiBaseUrl = () => {
   if (import.meta.env.DEV) {
     return ''
   }
-  
+
   // In production (served by nginx)
   // Use relative paths - nginx will proxy /api/* to backend
   return ''
@@ -23,11 +23,11 @@ const getPreferredLanguage = () => {
   // Try localStorage first (user preference)
   const stored = localStorage.getItem('language')
   if (stored) return stored
-  
+
   // Try browser language
   const browserLang = navigator.language || navigator.userLanguage
   if (browserLang.startsWith('es')) return 'es'
-  
+
   // Default to English
   return 'en'
 }
@@ -43,18 +43,18 @@ export const API_SYSTEM = `${API_BASE}/api/system`
 export const fetchWithTimeout = async (url, options = {}, timeout = 30000) => {
   const controller = new AbortController()
   const id = setTimeout(() => controller.abort(), timeout)
-  
+
   try {
     // Add Accept-Language header for internationalization
     const headers = {
       ...options.headers,
-      'Accept-Language': getPreferredLanguage()
+      'Accept-Language': getPreferredLanguage(),
     }
-    
+
     const response = await fetch(url, {
       ...options,
       headers,
-      signal: controller.signal
+      signal: controller.signal,
     })
     clearTimeout(id)
     return response
@@ -69,20 +69,27 @@ export const fetchWithTimeout = async (url, options = {}, timeout = 30000) => {
 
 // Convenience methods for API calls
 export const api = {
-  get: (endpoint, timeout = 30000) => 
-    fetchWithTimeout(`${API_BASE}${endpoint}`, {}, timeout),
-  
-  post: (endpoint, data, timeout = 30000) => 
-    fetchWithTimeout(`${API_BASE}${endpoint}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    }, timeout),
-  
-  delete: (endpoint, timeout = 30000) => 
-    fetchWithTimeout(`${API_BASE}${endpoint}`, {
-      method: 'DELETE'
-    }, timeout),
+  get: (endpoint, timeout = 30000) => fetchWithTimeout(`${API_BASE}${endpoint}`, {}, timeout),
+
+  post: (endpoint, data, timeout = 30000) =>
+    fetchWithTimeout(
+      `${API_BASE}${endpoint}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      },
+      timeout
+    ),
+
+  delete: (endpoint, timeout = 30000) =>
+    fetchWithTimeout(
+      `${API_BASE}${endpoint}`,
+      {
+        method: 'DELETE',
+      },
+      timeout
+    ),
 
   // VPN methods
   getVPNPeers: async () => {
@@ -105,9 +112,9 @@ export const api = {
     const response = await fetchWithTimeout(`${API_BASE}/api/vpn/preferences`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
       },
-      body: JSON.stringify(preferences)
+      body: JSON.stringify(preferences),
     })
     if (!response.ok) {
       throw new Error(`Failed to save VPN preferences: ${response.statusText}`)
@@ -117,9 +124,13 @@ export const api = {
 
   // System restart methods
   restartBackend: async () => {
-    const response = await fetchWithTimeout(`${API_BASE}/api/system/restart/backend`, {
-      method: 'POST'
-    }, 5000)
+    const response = await fetchWithTimeout(
+      `${API_BASE}/api/system/restart/backend`,
+      {
+        method: 'POST',
+      },
+      5000
+    )
     if (!response.ok) {
       throw new Error(`Failed to restart backend: ${response.statusText}`)
     }
@@ -127,9 +138,13 @@ export const api = {
   },
 
   restartFrontend: async () => {
-    const response = await fetchWithTimeout(`${API_BASE}/api/system/restart/frontend`, {
-      method: 'POST'
-    }, 5000)
+    const response = await fetchWithTimeout(
+      `${API_BASE}/api/system/restart/frontend`,
+      {
+        method: 'POST',
+      },
+      5000
+    )
     if (!response.ok) {
       throw new Error(`Failed to restart frontend: ${response.statusText}`)
     }
@@ -151,7 +166,7 @@ export const api = {
       throw new Error(`Failed to fetch frontend logs: ${response.statusText}`)
     }
     return await response.json()
-  }
+  },
 }
 
 export default api

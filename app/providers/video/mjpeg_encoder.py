@@ -5,7 +5,7 @@ Ultra-low latency encoder using JPEG compression
 
 import subprocess
 import logging
-from typing import Dict, List
+from typing import Dict
 from ..base.video_encoder_provider import VideoEncoderProvider
 
 logger = logging.getLogger(__name__)
@@ -41,7 +41,12 @@ class MJPEGEncoder(VideoEncoderProvider):
             "codec_family": self.codec_family,
             "encoder_type": self.encoder_type,
             "available": self.is_available(),
-            "supported_resolutions": [(640, 480), (960, 720), (1280, 720), (1920, 1080)],
+            "supported_resolutions": [
+                (640, 480),
+                (960, 720),
+                (1280, 720),
+                (1920, 1080),
+            ],
             "supported_framerates": [15, 24, 25, 30, 60],
             "min_bitrate": 0,  # Quality-based, not bitrate
             "max_bitrate": 0,
@@ -60,9 +65,6 @@ class MJPEGEncoder(VideoEncoderProvider):
         Pipeline: camera(MJPEG) → jpegdec → jpegenc → rtpjpegpay
         """
         try:
-            width = config.get("width", 960)
-            height = config.get("height", 720)
-            framerate = config.get("framerate", 30)
             quality = config.get("quality", 85)
 
             elements = [
@@ -78,11 +80,20 @@ class MJPEGEncoder(VideoEncoderProvider):
                     },
                 },
                 {"name": "videoconvert", "element": "videoconvert", "properties": {}},
-                {"name": "encoder", "element": "jpegenc", "properties": {"quality": quality}},
+                {
+                    "name": "encoder",
+                    "element": "jpegenc",
+                    "properties": {"quality": quality},
+                },
                 {
                     "name": "queue_udp",
                     "element": "queue",
-                    "properties": {"max-size-buffers": 3, "max-size-time": 0, "max-size-bytes": 0, "leaky": 2},
+                    "properties": {
+                        "max-size-buffers": 3,
+                        "max-size-time": 0,
+                        "max-size-bytes": 0,
+                        "leaky": 2,
+                    },
                 },
             ]
 

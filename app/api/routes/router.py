@@ -102,7 +102,10 @@ async def update_output(output_id: str, request: AddOutputRequest, req: Request)
     # Check if output exists
     outputs = _router_service.outputs
     if output_id not in outputs:
-        raise HTTPException(status_code=404, detail=translate("router.output_not_found", lang, output_id=output_id))
+        raise HTTPException(
+            status_code=404,
+            detail=translate("router.output_not_found", lang, output_id=output_id),
+        )
 
     # Remove the old output
     success, message = _router_service.remove_output(output_id)

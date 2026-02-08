@@ -33,11 +33,20 @@ class TailscaleProvider(VPNProvider):
     def get_status(self) -> Dict:
         """Get Tailscale connection status"""
         if not self.is_installed():
-            return {"success": False, "installed": False, "error": "Tailscale not installed"}
+            return {
+                "success": False,
+                "installed": False,
+                "error": "Tailscale not installed",
+            }
 
         try:
             # Get main status
-            result = subprocess.run(["tailscale", "status", "--json"], capture_output=True, text=True, timeout=5)
+            result = subprocess.run(
+                ["tailscale", "status", "--json"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
 
             # Check if logged out
             if "Logged out" in result.stderr or result.returncode != 0:
@@ -76,7 +85,12 @@ class TailscaleProvider(VPNProvider):
                 # Authenticated means has valid credentials and is not in login-required state
                 # User is authenticated in these states: Stopped, Starting, Running
                 # User is NOT authenticated in: NeedsLogin, NoState
-                authenticated = backend_state not in ["NeedsLogin", "NoState", "Unknown", ""]
+                authenticated = backend_state not in [
+                    "NeedsLogin",
+                    "NoState",
+                    "Unknown",
+                    "",
+                ]
 
                 # Connected only if backend running AND node is online/active AND authenticated
                 connected = backend_state == "Running" and (node_online or node_active) and authenticated
@@ -167,7 +181,11 @@ class TailscaleProvider(VPNProvider):
             # Check if already connected
             status = self.get_status()
             if status.get("connected") and status.get("authenticated"):
-                return {"success": True, "message": "Already connected", "already_connected": True}
+                return {
+                    "success": True,
+                    "message": "Already connected",
+                    "already_connected": True,
+                }
 
             # First, check if we need a login URL by checking current state
             # If backend_state is NeedsLogin, we need to get an auth URL
@@ -193,7 +211,10 @@ class TailscaleProvider(VPNProvider):
 
                 try:
                     result = subprocess.run(
-                        cmd, capture_output=True, text=True, timeout=10  # Python-level safety timeout
+                        cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=10,  # Python-level safety timeout
                     )
                     combined_output = result.stdout + result.stderr
                     logger.info(f"Tailscale up result: returncode={result.returncode}, output={combined_output[:200]}")
@@ -215,7 +236,12 @@ class TailscaleProvider(VPNProvider):
                 # Fallback: read tailscale status --json directly for AuthURL
                 # (more reliable than going through get_status() wrapper)
                 try:
-                    raw = subprocess.run(["tailscale", "status", "--json"], capture_output=True, text=True, timeout=5)
+                    raw = subprocess.run(
+                        ["tailscale", "status", "--json"],
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                    )
                     if raw.returncode == 0:
                         status_json = json.loads(raw.stdout)
                         fallback_url = status_json.get("AuthURL", "")
@@ -244,7 +270,10 @@ class TailscaleProvider(VPNProvider):
                 if check_status.get("connected"):
                     return {"success": True, "message": "Connected successfully"}
 
-                return {"success": False, "error": "Could not get authentication URL. Try again."}
+                return {
+                    "success": False,
+                    "error": "Could not get authentication URL. Try again.",
+                }
 
             # Already authenticated, just need to bring it up
             cmd = ["timeout", "10", "sudo", "-n", "tailscale", "up"]
@@ -281,13 +310,22 @@ class TailscaleProvider(VPNProvider):
 
     def _extract_auth_url(self, output: str) -> Optional[str]:
         """Extract authentication URL from output"""
-        match = re.search(r"https://login\.tailscale\.com/a/[a-zA-Z0-9]+", output, re.MULTILINE | re.DOTALL)
+        match = re.search(
+            r"https://login\.tailscale\.com/a/[a-zA-Z0-9]+",
+            output,
+            re.MULTILINE | re.DOTALL,
+        )
         return match.group(0) if match else None
 
     def disconnect(self) -> Dict:
         """Disconnect from Tailscale"""
         try:
-            result = subprocess.run(["sudo", "tailscale", "down"], capture_output=True, text=True, timeout=10)
+            result = subprocess.run(
+                ["sudo", "tailscale", "down"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
 
             if result.returncode != 0:
                 return {"success": False, "error": result.stderr}
@@ -301,14 +339,21 @@ class TailscaleProvider(VPNProvider):
     def logout(self) -> Dict:
         """Logout from Tailscale (clears local credentials)"""
         try:
-            result = subprocess.run(["sudo", "-n", "tailscale", "logout"], capture_output=True, text=True, timeout=10)
+            result = subprocess.run(
+                ["sudo", "-n", "tailscale", "logout"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
 
             if result.returncode != 0:
                 error_msg = result.stderr.strip()
                 if "password is required" in error_msg or "a password is required" in error_msg.lower():
                     return {
                         "success": False,
-                        "error": 'Logout requires sudo password. Please run "sudo tailscale logout" manually in terminal.',
+                        "error": (
+                            "Logout requires sudo password. " 'Please run "sudo tailscale logout" manually in terminal.'
+                        ),
                     }
                 return {"success": False, "error": error_msg or "Logout failed"}
 
@@ -345,7 +390,12 @@ class TailscaleProvider(VPNProvider):
             return []
 
         try:
-            result = subprocess.run(["tailscale", "status", "--json"], capture_output=True, text=True, timeout=5)
+            result = subprocess.run(
+                ["tailscale", "status", "--json"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
 
             if result.returncode != 0:
                 logger.error(f"Failed to get Tailscale peers: {result.stderr}")

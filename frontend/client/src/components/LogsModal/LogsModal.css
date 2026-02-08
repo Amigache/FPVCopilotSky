@@ -16,8 +16,12 @@
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .logs-modal-container {
@@ -149,7 +153,9 @@
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .logs-loading p {
@@ -245,7 +251,7 @@
     height: 90vh;
     border-radius: 8px;
   }
-  
+
   .logs-modal-header,
   .logs-modal-body,
   .logs-modal-footer {
@@ -271,7 +277,7 @@
     height: 32px;
     font-size: 28px;
   }
-  
+
   .logs-content {
     font-size: 12px;
     padding: 12px;

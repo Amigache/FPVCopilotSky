@@ -116,7 +116,7 @@ configure_usb_modems() {
     else
         echo "  ℹ️ No Huawei modem detected"
     fi
-    
+
     # Wait a moment for ModemManager to detect the modem
     sleep 2
     MMCLI_OUTPUT=$(mmcli -L 2>/dev/null || echo "")

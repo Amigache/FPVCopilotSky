@@ -145,7 +145,7 @@ class BoardProvider(ABC):
                     content = f.read()
                     if criteria.cpu_model_contains not in content:
                         return False
-            except:
+            except Exception:
                 return False
 
         # TODO: Check device tree, dmesg, etc.

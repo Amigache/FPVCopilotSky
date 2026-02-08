@@ -3,7 +3,6 @@
 import subprocess
 import os
 import sys
-import json
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from importlib import metadata
@@ -89,7 +88,7 @@ def get_user_permissions():
                         line = line.strip()
                         if line and not line.startswith("#") and user.pw_name in line:
                             sudoers_list.append({"source": "sudoers", "entry": line})
-        except:
+        except Exception:
             pass
 
         # Check /etc/sudoers.d
@@ -102,10 +101,15 @@ def get_user_permissions():
                             for line in f:
                                 line = line.strip()
                                 if line and not line.startswith("#") and user.pw_name in line:
-                                    sudoers_list.append({"source": f"sudoers.d/{filename}", "entry": line})
-                    except:
+                                    sudoers_list.append(
+                                        {
+                                            "source": f"sudoers.d/{filename}",
+                                            "entry": line,
+                                        }
+                                    )
+                    except Exception:
                         pass
-        except:
+        except Exception:
             pass
 
         perms = {
@@ -236,7 +240,11 @@ async def get_permissions():
 @router.get("/dependencies")
 async def get_dependencies():
     """Get dependency status for both backend and frontend."""
-    return {"success": True, "backend": check_python_dependencies(), "frontend": check_npm_dependencies()}
+    return {
+        "success": True,
+        "backend": check_python_dependencies(),
+        "frontend": check_npm_dependencies(),
+    }
 
 
 @router.get("/system")

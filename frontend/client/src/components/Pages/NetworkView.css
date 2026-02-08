@@ -194,6 +194,7 @@
   gap: 6px;
   max-height: 300px;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .wifi-network {
@@ -246,10 +247,18 @@
   background: #81c784;
 }
 
-.signal-bar:nth-child(1) { height: 25%; }
-.signal-bar:nth-child(2) { height: 50%; }
-.signal-bar:nth-child(3) { height: 75%; }
-.signal-bar:nth-child(4) { height: 100%; }
+.signal-bar:nth-child(1) {
+  height: 25%;
+}
+.signal-bar:nth-child(2) {
+  height: 50%;
+}
+.signal-bar:nth-child(3) {
+  height: 75%;
+}
+.signal-bar:nth-child(4) {
+  height: 100%;
+}
 
 .wifi-ssid {
   font-weight: 500;
@@ -407,11 +416,21 @@
   transition: background 0.2s;
 }
 
-.signal-bar-large:nth-child(1) { height: 20%; }
-.signal-bar-large:nth-child(2) { height: 40%; }
-.signal-bar-large:nth-child(3) { height: 60%; }
-.signal-bar-large:nth-child(4) { height: 80%; }
-.signal-bar-large:nth-child(5) { height: 100%; }
+.signal-bar-large:nth-child(1) {
+  height: 20%;
+}
+.signal-bar-large:nth-child(2) {
+  height: 40%;
+}
+.signal-bar-large:nth-child(3) {
+  height: 60%;
+}
+.signal-bar-large:nth-child(4) {
+  height: 80%;
+}
+.signal-bar-large:nth-child(5) {
+  height: 100%;
+}
 
 .signal-bar-large.active {
   background: #81c784;
@@ -763,7 +782,9 @@
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Responsive */
@@ -771,21 +792,21 @@
   .network-columns {
     grid-template-columns: 1fr;
   }
-  
+
   .network-mode-banner {
     flex-direction: column;
     align-items: flex-start;
   }
-  
+
   .mode-toggle {
     width: 100%;
     justify-content: stretch;
   }
-  
+
   .mode-btn {
     flex: 1;
   }
-  
+
   .modem-details {
     grid-template-columns: 1fr;
   }

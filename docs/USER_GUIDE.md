@@ -18,12 +18,12 @@ La interfaz funciona en cualquier dispositivo (PC, tablet, móvil). No requiere 
 
 La barra superior muestra el estado global en tiempo real:
 
-| Badge | Significado |
-|-------|-------------|
-| 🟢 **Stream Online** | Video streaming activo |
-| 🟢 **FC Conectado** | Controlador de vuelo conectado por MAVLink |
-| 🟡 **Desarmado** / 🟠 **Armado** | Estado de armado del drone |
-| 🟢 **VPN Conectado** / 🔴 **VPN Desconectado** | Estado de la VPN Tailscale |
+| Badge                                          | Significado                                |
+| ---------------------------------------------- | ------------------------------------------ |
+| 🟢 **Stream Online**                           | Video streaming activo                     |
+| 🟢 **FC Conectado**                            | Controlador de vuelo conectado por MAVLink |
+| 🟡 **Desarmado** / 🟠 **Armado**               | Estado de armado del drone                 |
+| 🟢 **VPN Conectado** / 🔴 **VPN Desconectado** | Estado de la VPN Tailscale                 |
 
 Todos los badges se actualizan en tiempo real vía WebSocket.
 
@@ -56,11 +56,11 @@ Cuando conecta verás:
 
 Puedes crear múltiples salidas simultáneas para enviar telemetría a distintos GCS:
 
-| Tipo | Uso típico | Ejemplo |
-|------|-----------|---------|
-| UDP | QGroundControl | `192.168.1.100:14550` |
-| TCP Server | Mission Planner | Puerto 5760 |
-| TCP Client | Servidor remoto | `servidor:5760` |
+| Tipo       | Uso típico      | Ejemplo               |
+| ---------- | --------------- | --------------------- |
+| UDP        | QGroundControl  | `192.168.1.100:14550` |
+| TCP Server | Mission Planner | Puerto 5760           |
+| TCP Client | Servidor remoto | `servidor:5760`       |
 
 **Selector de peers VPN**: Si tienes Tailscale conectado, el input de IP muestra un desplegable con los nodos de tu red VPN para seleccionar la IP rápidamente.
 
@@ -131,11 +131,11 @@ Vista de todas las interfaces de red activas (WiFi, Ethernet, modem 4G, VPN) con
 
 El sistema gestiona automáticamente la prioridad de las interfaces:
 
-| Prioridad | Interfaz | Métrica |
-|-----------|----------|---------|
-| 1 (máxima) | VPN Tailscale | 10 |
-| 2 | Red principal (4G) | 100 |
-| 3 | Red secundaria (WiFi) | 200 |
+| Prioridad  | Interfaz              | Métrica |
+| ---------- | --------------------- | ------- |
+| 1 (máxima) | VPN Tailscale         | 10      |
+| 2          | Red principal (4G)    | 100     |
+| 3          | Red secundaria (WiFi) | 200     |
 
 **Modos de operación**:
 
@@ -158,12 +158,12 @@ Dos columnas con datos del operador y del dispositivo:
 
 ### Métricas de señal (KPI)
 
-| Métrica | Descripción | Rangos |
-|---------|-------------|--------|
-| RSSI | Fuerza de señal recibida | > -70 dBm bueno |
-| RSRP | Potencia de referencia | > -100 dBm bueno |
-| RSRQ | Calidad de referencia | > -10 dB bueno |
-| SINR | Relación señal/ruido | > 10 dB bueno |
+| Métrica | Descripción              | Rangos           |
+| ------- | ------------------------ | ---------------- |
+| RSSI    | Fuerza de señal recibida | > -70 dBm bueno  |
+| RSRP    | Potencia de referencia   | > -100 dBm bueno |
+| RSRQ    | Calidad de referencia    | > -10 dB bueno   |
+| SINR    | Relación señal/ruido     | > 10 dB bueno    |
 
 ### Tráfico
 
@@ -181,23 +181,23 @@ Test de latencia automático al entrar en la pestaña. Muestra:
 
 Evaluación automática de la calidad del streaming según la señal:
 
-| SINR | RSRP | Calidad | Bitrate máx. | Resolución |
-|------|------|---------|-------------|------------|
-| > 15 dB | > -90 dBm | Excelente | 5000 kbps | 1280×720 |
-| 10-15 dB | -90 a -100 | Bueno | 3000 kbps | 854×480 |
-| 5-10 dB | -100 a -110 | Moderado | 1500 kbps | 640×360 |
-| < 5 dB | < -110 dBm | Pobre | 500 kbps | 426×240 |
+| SINR     | RSRP        | Calidad   | Bitrate máx. | Resolución |
+| -------- | ----------- | --------- | ------------ | ---------- |
+| > 15 dB  | > -90 dBm   | Excelente | 5000 kbps    | 1280×720   |
+| 10-15 dB | -90 a -100  | Bueno     | 3000 kbps    | 854×480    |
+| 5-10 dB  | -100 a -110 | Moderado  | 1500 kbps    | 640×360    |
+| < 5 dB   | < -110 dBm  | Pobre     | 500 kbps     | 426×240    |
 
 ### Configuración de bandas LTE
 
 Presets rápidos para seleccionar bandas según la situación:
 
-| Preset | Bandas | Uso |
-|--------|--------|-----|
-| **Todas** | B1+B3+B7+B8+B20 | Búsqueda general |
-| **Urbano** (España) | B3+B7 | Ciudad, máxima velocidad |
-| **Rural** (España) | B20 | Cobertura extendida, campo |
-| **Solo 4G** | Modo LTE Only | Forzar LTE, evitar caer a 3G |
+| Preset              | Bandas          | Uso                          |
+| ------------------- | --------------- | ---------------------------- |
+| **Todas**           | B1+B3+B7+B8+B20 | Búsqueda general             |
+| **Urbano** (España) | B3+B7           | Ciudad, máxima velocidad     |
+| **Rural** (España)  | B20             | Cobertura extendida, campo   |
+| **Solo 4G**         | Modo LTE Only   | Forzar LTE, evitar caer a 3G |
 
 ### Modo video optimizado
 

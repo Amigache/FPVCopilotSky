@@ -1,6 +1,6 @@
 /**
  * Header Component Tests
- * 
+ *
  * Tests for the Header component which displays system status
  */
 

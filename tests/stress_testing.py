@@ -221,7 +221,9 @@ class EnduranceTest:
             "duration_seconds": elapsed,
             "total_requests": request_count,
             "errors": error_count,
-            "error_rate": error_count / (request_count + error_count) * 100 if (request_count + error_count) > 0 else 0,
+            "error_rate": (
+                error_count / (request_count + error_count) * 100 if (request_count + error_count) > 0 else 0
+            ),
             "throughput": request_count / elapsed if elapsed > 0 else 0,
             "avg_latency_ms": sum(latencies) / len(latencies) if latencies else 0,
             "min_latency_ms": min(latencies) if latencies else 0,

@@ -5,11 +5,10 @@ Optimized for FPV video streaming over 4G LTE
 """
 
 import asyncio
-import time
 import subprocess
 import requests
 import xml.etree.ElementTree as ET
-from typing import Dict, Optional, Any, List, Tuple
+from typing import Dict, Optional, List, Tuple
 from functools import partial
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -27,7 +26,6 @@ Connection = None
 try:
     from huawei_lte_api.Client import Client
     from huawei_lte_api.Connection import Connection
-    from huawei_lte_api.exceptions import ResponseErrorException, ResponseErrorLoginRequiredException
 
     HILINK_AVAILABLE = True
     logger.info("huawei-lte-api loaded successfully")
@@ -119,11 +117,36 @@ APN_PRESETS = {
 
 # Video Quality Thresholds (based on SINR)
 VIDEO_QUALITY_THRESHOLDS = {
-    "excellent": {"sinr_min": 15, "max_bitrate_kbps": 8000, "label": "Excelente", "color": "green"},
-    "good": {"sinr_min": 10, "max_bitrate_kbps": 5000, "label": "Bueno", "color": "green"},
-    "moderate": {"sinr_min": 5, "max_bitrate_kbps": 3000, "label": "Moderado", "color": "yellow"},
-    "poor": {"sinr_min": 0, "max_bitrate_kbps": 1500, "label": "Bajo", "color": "orange"},
-    "critical": {"sinr_min": -5, "max_bitrate_kbps": 800, "label": "Crítico", "color": "red"},
+    "excellent": {
+        "sinr_min": 15,
+        "max_bitrate_kbps": 8000,
+        "label": "Excelente",
+        "color": "green",
+    },
+    "good": {
+        "sinr_min": 10,
+        "max_bitrate_kbps": 5000,
+        "label": "Bueno",
+        "color": "green",
+    },
+    "moderate": {
+        "sinr_min": 5,
+        "max_bitrate_kbps": 3000,
+        "label": "Moderado",
+        "color": "yellow",
+    },
+    "poor": {
+        "sinr_min": 0,
+        "max_bitrate_kbps": 1500,
+        "label": "Bajo",
+        "color": "orange",
+    },
+    "critical": {
+        "sinr_min": -5,
+        "max_bitrate_kbps": 800,
+        "label": "Crítico",
+        "color": "red",
+    },
 }
 
 RSRP_THRESHOLDS = {
@@ -187,6 +210,7 @@ class HuaweiE3372hProvider(ModemProvider):
 
         # Flight session tracking
         self._flight_session: Optional[FlightSessionStats] = None
+        self._flight_logger = None  # FlightDataLogger instance
         self._video_mode_active: bool = False
         self._original_settings: Dict = {}
 
@@ -213,8 +237,13 @@ class HuaweiE3372hProvider(ModemProvider):
             # Check if it's the E3372h model
             model = info.get("DeviceName", "").lower()
             return "e3372" in model or "hilink" in model
-        except:
+        except Exception:
             return False
+
+    def set_flight_logger(self, flight_logger):
+        """Set flight data logger for CSV recording"""
+        self._flight_logger = flight_logger
+        logger.info(f"Flight logger configured for {self.display_name}")
 
     # =====================
     # Async Methods
@@ -257,7 +286,9 @@ class HuaweiE3372hProvider(ModemProvider):
         try:
             # Get modem info and network info in parallel
             modem_info, network_info = await asyncio.gather(
-                self.async_get_device_info(), self.async_get_network_info(), return_exceptions=True
+                self.async_get_device_info(),
+                self.async_get_network_info(),
+                return_exceptions=True,
             )
 
             # Handle exceptions
@@ -350,7 +381,7 @@ class HuaweiE3372hProvider(ModemProvider):
         try:
             if self._connection:
                 self._connection.close()
-        except:
+        except Exception:
             pass
         self._connection = None
         self._client = None
@@ -361,7 +392,10 @@ class HuaweiE3372hProvider(ModemProvider):
             session = requests.Session()
             session.get(self.MODEM_URL, timeout=self.CONNECTION_TIMEOUT)
 
-            r = session.get(f"{self.MODEM_URL}api/webserver/SesTokInfo", timeout=self.CONNECTION_TIMEOUT)
+            r = session.get(
+                f"{self.MODEM_URL}api/webserver/SesTokInfo",
+                timeout=self.CONNECTION_TIMEOUT,
+            )
             root = ET.fromstring(r.text)
             sesinfo = root.find("SesInfo").text
             token = root.find("TokInfo").text
@@ -387,7 +421,12 @@ class HuaweiE3372hProvider(ModemProvider):
                 "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
             }
 
-            r = session.post(f"{self.MODEM_URL}{endpoint}", data=xml_data, headers=headers, timeout=timeout)
+            r = session.post(
+                f"{self.MODEM_URL}{endpoint}",
+                data=xml_data,
+                headers=headers,
+                timeout=timeout,
+            )
 
             if "<response>OK</response>" in r.text:
                 return True, "OK"
@@ -473,7 +512,10 @@ class HuaweiE3372hProvider(ModemProvider):
     def disconnect(self) -> Dict:
         """Deactivate modem connection"""
         # HiLink modems typically stay connected, this would require airplane mode
-        return {"success": False, "message": "Desconexión manual no soportada en HiLink mode"}
+        return {
+            "success": False,
+            "message": "Desconexión manual no soportada en HiLink mode",
+        }
 
     def get_modem_info(self) -> Optional[ModemInfo]:
         """Get modem hardware information"""
@@ -511,7 +553,10 @@ class HuaweiE3372hProvider(ModemProvider):
             network_type=network.get("network_type_ex", network.get("network_type", "")),
             operator=network.get("operator", ""),
             ip_address=network.get("primary_dns", None),  # Approximation
-            dns_servers=[network.get("primary_dns", ""), network.get("secondary_dns", "")],
+            dns_servers=[
+                network.get("primary_dns", ""),
+                network.get("secondary_dns", ""),
+            ],
             data_uploaded=traffic.get("current_upload_raw", 0),
             data_downloaded=traffic.get("current_download_raw", 0),
         )
@@ -522,7 +567,7 @@ class HuaweiE3372hProvider(ModemProvider):
             success = self._set_lte_band_sync(band_mask)
             return {
                 "success": success,
-                "message": f"Banda configurada: {hex(band_mask)}" if success else self._last_error,
+                "message": (f"Banda configurada: {hex(band_mask)}" if success else self._last_error),
             }
         except Exception as e:
             return {"success": False, "message": str(e)}
@@ -536,7 +581,10 @@ class HuaweiE3372hProvider(ModemProvider):
         try:
             if preset:
                 if preset not in LTE_BAND_PRESETS:
-                    return {"success": False, "message": f"Preset desconocido: {preset}"}
+                    return {
+                        "success": False,
+                        "message": f"Preset desconocido: {preset}",
+                    }
                 band_mask = LTE_BAND_PRESETS[preset]["mask"]
                 preset_name = LTE_BAND_PRESETS[preset]["name"]
             elif custom_mask is not None:
@@ -553,7 +601,10 @@ class HuaweiE3372hProvider(ModemProvider):
                     "preset_name": preset_name,
                     "band_mask": hex(band_mask),
                 }
-            return {"success": False, "message": self._last_error or "Error configurando banda"}
+            return {
+                "success": False,
+                "message": self._last_error or "Error configurando banda",
+            }
         except Exception as e:
             return {"success": False, "message": str(e)}
 
@@ -566,7 +617,6 @@ class HuaweiE3372hProvider(ModemProvider):
             net_mode = self._client.net.net_mode()
             lte_band_hex = net_mode.get("LTEBand", "")
             network_mode = net_mode.get("NetworkMode", "")
-            network_band = net_mode.get("NetworkBand", "")
 
             # Convert hex to int for band detection
             lte_band_int = int(lte_band_hex, 16) if lte_band_hex else 0
@@ -588,7 +638,12 @@ class HuaweiE3372hProvider(ModemProvider):
             signal = self._get_signal_info_sync()
             current_band = signal.get("band", "") if signal else ""
 
-            mode_names = {"00": "Auto", "01": "2G Only", "02": "3G Only", "03": "4G Only"}
+            mode_names = {
+                "00": "Auto",
+                "01": "2G Only",
+                "02": "3G Only",
+                "03": "4G Only",
+            }
 
             return {
                 "lte_band_hex": lte_band_hex,
@@ -613,7 +668,12 @@ class HuaweiE3372hProvider(ModemProvider):
             net_mode = self._client.net.net_mode()
             network_mode = net_mode.get("NetworkMode", "00")
 
-            mode_names = {"00": "Auto (4G/3G/2G)", "01": "2G Only", "02": "3G Only", "03": "4G Only"}
+            mode_names = {
+                "00": "Auto (4G/3G/2G)",
+                "01": "2G Only",
+                "02": "3G Only",
+                "03": "4G Only",
+            }
 
             return {
                 "network_mode": network_mode,
@@ -660,7 +720,7 @@ class HuaweiE3372hProvider(ModemProvider):
             success = self._reconnect_network_sync()
             return {
                 "success": success,
-                "message": "Re-registro de red iniciado" if success else (self._last_error or "Error en reconexión"),
+                "message": ("Re-registro de red iniciado" if success else (self._last_error or "Error en reconexión")),
             }
         except Exception as e:
             return {"success": False, "message": str(e)}
@@ -692,7 +752,10 @@ class HuaweiE3372hProvider(ModemProvider):
         try:
             if preset:
                 if preset not in APN_PRESETS:
-                    return {"success": False, "message": f"Preset APN desconocido: {preset}"}
+                    return {
+                        "success": False,
+                        "message": f"Preset APN desconocido: {preset}",
+                    }
                 apn = APN_PRESETS[preset]["apn"]
                 apn_name = APN_PRESETS[preset]["name"]
             elif custom_apn:
@@ -719,7 +782,11 @@ class HuaweiE3372hProvider(ModemProvider):
 
             success, msg = self._direct_api_post("api/dialup/profiles", xml_data)
             if success:
-                return {"success": True, "message": f"APN configurado: {apn_name}", "apn": apn}
+                return {
+                    "success": True,
+                    "message": f"APN configurado: {apn_name}",
+                    "apn": apn,
+                }
             return {"success": False, "message": msg or "Error configurando APN"}
         except Exception as e:
             return {"success": False, "message": str(e)}
@@ -754,14 +821,18 @@ class HuaweiE3372hProvider(ModemProvider):
         """Enable video-optimized modem settings (force 4G, optimize bands)"""
         try:
             if self._video_mode_active:
-                return {"success": True, "message": "Modo video ya activo", "video_mode_active": True}
+                return {
+                    "success": True,
+                    "message": "Modo video ya activo",
+                    "video_mode_active": True,
+                }
 
             # Save current settings
             current_mode = self.get_network_mode()
             current_band = self.get_current_band()
             self._original_settings = {
-                "network_mode": current_mode.get("network_mode", "00") if current_mode else "00",
-                "lte_band_hex": current_band.get("lte_band_hex", "") if current_band else "",
+                "network_mode": (current_mode.get("network_mode", "00") if current_mode else "00"),
+                "lte_band_hex": (current_band.get("lte_band_hex", "") if current_band else ""),
             }
 
             # Force 4G Only mode
@@ -785,7 +856,11 @@ class HuaweiE3372hProvider(ModemProvider):
         """Disable video mode and restore original settings"""
         try:
             if not self._video_mode_active:
-                return {"success": True, "message": "Modo video no estaba activo", "video_mode_active": False}
+                return {
+                    "success": True,
+                    "message": "Modo video no estaba activo",
+                    "video_mode_active": False,
+                }
 
             # Restore original settings
             original_mode = self._original_settings.get("network_mode", "00")
@@ -910,7 +985,10 @@ class HuaweiE3372hProvider(ModemProvider):
             iface = None
             try:
                 result = subprocess.run(
-                    ["ip", "route", "show", "to", "192.168.8.0/24"], capture_output=True, text=True, timeout=3
+                    ["ip", "route", "show", "to", "192.168.8.0/24"],
+                    capture_output=True,
+                    text=True,
+                    timeout=3,
                 )
                 for line in result.stdout.strip().split("\n"):
                     if "dev" in line:
@@ -964,7 +1042,11 @@ class HuaweiE3372hProvider(ModemProvider):
 
             match = re.search(r"[\d.]+/[\d.]+/[\d.]+/[\d.]+", rtt_line)
             if not match:
-                return {"success": False, "error": "Could not parse RTT", "host": target}
+                return {
+                    "success": False,
+                    "error": "Could not parse RTT",
+                    "host": target,
+                }
 
             parts = match.group().split("/")
             min_ms = round(float(parts[0]), 1)
@@ -1042,11 +1124,23 @@ class HuaweiE3372hProvider(ModemProvider):
 
         self._flight_session = FlightSessionStats()
         logger.info("Flight session started")
+
+        # Start CSV logging if logger is available
+        log_result = None
+        if self._flight_logger:
+            log_result = self._flight_logger.start_session()
+            if log_result.get("success"):
+                logger.info(f"Flight CSV logging started: {log_result.get('file_path')}")
+            else:
+                logger.warning(f"Failed to start CSV logging: {log_result.get('message')}")
+
         return {
             "success": True,
             "message": "Sesión de vuelo iniciada",
             "active": True,
             "start_time": self._flight_session.start_time.isoformat(),
+            "csv_logging": log_result.get("success", False) if log_result else False,
+            "csv_file": log_result.get("file_path") if log_result else None,
         }
 
     def stop_flight_session(self) -> Dict:
@@ -1057,11 +1151,22 @@ class HuaweiE3372hProvider(ModemProvider):
         stats = self._flight_session.to_dict()
         self._flight_session = None
         logger.info("Flight session stopped")
+
+        # Stop CSV logging if logger is available
+        log_result = None
+        if self._flight_logger and self._flight_logger.is_active():
+            log_result = self._flight_logger.stop_session()
+            if log_result.get("success"):
+                logger.info(f"Flight CSV logging stopped: {log_result.get('file_path')}")
+            else:
+                logger.warning(f"Failed to stop CSV logging: {log_result.get('message')}")
+
         return {
             "success": True,
             "message": "Sesión de vuelo finalizada",
             "active": False,
             "stats": stats,
+            "csv_file": log_result.get("file_path") if log_result else None,
         }
 
     def record_flight_sample(self) -> Dict:
@@ -1111,6 +1216,12 @@ class HuaweiE3372hProvider(ModemProvider):
 
             self._flight_session.samples.append(sample)
 
+            # Log to CSV if logger is available
+            if self._flight_logger and self._flight_logger.is_active():
+                log_result = self._flight_logger.log_sample(sample)
+                if not log_result.get("success"):
+                    logger.warning(f"Failed to log flight sample to CSV: {log_result.get('message')}")
+
             # Update stats
             if sinr is not None:
                 self._flight_session.min_sinr = min(self._flight_session.min_sinr, sinr)
@@ -1141,7 +1252,10 @@ class HuaweiE3372hProvider(ModemProvider):
         """Reboot the modem"""
         try:
             success = self._reboot_sync()
-            return {"success": success, "message": "Módem reiniciando..." if success else self._last_error}
+            return {
+                "success": success,
+                "message": "Módem reiniciando..." if success else self._last_error,
+            }
         except Exception as e:
             return {"success": False, "message": str(e)}
 
@@ -1188,7 +1302,7 @@ class HuaweiE3372hProvider(ModemProvider):
                 try:
                     rssi = int(rssi_str.replace("dBm", "").strip())
                     signal_percent = max(0, min(100, int((rssi + 113) * 100 / 62)))
-                except:
+                except Exception:
                     pass
 
             return {
@@ -1274,7 +1388,7 @@ class HuaweiE3372hProvider(ModemProvider):
                 rat_code = plmn.get("Rat", "")
                 rat_types = {"0": "GSM", "2": "WCDMA", "7": "LTE", "12": "5G NR"}
                 rat = rat_types.get(str(rat_code), "")
-            except:
+            except Exception:
                 operator_name = status.get("FullName", "")
 
             conn_status_map = {
@@ -1325,7 +1439,7 @@ class HuaweiE3372hProvider(ModemProvider):
                             return f"{b:.1f} {unit}"
                         b /= 1024
                     return f"{b:.1f} TB"
-                except:
+                except Exception:
                     return b
 
             return {
@@ -1417,7 +1531,10 @@ class HuaweiE3372hProvider(ModemProvider):
         try:
             device = await self._run_sync(self._get_device_info_sync)
             if not device:
-                return {"available": False, "error": self._last_error or "Could not connect to modem"}
+                return {
+                    "available": False,
+                    "error": self._last_error or "Could not connect to modem",
+                }
 
             signal = await self._run_sync(self._get_signal_info_sync)
             network = await self._run_sync(self._get_network_info_sync)

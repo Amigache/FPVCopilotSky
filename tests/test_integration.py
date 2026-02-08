@@ -16,7 +16,12 @@ class TestPreferencesIntegration:
     def test_preferences_json_load_and_validate(self, tmp_path):
         """Test loading and validating preferences JSON"""
         prefs_file = tmp_path / "prefs.json"
-        test_prefs = {"language": "es", "theme": "dark", "notifications": True, "timeout": 30}
+        test_prefs = {
+            "language": "es",
+            "theme": "dark",
+            "notifications": True,
+            "timeout": 30,
+        }
         prefs_file.write_text(json.dumps(test_prefs))
 
         # Load and validate
@@ -116,7 +121,12 @@ class TestDataFlowIntegration:
 
     def test_json_serialization_deserialization(self):
         """Test JSON data flow"""
-        data = {"status": "connected", "signal": 85, "channels": ["ch1", "ch2"], "config": {"mode": "auto"}}
+        data = {
+            "status": "connected",
+            "signal": 85,
+            "channels": ["ch1", "ch2"],
+            "config": {"mode": "auto"},
+        }
 
         # Serialize
         json_str = json.dumps(data)
@@ -135,7 +145,10 @@ class TestDataFlowIntegration:
                     "wlan0": {"ip": "192.168.2.100", "enabled": False},
                 }
             },
-            "services": {"mavlink": {"enabled": True, "port": 14550}, "video": {"enabled": True, "bitrate": 4000}},
+            "services": {
+                "mavlink": {"enabled": True, "port": 14550},
+                "video": {"enabled": True, "bitrate": 4000},
+            },
         }
 
         # Access nested values

@@ -7,11 +7,11 @@ export default defineConfig({
   resolve: {
     alias: {
       react: path.resolve('./node_modules/react'),
-      'react-dom': path.resolve('./node_modules/react-dom')
-    }
+      'react-dom': path.resolve('./node_modules/react-dom'),
+    },
   },
   optimizeDeps: {
-    include: ['react', 'react-dom']
+    include: ['react', 'react-dom'],
   },
   server: {
     host: '0.0.0.0',
@@ -34,11 +34,7 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html', 'lcov'],
-      exclude: [
-        'node_modules/',
-        'src/test/',
-        'dist/',
-      ],
+      exclude: ['node_modules/', 'src/test/', 'dist/'],
     },
   },
 })

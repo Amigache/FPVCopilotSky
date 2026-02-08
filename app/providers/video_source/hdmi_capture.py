@@ -98,7 +98,10 @@ class HDMICaptureSource(VideoSourceProvider):
             try:
                 # Get device info
                 info_result = subprocess.run(
-                    ["v4l2-ctl", "-d", device, "--info"], capture_output=True, text=True, timeout=5
+                    ["v4l2-ctl", "-d", device, "--info"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
                 )
 
                 if info_result.returncode != 0:
@@ -107,7 +110,6 @@ class HDMICaptureSource(VideoSourceProvider):
                 device_name = device
                 card_type = ""
                 driver = ""
-                bus_info = ""
                 is_capture = False
 
                 for line in info_result.stdout.split("\n"):
@@ -122,7 +124,7 @@ class HDMICaptureSource(VideoSourceProvider):
                     elif "Bus info" in line:
                         parts = line.split(":", 1)
                         if len(parts) > 1:
-                            bus_info = parts[1].strip()
+                            _ = parts[1].strip()  # bus_info not used
                     elif "Video Capture" in line:
                         is_capture = True
 
@@ -165,7 +167,10 @@ class HDMICaptureSource(VideoSourceProvider):
 
             # Get device info
             info_result = subprocess.run(
-                ["v4l2-ctl", "-d", device, "--info"], capture_output=True, text=True, timeout=5
+                ["v4l2-ctl", "-d", device, "--info"],
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
 
             if info_result.returncode != 0:
@@ -191,7 +196,10 @@ class HDMICaptureSource(VideoSourceProvider):
 
             # Get formats
             formats_result = subprocess.run(
-                ["v4l2-ctl", "-d", device, "--list-formats-ext"], capture_output=True, text=True, timeout=5
+                ["v4l2-ctl", "-d", device, "--list-formats-ext"],
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
 
             formats = []
@@ -267,7 +275,10 @@ class HDMICaptureSource(VideoSourceProvider):
         try:
             caps = self.get_source_capabilities(source_id)
             if not caps:
-                return {"success": False, "error": f"HDMI capture device {source_id} not available"}
+                return {
+                    "success": False,
+                    "error": f"HDMI capture device {source_id} not available",
+                }
 
             width = config.get("width", 1920)
             height = config.get("height", 1080)
@@ -338,4 +349,9 @@ class HDMICaptureSource(VideoSourceProvider):
                 if framerate not in caps["supported_framerates"][resolution]:
                     warnings.append(f"Framerate {framerate}fps may not be available at {resolution}")
 
-        return {"valid": len(errors) == 0, "errors": errors, "warnings": warnings, "adjusted_config": adjusted}
+        return {
+            "valid": len(errors) == 0,
+            "errors": errors,
+            "warnings": warnings,
+            "adjusted_config": adjusted,
+        }

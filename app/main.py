@@ -19,33 +19,37 @@ logger = logging.getLogger(__name__)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Modular providers system
-from providers import init_provider_registry, get_provider_registry
-from providers.vpn.tailscale import TailscaleProvider
-from providers.modem.hilink.huawei import HuaweiE3372hProvider
-from providers.network import (
+from providers import init_provider_registry, get_provider_registry  # noqa: E402
+from providers.vpn.tailscale import TailscaleProvider  # noqa: E402
+from providers.modem.hilink.huawei import HuaweiE3372hProvider  # noqa: E402
+from providers.network import (  # noqa: E402
     EthernetInterface,
     WiFiInterface,
     VPNInterface,
     ModemInterface,
 )
-from providers.board import BoardRegistry  # Board/platform detection
+from services.flight_data_logger import FlightDataLogger  # noqa: E402
+from providers.board import BoardRegistry  # noqa: E402
 
 # Use simplified MAVLink bridge and router
-from services.mavlink_bridge import MAVLinkBridge
-from services.mavlink_router import get_router
-from services.websocket_manager import websocket_manager
-from services.preferences import get_preferences
-from services.serial_detector import get_detector
-from services.gstreamer_service import init_gstreamer_service, get_gstreamer_service
-from services.video_stream_info import init_video_stream_info_service, get_video_stream_info_service
-from api.routes import mavlink, system
-from api.routes import router as router_routes
-from api.routes import video as video_routes
-from api.routes import network as network_routes
-from api.routes import vpn as vpn_routes
-from api.routes import modem as modem_routes
-from api.routes import status as status_routes
-from api.routes import network_interface as network_interface_routes
+from services.mavlink_bridge import MAVLinkBridge  # noqa: E402
+from services.mavlink_router import get_router  # noqa: E402
+from services.websocket_manager import websocket_manager  # noqa: E402
+from services.preferences import get_preferences  # noqa: E402
+from services.serial_detector import get_detector  # noqa: E402
+from services.gstreamer_service import init_gstreamer_service  # noqa: E402, F401
+from services.video_stream_info import (  # noqa: E402
+    init_video_stream_info_service,
+    get_video_stream_info_service,
+)
+from api.routes import mavlink, system  # noqa: E402
+from api.routes import router as router_routes  # noqa: E402
+from api.routes import video as video_routes  # noqa: E402
+from api.routes import network as network_routes  # noqa: E402
+from api.routes import vpn as vpn_routes  # noqa: E402
+from api.routes import modem as modem_routes  # noqa: E402
+from api.routes import status as status_routes  # noqa: E402
+from api.routes import network_interface as network_interface_routes  # noqa: E402
 
 app = FastAPI(title="FPV Copilot Sky", version="1.0.0")
 
@@ -96,7 +100,6 @@ async def websocket_endpoint(websocket: WebSocket):
 
         # Send initial VPN status (from provider registry)
         try:
-            from providers import get_provider_registry
             from services.preferences import get_preferences
 
             registry = get_provider_registry()
@@ -114,12 +117,12 @@ async def websocket_endpoint(websocket: WebSocket):
                 if vpn_provider:
                     status = vpn_provider.get_status()
                     await websocket_manager.broadcast("vpn_status", status)
-        except Exception as e:
+        except Exception:  # noqa: E722
             pass  # VPN status not critical for startup
 
         # Keep connection alive and handle client messages
         while True:
-            data = await websocket.receive_text()
+            await websocket.receive_text()
 
             # Handle ping/pong (ignore for now, not needed)
             # WebSocket has built-in keep-alive
@@ -127,7 +130,7 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         print("WebSocket client disconnected")
     except Exception as e:
-        print(f"WebSocket error: {e}")
+        logger.debug(f"WebSocket error: {e}")
     finally:
         websocket_manager.disconnect(websocket)
 
@@ -192,15 +195,26 @@ async def periodic_stats_broadcast():
                 }
                 await websocket_manager.broadcast("status", status_data)
 
-            # Network status broadcasting removed - use API endpoints instead
-            # This functionality is now handled on-demand by the frontend calling API endpoints
+            # Network status every 5 seconds
+            if counter % 5 == 0:
+                try:
+                    from api.routes.network import get_network_status
+
+                    network_status = await get_network_status()
+                    await websocket_manager.broadcast("network_status", network_status)
+                except Exception as e:
+                    logger.debug(f"Network status broadcast error: {e}")
 
             # System resources (CPU/Memory) every 3 seconds
             if counter % 3 == 0:
                 from services.system_service import SystemService
 
                 await websocket_manager.broadcast(
-                    "system_resources", {"cpu": SystemService.get_cpu_info(), "memory": SystemService.get_memory_info()}
+                    "system_resources",
+                    {
+                        "cpu": SystemService.get_cpu_info(),
+                        "memory": SystemService.get_memory_info(),
+                    },
                 )
 
             # Services status every 5 seconds
@@ -213,9 +227,6 @@ async def periodic_stats_broadcast():
             # VPN status every 10 seconds
             if counter % 10 == 0:
                 try:
-                    from providers import get_provider_registry
-                    from services.preferences import get_preferences
-
                     registry = get_provider_registry()
                     prefs = get_preferences()
                     config = prefs.get_vpn_config()
@@ -267,7 +278,11 @@ async def periodic_stats_broadcast():
                         )
 
                         results = await _asyncio.gather(
-                            device_task, signal_task, network_task, traffic_task, return_exceptions=True
+                            device_task,
+                            signal_task,
+                            network_task,
+                            traffic_task,
+                            return_exceptions=True,
                         )
 
                         device_info = results[0] if not isinstance(results[0], Exception) else {}
@@ -305,7 +320,10 @@ async def periodic_stats_broadcast():
                                 "product_family": device_info.get("product_family", ""),
                             }
                         if signal_info:
-                            modem_data["signal"] = {**signal_info, "signal_bars": signal_bars}
+                            modem_data["signal"] = {
+                                **signal_info,
+                                "signal_bars": signal_bars,
+                            }
                         if network_info:
                             modem_data["network"] = {
                                 "operator": network_info.get("operator", ""),
@@ -449,7 +467,7 @@ def auto_connect_serial():
                     print(f"✅ Auto-connected to saved port: {serial_config.port}")
                     return
                 else:
-                    print(f"⚠️ Saved connection unstable, scanning for alternatives...")
+                    print("⚠️ Saved connection unstable, scanning for alternatives...")
             else:
                 print(f"⚠️ Saved connection failed: {result.get('message', 'Unknown error')}")
 
@@ -462,8 +480,8 @@ def auto_connect_serial():
             return
 
         detection = detector.detect_flight_controller(
-            preferred_port=serial_config.port if not serial_config.last_successful else None,
-            preferred_baudrate=serial_config.baudrate if not serial_config.last_successful else None,
+            preferred_port=(serial_config.port if not serial_config.last_successful else None),
+            preferred_baudrate=(serial_config.baudrate if not serial_config.last_successful else None),
         )
 
         if detection:
@@ -481,14 +499,18 @@ def auto_connect_serial():
                 if status.get("connected"):
                     # Save successful connection to preferences
                     try:
-                        prefs.set_serial_config(port=detection["port"], baudrate=detection["baudrate"], successful=True)
+                        prefs.set_serial_config(
+                            port=detection["port"],
+                            baudrate=detection["baudrate"],
+                            successful=True,
+                        )
                         print(f"✅ Auto-connected and saved: {detection['port']} @ {detection['baudrate']} baud")
                         return
                     except Exception as e:
                         print(f"⚠️ Connected but failed to save preferences: {e}")
                         # Connection is good, so don't disconnect
                 else:
-                    print(f"⚠️ Detection succeeded and initial connect returned success, but connection unstable")
+                    print("⚠️ Detection succeeded and initial connect returned success, but connection unstable")
             else:
                 print(f"⚠️ Connection attempt failed: {result.get('message', 'Unknown error')}")
         else:
@@ -546,8 +568,8 @@ async def startup_event():
     provider_registry.register_network_interface("modem", ModemInterface)
 
     # Initialize Video providers (auto-register from registry_init modules)
-    from app.providers import video_registry_init  # Video encoders
-    from app.providers import video_source_registry_init  # Video sources
+    from app.providers import video_registry_init  # noqa: E402, F401
+    from app.providers import video_source_registry_init  # noqa: E402, F401
 
     print("✅ Provider registry initialized:")
     print("   - VPN: Tailscale")
@@ -573,6 +595,17 @@ async def startup_event():
     # Connect router to bridge for forwarding
     mavlink_service.set_router(router_service)
 
+    # Initialize flight data logger for CSV recording
+    flight_prefs = preferences_service.get_all_preferences().get("flight_session", {})
+    log_directory = flight_prefs.get("log_directory", "")
+    flight_logger = FlightDataLogger(mavlink_service, log_directory)
+
+    # Configure modem provider with flight logger
+    modem_provider = provider_registry.get_modem_provider("huawei_e3372h")
+    if modem_provider:
+        modem_provider.set_flight_logger(flight_logger)
+        print(f"✅ Flight data logger configured: {flight_logger.log_directory}")
+
     # Initialize video streaming service
     video_service = init_gstreamer_service(websocket_manager, loop)
     video_routes.set_video_service(video_service)
@@ -594,7 +627,7 @@ async def startup_event():
         try:
             outputs = router_service.get_outputs_list()
             asyncio.run_coroutine_threadsafe(websocket_manager.broadcast("router_status", outputs), loop)
-        except:
+        except Exception:
             pass
 
     router_service.set_status_callback(broadcast_router_status)

@@ -31,19 +31,35 @@ class TestInitialStartupWorkflow:
         """
         # Step 1: Check dependencies
         response = client.get("/api/status/dependencies")
-        assert response.status_code in [200, 404, 500], f"Dependencies endpoint failed: {response.status_code}"
+        assert response.status_code in [
+            200,
+            404,
+            500,
+        ], f"Dependencies endpoint failed: {response.status_code}"
 
         # Step 2: Verify health
         response = client.get("/api/status/health")
-        assert response.status_code in [200, 404, 500], f"Health endpoint failed: {response.status_code}"
+        assert response.status_code in [
+            200,
+            404,
+            500,
+        ], f"Health endpoint failed: {response.status_code}"
 
         # Step 3: Load system info
         response = client.get("/api/system/info")
-        assert response.status_code in [200, 404, 500], f"System info endpoint failed: {response.status_code}"
+        assert response.status_code in [
+            200,
+            404,
+            500,
+        ], f"System info endpoint failed: {response.status_code}"
 
         # Step 4: Get network config
         response = client.get("/api/network/status")
-        assert response.status_code in [200, 404, 500], f"Network status endpoint failed: {response.status_code}"
+        assert response.status_code in [
+            200,
+            404,
+            500,
+        ], f"Network status endpoint failed: {response.status_code}"
 
     def test_dashboard_initial_load(self, client):
         """
@@ -65,7 +81,11 @@ class TestInitialStartupWorkflow:
         responses = {}
         for endpoint, name in endpoints:
             response = client.get(endpoint)
-            assert response.status_code in [200, 404, 500], f"{name} endpoint failed: {response.status_code}"
+            assert response.status_code in [
+                200,
+                404,
+                500,
+            ], f"{name} endpoint failed: {response.status_code}"
             responses[name] = response
 
         # Verify we got responses from all endpoints

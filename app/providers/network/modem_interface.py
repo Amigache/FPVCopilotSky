@@ -34,10 +34,13 @@ class ModemInterface(NetworkInterface):
                 return False
 
             result = subprocess.run(
-                ["ip", "link", "show", self.interface_name], capture_output=True, text=True, timeout=2
+                ["ip", "link", "show", self.interface_name],
+                capture_output=True,
+                text=True,
+                timeout=2,
             )
             return result.returncode == 0
-        except:
+        except Exception:
             return False
 
     def _find_modem_interface(self) -> Optional[str]:
@@ -49,11 +52,14 @@ class ModemInterface(NetworkInterface):
                 for line in result.stdout.split("\n"):
                     # Look for interface with modem subnet (e.g., 192.168.8.x)
                     if self.subnet_pattern in line:
-                        match = re.search(r"^\d+:\s+(\S+)\s+inet\s+" + self.subnet_pattern.replace(".", r"\."), line)
+                        match = re.search(
+                            r"^\d+:\s+(\S+)\s+inet\s+" + self.subnet_pattern.replace(".", r"\."),
+                            line,
+                        )
                         if match:
                             return match.group(1)
             return None
-        except:
+        except Exception:
             return None
 
     def get_status(self) -> Dict:
@@ -69,7 +75,10 @@ class ModemInterface(NetworkInterface):
         try:
             # Get interface state
             result = subprocess.run(
-                ["ip", "addr", "show", self.interface_name], capture_output=True, text=True, timeout=2
+                ["ip", "addr", "show", self.interface_name],
+                capture_output=True,
+                text=True,
+                timeout=2,
             )
 
             if result.returncode != 0:
@@ -130,12 +139,21 @@ class ModemInterface(NetworkInterface):
 
         try:
             result = subprocess.run(
-                ["sudo", "ip", "link", "set", self.interface_name, "up"], capture_output=True, text=True, timeout=5
+                ["sudo", "ip", "link", "set", self.interface_name, "up"],
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
 
             if result.returncode == 0:
-                return {"success": True, "message": f"Interface {self.interface_name} brought up"}
-            return {"success": False, "error": result.stderr or "Failed to bring interface up"}
+                return {
+                    "success": True,
+                    "message": f"Interface {self.interface_name} brought up",
+                }
+            return {
+                "success": False,
+                "error": result.stderr or "Failed to bring interface up",
+            }
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -146,12 +164,21 @@ class ModemInterface(NetworkInterface):
 
         try:
             result = subprocess.run(
-                ["sudo", "ip", "link", "set", self.interface_name, "down"], capture_output=True, text=True, timeout=5
+                ["sudo", "ip", "link", "set", self.interface_name, "down"],
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
 
             if result.returncode == 0:
-                return {"success": True, "message": f"Interface {self.interface_name} brought down"}
-            return {"success": False, "error": result.stderr or "Failed to bring interface down"}
+                return {
+                    "success": True,
+                    "message": f"Interface {self.interface_name} brought down",
+                }
+            return {
+                "success": False,
+                "error": result.stderr or "Failed to bring interface down",
+            }
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -172,7 +199,17 @@ class ModemInterface(NetworkInterface):
 
             # Delete old route
             subprocess.run(
-                ["sudo", "ip", "route", "del", "default", "via", gateway, "dev", self.interface_name],
+                [
+                    "sudo",
+                    "ip",
+                    "route",
+                    "del",
+                    "default",
+                    "via",
+                    gateway,
+                    "dev",
+                    self.interface_name,
+                ],
                 capture_output=True,
                 timeout=2,
             )
@@ -214,7 +251,10 @@ class ModemInterface(NetworkInterface):
 
         try:
             result = subprocess.run(
-                ["ip", "route", "show", "dev", self.interface_name], capture_output=True, text=True, timeout=2
+                ["ip", "route", "show", "dev", self.interface_name],
+                capture_output=True,
+                text=True,
+                timeout=2,
             )
 
             if result.returncode == 0:
@@ -224,7 +264,7 @@ class ModemInterface(NetworkInterface):
                         if match:
                             return match.group(1)
             return None
-        except:
+        except Exception:
             return None
 
     def _get_metric(self) -> Optional[int]:
@@ -234,7 +274,10 @@ class ModemInterface(NetworkInterface):
 
         try:
             result = subprocess.run(
-                ["ip", "route", "show", "dev", self.interface_name], capture_output=True, text=True, timeout=2
+                ["ip", "route", "show", "dev", self.interface_name],
+                capture_output=True,
+                text=True,
+                timeout=2,
             )
 
             if result.returncode == 0:
@@ -244,7 +287,7 @@ class ModemInterface(NetworkInterface):
                         if match:
                             return int(match.group(1))
             return None
-        except:
+        except Exception:
             return None
 
     def get_info(self) -> Dict:
@@ -254,7 +297,7 @@ class ModemInterface(NetworkInterface):
             "display_name": self.display_name,
             "interface_name": self.interface_name or "auto-detect",
             "type": self.interface_type.value,
-            "description": f"USB/HiLink 4G/LTE modem interface",
+            "description": "USB/HiLink 4G/LTE modem interface",
             "features": [
                 "4G/LTE connectivity",
                 "Auto-detection via subnet pattern",

@@ -6,10 +6,9 @@ Uses provider-based architecture for codec-agnostic encoding
 """
 
 import os
-import subprocess
 import threading
 import asyncio
-from typing import Optional, Dict, Any, Callable
+from typing import Optional, Dict, Any
 
 # Check if GStreamer is available
 try:
@@ -24,7 +23,12 @@ except (ImportError, ValueError):
     Gst = None
     GLib = None
 
-from .video_config import VideoConfig, StreamingConfig, auto_detect_camera, get_available_cameras
+from .video_config import (
+    VideoConfig,
+    StreamingConfig,
+    auto_detect_camera,
+    get_available_cameras,
+)
 
 
 class GStreamerService:
@@ -101,7 +105,8 @@ class GStreamerService:
                     setattr(self.streaming_config, key, value)
 
         print(
-            f"📹 Video config updated: {self.video_config.width}x{self.video_config.height}@{self.video_config.framerate}fps"
+            f"📹 Video config updated: "
+            f"{self.video_config.width}x{self.video_config.height}@{self.video_config.framerate}fps"
         )
         print(f"📡 Streaming to: {self.streaming_config.udp_host}:{self.streaming_config.udp_port}")
 
@@ -451,18 +456,23 @@ class GStreamerService:
     def _on_frame_probe(self, pad, info):
         """Pad probe callback to count encoded frames"""
         try:
-            buffer_list = info.get_buffer_list()
-            buffer = info.get_buffer()
+            # Filtra el tipo de probe para evitar assertions
+            if info.type & Gst.PadProbeType.BUFFER_LIST:
+                buffer_list = info.get_buffer_list()
+                with self.stats_lock:
+                    if buffer_list:
+                        self.stats["frames_sent"] += buffer_list.length()
+                    import time
 
-            with self.stats_lock:
-                if buffer_list:
-                    self.stats["frames_sent"] += buffer_list.length()
-                elif buffer:
-                    self.stats["frames_sent"] += 1
+                    self._update_rates_locked(time.time())
+            elif info.type & Gst.PadProbeType.BUFFER:
+                buffer = info.get_buffer()
+                with self.stats_lock:
+                    if buffer:
+                        self.stats["frames_sent"] += 1
+                    import time
 
-                import time
-
-                self._update_rates_locked(time.time())
+                    self._update_rates_locked(time.time())
         except Exception as e:
             print(f"⚠️ Error in frame probe: {e}")
 
@@ -471,23 +481,28 @@ class GStreamerService:
     def _on_bytes_probe(self, pad, info):
         """Pad probe callback to count transmitted bytes"""
         try:
-            buffer_list = info.get_buffer_list()
-            buffer = info.get_buffer()
+            # Filtra el tipo de probe para evitar assertions
+            if info.type & Gst.PadProbeType.BUFFER_LIST:
+                buffer_list = info.get_buffer_list()
+                with self.stats_lock:
+                    if buffer_list:
+                        total = 0
+                        for i in range(buffer_list.length()):
+                            buf = buffer_list.get(i)
+                            if buf:
+                                total += buf.get_size()
+                        self.stats["bytes_sent"] += total
+                    import time
 
-            with self.stats_lock:
-                if buffer_list:
-                    total = 0
-                    for i in range(buffer_list.length()):
-                        buf = buffer_list.get(i)
-                        if buf:
-                            total += buf.get_size()
-                    self.stats["bytes_sent"] += total
-                elif buffer:
-                    self.stats["bytes_sent"] += buffer.get_size()
+                    self._update_rates_locked(time.time())
+            elif info.type & Gst.PadProbeType.BUFFER:
+                buffer = info.get_buffer()
+                with self.stats_lock:
+                    if buffer:
+                        self.stats["bytes_sent"] += buffer.get_size()
+                    import time
 
-                import time
-
-                self._update_rates_locked(time.time())
+                    self._update_rates_locked(time.time())
         except Exception as e:
             print(f"⚠️ Error in bytes probe: {e}")
 
@@ -586,11 +601,17 @@ class GStreamerService:
 
         # Validate streaming configuration
         if not self.streaming_config.udp_host:
-            return {"success": False, "message": "No destination IP configured for streaming"}
+            return {
+                "success": False,
+                "message": "No destination IP configured for streaming",
+            }
 
         # Build pipeline
         if not self.build_pipeline():
-            return {"success": False, "message": self.last_error or "Failed to build pipeline"}
+            return {
+                "success": False,
+                "message": self.last_error or "Failed to build pipeline",
+            }
 
         # Setup stats probes for metrics
         self._setup_stats_probes()
@@ -625,7 +646,8 @@ class GStreamerService:
 
         self.is_streaming = True
         print(
-            f"🎥 Video streaming started: {self.video_config.codec.upper()} → {self.streaming_config.udp_host}:{self.streaming_config.udp_port}"
+            f"🎥 Video streaming started: {self.video_config.codec.upper()} → "
+            f"{self.streaming_config.udp_host}:{self.streaming_config.udp_port}"
         )
 
         self._start_stats_broadcast()
@@ -757,7 +779,9 @@ class GStreamerService:
             "current_bitrate": stats_copy.get("current_bitrate", 0),
             "current_bitrate_formatted": f"{stats_copy.get('current_bitrate', 0)} kbps",
             "health": self._calculate_health(
-                stats_copy.get("errors", 0), stats_copy.get("current_fps", 0), self.video_config.framerate
+                stats_copy.get("errors", 0),
+                stats_copy.get("current_fps", 0),
+                self.video_config.framerate,
             ),
         }
 
@@ -778,7 +802,10 @@ class GStreamerService:
                 "auto_start": self.streaming_config.auto_start,
             },
             "stats": stats_formatted,
-            "providers": {"encoder": self.current_encoder_provider, "source": self.current_source_provider},
+            "providers": {
+                "encoder": self.current_encoder_provider,
+                "source": self.current_source_provider,
+            },
             "last_error": self.last_error,
             "pipeline_string": self.get_pipeline_string(),
         }
@@ -836,7 +863,8 @@ class GStreamerService:
 
         try:
             asyncio.run_coroutine_threadsafe(
-                self.websocket_manager.broadcast("video_status", self.get_status()), self.event_loop
+                self.websocket_manager.broadcast("video_status", self.get_status()),
+                self.event_loop,
             )
         except Exception:
             pass

@@ -1,5 +1,5 @@
 import './ModemView.css'
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useToast } from '../../contexts/ToastContext'
 import { useModal } from '../../contexts/ModalContext'
@@ -11,24 +11,20 @@ const ModemView = () => {
   const { showToast } = useToast()
   const { showModal } = useModal()
   const { messages: wsMessages } = useWebSocket()
-  
+
   // State
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState(null)
   const [bandPresets, setBandPresets] = useState(null)
   const [videoQuality, setVideoQuality] = useState(null)
   const [latency, setLatency] = useState(null)
-  const [flightSession, setFlightSession] = useState(null)
-  
+
   // Loading states
   const [changingBand, setChangingBand] = useState(false)
   const [changingMode, setChangingMode] = useState(false)
   const [togglingVideoMode, setTogglingVideoMode] = useState(false)
   const [testingLatency, setTestingLatency] = useState(false)
   const [modemRebooting, setModemRebooting] = useState(false)
-  
-  // Flight session sampling
-  const sampleIntervalRef = useRef(null)
 
   // Load modem status
   const loadStatus = useCallback(async () => {
@@ -60,19 +56,6 @@ const ModemView = () => {
     }
   }, [])
 
-  // Load flight session status
-  const loadFlightSession = useCallback(async () => {
-    try {
-      const response = await api.get('/api/network/hilink/flight-session')
-      if (response.ok) {
-        const data = await response.json()
-        setFlightSession(data)
-      }
-    } catch (_error) {
-      // Ignore
-    }
-  }, [])
-
   // Test latency
   const handleTestLatency = async () => {
     setTestingLatency(true)
@@ -95,18 +78,14 @@ const ModemView = () => {
   useEffect(() => {
     const loadAll = async () => {
       setLoading(true)
-      await Promise.all([
-        loadStatus(),
-        loadBandPresets(),
-        loadFlightSession()
-      ])
+      await Promise.all([loadStatus(), loadBandPresets()])
       setLoading(false)
       // Auto-test latency on first load
       handleTestLatency()
     }
     loadAll()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadStatus, loadBandPresets, loadFlightSession])
+  }, [loadStatus, loadBandPresets])
 
   // WebSocket: update modem data from server push (replaces polling)
   useEffect(() => {
@@ -162,10 +141,10 @@ const ModemView = () => {
     const actionMsg = status?.video_mode_active ? 'Desactivando' : 'Activando'
     showToast(`⏳ ${actionMsg} modo video...`, 'info')
     try {
-      const endpoint = status?.video_mode_active 
+      const endpoint = status?.video_mode_active
         ? '/api/network/hilink/video-mode/disable'
         : '/api/network/hilink/video-mode/enable'
-      
+
       const response = await api.post(endpoint, {}, 20000)
       if (response.ok) {
         const data = await response.json()
@@ -179,68 +158,6 @@ const ModemView = () => {
       showToast(error.message, 'error')
     }
     setTogglingVideoMode(false)
-  }
-
-  // Start flight session
-  const handleStartFlightSession = async () => {
-    try {
-      const response = await api.post('/api/network/hilink/flight-session/start')
-      if (response.ok) {
-        showToast(t('modem.flightSessionStarted'), 'success')
-        await loadFlightSession()
-        
-        // Start periodic sampling
-        sampleIntervalRef.current = setInterval(async () => {
-          await api.post('/api/network/hilink/flight-session/sample')
-        }, 5000) // Sample every 5 seconds
-      }
-    } catch (error) {
-      showToast(error.message, 'error')
-    }
-  }
-
-  // Format session summary
-  const formatSessionSummary = (stats) => {
-    if (!stats) return t('modem.noData')
-    
-    const duration = Math.floor(stats.duration_seconds / 60)
-    return `
-${t('modem.duration')}: ${duration} ${t('modem.minutes')}
-${t('modem.samples')}: ${stats.sample_count}
-SINR: ${stats.min_sinr?.toFixed(1) || 'N/A'} - ${stats.max_sinr?.toFixed(1) || 'N/A'} dB
-RSRP: ${stats.min_rsrp?.toFixed(0) || 'N/A'} - ${stats.max_rsrp?.toFixed(0) || 'N/A'} dBm
-${t('modem.avgLatency')}: ${stats.avg_latency_ms?.toFixed(0) || 'N/A'} ms
-${t('modem.bandChanges')}: ${stats.band_changes}
-    `.trim()
-  }
-
-  // Stop flight session
-  const handleStopFlightSession = async () => {
-    // Clear sampling interval
-    if (sampleIntervalRef.current) {
-      clearInterval(sampleIntervalRef.current)
-      sampleIntervalRef.current = null
-    }
-    
-    try {
-      const response = await api.post('/api/network/hilink/flight-session/stop')
-      if (response.ok) {
-        const data = await response.json()
-        showToast(t('modem.flightSessionStopped'), 'success')
-        
-        // Show session summary modal
-        showModal({
-          title: t('modem.sessionSummary'),
-          message: formatSessionSummary(data.session_stats),
-          type: 'info',
-          confirmText: t('modem.close')
-        })
-        
-        setFlightSession({ active: false })
-      }
-    } catch (error) {
-      showToast(error.message, 'error')
-    }
   }
 
   // Reboot modem
@@ -257,7 +174,7 @@ ${t('modem.bandChanges')}: ${stats.band_changes}
           const response = await api.post('/api/network/hilink/reboot')
           if (response.ok) {
             showToast(`⏳ ${t('network.modemRebooting')}`, 'info')
-            
+
             // Poll for modem to come back online (check every 5s for up to 60s)
             let attempts = 0
             const maxAttempts = 12
@@ -277,7 +194,7 @@ ${t('modem.bandChanges')}: ${stats.band_changes}
               } catch (_e) {
                 // Expected during reboot
               }
-              
+
               if (attempts < maxAttempts) {
                 setTimeout(checkModem, 5000)
               } else {
@@ -285,7 +202,7 @@ ${t('modem.bandChanges')}: ${stats.band_changes}
                 showToast(`⚠️ ${t('modem.modemNoResponse')}`, 'warning')
               }
             }
-            
+
             // Start checking after initial delay
             setTimeout(checkModem, 10000)
           } else {
@@ -297,28 +214,25 @@ ${t('modem.bandChanges')}: ${stats.band_changes}
           setModemRebooting(false)
           showToast(error.message, 'error')
         }
-      }
+      },
     })
   }
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (sampleIntervalRef.current) {
-        clearInterval(sampleIntervalRef.current)
-      }
-    }
-  }, [])
 
   // Get quality color class
   const getQualityColorClass = (level) => {
     switch (level) {
-      case 'excellent': return 'quality-excellent'
-      case 'good': return 'quality-good'
-      case 'moderate': return 'quality-moderate'
-      case 'poor': return 'quality-poor'
-      case 'critical': return 'quality-critical'
-      default: return 'quality-unknown'
+      case 'excellent':
+        return 'quality-excellent'
+      case 'good':
+        return 'quality-good'
+      case 'moderate':
+        return 'quality-moderate'
+      case 'poor':
+        return 'quality-poor'
+      case 'critical':
+        return 'quality-critical'
+      default:
+        return 'quality-unknown'
     }
   }
 
@@ -369,18 +283,20 @@ ${t('modem.bandChanges')}: ${stats.band_changes}
               {status.video_mode_active ? t('modem.videoModeActive') : t('modem.normalMode')}
             </span>
             <span className="banner-description">
-              {status.video_mode_active 
-                ? t('modem.videoModeDesc')
-                : t('modem.normalModeDesc')}
+              {status.video_mode_active ? t('modem.videoModeDesc') : t('modem.normalModeDesc')}
             </span>
           </div>
         </div>
-        <button 
+        <button
           className={`btn-video-mode ${status.video_mode_active ? 'active' : ''}`}
           onClick={handleToggleVideoMode}
           disabled={togglingVideoMode}
         >
-          {togglingVideoMode ? '⏳' : status.video_mode_active ? `⏹️ ${t('modem.deactivate')}` : `🎬 ${t('modem.activateVideoMode')}`}
+          {togglingVideoMode
+            ? '⏳'
+            : status.video_mode_active
+              ? `⏹️ ${t('modem.deactivate')}`
+              : `🎬 ${t('modem.activateVideoMode')}`}
         </button>
       </div>
 
@@ -393,13 +309,21 @@ ${t('modem.bandChanges')}: ${stats.band_changes}
             <div className="info-column">
               <div className="section-header">
                 <span className="section-title">{t('modem.operatorSection')}</span>
-                <span className={`connection-badge ${network.connection_status === 'Connected' ? 'connected' : 'disconnected'}`}>
-                  {network.connection_status === 'Connected' ? `● ${t('network.connected')}` : `○ ${t('modem.disconnected')}`}
+                <span
+                  className={`connection-badge ${
+                    network.connection_status === 'Connected' ? 'connected' : 'disconnected'
+                  }`}
+                >
+                  {network.connection_status === 'Connected'
+                    ? `● ${t('network.connected')}`
+                    : `○ ${t('modem.disconnected')}`}
                 </span>
               </div>
               <div className="operator-main-info">
                 <span className="operator-name">{network.operator || t('modem.unknown')}</span>
-                <span className="tech-badge">{network.network_type_ex || network.network_type || '-'}</span>
+                <span className="tech-badge">
+                  {network.network_type_ex || network.network_type || '-'}
+                </span>
               </div>
               <div className="info-grid">
                 <div className="info-item">
@@ -453,7 +377,7 @@ ${t('modem.bandChanges')}: ${stats.band_changes}
         {/* === CARD 2: KPIs - Calidad, Latencia, Señal, Tráfico === */}
         <div className="card kpi-card">
           <h2>📊 {t('modem.performanceMetrics')}</h2>
-          
+
           <div className="kpi-sections">
             {/* Video Quality Section */}
             <div className="kpi-section">
@@ -472,7 +396,9 @@ ${t('modem.bandChanges')}: ${stats.band_changes}
                   {videoQuality.warnings?.length > 0 && (
                     <div className="quality-warnings">
                       {videoQuality.warnings.map((w, i) => (
-                        <span key={i} className="warning-tag">⚠️ {w}</span>
+                        <span key={i} className="warning-tag">
+                          ⚠️ {w}
+                        </span>
                       ))}
                     </div>
                   )}
@@ -486,11 +412,7 @@ ${t('modem.bandChanges')}: ${stats.band_changes}
             <div className="kpi-section">
               <div className="kpi-header">
                 <span className="kpi-title">⏱️ {t('modem.latency')}</span>
-                <button 
-                  className="btn-mini" 
-                  onClick={handleTestLatency}
-                  disabled={testingLatency}
-                >
+                <button className="btn-mini" onClick={handleTestLatency} disabled={testingLatency}>
                   {testingLatency ? '...' : '🔄'}
                 </button>
               </div>
@@ -564,7 +486,8 @@ ${t('modem.bandChanges')}: ${stats.band_changes}
                   <span className="traffic-val">{traffic.current_upload || '-'}</span>
                 </div>
                 <div className="traffic-total">
-                  {t('modem.total')}: ⬇️ {traffic.total_download || '-'} / ⬆️ {traffic.total_upload || '-'}
+                  {t('modem.total')}: ⬇️ {traffic.total_download || '-'} / ⬆️{' '}
+                  {traffic.total_upload || '-'}
                 </div>
               </div>
             </div>
@@ -574,38 +497,40 @@ ${t('modem.bandChanges')}: ${stats.band_changes}
         {/* === CARD 3: CONFIGURACIÓN - Banda, Modo, Sesión === */}
         <div className="card config-card">
           <h2>⚙️ {t('modem.configuration')}</h2>
-          
+
           <div className="config-sections">
             {/* Band Config */}
             <div className="config-section">
               <div className="config-header">
                 <span className="config-title">📡 {t('modem.lteBand')}</span>
               </div>
-              
-              {changingBand && (
-                <div className="config-loading">⏳ {t('modem.applying')}</div>
-              )}
-              
+
+              {changingBand && <div className="config-loading">⏳ {t('modem.applying')}</div>}
+
               <div className="band-info">
                 <span className="band-enabled">
-                  {t('modem.enabled')}: <strong>{currentBand.enabled_bands?.length > 0 
-                    ? currentBand.enabled_bands.join(', ') 
-                    : t('modem.all')}</strong>
+                  {t('modem.enabled')}:{' '}
+                  <strong>
+                    {currentBand.enabled_bands?.length > 0
+                      ? currentBand.enabled_bands.join(', ')
+                      : t('modem.all')}
+                  </strong>
                 </span>
               </div>
-              
+
               <div className="preset-grid">
-                {bandPresets?.presets && Object.entries(bandPresets.presets).map(([key, preset]) => (
-                  <button
-                    key={key}
-                    className="btn-preset-compact"
-                    onClick={() => handleSetBand(key)}
-                    disabled={changingBand}
-                    title={preset.description}
-                  >
-                    {preset.name}
-                  </button>
-                ))}
+                {bandPresets?.presets &&
+                  Object.entries(bandPresets.presets).map(([key, preset]) => (
+                    <button
+                      key={key}
+                      className="btn-preset-compact"
+                      onClick={() => handleSetBand(key)}
+                      disabled={changingBand}
+                      title={preset.description}
+                    >
+                      {preset.name}
+                    </button>
+                  ))}
               </div>
             </div>
 
@@ -616,66 +541,43 @@ ${t('modem.bandChanges')}: ${stats.band_changes}
               <div className="config-header">
                 <span className="config-title">📶 {t('modem.networkMode')}</span>
               </div>
-              
-              {changingMode && (
-                <div className="config-loading">⏳ {t('modem.changing')}</div>
-              )}
-              
+
+              {changingMode && <div className="config-loading">⏳ {t('modem.changing')}</div>}
+
               <div className="current-mode-info">
-                {t('modem.current')}: <strong>{status.mode?.network_mode_name || network.network_type || '-'}</strong>
+                {t('modem.current')}:{' '}
+                <strong>{status.mode?.network_mode_name || network.network_type || '-'}</strong>
               </div>
-              
+
               <div className="mode-grid">
-                <button 
-                  className={`btn-mode-compact ${status.mode?.network_mode === '00' ? 'active' : ''}`}
+                <button
+                  className={`btn-mode-compact ${
+                    status.mode?.network_mode === '00' ? 'active' : ''
+                  }`}
                   onClick={() => handleSetNetworkMode('00')}
                   disabled={changingMode}
                 >
                   Auto
                 </button>
-                <button 
-                  className={`btn-mode-compact ${status.mode?.network_mode === '03' ? 'active' : ''}`}
+                <button
+                  className={`btn-mode-compact ${
+                    status.mode?.network_mode === '03' ? 'active' : ''
+                  }`}
                   onClick={() => handleSetNetworkMode('03')}
                   disabled={changingMode}
                 >
                   4G Only
                 </button>
-                <button 
-                  className={`btn-mode-compact ${status.mode?.network_mode === '02' ? 'active' : ''}`}
+                <button
+                  className={`btn-mode-compact ${
+                    status.mode?.network_mode === '02' ? 'active' : ''
+                  }`}
                   onClick={() => handleSetNetworkMode('02')}
                   disabled={changingMode}
                 >
                   3G Only
                 </button>
               </div>
-            </div>
-
-            <div className="config-divider"></div>
-
-            {/* Flight Session */}
-            <div className="config-section">
-              <div className="config-header">
-                <span className="config-title">✈️ {t('modem.flightSession')}</span>
-              </div>
-              
-              {flightSession?.active ? (
-                <div className="session-active-compact">
-                  <div className="session-status">
-                    <span className="recording-dot">🔴</span>
-                    <span>{t('modem.recording')} - {flightSession.stats?.sample_count || 0} {t('modem.samples')}</span>
-                  </div>
-                  <button className="btn-stop" onClick={handleStopFlightSession}>
-                    ⏹️ {t('modem.stop')}
-                  </button>
-                </div>
-              ) : (
-                <div className="session-inactive">
-                  <span className="session-hint">{t('modem.recordStats')}</span>
-                  <button className="btn-start" onClick={handleStartFlightSession}>
-                    ▶️ {t('modem.start')}
-                  </button>
-                </div>
-              )}
             </div>
           </div>
 
@@ -684,11 +586,7 @@ ${t('modem.bandChanges')}: ${stats.band_changes}
             <h3>🔄 {t('modem.rebootSection')}</h3>
             <div className="reboot-container">
               <span className="reboot-hint">{t('modem.rebootHint')}</span>
-              <button 
-                className="btn-reboot" 
-                onClick={handleRebootModem}
-                disabled={modemRebooting}
-              >
+              <button className="btn-reboot" onClick={handleRebootModem} disabled={modemRebooting}>
                 {modemRebooting ? `⏳ ${t('modem.rebooting')}` : `🔄 ${t('modem.rebootModem')}`}
               </button>
             </div>

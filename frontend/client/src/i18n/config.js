@@ -11,7 +11,7 @@ i18n
   .init({
     resources: {
       en: { translation: en },
-      es: { translation: es }
+      es: { translation: es },
     },
     fallbackLng: 'en',
     supportedLngs: ['en', 'es'],
@@ -19,14 +19,14 @@ i18n
     debug: false, // Silenciar mensajes de debug/warning
     saveMissing: false, // No mostrar mensajes sobre claves faltantes
     interpolation: {
-      escapeValue: false
+      escapeValue: false,
     },
     detection: {
       order: ['localStorage', 'navigator', 'htmlTag'],
       lookupLocalStorage: 'i18nextLng',
       caches: ['localStorage'],
-      convertDetectedLanguage: (lng) => lng.split('-')[0] // Convierte es-ES, es-MX, etc a 'es'
-    }
+      convertDetectedLanguage: (lng) => lng.split('-')[0], // Convierte es-ES, es-MX, etc a 'es'
+    },
   })
 
 export default i18n

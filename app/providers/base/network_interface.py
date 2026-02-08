@@ -4,9 +4,9 @@ Represents physical/virtual network interfaces (WiFi, Ethernet, VPN, Modem, etc.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Optional, List
+from typing import Dict, Optional
 from enum import Enum
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import logging
 
 logger = logging.getLogger(__name__)

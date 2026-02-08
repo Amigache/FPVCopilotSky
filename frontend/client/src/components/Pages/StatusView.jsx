@@ -6,21 +6,31 @@ import { useModal } from '../../contexts/ModalContext'
 import { useWebSocket } from '../../contexts/WebSocketContext'
 import LogsModal from '../LogsModal/LogsModal'
 import api from '../../services/api'
+import Toggle from '../Toggle/Toggle'
 
 const StatusView = () => {
   const { t } = useTranslation()
   const { showToast } = useToast()
   const { showModal } = useModal()
   const { messages, isConnected } = useWebSocket()
-  
+
   const [loading, setLoading] = useState(true)
   const [statusData, setStatusData] = useState(null)
   const [resettingPrefs, setResettingPrefs] = useState(false)
-  
+
+  // Flight session state
+  const [flightSession, setFlightSession] = useState(null)
+  const [samplingInterval, setSamplingInterval] = useState(null)
+  const [autoStartOnArm, setAutoStartOnArm] = useState(false)
+  const [savingPrefs, setSavingPrefs] = useState(false)
+
+  // Track previous armed state for edge detection
+  const [prevArmed, setPrevArmed] = useState(false)
+
   // Logs state
   const [showLogsModal, setShowLogsModal] = useState(false)
   const [logsType, setLogsType] = useState('backend') // 'backend' or 'frontend'
-  
+
   // Restarting state
   const [isRestarting, setIsRestarting] = useState(false)
   const [restartingService, setRestartingService] = useState('') // 'backend' or 'frontend'
@@ -43,12 +53,6 @@ const StatusView = () => {
     }
   }
 
-  // Load initial status
-  useEffect(() => {
-    loadStatus()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
   // Update from WebSocket
   useEffect(() => {
     if (messages.status) {
@@ -68,9 +72,9 @@ const StatusView = () => {
         setIsRestarting(false)
         setWasDisconnected(false)
         showToast(
-          restartingService === 'backend' 
+          restartingService === 'backend'
             ? t('status.restart.backendRestarted')
-            : t('status.restart.frontendRestarted'), 
+            : t('status.restart.frontendRestarted'),
           'success'
         )
         setRestartingService('')
@@ -90,7 +94,7 @@ const StatusView = () => {
         try {
           const response = await api.post('/api/system/preferences/reset')
           const data = await response.json()
-          
+
           if (response.ok && data.success) {
             showToast(t('status.preferences.resetSuccess'), 'success')
           } else {
@@ -102,7 +106,7 @@ const StatusView = () => {
         } finally {
           setResettingPrefs(false)
         }
-      }
+      },
     })
   }
 
@@ -118,7 +122,7 @@ const StatusView = () => {
           setIsRestarting(true)
           setRestartingService('backend')
           setWasDisconnected(false)
-          
+
           await api.restartBackend()
           // Don't show toast here - wait for reconnection
         } catch (error) {
@@ -126,7 +130,7 @@ const StatusView = () => {
           // If request fails, still show restarting modal - backend may be restarting
           // The modal will close when WebSocket reconnects
         }
-      }
+      },
     })
   }
 
@@ -142,7 +146,7 @@ const StatusView = () => {
           setIsRestarting(true)
           setRestartingService('frontend')
           setWasDisconnected(false)
-          
+
           await api.restartFrontend()
           // Don't show toast here - wait for reconnection
         } catch (error) {
@@ -150,10 +154,191 @@ const StatusView = () => {
           // If request fails, still show restarting modal - nginx may be restarting
           // The modal will close when WebSocket reconnects
         }
-      }
+      },
     })
   }
 
+  // Flight session handlers
+  const loadFlightSession = async () => {
+    try {
+      const response = await api.get('/api/network/hilink/flight-session')
+      if (response.ok) {
+        const data = await response.json()
+        setFlightSession(data)
+      }
+    } catch (error) {
+      console.error('Error loading flight session:', error)
+    }
+  }
+
+  const loadFlightPreferences = async () => {
+    try {
+      const response = await api.get('/api/system/preferences')
+      if (response.ok) {
+        const data = await response.json()
+        if (data.flight_session) {
+          setAutoStartOnArm(data.flight_session.auto_start_on_arm || false)
+        }
+      }
+    } catch (error) {
+      console.error('Error loading flight preferences:', error)
+    }
+  }
+
+  const handleToggleAutoStart = async (enabled) => {
+    setSavingPrefs(true)
+    // Update state immediately for responsive UI and auto-start to work
+    setAutoStartOnArm(enabled)
+
+    try {
+      const response = await api.post('/api/system/preferences', {
+        flight_session: {
+          auto_start_on_arm: enabled,
+        },
+      })
+      if (response.ok) {
+        showToast(
+          enabled
+            ? t('status.flightSession.autoStartEnabled', 'Auto-start enabled')
+            : t('status.flightSession.autoStartDisabled', 'Auto-start disabled'),
+          'success'
+        )
+      } else {
+        // If save failed, revert the state
+        setAutoStartOnArm(!enabled)
+        showToast(t('common.saveFailed', 'Failed to save preferences'), 'error')
+      }
+    } catch (error) {
+      // If request failed, revert the state
+      setAutoStartOnArm(!enabled)
+      showToast(error.message, 'error')
+    }
+    setSavingPrefs(false)
+  }
+
+  const handleStartFlightSession = async () => {
+    try {
+      const response = await api.post('/api/network/hilink/flight-session/start')
+      if (response.ok) {
+        showToast(t('status.flightSession.started', 'Flight session started'), 'success')
+        await loadFlightSession()
+
+        // Sample every 5 seconds
+        const interval = setInterval(async () => {
+          try {
+            const sampleResponse = await api.post('/api/network/hilink/flight-session/sample')
+            if (sampleResponse.ok) {
+              await loadFlightSession()
+            }
+          } catch (error) {
+            console.error('Error sampling:', error)
+          }
+        }, 5000)
+
+        setSamplingInterval(interval)
+      }
+    } catch (error) {
+      showToast(error.message, 'error')
+    }
+  }
+
+  const handleStopFlightSession = async (autoStop = false) => {
+    const stopSession = async () => {
+      // Clear sampling interval
+      if (samplingInterval) {
+        clearInterval(samplingInterval)
+        setSamplingInterval(null)
+      }
+
+      try {
+        const response = await api.post('/api/network/hilink/flight-session/stop')
+        if (response.ok) {
+          const data = await response.json()
+          showToast(t('status.flightSession.stopped', 'Flight session stopped'), 'success')
+
+          if (data.stats && !autoStop) {
+            showToast(
+              `${t('status.flightSession.totalSamples', 'Total samples')}: ${
+                data.stats.sample_count
+              }`,
+              'info'
+            )
+          }
+          await loadFlightSession()
+        }
+      } catch (error) {
+        setFlightSession({ active: false })
+        showToast(error.message, 'error')
+      }
+    }
+
+    if (autoStop) {
+      // Auto-stop (on disarm) - no modal confirmation
+      await stopSession()
+    } else {
+      // Manual stop - show confirmation modal
+      showModal({
+        title: t('status.flightSession.confirmStopTitle', 'Stop Flight Session?'),
+        message: t(
+          'status.flightSession.confirmStopMessage',
+          'Do you want to stop the current flight session?'
+        ),
+        type: 'confirm',
+        confirmText: t('common.stop', 'Stop'),
+        cancelText: t('common.cancel'),
+        onConfirm: stopSession,
+      })
+    }
+  }
+
+  // Load initial status
+  useEffect(() => {
+    loadStatus()
+    loadFlightSession()
+    loadFlightPreferences()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Cleanup sampling interval on unmount
+  useEffect(() => {
+    return () => {
+      if (samplingInterval) {
+        clearInterval(samplingInterval)
+      }
+    }
+  }, [samplingInterval])
+
+  // Monitor armed state for auto-start
+  useEffect(() => {
+    const telemetry = messages.telemetry
+    if (telemetry?.system) {
+      const isArmed = telemetry.system.armed || false
+
+      // Debug log
+      if (isArmed !== prevArmed) {
+        console.log(
+          `[Auto-start] Armed state changed: ${prevArmed} -> ${isArmed}, autoStartOnArm=${autoStartOnArm}, sessionActive=${flightSession?.active}`
+        )
+      }
+
+      // Detect arm transition (false -> true)
+      if (autoStartOnArm && !prevArmed && isArmed && !flightSession?.active) {
+        console.log('[Auto-start] Conditions met, starting flight session...')
+        handleStartFlightSession()
+      }
+
+      // Detect disarm transition (true -> false)
+      if (prevArmed && !isArmed && flightSession?.active) {
+        console.log('[Auto-start] Drone disarmed, stopping flight session...')
+        handleStopFlightSession(true)
+      }
+
+      setPrevArmed(isArmed)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages.telemetry, autoStartOnArm, flightSession])
+
+  // Logs handlers
   const openLogsModal = (type) => {
     setLogsType(type)
     setShowLogsModal(true)
@@ -165,10 +350,9 @@ const StatusView = () => {
 
   const fetchLogs = async () => {
     try {
-      const data = logsType === 'backend' 
-        ? await api.getBackendLogs(200)
-        : await api.getFrontendLogs(200)
-      
+      const data =
+        logsType === 'backend' ? await api.getBackendLogs(200) : await api.getFrontendLogs(200)
+
       if (data.success) {
         return data.logs
       } else {
@@ -183,7 +367,11 @@ const StatusView = () => {
   const StatusBadge = ({ status }) => {
     const statusClass = `status-indicator status-${status}`
     const icon = status === 'ok' ? '✅' : status === 'warning' ? '⚠️' : '❌'
-    return <span className={statusClass}>{icon} {t(`status.badge.${status}`)}</span>
+    return (
+      <span className={statusClass}>
+        {icon} {t(`status.badge.${status}`)}
+      </span>
+    )
   }
 
   const InfoRow = ({ label, value, status }) => (
@@ -223,12 +411,16 @@ const StatusView = () => {
         {/* APP Status */}
         <div className="card">
           <h2>{t('status.sections.backend')}</h2>
-          
+
           <div className="info-section">
             <h3 className="subsection-title">{t('status.backend.version')}</h3>
-            <InfoRow 
-              label={t('status.backend.appVersion')} 
-              value={backend?.app_version?.status === 'ok' ? `v${backend?.app_version?.version}` : 'unknown'}
+            <InfoRow
+              label={t('status.backend.appVersion')}
+              value={
+                backend?.app_version?.status === 'ok'
+                  ? `v${backend?.app_version?.version}`
+                  : 'unknown'
+              }
               status={backend?.app_version?.status}
             />
             <InfoRow
@@ -239,18 +431,20 @@ const StatusView = () => {
 
           <div className="info-section">
             <h3 className="subsection-title">{t('status.backend.dependencies')}</h3>
-            <InfoRow 
-              label={t('status.backend.pythonDeps')} 
+            <InfoRow
+              label={t('status.backend.pythonDeps')}
               value={backend?.python_deps?.status === 'ok' ? 'Installed' : 'Checking...'}
               status={backend?.python_deps?.status}
             />
-            
+
             {backend?.python_deps?.missing && backend?.python_deps?.missing.length > 0 && (
               <div className="missing-info">
                 <p className="missing-label">{t('status.backend.missingPackages')}:</p>
                 <div className="package-list">
-                  {backend.python_deps.missing.map(pkg => (
-                    <span key={pkg} className="package-tag">{pkg}</span>
+                  {backend.python_deps.missing.map((pkg) => (
+                    <span key={pkg} className="package-tag">
+                      {pkg}
+                    </span>
                   ))}
                 </div>
               </div>
@@ -258,15 +452,17 @@ const StatusView = () => {
 
             {backend?.python_deps?.installed !== undefined && (
               <div className="progress-info">
-                <span>{backend.python_deps.installed}/{backend.python_deps.total} installed</span>
+                <span>
+                  {backend.python_deps.installed}/{backend.python_deps.total} installed
+                </span>
               </div>
             )}
           </div>
 
           <div className="info-section">
             <h3 className="subsection-title">{t('status.backend.running')}</h3>
-            <InfoRow 
-              label={t('status.backend.backendRunning')} 
+            <InfoRow
+              label={t('status.backend.backendRunning')}
               value={backend?.running ? 'Yes' : 'No'}
               status={backend?.running ? 'ok' : 'error'}
             />
@@ -274,17 +470,11 @@ const StatusView = () => {
 
           <div className="info-section">
             <div className="system-controls">
-              <button 
-                className="btn-restart-backend"
-                onClick={handleRestartBackend}
-              >
+              <button className="btn-restart-backend" onClick={handleRestartBackend}>
                 🔄 {t('status.restart.restartBackend')}
               </button>
-              
-              <button 
-                className="btn-view-logs"
-                onClick={() => openLogsModal('backend')}
-              >
+
+              <button className="btn-view-logs" onClick={() => openLogsModal('backend')}>
                 📜 {t('status.logs.viewBackend')}
               </button>
             </div>
@@ -294,43 +484,49 @@ const StatusView = () => {
         {/* WebUI Status */}
         <div className="card">
           <h2>{t('status.sections.frontend')}</h2>
-          
+
           <div className="info-section">
             <h3 className="subsection-title">{t('status.backend.version')}</h3>
-            <InfoRow 
-              label="WebUI Version" 
-              value={frontend?.frontend_version?.status === 'ok' ? `v${frontend?.frontend_version?.version}` : 'unknown'}
+            <InfoRow
+              label="WebUI Version"
+              value={
+                frontend?.frontend_version?.status === 'ok'
+                  ? `v${frontend?.frontend_version?.version}`
+                  : 'unknown'
+              }
               status={frontend?.frontend_version?.status}
             />
             <InfoRow
               label={t('status.frontend.nodeVersion')}
-              value={frontend?.node_version?.status === 'ok' ? `v${frontend?.node_version?.version}` : frontend?.node_version?.version || 'unknown'}
+              value={
+                frontend?.node_version?.status === 'ok'
+                  ? `v${frontend?.node_version?.version}`
+                  : frontend?.node_version?.version || 'unknown'
+              }
               status={frontend?.node_version?.status}
             />
           </div>
-          
+
           <div className="info-section">
             <h3 className="subsection-title">{t('status.frontend.dependencies')}</h3>
-            <InfoRow 
-              label={t('status.frontend.npmDeps')} 
-              value={frontend?.npm_deps?.status === 'ok' ? 'Installed' : frontend?.npm_deps?.message || 'Checking...'}
+            <InfoRow
+              label={t('status.frontend.npmDeps')}
+              value={
+                frontend?.npm_deps?.status === 'ok'
+                  ? 'Installed'
+                  : frontend?.npm_deps?.message || 'Checking...'
+              }
               status={frontend?.npm_deps?.status}
             />
           </div>
 
           <div className="info-section">
             <div className="system-controls">
-              <button 
-                className="btn-restart-frontend"
-                onClick={handleRestartFrontend}
-              >
+              <button className="btn-restart-frontend" onClick={handleRestartFrontend}>
                 🌐 {t('status.restart.restartFrontend')}
               </button>
-              
-              <button 
-                className="btn-view-logs"
-                onClick={() => openLogsModal('frontend')}
-              >
+
+              <button className="btn-view-logs" onClick={() => openLogsModal('frontend')}>
                 📄 {t('status.logs.viewFrontend')}
               </button>
             </div>
@@ -342,7 +538,7 @@ const StatusView = () => {
         {/* Permissions */}
         <div className="card">
           <h2>{t('status.sections.permissions')}</h2>
-          
+
           <div className="info-section">
             <h3 className="subsection-title">{t('status.permissions.username')}</h3>
             <div className="info-row">
@@ -359,7 +555,9 @@ const StatusView = () => {
             </div>
             <div className="info-row">
               <span className="info-label">{t('status.permissions.isRoot')}:</span>
-              <span className="info-value">{permissions?.permissions?.is_root ? '✅ Yes' : '❌ No'}</span>
+              <span className="info-value">
+                {permissions?.permissions?.is_root ? '✅ Yes' : '❌ No'}
+              </span>
             </div>
           </div>
 
@@ -367,8 +565,10 @@ const StatusView = () => {
             <div className="info-section">
               <h3 className="subsection-title">{t('status.permissions.groups')}</h3>
               <div className="group-tags">
-                {permissions.permissions.groups.map(group => (
-                  <span key={group} className="group-tag">{group}</span>
+                {permissions.permissions.groups.map((group) => (
+                  <span key={group} className="group-tag">
+                    {group}
+                  </span>
                 ))}
               </div>
             </div>
@@ -378,10 +578,12 @@ const StatusView = () => {
             <h3 className="subsection-title">{t('status.permissions.filePermissions')}</h3>
             <div className="permission-check">
               <div className={permissions?.permissions?.can_read_opt ? 'check-ok' : 'check-fail'}>
-                {permissions?.permissions?.can_read_opt ? '✅' : '❌'} {t('status.permissions.canRead')} /opt/FPVCopilotSky
+                {permissions?.permissions?.can_read_opt ? '✅' : '❌'}{' '}
+                {t('status.permissions.canRead')} /opt/FPVCopilotSky
               </div>
               <div className={permissions?.permissions?.can_write_opt ? 'check-ok' : 'check-fail'}>
-                {permissions?.permissions?.can_write_opt ? '✅' : '❌'} {t('status.permissions.canWrite')} /opt/FPVCopilotSky
+                {permissions?.permissions?.can_write_opt ? '✅' : '❌'}{' '}
+                {t('status.permissions.canWrite')} /opt/FPVCopilotSky
               </div>
             </div>
           </div>
@@ -401,29 +603,84 @@ const StatusView = () => {
           )}
         </div>
 
+        {/* Flight Session */}
+        <div className="card">
+          <h2>✈️ {t('status.sections.flightSession', 'Flight Session')}</h2>
+
+          <div className="info-section">
+            <p className="flight-session-info">
+              {t(
+                'status.flightSession.description',
+                'Record network metrics during flight for analysis and optimization.'
+              )}
+            </p>
+
+            {/* Auto-start on arm toggle */}
+            <div className="preference-item">
+              <Toggle
+                checked={autoStartOnArm}
+                onChange={(e) => handleToggleAutoStart(e.target.checked)}
+                disabled={savingPrefs || flightSession?.active}
+                label={t('status.flightSession.autoStartLabel', 'Auto-start on arm')}
+              />
+              <p className="preference-description">
+                {t(
+                  'status.flightSession.autoStartDescription',
+                  'Session will automatically start when vehicle is armed and stop when disarmed.'
+                )}
+              </p>
+            </div>
+
+            {flightSession?.active ? (
+              <div className="flight-session-active">
+                <div className="session-status">
+                  <span className="recording-indicator">🔴</span>
+                  <span className="session-text">
+                    {t('status.flightSession.recording', 'Recording')} -{' '}
+                    {flightSession.stats?.sample_count || 0}{' '}
+                    {t('status.flightSession.samples', 'samples')}
+                  </span>
+                </div>
+                {!autoStartOnArm && (
+                  <button className="btn-stop-session" onClick={handleStopFlightSession}>
+                    ⏹️ {t('common.stop', 'Stop')}
+                  </button>
+                )}
+              </div>
+            ) : (
+              !autoStartOnArm && (
+                <div className="flight-session-inactive">
+                  <button className="btn-start-session" onClick={handleStartFlightSession}>
+                    ▶️ {t('common.start', 'Start')}
+                  </button>
+                </div>
+              )
+            )}
+          </div>
+        </div>
+
         {/* Preferences Management */}
         <div className="card">
           <h2>{t('status.sections.preferences')}</h2>
-          
+
           <div className="info-section">
-            <p className="preferences-info">
-              {t('status.preferences.description')}
-            </p>
-            
-            <button 
+            <p className="preferences-info">{t('status.preferences.description')}</p>
+
+            <button
               className="btn-reset-preferences"
               onClick={handleResetPreferences}
               disabled={resettingPrefs}
             >
-              {resettingPrefs ? t('status.preferences.resetting') : t('status.preferences.resetButton')}
+              {resettingPrefs
+                ? t('status.preferences.resetting')
+                : t('status.preferences.resetButton')}
             </button>
           </div>
         </div>
-
       </div>
 
       {/* Logs Modal */}
-      <LogsModal 
+      <LogsModal
         show={showLogsModal}
         onClose={closeLogsModal}
         type={logsType}
@@ -438,14 +695,12 @@ const StatusView = () => {
               <div className="restarting-spinner"></div>
               <h3>{t('status.restart.restarting')}</h3>
               <p>
-                {restartingService === 'backend' 
+                {restartingService === 'backend'
                   ? t('status.restart.waitingBackend')
                   : t('status.restart.waitingFrontend')}
               </p>
               {wasDisconnected && (
-                <p className="restarting-status">
-                  {t('status.restart.reconnecting')}
-                </p>
+                <p className="restarting-status">{t('status.restart.reconnecting')}</p>
               )}
             </div>
           </div>

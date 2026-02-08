@@ -64,7 +64,14 @@ class SystemService:
             }
         except Exception as e:
             print(f"⚠️ Error getting memory info: {e}")
-            return {"total_mb": 0, "used_mb": 0, "available_mb": 0, "percentage": 0, "buffers_mb": 0, "cached_mb": 0}
+            return {
+                "total_mb": 0,
+                "used_mb": 0,
+                "available_mb": 0,
+                "percentage": 0,
+                "buffers_mb": 0,
+                "cached_mb": 0,
+            }
 
     @staticmethod
     def get_cpu_info() -> Dict[str, Any]:
@@ -126,7 +133,7 @@ class SystemService:
                 with open("/proc/loadavg", "r") as f:
                     parts = f.read().split()
                     load_avg = [float(parts[0]), float(parts[1]), float(parts[2])]
-            except:
+            except Exception:
                 pass
 
             return {
@@ -166,7 +173,7 @@ class SystemService:
                         temp = int(f.read().strip())
                         # Temperature is in millidegrees
                         return round(temp / 1000, 1)
-            except:
+            except Exception:
                 pass
 
         return None
@@ -185,7 +192,7 @@ class SystemService:
                     with open(path, "r") as f:
                         freq_khz = int(f.read().strip())
                         return freq_khz // 1000
-            except:
+            except Exception:
                 pass
 
         return None
@@ -216,7 +223,10 @@ class SystemService:
             try:
                 # Check if service is active
                 result = subprocess.run(
-                    ["systemctl", "is-active", service_name], capture_output=True, text=True, timeout=5
+                    ["systemctl", "is-active", service_name],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
                 )
                 service_info["active"] = result.returncode == 0
                 service_info["status"] = result.stdout.strip()
@@ -250,14 +260,14 @@ class SystemService:
                                             service_info["memory"] = f"{mem_bytes / (1024*1024*1024):.1f} GB"
                                         else:
                                             service_info["memory"] = f"{mem_bytes // (1024*1024)} MB"
-                                    except:
+                                    except Exception:
                                         pass
                                 elif key == "ActiveEnterTimestamp":
                                     service_info["uptime"] = value
                                 elif key == "MainPID":
                                     try:
                                         service_info["pid"] = int(value)
-                                    except:
+                                    except Exception:
                                         pass
 
                     # Get CPU usage for the service's main process
@@ -334,7 +344,10 @@ class SystemService:
                 # Check if port exists and is accessible
                 if os.path.exists(port_path):
                     try:
-                        port_info = {"path": port_path, "name": os.path.basename(port_path)}
+                        port_info = {
+                            "path": port_path,
+                            "name": os.path.basename(port_path),
+                        }
                         ports.append(port_info)
                     except Exception as e:
                         print(f"⚠️ Error checking port {port_path}: {e}")
@@ -360,7 +373,10 @@ class SystemService:
         try:
             # Try to read device model
             device_model = "Unknown"
-            model_files = ["/proc/device-tree/model", "/sys/firmware/devicetree/base/model"]
+            model_files = [
+                "/proc/device-tree/model",
+                "/sys/firmware/devicetree/base/model",
+            ]
 
             for model_file in model_files:
                 if os.path.exists(model_file):
@@ -368,7 +384,7 @@ class SystemService:
                         with open(model_file, "r") as f:
                             device_model = f.read().strip().replace("\x00", "")
                             break
-                    except:
+                    except Exception:
                         pass
 
             return {
@@ -431,7 +447,10 @@ class SystemService:
                 start_new_session=True,
             )
 
-            return {"success": True, "message": "Nginx restart initiated. Connection will be lost momentarily."}
+            return {
+                "success": True,
+                "message": "Nginx restart initiated. Connection will be lost momentarily.",
+            }
         except Exception as e:
             return {"success": False, "message": f"Error restarting nginx: {str(e)}"}
 

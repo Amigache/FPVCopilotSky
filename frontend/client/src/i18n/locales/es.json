@@ -8,7 +8,10 @@
     "disarmed": "Desarmado",
     "armed": "Armado",
     "vpnConnected": "VPN: Conectada",
-    "vpnDisconnected": "VPN: Desconectada"
+    "vpnDisconnected": "VPN: Desconectada",
+    "internetWifi": "Internet: WIFI",
+    "internetModem": "Internet: MÓDEM",
+    "noNetwork": "Sin Red"
   },
   "tabs": {
     "dashboard": "📊 Dashboard",
@@ -64,7 +67,7 @@
       "streaming": "🎥 Transmitiendo",
       "stopped": "⏹️ Detenido",
       "videoConfiguration": "🎥 Configuración de Video",
-      "videoSource": "📹 Selección de Fuente",
+      "videoSourceSelection": "📹 Selección de Fuente",
       "encodingConfiguration": "⚙️ Configuración de Compresión",
       "codec": "Codec",
       "codecsAvailable": "disponibles",
@@ -94,8 +97,8 @@
       "copied": "✅ Copiado!",
       "statistics": "📊 Estadísticas",
       "uptime": "Uptime",
-      "fps": "FPS",
-      "bitrate": "Bitrate",
+      "fpsLabel": "FPS",
+      "bitrateLabel": "Bitrate",
       "framesSent": "Frames Enviados",
       "dataSent": "Datos Enviados",
       "errors": "Errores",
@@ -290,6 +293,12 @@
     "wifiConnectError": "Error de conexión",
     "networkModeSet": "Modo de red cambiado",
     "networkModeError": "Error al cambiar el modo de red",
+    "confirmModeChange": "Confirmar Cambio de Modo",
+    "confirmModeChangeToModem": "¿Estás seguro de que deseas cambiar de WiFi a 4G como conexión principal?",
+    "confirmModeChangeToWifi": "¿Estás seguro de que deseas cambiar de 4G a WiFi como conexión principal?",
+    "confirmModeChangeWarning": "Esto cambiará tu ruta de red predeterminada.",
+    "changing": "Cambiando...",
+    "confirm": "Confirmar",
     "rebootModem": "Reiniciar Módem",
     "confirmReboot": "¿Estás seguro de que deseas reiniciar el módem 4G? La conexión se perderá temporalmente.",
     "reboot": "Reiniciar",
@@ -449,6 +458,7 @@
       "frontend": "WebUI",
       "permissions": "Permisos",
       "preferences": "Preferencias",
+      "flightSession": "Sesión de Vuelo",
       "systemControl": "Control del Sistema",
       "logs": "Logs del Sistema",
       "comingSoon": "Próximamente"
@@ -492,6 +502,18 @@
       "resetting": "⏳ Restableciendo...",
       "resetSuccess": "Preferencias restablecidas correctamente. Se recomienda reiniciar la aplicación.",
       "resetError": "Error al restablecer preferencias"
+    },
+    "flightSession": {
+      "description": "Registra métricas de red durante el vuelo para análisis y optimización.",
+      "started": "Sesión de vuelo iniciada",
+      "stopped": "Sesión de vuelo detenida",
+      "recording": "Grabando",
+      "samples": "muestras",
+      "totalSamples": "Total de muestras",
+      "confirmStopTitle": "¿Detener Sesión de Vuelo?",
+      "confirmStopMessage": "¿Deseas detener la sesión de vuelo actual?",
+      "autoStartLabel": "Iniciar automáticamente al armar",
+      "autoStartDescription": "La sesión comenzará automáticamente cuando se arme el vehículo y se detendrá al desarmar."
     },
     "restart": {
       "description": "Reinicia los servicios del backend (API) o del frontend (Nginx).",

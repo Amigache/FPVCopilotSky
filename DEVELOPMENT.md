@@ -5,15 +5,18 @@
 This project follows a structured branching strategy with Phase-based development.
 
 ### Main Branch (`main`)
+
 - Production-ready code
 - All tests passing (238+ tests)
 - Merged through Pull Requests
 - Protected branch
 
 ### Feature Branches
+
 Pattern: `feature/phase-<number>-<feature>`
 
 Examples:
+
 - `feature/phase-4-load-testing` - Load testing with JMeter
 - `feature/phase-5-frontend-e2e` - Frontend E2E tests with Playwright
 - `feature/phase-6-security-testing` - Security testing suite
@@ -21,6 +24,7 @@ Examples:
 ### Workflow
 
 1. **Create Feature Branch**
+
 ```bash
 git checkout main
 git pull origin main
@@ -28,6 +32,7 @@ git checkout -b feature/phase-<number>-<feature>
 ```
 
 2. **Develop & Commit**
+
 ```bash
 # Make changes
 git add .
@@ -36,12 +41,14 @@ git push origin feature/phase-<number>-<feature>
 ```
 
 3. **Create Pull Request**
+
 - Go to GitHub
 - Create PR from `feature/phase-<number>-<feature>` → `main`
 - Add description of changes
 - Wait for CI checks to pass
 
 4. **Merge to Main**
+
 ```bash
 # On GitHub, merge and delete branch
 # Or locally:
@@ -53,12 +60,12 @@ git push origin main
 
 ## Phase Overview
 
-| Phase | Status | Tests | Branch | Focus |
-|-------|--------|-------|--------|-------|
-| 1 | ✅ | - | merged | CI/CD Pipeline |
-| 2 | ✅ | 100+ | `feature/enhance-testing-phase-2` | Unit & Integration Testing |
-| 3 | ✅ | 138 | `main` | E2E Workflows & WebSocket |
-| 4 | 🔄 | - | `feature/phase-4-*` | Load Testing (next) |
+| Phase | Status | Tests | Branch                            | Focus                      |
+| ----- | ------ | ----- | --------------------------------- | -------------------------- |
+| 1     | ✅     | -     | merged                            | CI/CD Pipeline             |
+| 2     | ✅     | 100+  | `feature/enhance-testing-phase-2` | Unit & Integration Testing |
+| 3     | ✅     | 138   | `main`                            | E2E Workflows & WebSocket  |
+| 4     | 🔄     | -     | `feature/phase-4-*`               | Load Testing (next)        |
 
 ## Current Test Suite
 
@@ -75,6 +82,7 @@ Total Tests: 238+
 ## CI Checks
 
 All PRs must pass:
+
 1. ✅ CI Summary
 2. ✅ Test React (Vitest)
 3. ✅ Lint JavaScript (ESLint)
@@ -113,18 +121,21 @@ pytest tests/test_e2e_workflows.py::TestCompleteSystemWorkflow -v
 ## Next Phases
 
 ### Phase 4: Load Testing
+
 - Visual Studio Code snippets for quick testing
 - JMeter load testing scripts
 - API stress testing and benchmarking
 - Concurrent user simulation
 
 ### Phase 5: Frontend E2E
+
 - Playwright/Cypress browser automation
 - User interaction testing
 - Form validation scenarios
 - Navigation and routing tests
 
 ### Phase 6: Security Testing
+
 - Authentication testing
 - API security validation
 - Input validation and sanitization

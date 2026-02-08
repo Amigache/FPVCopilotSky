@@ -234,9 +234,17 @@ async def configure_video(config: VideoConfigRequest, request: Request):
     except Exception as e:
         print(f"⚠️ Failed to save video config: {e}")
 
-    return {"success": True, "message": translate("video.configuration_updated", lang), "config": config_dict}
+    return {
+        "success": True,
+        "message": translate("video.configuration_updated", lang),
+        "config": config_dict,
+    }
 
-    return {"success": True, "message": translate("video.configuration_updated", lang), "config": config_dict}
+    return {
+        "success": True,
+        "message": translate("video.configuration_updated", lang),
+        "config": config_dict,
+    }
 
 
 @router.post("/config/streaming")
@@ -269,11 +277,15 @@ async def configure_streaming(config: StreamingConfigRequest, request: Request):
         if saved.get("auto_start") == config_dict.get("auto_start", saved.get("auto_start")):
             print(f"✅ Streaming auto_start preference verified: {saved.get('auto_start')}")
         else:
-            print(f"⚠️ Streaming preference save verification failed")
+            print("⚠️ Streaming preference save verification failed")
     except Exception as e:
         print(f"⚠️ Failed to save streaming config: {e}")
 
-    return {"success": True, "message": translate("video.streaming_configuration_updated", lang), "config": config_dict}
+    return {
+        "success": True,
+        "message": translate("video.streaming_configuration_updated", lang),
+        "config": config_dict,
+    }
 
 
 @router.post("/live-update")

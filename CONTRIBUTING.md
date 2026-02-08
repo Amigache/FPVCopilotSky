@@ -67,6 +67,7 @@ Los bugs se reportan como **GitHub Issues**. Antes de crear un issue:
 Una descripción clara y concisa del problema.
 
 **Pasos para reproducir**
+
 1. Ir a '...'
 2. Hacer clic en '...'
 3. Ver error
@@ -81,6 +82,7 @@ Qué está sucediendo realmente.
 Si aplica, añade capturas o logs relevantes.
 
 **Entorno**
+
 - Hardware: [Radxa Zero, Raspberry Pi 4, etc.]
 - OS: [Armbian, Ubuntu 24.04, etc.]
 - Python: [3.12, 3.13, etc.]
@@ -110,6 +112,7 @@ La documentación es tan importante como el código:
 - **Mejora traducciones** (EN/ES)
 
 Archivos de documentación:
+
 - `README.md` - Introducción general del proyecto
 - `docs/INSTALLATION.md` - Guía de instalación
 - `docs/USER_GUIDE.md` - Manual de usuario
@@ -177,6 +180,7 @@ npm run dev
 ```
 
 **URLs de desarrollo:**
+
 - Frontend: http://localhost:5173 (Vite dev server)
 - Backend API: http://localhost:8000/api
 - API Docs: http://localhost:8000/docs
@@ -276,7 +280,7 @@ FPVCopilotSky/
 **Arquitectura de datos:**
 
 ```
-Frontend (React) 
+Frontend (React)
     ↕ HTTP/WebSocket
 Backend (FastAPI)
     ↕
@@ -312,7 +316,7 @@ class RequestModel(BaseModel):
 async def get_data() -> Dict[str, Any]:
     """
     Endpoint description
-    
+
     Returns:
         Dict with status and data
     """
@@ -324,6 +328,7 @@ async def get_data() -> Dict[str, Any]:
 ```
 
 **Convenciones:**
+
 - **Nombres**: `snake_case` para variables/funciones, `PascalCase` para clases
 - **Docstrings**: Obligatorios en funciones públicas y endpoints
 - **Type hints**: Usa siempre type hints en funciones
@@ -337,54 +342,55 @@ Seguimos **ESLint** con configuración de Vite:
 
 ```jsx
 // ✅ Buenas prácticas
-import { useState, useEffect, useCallback } from 'react'
-import { useTranslation } from 'react-i18next'
-import { useToast } from '../../contexts/ToastContext'
-import api from '../../services/api'
+import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
+import { useToast } from "../../contexts/ToastContext";
+import api from "../../services/api";
 
 const MyComponent = () => {
-  const { t } = useTranslation()
-  const { showToast } = useToast()
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(false)
-  
+  const { t } = useTranslation();
+  const { showToast } = useToast();
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+
   // useCallback para funciones que se pasan como props
   const loadData = useCallback(async () => {
-    setLoading(true)
+    setLoading(true);
     try {
-      const response = await api.get('/api/endpoint')
+      const response = await api.get("/api/endpoint");
       if (response.ok) {
-        const result = await response.json()
-        setData(result)
-        showToast(t('success.dataLoaded'), 'success')
+        const result = await response.json();
+        setData(result);
+        showToast(t("success.dataLoaded"), "success");
       } else {
-        showToast(t('errors.loadFailed'), 'error')
+        showToast(t("errors.loadFailed"), "error");
       }
     } catch (error) {
-      showToast(error.message, 'error')
+      showToast(error.message, "error");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [t, showToast])
-  
+  }, [t, showToast]);
+
   useEffect(() => {
-    loadData()
-  }, [loadData])
-  
-  if (loading) return <div className="loading">Loading...</div>
-  
+    loadData();
+  }, [loadData]);
+
+  if (loading) return <div className="loading">Loading...</div>;
+
   return (
     <div className="my-component">
-      <h2>{t('component.title')}</h2>
+      <h2>{t("component.title")}</h2>
       {data && <pre>{JSON.stringify(data, null, 2)}</pre>}
     </div>
-  )
-}
+  );
+};
 
-export default MyComponent
+export default MyComponent;
 ```
 
 **Convenciones:**
+
 - **Nombres**: `camelCase` para variables/funciones, `PascalCase` para componentes
 - **Hooks**: Usa hooks en lugar de clases
 - **useCallback/useMemo**: Para optimizar re-renders
@@ -406,6 +412,7 @@ Usamos **Conventional Commits** para mensajes claros:
 ```
 
 **Types:**
+
 - `feat`: Nueva funcionalidad
 - `fix`: Corrección de bug
 - `docs`: Cambios en documentación
@@ -416,6 +423,7 @@ Usamos **Conventional Commits** para mensajes claros:
 - `chore`: Tareas de mantenimiento (build, deps, etc)
 
 **Ejemplos:**
+
 ```bash
 feat(video): añadir soporte para encoder hardware H.264
 fix(mavlink): corregir deadlock en preferences save
@@ -508,17 +516,17 @@ from typing import Dict, Any, Optional
 
 class ModemProvider(ABC):
     """Base class for modem providers"""
-    
+
     @abstractmethod
     def get_status(self) -> Dict[str, Any]:
         """Get modem connection status"""
         pass
-    
+
     @abstractmethod
     def connect(self) -> Dict[str, Any]:
         """Connect modem"""
         pass
-    
+
     @abstractmethod
     def disconnect(self) -> Dict[str, Any]:
         """Disconnect modem"""
@@ -533,16 +541,16 @@ from providers.base.modem_provider import ModemProvider
 
 class MiModemProvider(ModemProvider):
     """Provider para Mi Modem XYZ"""
-    
+
     def __init__(self):
         self.name = "mi_modem_xyz"
         self.available = self._check_availability()
-    
+
     def _check_availability(self) -> bool:
         """Check if modem is connected"""
         # Lógica de detección
         return True
-    
+
     def get_status(self) -> Dict[str, Any]:
         """Get status from modem"""
         return {
@@ -550,12 +558,12 @@ class MiModemProvider(ModemProvider):
             "signal_strength": 85,
             "network_type": "4G"
         }
-    
+
     def connect(self) -> Dict[str, Any]:
         """Connect modem"""
         # Implementación específica
         return {"success": True}
-    
+
     def disconnect(self) -> Dict[str, Any]:
         """Disconnect modem"""
         return {"success": True}
@@ -634,7 +642,7 @@ import { useTranslation } from 'react-i18next'
 
 const ModemView = () => {
   const { t } = useTranslation()
-  
+
   return (
     <div>
       <h2>{t('modem.title')}</h2>
@@ -699,14 +707,14 @@ npm run test
 
 ```jsx
 // frontend/client/src/components/__tests__/Header.test.jsx
-import { render, screen } from '@testing-library/react'
-import Header from '../Header/Header'
+import { render, screen } from "@testing-library/react";
+import Header from "../Header/Header";
 
-test('renders header title', () => {
-  render(<Header />)
-  const title = screen.getByText(/FPV Copilot Sky/i)
-  expect(title).toBeInTheDocument()
-})
+test("renders header title", () => {
+  render(<Header />);
+  const title = screen.getByText(/FPV Copilot Sky/i);
+  expect(title).toBeInTheDocument();
+});
 ```
 
 ---
@@ -743,6 +751,7 @@ Usamos diagramas ASCII para flujos:
 ```
 
 Herramientas recomendadas:
+
 - [ASCIIFlow](https://asciiflow.com/)
 - [Monodraw](https://monodraw.helftone.com/) (macOS)
 
@@ -785,6 +794,7 @@ Todos los contribuidores serán reconocidos en:
 - **GitHub** - Contributors graph
 
 Las contribuciones significativas pueden resultar en:
+
 - Rol de maintainer
 - Acceso a hardware de desarrollo
 - Créditos en releases

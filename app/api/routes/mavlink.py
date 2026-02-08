@@ -112,7 +112,10 @@ async def get_enum_values(enum_name: str, request: Request):
     elif enum_name == "MAV_STATE":
         return MAVLinkDialect.MAV_STATE
     else:
-        raise HTTPException(status_code=404, detail=translate("mavlink.enum_not_found", lang, enum_name=enum_name))
+        raise HTTPException(
+            status_code=404,
+            detail=translate("mavlink.enum_not_found", lang, enum_name=enum_name),
+        )
 
 
 # ============ Parameter Management ============
@@ -149,7 +152,8 @@ def get_parameter(param_name: str, request: Request):
 
     if not result["success"]:
         raise HTTPException(
-            status_code=400, detail=result.get("error", translate("mavlink.parameter_get_failed", lang))
+            status_code=400,
+            detail=result.get("error", translate("mavlink.parameter_get_failed", lang)),
         )
 
     return result
@@ -169,7 +173,8 @@ def set_parameter(request: ParameterSetRequest, req: Request):
 
     if not result["success"]:
         raise HTTPException(
-            status_code=400, detail=result.get("error", translate("mavlink.parameter_set_failed", lang))
+            status_code=400,
+            detail=result.get("error", translate("mavlink.parameter_set_failed", lang)),
         )
 
     return result
@@ -315,7 +320,8 @@ async def save_serial_preferences(preferences: SerialPreferencesModel, request: 
             saved_config = prefs.get_serial_config()
             if saved_config.auto_connect != preferences.auto_connect:
                 print(
-                    f"⚠️ Verification failed: requested auto_connect={preferences.auto_connect}, saved={saved_config.auto_connect}"
+                    f"⚠️ Verification failed: requested auto_connect={preferences.auto_connect}, "
+                    f"saved={saved_config.auto_connect}"
                 )
                 return {
                     "success": False,

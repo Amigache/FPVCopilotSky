@@ -15,25 +15,28 @@ export const ModalProvider = ({ children }) => {
   const { t } = useTranslation()
   const [modal, setModal] = useState(null)
 
-  const showModal = useCallback(({
-    title,
-    message,
-    type = 'alert', // 'alert', 'confirm', 'notification'
-    confirmText = t('common.ok'),
-    cancelText = t('common.cancel'),
-    onConfirm = null,
-    onCancel = null
-  }) => {
-    setModal({
+  const showModal = useCallback(
+    ({
       title,
       message,
-      type,
-      confirmText,
-      cancelText,
-      onConfirm,
-      onCancel
-    })
-  }, [t])
+      type = 'alert', // 'alert', 'confirm', 'notification'
+      confirmText = t('common.ok'),
+      cancelText = t('common.cancel'),
+      onConfirm = null,
+      onCancel = null,
+    }) => {
+      setModal({
+        title,
+        message,
+        type,
+        confirmText,
+        cancelText,
+        onConfirm,
+        onCancel,
+      })
+    },
+    [t]
+  )
 
   const closeModal = useCallback(() => {
     setModal(null)
@@ -56,27 +59,34 @@ export const ModalProvider = ({ children }) => {
   return (
     <ModalContext.Provider value={{ showModal, closeModal }}>
       {children}
-      
+
       {modal && (
         <div className="modal-overlay" onClick={modal.type === 'confirm' ? null : closeModal}>
           <div className="modal-container" onClick={(e) => e.stopPropagation()}>
             <div className={`modal-header ${modal.type}`}>
               <h3>{modal.title}</h3>
-              <button className="modal-close" onClick={closeModal}>×</button>
+              <button className="modal-close" onClick={closeModal}>
+                ×
+              </button>
             </div>
-            
+
             <div className="modal-body">
               <p>{modal.message}</p>
             </div>
-            
+
             <div className="modal-footer">
               {modal.type === 'confirm' ? (
                 <>
                   <button className="modal-btn modal-btn-cancel" onClick={handleCancel}>
                     {modal.cancelText}
                   </button>
-                  <button 
-                    className={`modal-btn modal-btn-confirm ${modal.title.toLowerCase().includes('delete') || modal.title.toLowerCase().includes('elimina') ? 'danger' : ''}`}
+                  <button
+                    className={`modal-btn modal-btn-confirm ${
+                      modal.title.toLowerCase().includes('delete') ||
+                      modal.title.toLowerCase().includes('elimina')
+                        ? 'danger'
+                        : ''
+                    }`}
                     onClick={handleConfirm}
                   >
                     {modal.confirmText}

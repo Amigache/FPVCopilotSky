@@ -3,7 +3,6 @@ Data structure representing a detected board with its current configuration
 """
 
 from dataclasses import dataclass
-from typing import Optional, List
 from .board_definitions import (
     HardwareInfo,
     VariantInfo,

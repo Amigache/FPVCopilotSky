@@ -53,7 +53,8 @@ def _get_vpn_provider(provider_name: Optional[str] = None, lang: str = "en"):
     provider = registry.get_vpn_provider(provider_name)
     if not provider:
         raise HTTPException(
-            status_code=503, detail=translate("vpn.provider_not_available", lang, provider=provider_name)
+            status_code=503,
+            detail=translate("vpn.provider_not_available", lang, provider=provider_name),
         )
 
     return provider
@@ -99,7 +100,17 @@ async def get_status(request: Request, provider: Optional[str] = None):
         vpn_provider = _get_vpn_provider(provider, lang)
         status = vpn_provider.get_status()
         return status
-    except HTTPException:
+    except HTTPException as e:
+        # If no VPN provider configured, return a neutral status instead of 400
+        if e.status_code == 400 and translate("vpn.no_provider_configured", lang) in str(e.detail):
+            return {
+                "success": False,
+                "installed": False,
+                "connected": False,
+                "authenticated": False,
+                "provider": None,
+                "message": translate("vpn.no_provider_configured", lang),
+            }
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -260,10 +271,18 @@ async def save_vpn_preferences(preferences: VPNPreferencesModel, request: Reques
             and saved_config.get("enabled") == config.get("enabled")
             and saved_config.get("auto_connect") == config.get("auto_connect")
         ):
-            return {"success": True, "message": translate("vpn.preferences_saved", lang), "preferences": config}
+            return {
+                "success": True,
+                "message": translate("vpn.preferences_saved", lang),
+                "preferences": config,
+            }
         else:
-            print(f"⚠️ VPN preferences verification failed")
-            return {"success": False, "message": "Failed to verify saved preferences", "preferences": saved_config}
+            print("⚠️ VPN preferences verification failed")
+            return {
+                "success": False,
+                "message": "Failed to verify saved preferences",
+                "preferences": saved_config,
+            }
     except Exception as e:
         import traceback
 

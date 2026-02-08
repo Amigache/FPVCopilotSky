@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useToast } from '../../contexts/ToastContext'
 import { useWebSocket } from '../../contexts/WebSocketContext'
 import api from '../../services/api'
+import Toggle from '../Toggle/Toggle'
 
 // Helper function to format bytes
 const formatBytes = (bytes) => {
@@ -18,7 +19,7 @@ const VPNView = () => {
   const { t } = useTranslation()
   const { showToast } = useToast()
   const { messages } = useWebSocket()
-  
+
   // State
   const [loading, setLoading] = useState(true)
   const [providers, setProviders] = useState([])
@@ -31,16 +32,22 @@ const VPNView = () => {
   const [authPolling, setAuthPolling] = useState(false)
   const [vpnPreferences, setVpnPreferences] = useState({ auto_connect: false })
   const [savingPreferences, setSavingPreferences] = useState(false)
-  
+
   // Refs to avoid infinite loops
   const authPollingRef = useRef(false)
   const authUrlRef = useRef(null)
   const statusRef = useRef(null)
 
   // Update refs when state changes
-  useEffect(() => { authPollingRef.current = authPolling }, [authPolling])
-  useEffect(() => { authUrlRef.current = authUrl }, [authUrl])
-  useEffect(() => { statusRef.current = status }, [status])
+  useEffect(() => {
+    authPollingRef.current = authPolling
+  }, [authPolling])
+  useEffect(() => {
+    authUrlRef.current = authUrl
+  }, [authUrl])
+  useEffect(() => {
+    statusRef.current = status
+  }, [status])
 
   // Load providers
   const loadProviders = useCallback(async () => {
@@ -49,9 +56,9 @@ const VPNView = () => {
       if (response.ok) {
         const data = await response.json()
         setProviders(data.providers || [])
-        
+
         // Auto-select first installed provider
-        const installed = data.providers.find(p => p.installed)
+        const installed = data.providers.find((p) => p.installed)
         if (installed) {
           setSelectedProvider(installed.name)
         }
@@ -75,22 +82,25 @@ const VPNView = () => {
   }, [])
 
   // Save VPN preferences
-  const savePreferences = useCallback(async (newPrefs) => {
-    setSavingPreferences(true)
-    try {
-      const response = await api.post('/api/vpn/preferences', newPrefs)
-      if (response.ok) {
-        const data = await response.json()
-        setVpnPreferences(data.preferences || newPrefs)
-        showToast(t('vpn.preferencesSaved'), 'success')
+  const savePreferences = useCallback(
+    async (newPrefs) => {
+      setSavingPreferences(true)
+      try {
+        const response = await api.post('/api/vpn/preferences', newPrefs)
+        if (response.ok) {
+          const data = await response.json()
+          setVpnPreferences(data.preferences || newPrefs)
+          showToast(t('vpn.preferencesSaved'), 'success')
+        }
+      } catch (error) {
+        console.error('Error saving VPN preferences:', error)
+        showToast(t('vpn.preferencesError'), 'error')
+      } finally {
+        setSavingPreferences(false)
       }
-    } catch (error) {
-      console.error('Error saving VPN preferences:', error)
-      showToast(t('vpn.preferencesError'), 'error')
-    } finally {
-      setSavingPreferences(false)
-    }
-  }, [showToast, t])
+    },
+    [showToast, t]
+  )
 
   // Toggle auto-connect
   const handleAutoConnectChange = async (enabled) => {
@@ -106,26 +116,26 @@ const VPNView = () => {
       if (response.ok) {
         const data = await response.json()
         setStatus(data)
-        
+
         // Check if device needs re-authentication (e.g., was deleted from admin panel)
         if (data.needs_auth && data.auth_url && !authUrlRef.current) {
           setAuthUrl(data.auth_url)
           showToast(t('vpn.authRequired'), 'warning')
         }
-        
+
         // If connected, stop auth polling and clear auth URL
         if (data.connected && authPollingRef.current) {
           setAuthPolling(false)
           setAuthUrl(null)
           showToast(t('vpn.connected'), 'success')
         }
-        
+
         // If authenticated, clear auth URL regardless of connection status
         if (data.authenticated && authUrlRef.current) {
           setAuthUrl(null)
           setAuthPolling(false)
         }
-        
+
         // If not connected and not authenticated and no auth URL, ensure it stays null
         if (!data.connected && !data.authenticated && !data.needs_auth && authUrlRef.current) {
           setAuthUrl(null)
@@ -142,7 +152,7 @@ const VPNView = () => {
       setPeers([])
       return
     }
-    
+
     setLoadingPeers(true)
     try {
       const response = await api.get(`/api/vpn/peers?provider=${selectedProvider}`)
@@ -190,13 +200,13 @@ const VPNView = () => {
     if (messages.vpn_status) {
       const data = messages.vpn_status
       setStatus(data)
-      
+
       // Check if device needs re-authentication (e.g., deleted from admin panel)
       if (data.needs_auth && data.auth_url && !authUrlRef.current) {
         setAuthUrl(data.auth_url)
         showToast(t('vpn.authRequired'), 'warning')
       }
-      
+
       // Clear auth URL if connected or authenticated
       if ((data.connected || data.authenticated) && authUrlRef.current) {
         setAuthUrl(null)
@@ -227,7 +237,7 @@ const VPNView = () => {
         if (response.ok) {
           const data = await response.json()
           setStatus(data)
-          
+
           // If authenticated or connected, stop polling
           if (data.authenticated || data.connected) {
             setAuthPolling(false)
@@ -262,7 +272,7 @@ const VPNView = () => {
     setConnecting(true)
     try {
       const response = await api.post('/api/vpn/connect', {
-        provider: selectedProvider
+        provider: selectedProvider,
       })
       const data = await response.json()
 
@@ -297,7 +307,7 @@ const VPNView = () => {
     setConnecting(true)
     try {
       const response = await api.post('/api/vpn/disconnect', {
-        provider: selectedProvider
+        provider: selectedProvider,
       })
       const data = await response.json()
 
@@ -319,7 +329,7 @@ const VPNView = () => {
     setConnecting(true)
     try {
       const response = await api.post('/api/vpn/logout', {
-        provider: selectedProvider
+        provider: selectedProvider,
       })
       const data = await response.json()
 
@@ -348,12 +358,21 @@ const VPNView = () => {
         // Start polling immediately so user sees feedback while URL is being fetched
         setAuthPolling(true)
         const response = await api.post('/api/vpn/connect', {
-          provider: selectedProvider
+          provider: selectedProvider,
         })
         const data = await response.json()
         if (data.needs_auth && data.auth_url) {
-          setAuthUrl(data.auth_url)
-          await navigator.clipboard.writeText(data.auth_url)
+          // Copiar al portapapeles con fallback
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(data.auth_url)
+          } else {
+            const input = document.createElement('input')
+            input.value = data.auth_url
+            document.body.appendChild(input)
+            input.select()
+            document.execCommand('copy')
+            document.body.removeChild(input)
+          }
           showToast(t('vpn.urlCopied'), 'success')
         } else if (!response.ok) {
           const errorMsg = data.detail || data.error || t('vpn.connectError')
@@ -391,7 +410,7 @@ const VPNView = () => {
         // Start polling immediately so user sees feedback while URL is being fetched
         setAuthPolling(true)
         const response = await api.post('/api/vpn/connect', {
-          provider: selectedProvider
+          provider: selectedProvider,
         })
         const data = await response.json()
         if (data.needs_auth && data.auth_url) {
@@ -439,25 +458,25 @@ const VPNView = () => {
     )
   }
 
-  const currentProvider = providers.find(p => p.name === selectedProvider)
+  const currentProvider = providers.find((p) => p.name === selectedProvider)
   const isInstalled = currentProvider?.installed || false
   const isConnected = status?.connected || false
-  const isAuthenticated = status?.authenticated === true  // Only true when explicitly authenticated
+  const isAuthenticated = status?.authenticated === true // Only true when explicitly authenticated
 
   return (
     <div className="vpn-view">
       {/* Provider Selection */}
       <div className="card">
         <h2>{t('vpn.providerTitle')}</h2>
-        
+
         <div className="form-group">
           <label>{t('vpn.provider')}</label>
-          <select 
+          <select
             value={selectedProvider}
             onChange={(e) => setSelectedProvider(e.target.value)}
             disabled={isConnected}
           >
-            {providers.map(provider => (
+            {providers.map((provider) => (
               <option key={provider.name} value={provider.name}>
                 {provider.display_name} {provider.installed ? '✓' : '(not installed)'}
               </option>
@@ -477,7 +496,7 @@ const VPNView = () => {
               <h3>{t('vpn.notInstalled')}</h3>
               <p>{t('vpn.installInstructions')}</p>
               {currentProvider?.install_url && (
-                <a 
+                <a
                   href={currentProvider.install_url}
                   target="_blank"
                   rel="noopener noreferrer"
@@ -489,10 +508,12 @@ const VPNView = () => {
             </div>
           </div>
         ) : (
-          <div 
+          <div
             className="vpn-status-container"
             style={{
-              border: `1px solid ${isConnected ? 'rgba(76, 175, 80, 0.5)' : 'rgba(102, 102, 102, 0.3)'}`
+              border: `1px solid ${
+                isConnected ? 'rgba(76, 175, 80, 0.5)' : 'rgba(102, 102, 102, 0.3)'
+              }`,
             }}
           >
             <div className="vpn-status-header">
@@ -543,14 +564,14 @@ const VPNView = () => {
               <h3>{t('vpn.authenticationRequired')}</h3>
               <p>{t('vpn.openAuthUrl')}</p>
               <div className="auth-actions">
-                <button 
+                <button
                   className="vpn-btn vpn-btn-primary"
                   onClick={openAuthUrl}
                   disabled={connecting}
                 >
                   {t('vpn.openUrl')}
                 </button>
-                <button 
+                <button
                   className="vpn-btn vpn-btn-secondary"
                   onClick={copyAuthUrl}
                   disabled={connecting}
@@ -574,11 +595,7 @@ const VPNView = () => {
         <div className="card">
           <div className="card-header">
             <h2>🌐 {t('vpn.peersTitle')}</h2>
-            <button 
-              className="vpn-btn-refresh" 
-              onClick={loadPeers} 
-              disabled={loadingPeers}
-            >
+            <button className="vpn-btn-refresh" onClick={loadPeers} disabled={loadingPeers}>
               {loadingPeers ? '⏳' : '🔄'}
             </button>
           </div>
@@ -591,16 +608,20 @@ const VPNView = () => {
           ) : (
             <div className="peers-list">
               {peers.map((peer) => (
-                <div 
-                  key={peer.id} 
-                  className={`peer-item ${peer.is_self ? 'peer-self' : ''} ${peer.online ? 'peer-online' : 'peer-offline'}`}
+                <div
+                  key={peer.id}
+                  className={`peer-item ${peer.is_self ? 'peer-self' : ''} ${
+                    peer.online ? 'peer-online' : 'peer-offline'
+                  }`}
                 >
                   <div className="peer-header">
                     <div className="peer-name">
                       {peer.is_self && '⭐ '}
                       {peer.hostname}
                     </div>
-                    <div className={`peer-status ${peer.online ? 'status-online' : 'status-offline'}`}>
+                    <div
+                      className={`peer-status ${peer.online ? 'status-online' : 'status-offline'}`}
+                    >
                       {peer.online ? '● Online' : '○ Offline'}
                     </div>
                   </div>
@@ -629,9 +650,7 @@ const VPNView = () => {
                 </div>
               ))}
               {peers.length === 0 && !loadingPeers && (
-                <div className="no-peers">
-                  {t('vpn.noPeers')}
-                </div>
+                <div className="no-peers">{t('vpn.noPeers')}</div>
               )}
             </div>
           )}
@@ -641,25 +660,21 @@ const VPNView = () => {
       {/* Preferences Card */}
       <div className="card">
         <h2>⚙️ {t('vpn.preferences')}</h2>
-        
+
         <div className="form-group auto-start-toggle">
-          <label className="toggle-label">
-            <input 
-              type="checkbox" 
-              checked={vpnPreferences.auto_connect || false}
-              onChange={(e) => handleAutoConnectChange(e.target.checked)}
-              disabled={savingPreferences}
-            />
-            <span className="toggle-switch"></span>
-            <span className="toggle-text">{t('vpn.autoConnect')}</span>
-          </label>
+          <Toggle
+            checked={vpnPreferences.auto_connect || false}
+            onChange={(e) => handleAutoConnectChange(e.target.checked)}
+            disabled={savingPreferences}
+            label={t('vpn.autoConnect')}
+          />
         </div>
       </div>
 
       {/* Control Buttons */}
       <div className="card">
         <h2>{t('vpn.controlTitle')}</h2>
-        
+
         <div className="button-group">
           <button
             className="vpn-btn vpn-btn-primary"
@@ -668,7 +683,7 @@ const VPNView = () => {
           >
             {connecting && !isConnected ? '⏳' : '🔗'} {t('vpn.connect')}
           </button>
-          
+
           <button
             className="vpn-btn vpn-btn-danger"
             onClick={handleDisconnect}
@@ -676,7 +691,7 @@ const VPNView = () => {
           >
             {connecting && isConnected ? '⏳' : '🔌'} {t('vpn.disconnect')}
           </button>
-          
+
           <button
             className="vpn-btn vpn-btn-warning"
             onClick={handleLogout}

@@ -287,17 +287,17 @@
   .connection-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .output-item {
     flex-direction: column;
     align-items: flex-start;
     gap: 10px;
   }
-  
+
   .output-actions {
     width: 100%;
   }
-  
+
   .output-actions button {
     flex: 1;
   }

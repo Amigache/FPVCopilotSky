@@ -91,7 +91,8 @@ class V4L2CameraSource(VideoSourceProvider):
             cameras.append(identity_group)
 
         logger.info(
-            f"Discovered {len(cameras)} physical cameras (filtered {len(devices) - len(cameras)} duplicate device paths)"
+            f"Discovered {len(cameras)} physical cameras "
+            f"(filtered {len(devices) - len(cameras)} duplicate device paths)"
         )
         return cameras
 
@@ -109,7 +110,10 @@ class V4L2CameraSource(VideoSourceProvider):
 
             # Get device identity info
             info_result = subprocess.run(
-                ["v4l2-ctl", "-d", device, "--info"], capture_output=True, text=True, timeout=5
+                ["v4l2-ctl", "-d", device, "--info"],
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
 
             if info_result.returncode != 0:
@@ -117,7 +121,6 @@ class V4L2CameraSource(VideoSourceProvider):
 
             # Parse device info
             device_name = os.path.basename(device)
-            device_type = "Camera"
             driver = "unknown"
             bus_info = ""
             is_capture = False
@@ -144,7 +147,10 @@ class V4L2CameraSource(VideoSourceProvider):
 
             # Get formats and resolutions with FPS
             formats_result = subprocess.run(
-                ["v4l2-ctl", "-d", device, "--list-formats-ext"], capture_output=True, text=True, timeout=5
+                ["v4l2-ctl", "-d", device, "--list-formats-ext"],
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
 
             # Parse formats and resolutions
@@ -210,7 +216,11 @@ class V4L2CameraSource(VideoSourceProvider):
 
             return {
                 "is_capture_device": True,
-                "identity": {"name": device_name, "driver": driver, "bus_info": bus_info},
+                "identity": {
+                    "name": device_name,
+                    "driver": driver,
+                    "bus_info": bus_info,
+                },
                 "is_usb": driver == "uvcvideo",
                 "supported_formats": formats,
                 "default_format": default_format,
@@ -238,7 +248,10 @@ class V4L2CameraSource(VideoSourceProvider):
         try:
             caps = self.get_source_capabilities(source_id)
             if not caps:
-                return {"success": False, "error": f"Device {source_id} not available or not a capture device"}
+                return {
+                    "success": False,
+                    "error": f"Device {source_id} not available or not a capture device",
+                }
 
             width = config.get("width", 960)
             height = config.get("height", 720)
@@ -325,4 +338,9 @@ class V4L2CameraSource(VideoSourceProvider):
             errors.append(f"Format {pixel_format} not supported")
             warnings.append(f"Available formats: {caps['supported_formats']}")
 
-        return {"valid": len(errors) == 0, "errors": errors, "warnings": warnings, "adjusted_config": adjusted}
+        return {
+            "valid": len(errors) == 0,
+            "errors": errors,
+            "warnings": warnings,
+            "adjusted_config": adjusted,
+        }

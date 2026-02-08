@@ -6,17 +6,17 @@ Arquitectura, stack tecnológico, estructura del proyecto, cómo contribuir y c�
 
 ## 1. Stack tecnológico
 
-| Capa | Tecnología | Versión |
-|------|-----------|---------|
-| **Backend** | Python, FastAPI, Uvicorn | 3.12+, 0.109+ |
-| **Telemetría** | PyMAVLink, pyserial | 2.4+, 3.5+ |
-| **Video** | GStreamer (PyGObject) | 1.20+ |
-| **Modem** | huawei-lte-api | 1.9+ |
-| **Frontend** | React, Vite, i18next | 19, 7.x |
-| **Servidor web** | Nginx | 1.18+ |
-| **VPN** | Tailscale | 1.50+ |
-| **Gestión de red** | NetworkManager | — |
-| **Servicio** | systemd | — |
+| Capa               | Tecnología               | Versión       |
+| ------------------ | ------------------------ | ------------- |
+| **Backend**        | Python, FastAPI, Uvicorn | 3.12+, 0.109+ |
+| **Telemetría**     | PyMAVLink, pyserial      | 2.4+, 3.5+    |
+| **Video**          | GStreamer (PyGObject)    | 1.20+         |
+| **Modem**          | huawei-lte-api           | 1.9+          |
+| **Frontend**       | React, Vite, i18next     | 19, 7.x       |
+| **Servidor web**   | Nginx                    | 1.18+         |
+| **VPN**            | Tailscale                | 1.50+         |
+| **Gestión de red** | NetworkManager           | —             |
+| **Servicio**       | systemd                  | —             |
 
 ### Dependencias Python (`requirements.txt`)
 
@@ -88,22 +88,22 @@ vpn = registry.get_vpn_provider('tailscale')
 
 El backend emite datos periódicamente por **WebSocket** a todos los clientes conectados:
 
-| Tipo de mensaje | Intervalo | Datos |
-|----------------|-----------|-------|
-| `telemetry` | 1s | GPS, actitud, batería, modo |
-| `router_status` | 2s | Salidas MAVLink |
-| `video_status` | 2s | Estado del stream |
-| `system_resources` | 3s | CPU, RAM |
-| `status` | 5s | Health check |
-| `system_services` | 5s | Estado de servicios |
-| `vpn_status` | 10s | Conexión Tailscale |
-| `modem_status` | 10s | Señal, tráfico, dispositivo |
+| Tipo de mensaje    | Intervalo | Datos                       |
+| ------------------ | --------- | --------------------------- |
+| `telemetry`        | 1s        | GPS, actitud, batería, modo |
+| `router_status`    | 2s        | Salidas MAVLink             |
+| `video_status`     | 2s        | Estado del stream           |
+| `system_resources` | 3s        | CPU, RAM                    |
+| `status`           | 5s        | Health check                |
+| `system_services`  | 5s        | Estado de servicios         |
+| `vpn_status`       | 10s       | Conexión Tailscale          |
+| `modem_status`     | 10s       | Señal, tráfico, dispositivo |
 
 El frontend consume estos mensajes con el hook `useWebSocket()`:
 
 ```jsx
-const { messages } = useWebSocket()
-const modemData = messages.modem_status  // Se actualiza automáticamente
+const { messages } = useWebSocket();
+const modemData = messages.modem_status; // Se actualiza automáticamente
 ```
 
 ---
@@ -390,6 +390,7 @@ class TPLinkM7200Provider(ModemProvider):
 - [ ] Probar con `curl` los endpoints relevantes
 
 ---
+
 ## 6.2 Sistema de Board Providers
 
 Como FPV Copilot Sky ejecuta en diversas placas SBC (Radxa Zero, Jetson, Raspberry Pi, etc.) con distintas distros y kernels, usamos un **Board Provider System** que detecta y declara:
@@ -401,6 +402,7 @@ Como FPV Copilot Sky ejecuta en diversas placas SBC (Radxa Zero, Jetson, Raspber
 ### Arquitectura: BoardProvider + BoardRegistry
 
 **Estructura de archivos:**
+
 ```
 app/providers/board/
 ├── board_provider.py               # Clase abstracta
@@ -442,26 +444,26 @@ import subprocess
 
 class RadxaZeroProvider(BoardProvider):
     """Radxa Zero (Amlogic S905Y2)
-    
+
     Auto-detecta en runtime:
     - CPU cores: os.cpu_count() o /proc/cpuinfo
     - RAM: /proc/meminfo → MemTotal
     - Storage: df / → tamaño root filesystem
     - Variante: /etc/os-release → nombre + versión
     """
-    
+
     @property
     def board_name(self) -> str:
         return "Radxa Zero"
-    
+
     @property
     def board_identifier(self) -> str:
         return "radxa_zero_amlogic_s905y2"
-    
+
     def detect_board(self) -> bool:
         """Verifica si es Radxa Zero: /proc/device-tree/model o cpuinfo"""
         return self._check_detection_criteria()
-    
+
     def _check_detection_criteria(self) -> bool:
         # Primero intenta /proc/device-tree/model
         try:
@@ -470,7 +472,7 @@ class RadxaZeroProvider(BoardProvider):
                 return 'Radxa Zero' in model
         except FileNotFoundError:
             pass
-        
+
         # Fallback: busca en cpuinfo
         try:
             with open('/proc/cpuinfo', 'r') as f:
@@ -478,7 +480,7 @@ class RadxaZeroProvider(BoardProvider):
                 return 'Amlogic' in content and 'S905Y2' in content
         except FileNotFoundError:
             return False
-    
+
     def _get_hardware_info(self) -> HardwareInfo:
         """Auto-detecta specs en runtime"""
         return HardwareInfo(
@@ -490,14 +492,14 @@ class RadxaZeroProvider(BoardProvider):
             has_gpu=True,                         # Inmutable
             gpu_model="Mali-G31 MP2"             # Inmutable
         )
-    
+
     @staticmethod
     def _detect_cpu_cores() -> int:
         try:
             return os.cpu_count() or 4
         except:
             return 4
-    
+
     @staticmethod
     def _detect_ram_gb() -> int:
         try:
@@ -509,7 +511,7 @@ class RadxaZeroProvider(BoardProvider):
         except:
             pass
         return 4  # fallback
-    
+
     @staticmethod
     def _detect_storage_gb() -> int:
         try:
@@ -522,7 +524,7 @@ class RadxaZeroProvider(BoardProvider):
         except:
             pass
         return 32  # fallback
-    
+
     def detect_running_variant(self) -> Optional[VariantInfo]:
         """Lee /etc/os-release para detectar variante actual"""
         try:
@@ -534,13 +536,13 @@ class RadxaZeroProvider(BoardProvider):
                         distro = line.split('=')[1].strip().strip('"')
                     elif line.startswith('VERSION_ID='):
                         version = line.split('=')[1].strip().strip('"')
-            
+
             if distro and distro.lower() in ['armbian', 'ubuntu', 'debian']:
                 # Detecta automáticamente el kernel
                 kernel_version = subprocess.check_output(
                     ['uname', '-r'], text=True
                 ).strip()
-                
+
                 return VariantInfo(
                     name=f"{distro.capitalize()} {version}",
                     storage_type=StorageType.EMMC,
@@ -570,13 +572,14 @@ class RadxaZeroProvider(BoardProvider):
                 )
         except Exception as e:
             logger.warning(f"Could not detect running variant: {e}")
-        
+
         return None
 ```
 
 ### Acceso a información del board
 
 **Desde servicios o rutas API:**
+
 ```python
 from providers.board import BoardRegistry
 
@@ -592,6 +595,7 @@ if detected:
 ```
 
 **Ejemplo: GStreamerService adapta codec según board**
+
 ```python
 # En gstreamer_service.py
 from providers.board import BoardRegistry
@@ -600,12 +604,12 @@ def _adapt_codec_to_board(self, preferred_codec: str) -> str:
     """Selecciona codec disponible en esta placa"""
     registry = BoardRegistry()
     board = registry.get_detected_board()
-    
+
     if not board:
         return preferred_codec  # No detection, usar preferido
-    
+
     available = board.variant.video_encoders
-    
+
     # Fallback chain: HW H.264 → x264 → MJPEG
     if VideoEncoderFeature.HARDWARE_H264 in available:
         return 'h264'
@@ -623,10 +627,10 @@ def _adapt_codec_to_board(self, preferred_codec: str) -> str:
 async def get_board_info():
     registry = BoardRegistry()
     detected = registry.get_detected_board()
-    
+
     if not detected:
         return {"success": False, "message": "No board detected"}
-    
+
     return {
         "success": True,
         "data": detected.to_dict()  # DTO con todos los detalles
@@ -634,6 +638,7 @@ async def get_board_info():
 ```
 
 **Respuesta JSON:**
+
 ```json
 {
   "success": true,
@@ -669,6 +674,7 @@ async def get_board_info():
 ### Integración frontend
 
 **En SystemView.jsx:**
+
 - Card que muestra: board name, model, CPU/RAM/Storage detectados
 - Badge con kernel version y distro
 - Tags de features: video sources, encoders, connectivity, periféricos
@@ -677,12 +683,14 @@ async def get_board_info():
 ### Checklist para agregar nuevo board
 
 1. **Crear implementación:**
+
    ```bash
    mkdir -p app/providers/board/implementations/<marca>/
    touch app/providers/board/implementations/<marca>/<modelo>.py
    ```
 
 2. **Heredar de BoardProvider e implementar:**
+
    - `board_name`, `board_identifier` (properties)
    - `detect_board()` → conocer si esta placa está presente
    - `_get_hardware_info()` → **auto-detectar** CPU cores, RAM, storage (no hardcodear)
@@ -693,6 +701,7 @@ async def get_board_info():
    - `get_variants()` → definir variantes soportadas y features
 
 3. **Testing:**
+
    - Verificar que `BoardRegistry` lo auto-descubre: `logger.info()` en main.py
    - Testear endpoint: `curl http://localhost:8000/api/system/board`
    - Validar specs auto-detectadas vs `df`, `uname`, `/proc/*` en shell
@@ -712,6 +721,7 @@ async def get_board_info():
 - Los servicios consultan `BoardRegistry.get_detected_board()` para adaptar comportamiento
 
 ---
+
 ## 6.3 Proveedores de Video: Fuentes (Cámaras) y Codificadores
 
 FPV Copilot Sky usa una arquitectura basada en proveedores para **fuentes de video** (cámaras) y **codificadores** (H.264, MJPEG, etc.), permitiendo soporte flexible para múltiples hardware.
@@ -745,22 +755,22 @@ class VideoSourceProvider(ABC):
     Proveedor abstracto para fuentes de video (cámaras, streams).
     Detecta dispositivos disponibles y construye elementos GStreamer.
     """
-    
+
     def __init__(self):
         self.name: str = ""              # ID único: "v4l2", "libcamera", etc.
         self.display_name: str = ""      # Nombre visible: "V4L2 Camera"
         self.priority: int = 50          # Mayor = preferencia (0-100)
-    
+
     @abstractmethod
     def is_available(self) -> bool:
         """Verificar si el proveedor puede funcionar en este hardware."""
         ...
-    
+
     @abstractmethod
     def discover_sources(self) -> list[dict]:
         """
         Listar todas las fuentes disponibles.
-        
+
         Retorna:
         [
             {
@@ -774,16 +784,16 @@ class VideoSourceProvider(ABC):
         ]
         """
         ...
-    
+
     @abstractmethod
     def build_source_element(self, device: str, config: dict) -> dict:
         """
         Construir un elemento GStreamer para esta fuente.
-        
+
         Args:
             device: Identificador del dispositivo (ej: "/dev/video0")
             config: {"width": 1920, "height": 1080, "framerate": 30, ...}
-        
+
         Retorna:
         {
             "success": True,
@@ -809,16 +819,16 @@ class V4L2CameraSource(VideoSourceProvider):
         self.name = "v4l2"
         self.display_name = "V4L2 Camera"
         self.priority = 70
-    
+
     def is_available(self) -> bool:
         """V4L2 está disponible si hay /dev/video*"""
         import glob
         return len(glob.glob('/dev/video*')) > 0
-    
+
     def discover_sources(self) -> list[dict]:
         """
         Detectar cámaras USB/CSI disponibles.
-        
+
         Filtra duplicados agrupando por bus_info (mismo dispositivo físico).
         """
         cameras = []
@@ -827,7 +837,7 @@ class V4L2CameraSource(VideoSourceProvider):
                 # Leer propiedades con v4l2-ctl
                 cap = v4l2_get_capabilities(device_path)
                 bus_info = cap.get('bus_info')
-                
+
                 # Agrupar por bus_info para evitar duplicados
                 if bus_info not in seen_buses:
                     cameras.append({
@@ -840,9 +850,9 @@ class V4L2CameraSource(VideoSourceProvider):
                     seen_buses.add(bus_info)
             except Exception as e:
                 logger.warning(f"Error probing {device_path}: {e}")
-        
+
         return cameras
-    
+
     def build_source_element(self, device: str, config: dict) -> dict:
         """Construir elemento v4l2src con propiedades de cámara."""
         return {
@@ -873,23 +883,23 @@ class VideoEncoderProvider(ABC):
     Proveedor abstracto para codificadores de video (H.264, MJPEG, etc).
     Detecta codificadores disponibles y construye elementos GStreamer.
     """
-    
+
     def __init__(self):
         self.name: str = ""              # ID: "x264", "mjpeg", "h264", etc.
         self.display_name: str = ""      # Nombre visible
         self.priority: int = 50          # Mayor = preferencia
         self.available: bool = False
-    
+
     @abstractmethod
     def is_available(self) -> bool:
         """Verificar si el codificador está disponible en el sistema."""
         ...
-    
+
     @abstractmethod
     def validate_config(self, config: dict) -> dict:
         """
         Validar que la configuración es válida para este codificador.
-        
+
         Retorna:
         {
             "valid": True,
@@ -898,12 +908,12 @@ class VideoEncoderProvider(ABC):
         }
         """
         ...
-    
+
     @abstractmethod
     def build_pipeline_elements(self, config: dict) -> dict:
         """
         Construir elementos GStreamer para este codificador.
-        
+
         Retorna:
         {
             "success": True,
@@ -924,7 +934,7 @@ class VideoEncoderProvider(ABC):
         }
         """
         ...
-    
+
     def update_property(self, element, property_name: str, value):
         """
         Actualizar una propiedad en vivo (durante transmisión).
@@ -943,33 +953,33 @@ class X264Encoder(VideoEncoderProvider):
         self.name = "h264"
         self.display_name = "H.264 (x264)"
         self.priority = 60
-    
+
     def is_available(self) -> bool:
         """x264enc disponible si GStreamer lo tiene compilado."""
         return Gst.ElementFactory.make("x264enc", None) is not None
-    
+
     def validate_config(self, config: dict) -> dict:
         bitrate = config.get('bitrate', 2000)
         errors = []
         warnings = []
-        
+
         if not 100 <= bitrate <= 10000:
             errors.append(f"Bitrate fuera de rango: {bitrate} kbps (debe ser 100-10000)")
-        
+
         if bitrate < 500:
             warnings.append(f"Bitrate muy bajo ({bitrate}), puede afectar calidad")
-        
+
         return {
             "valid": len(errors) == 0,
             "errors": errors,
             "warnings": warnings
         }
-    
+
     def build_pipeline_elements(self, config: dict) -> dict:
         """Construir pipeline: x264enc → rtph264pay → udpsink"""
         bitrate = config.get('bitrate', 2000)
         gop_size = config.get('gop_size', 2)
-        
+
         return {
             "success": True,
             "elements": [
@@ -998,14 +1008,14 @@ from providers.video import mjpeg_encoder, x264_encoder, hardware_h264_encoder
 
 def init_provider_registry():
     registry = get_provider_registry()
-    
+
     # Registrar proveedores de fuentes (orden = prioridad)
     registry.register_video_source(hardware_h264_encoder.HardwareH264Encoder())
     registry.register_video_source(libcamera_source.LibCameraSource())
     registry.register_video_source(hdmi_capture.HDMICaptureSource())
     registry.register_video_source(v4l2_camera.V4L2CameraSource())
     registry.register_video_source(network_stream.NetworkStreamSource())
-    
+
     # Registrar proveedores de codificadores (orden = prioridad)
     registry.register_video_encoder(hardware_h264_encoder.HardwareH264Encoder())
     registry.register_video_encoder(mjpeg_encoder.MJPEGEncoder())
@@ -1015,16 +1025,16 @@ def init_provider_registry():
 
 ### Tabla de proveedores disponibles
 
-| Tipo | Nombre | ID | Prioridad | Descripción |
-|------|--------|----|-----------|----|
-| **Source** | V4L2 Camera | `v4l2` | 70 | Cámaras USB, CSI (video4linux2) |
-| | LibCamera | `libcamera` | 80 | CSI en Raspberry Pi 4+, Radxa |
-| | HDMI Capture | `hdmi` | 75 | Captura HDMI (USB/PCIe) |
-| | Network Stream | `network` | 50 | RTSP, HTTP, HLS, RTMP |
-| **Encoder** | Hardware H.264 | `h264_hw` | 100 | v4l2h264enc, meson_venc (SoC) |
-| | MJPEG | `mjpeg` | 70 | Baja latencia (~30ms) |
-| | x264 | `h264` | 60 | H.264 software, buena calidad |
-| | OpenH264 | `h264_openh264` | 0 | Deshabilitado (lento sin HW) |
+| Tipo        | Nombre         | ID              | Prioridad | Descripción                     |
+| ----------- | -------------- | --------------- | --------- | ------------------------------- |
+| **Source**  | V4L2 Camera    | `v4l2`          | 70        | Cámaras USB, CSI (video4linux2) |
+|             | LibCamera      | `libcamera`     | 80        | CSI en Raspberry Pi 4+, Radxa   |
+|             | HDMI Capture   | `hdmi`          | 75        | Captura HDMI (USB/PCIe)         |
+|             | Network Stream | `network`       | 50        | RTSP, HTTP, HLS, RTMP           |
+| **Encoder** | Hardware H.264 | `h264_hw`       | 100       | v4l2h264enc, meson_venc (SoC)   |
+|             | MJPEG          | `mjpeg`         | 70        | Baja latencia (~30ms)           |
+|             | x264           | `h264`          | 60        | H.264 software, buena calidad   |
+|             | OpenH264       | `h264_openh264` | 0         | Deshabilitado (lento sin HW)    |
 
 ### Flujo de selección automática
 
@@ -1089,8 +1099,8 @@ PUT  /api/video/update-property       # Cambiar bitrate/quality en vivo
     "h264_bitrate": 2000
   },
   "providers": {
-    "encoder": "x264 Encoder",      // Proveedor activo
-    "source": "V4L2 Camera"         // Fuente activa
+    "encoder": "x264 Encoder", // Proveedor activo
+    "source": "V4L2 Camera" // Fuente activa
   },
   "stats": {
     "current_fps": 29,
@@ -1108,7 +1118,7 @@ PUT  /api/video/update-property       # Cambiar bitrate/quality en vivo
   {
     "device": "/dev/video0",
     "name": "Brio 100",
-    "provider": "V4L2 Camera",       // Proveedor que la detecó
+    "provider": "V4L2 Camera", // Proveedor que la detecó
     "resolutions": ["1920x1080", "1280x720", "640x480"],
     "framerates": [30, 24, 15]
   }
@@ -1122,7 +1132,7 @@ PUT  /api/video/update-property       # Cambiar bitrate/quality en vivo
   {
     "id": "h264_hw",
     "name": "H.264 Hardware",
-    "available": false,              // No disponible en este SoC
+    "available": false, // No disponible en este SoC
     "priority": 100,
     "description": "v4l2h264enc (hardware)"
   },
@@ -1202,18 +1212,18 @@ Mensajes JSON con formato:
 ### Consumir desde el frontend
 
 ```jsx
-import { useWebSocket } from '../../contexts/WebSocketContext'
+import { useWebSocket } from "../../contexts/WebSocketContext";
 
 const MyComponent = () => {
-  const { messages, isConnected } = useWebSocket()
+  const { messages, isConnected } = useWebSocket();
 
   // messages.modem_status se actualiza automáticamente cada 10s
   // messages.telemetry se actualiza cada 1s
   // messages.vpn_status se actualiza cada 10s
   // etc.
 
-  return <div>{messages.modem_status?.signal?.rssi}</div>
-}
+  return <div>{messages.modem_status?.signal?.rssi}</div>;
+};
 ```
 
 ---

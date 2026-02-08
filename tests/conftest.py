@@ -5,6 +5,7 @@ This module provides mock objects for hardware dependencies that are not availab
 in CI environments (serial ports, modems, cameras, etc.)
 """
 
+import os
 import pytest
 import json
 from unittest.mock import Mock, patch, MagicMock
@@ -123,7 +124,11 @@ def mock_gstreamer():
         # Mock pipeline
         mock_pipeline = MagicMock()
         mock_pipeline.set_state.return_value = (True, 0, 0)
-        mock_pipeline.get_state.return_value = (1, 4, 0)  # SUCCESS, PLAYING, VOID_PENDING
+        mock_pipeline.get_state.return_value = (
+            1,
+            4,
+            0,
+        )  # SUCCESS, PLAYING, VOID_PENDING
 
         mock_gst.Pipeline.return_value = mock_pipeline
         mock_gst.State.PLAYING = 4
@@ -154,6 +159,34 @@ def mock_subprocess():
         mock_result.stderr = ""
         mock.return_value = mock_result
         yield mock
+
+
+@pytest.fixture
+def serial_port():
+    port = os.environ.get("MAVLINK_TEST_SERIAL_PORT")
+    if not port:
+        pytest.skip("Set MAVLINK_TEST_SERIAL_PORT to run serial MAVLink tests")
+    return port
+
+
+@pytest.fixture
+def baudrate():
+    value = os.environ.get("MAVLINK_TEST_BAUDRATE", "115200")
+    try:
+        return int(value)
+    except ValueError:
+        pytest.skip("MAVLINK_TEST_BAUDRATE must be an integer")
+
+
+@pytest.fixture
+def tcp_port():
+    value = os.environ.get("MAVLINK_TEST_TCP_PORT")
+    if not value:
+        pytest.skip("Set MAVLINK_TEST_TCP_PORT to run TCP MAVLink tests")
+    try:
+        return int(value)
+    except ValueError:
+        pytest.skip("MAVLINK_TEST_TCP_PORT must be an integer")
 
 
 @pytest.fixture
@@ -311,11 +344,23 @@ def mock_api_services(monkeypatch):
         "bitrate": 2000,
         "auto_start": True,
     }
-    mock_prefs.get_vpn_config.return_value = {"provider": "tailscale", "auto_connect": True}
+    mock_prefs.get_vpn_config.return_value = {
+        "provider": "tailscale",
+        "auto_connect": True,
+    }
     mock_prefs.get_router_outputs.return_value = [
-        {"id": "test-tcp", "type": "tcp_server", "host": "0.0.0.0", "port": 5760, "enabled": True}
+        {
+            "id": "test-tcp",
+            "type": "tcp_server",
+            "host": "0.0.0.0",
+            "port": 5760,
+            "enabled": True,
+        }
     ]
-    monkeypatch.setattr("app.services.preferences.PreferencesService", lambda *args, **kwargs: mock_prefs)
+    monkeypatch.setattr(
+        "app.services.preferences.PreferencesService",
+        lambda *args, **kwargs: mock_prefs,
+    )
 
     # Mock MAVLinkService
     mock_mavlink = Mock()
@@ -327,7 +372,10 @@ def mock_api_services(monkeypatch):
         "message_count": 150,
         "last_heartbeat": 0.5,
     }
-    monkeypatch.setattr("app.services.mavlink_bridge.MAVLinkBridge", lambda *args, **kwargs: mock_mavlink)
+    monkeypatch.setattr(
+        "app.services.mavlink_bridge.MAVLinkBridge",
+        lambda *args, **kwargs: mock_mavlink,
+    )
 
     # Mock VideoConfig
     mock_video_config = Mock()
@@ -335,7 +383,10 @@ def mock_api_services(monkeypatch):
         {"id": "/dev/video0", "name": "USB Camera", "type": "usbcamera"}
     ]
     mock_video_config.get_available_encoders.return_value = ["h264", "h265", "mjpeg"]
-    monkeypatch.setattr("app.services.video_config.VideoConfig", lambda *args, **kwargs: mock_video_config)
+    monkeypatch.setattr(
+        "app.services.video_config.VideoConfig",
+        lambda *args, **kwargs: mock_video_config,
+    )
 
     return {
         "preferences": mock_prefs,

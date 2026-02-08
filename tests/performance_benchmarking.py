@@ -130,18 +130,18 @@ class PerformanceProfiler:
         print("=" * 60)
 
         summary = self.get_summary()
-        print(f"\nSummary:")
+        print("\nSummary:")
         for key, value in summary.items():
             if isinstance(value, float):
                 print(f"  {key}: {value:.2f}")
             else:
                 print(f"  {key}: {value}")
 
-        print(f"\nSlowest Operations:")
+        print("\nSlowest Operations:")
         for i, metric in enumerate(self.get_slowest(5), 1):
             print(f"  {i}. {metric.operation}: {metric.duration_ms:.2f}ms")
 
-        print(f"\nMost Memory-Intensive:")
+        print("\nMost Memory-Intensive:")
         for i, metric in enumerate(self.get_most_memory_intensive(5), 1):
             print(f"  {i}. {metric.operation}: {metric.memory_mb:.2f}MB")
 

@@ -1,6 +1,6 @@
 /**
  * TabBar Component Tests
- * 
+ *
  * Tests for the TabBar component which handles tab navigation
  */
 
@@ -77,7 +77,9 @@ describe('TabBar Component', () => {
 
   it('updates active tab when activeTab prop changes', () => {
     const mockOnChange = vi.fn()
-    const { rerender } = render(<TabBar tabs={mockTabs} activeTab="dashboard" onTabChange={mockOnChange} />)
+    const { rerender } = render(
+      <TabBar tabs={mockTabs} activeTab="dashboard" onTabChange={mockOnChange} />
+    )
 
     let dashboardTab = screen.getByRole('button', { name: 'Dashboard' })
     expect(dashboardTab).toHaveClass('active')

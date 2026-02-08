@@ -41,7 +41,12 @@ class OpenH264Encoder(VideoEncoderProvider):
             "codec_family": self.codec_family,
             "encoder_type": self.encoder_type,
             "available": self.is_available(),
-            "supported_resolutions": [(640, 480), (960, 720), (1280, 720), (1920, 1080)],
+            "supported_resolutions": [
+                (640, 480),
+                (960, 720),
+                (1280, 720),
+                (1920, 1080),
+            ],
             "supported_framerates": [15, 24, 25, 30, 60],
             "min_bitrate": 500,
             "max_bitrate": 8000,
@@ -51,7 +56,10 @@ class OpenH264Encoder(VideoEncoderProvider):
             "latency_estimate": "very-low",  # ~20-50ms with gop-size=2 (2 keyframes/sec at 30fps)
             "cpu_usage": "low",  # ~25-35% on 720p30 (ARM NEON)
             "priority": self.priority,
-            "description": "Optimizado para FPV. Baja latencia (<50ms), menor CPU que x264. Gop-size ajustable: 1 (latencia mínima) a 15 (mayor compresión).",
+            "description": (
+                "Optimizado para FPV. Baja latencia (<50ms), menor CPU que x264. "
+                "Gop-size ajustable: 1 (latencia mínima) a 15 (mayor compresión)."
+            ),
         }
 
     def build_pipeline_elements(self, config: Dict) -> Dict:
@@ -80,7 +88,12 @@ class OpenH264Encoder(VideoEncoderProvider):
                 {
                     "name": "queue_pre",
                     "element": "queue",
-                    "properties": {"max-size-buffers": 2, "max-size-time": 0, "max-size-bytes": 0, "leaky": 2},
+                    "properties": {
+                        "max-size-buffers": 2,
+                        "max-size-time": 0,
+                        "max-size-bytes": 0,
+                        "leaky": 2,
+                    },
                 },
                 {
                     "name": "encoder",
@@ -94,9 +107,18 @@ class OpenH264Encoder(VideoEncoderProvider):
                 {
                     "name": "queue_post",
                     "element": "queue",
-                    "properties": {"max-size-buffers": 3, "max-size-time": 0, "max-size-bytes": 0, "leaky": 2},
+                    "properties": {
+                        "max-size-buffers": 3,
+                        "max-size-time": 0,
+                        "max-size-bytes": 0,
+                        "leaky": 2,
+                    },
                 },
-                {"name": "h264parse", "element": "h264parse", "properties": {"config-interval": -1}},
+                {
+                    "name": "h264parse",
+                    "element": "h264parse",
+                    "properties": {"config-interval": -1},
+                },
             ]
 
             return {
@@ -105,7 +127,11 @@ class OpenH264Encoder(VideoEncoderProvider):
                 "caps": [],
                 "rtp_payload_type": self.rtp_payload_type,
                 "rtp_payloader": "rtph264pay",
-                "rtp_payloader_properties": {"pt": self.rtp_payload_type, "mtu": 1400, "config-interval": -1},
+                "rtp_payloader_properties": {
+                    "pt": self.rtp_payload_type,
+                    "mtu": 1400,
+                    "config-interval": -1,
+                },
             }
         except Exception as e:
             logger.error(f"Failed to build OpenH264 pipeline: {e}")
@@ -136,7 +162,9 @@ class OpenH264Encoder(VideoEncoderProvider):
                 "min": 1,
                 "max": 15,
                 "default": 2,
-                "description": "Keyframe interval (frames). 1=menor latencia/+bitrate, 5=equilibrio, 15=+compresión/-latencia",
+                "description": (
+                    "Keyframe interval (frames). 1=menor latencia/+bitrate, " "5=equilibrio, 15=+compresión/-latencia"
+                ),
                 "multiplier": 1,  # Direct frame count
             },
         }

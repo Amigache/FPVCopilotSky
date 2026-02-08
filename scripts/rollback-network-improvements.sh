@@ -1,6 +1,6 @@
 #!/bin/bash
 # Network Improvements Rollback - EMERGENCY USE ONLY
-# 
+#
 # This script restores the network service to a previous state.
 # Use ONLY if network connectivity is completely broken after deployment.
 #
@@ -21,7 +21,7 @@ PROJECT_DIR="/opt/FPVCopilotSky"
 
 echo -e "${BOLD}⚠️  NETWORK ROLLBACK - EMERGENCY RECOVERY${NC}\n"
 
-if [ "$EUID" -ne 0 ]; then 
+if [ "$EUID" -ne 0 ]; then
     echo -e "${RED}❌ Run with sudo${NC}"
     exit 1
 fi
@@ -68,4 +68,3 @@ else
     journalctl -u fpvcopilot-sky -n 30 -e
     exit 1
 fi
-

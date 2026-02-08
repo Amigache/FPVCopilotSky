@@ -63,7 +63,12 @@ class TestPreferencesFile:
     def test_preferences_default_values(self, tmp_path):
         """Test preferences with default values"""
         prefs_file = tmp_path / "prefs.json"
-        defaults = {"language": "en", "theme": "dark", "autostart": False, "loglevel": "info"}
+        defaults = {
+            "language": "en",
+            "theme": "dark",
+            "autostart": False,
+            "loglevel": "info",
+        }
         prefs_file.write_text(json.dumps(defaults))
 
         with open(prefs_file, "r") as f:
@@ -87,7 +92,12 @@ class TestConfigurationValidation:
 
     def test_validate_data_types(self):
         """Test validating configuration data types"""
-        config = {"port": 8000, "host": "localhost", "debug": True, "tags": ["api", "v1"]}
+        config = {
+            "port": 8000,
+            "host": "localhost",
+            "debug": True,
+            "tags": ["api", "v1"],
+        }
 
         assert isinstance(config["port"], int)
         assert isinstance(config["host"], str)
@@ -136,7 +146,11 @@ class TestConfigurationPersistence:
     def test_save_and_load_config(self, tmp_path):
         """Test saving configuration to file and loading it back"""
         config_file = tmp_path / "config.json"
-        config_data = {"app_name": "FPV Copilot Sky", "version": "1.0.0", "endpoints": {"api": "/api", "ws": "/ws"}}
+        config_data = {
+            "app_name": "FPV Copilot Sky",
+            "version": "1.0.0",
+            "endpoints": {"api": "/api", "ws": "/ws"},
+        }
 
         # Save
         with open(config_file, "w") as f:

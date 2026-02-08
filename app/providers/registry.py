@@ -5,7 +5,13 @@ Enables dynamic provider discovery and instantiation
 
 import logging
 from typing import Dict, Type, Optional, List
-from .base import VPNProvider, ModemProvider, NetworkInterface, VideoEncoderProvider, VideoSourceProvider
+from .base import (
+    VPNProvider,
+    ModemProvider,
+    NetworkInterface,
+    VideoEncoderProvider,
+    VideoSourceProvider,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -351,7 +357,10 @@ class ProviderRegistry:
                     logger.error(f"Error getting capabilities for encoder '{codec_id}': {e}")
 
         # Sort by priority (higher first), then by availability
-        available.sort(key=lambda x: (x["available"], x["capabilities"].get("priority", 0)), reverse=True)
+        available.sort(
+            key=lambda x: (x["available"], x["capabilities"].get("priority", 0)),
+            reverse=True,
+        )
 
         return available
 
@@ -490,7 +499,7 @@ class ProviderRegistry:
 
         # Sort by provider priority (highest first)
         all_sources.sort(
-            key=lambda s: self.get_video_source(s["type"]).priority if self.get_video_source(s["type"]) else 0,
+            key=lambda s: (self.get_video_source(s["type"]).priority if self.get_video_source(s["type"]) else 0),
             reverse=True,
         )
 

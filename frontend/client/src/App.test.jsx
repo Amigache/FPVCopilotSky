@@ -1,11 +1,11 @@
 /**
  * App Component Tests
- * 
+ *
  * Tests for the main App component
  */
 
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
 
@@ -97,7 +97,9 @@ describe('App Component', () => {
     render(<App />)
 
     const videoTab = screen.getByTestId('tab-video')
-    await user.click(videoTab)
+    await act(async () => {
+      await user.click(videoTab)
+    })
 
     expect(screen.getByText('Content: video')).toBeInTheDocument()
   })
@@ -124,15 +126,21 @@ describe('App Component', () => {
     expect(screen.getByText('Content: dashboard')).toBeInTheDocument()
 
     // Click telemetry
-    await user.click(screen.getByTestId('tab-telemetry'))
+    await act(async () => {
+      await user.click(screen.getByTestId('tab-telemetry'))
+    })
     expect(screen.getByText('Content: telemetry')).toBeInTheDocument()
 
     // Click system
-    await user.click(screen.getByTestId('tab-system'))
+    await act(async () => {
+      await user.click(screen.getByTestId('tab-system'))
+    })
     expect(screen.getByText('Content: system')).toBeInTheDocument()
 
     // Back to dashboard
-    await user.click(screen.getByTestId('tab-dashboard'))
+    await act(async () => {
+      await user.click(screen.getByTestId('tab-dashboard'))
+    })
     expect(screen.getByText('Content: dashboard')).toBeInTheDocument()
   })
 

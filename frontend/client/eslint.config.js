@@ -36,12 +36,12 @@ export default [
     rules: {
       // Phase 2: Tightened rules - warnings converted to errors
       'no-unused-vars': [
-        'error', 
-        { 
+        'error',
+        {
           argsIgnorePattern: '^_',
           varsIgnorePattern: '^_',
-          caughtErrorsIgnorePattern: '^_' // Ignore errors prefixed with _
-        }
+          caughtErrorsIgnorePattern: '^_', // Ignore errors prefixed with _
+        },
       ],
       'no-prototype-builtins': 'error',
       'no-undef': 'error',

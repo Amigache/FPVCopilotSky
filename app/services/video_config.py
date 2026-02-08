@@ -4,10 +4,9 @@ Supports MJPEG and H.264 encoding with UDP output
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict
 import subprocess
 import glob
-import os
 import re
 
 
@@ -17,7 +16,12 @@ def get_device_identity(device: str) -> Optional[Dict[str, str]]:
     Returns None if the device is not a valid capture device.
     """
     try:
-        result = subprocess.run(["v4l2-ctl", "--device", device, "--info"], capture_output=True, text=True, timeout=2)
+        result = subprocess.run(
+            ["v4l2-ctl", "--device", device, "--info"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
         if result.returncode != 0:
             return None
 
@@ -88,7 +92,10 @@ def auto_detect_camera() -> str:
             try:
                 # Check if it's a USB camera (uvcvideo driver)
                 result = subprocess.run(
-                    ["v4l2-ctl", "--device", device, "--info"], capture_output=True, text=True, timeout=2
+                    ["v4l2-ctl", "--device", device, "--info"],
+                    capture_output=True,
+                    text=True,
+                    timeout=2,
                 )
 
                 if result.returncode == 0:
@@ -117,7 +124,12 @@ def get_device_resolutions(device: str) -> Dict:
     """
     try:
         # Get device info
-        info_result = subprocess.run(["v4l2-ctl", "-d", device, "--info"], capture_output=True, text=True, timeout=5)
+        info_result = subprocess.run(
+            ["v4l2-ctl", "-d", device, "--info"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
 
         device_name = device
         device_type = "Dispositivo de captura"
@@ -149,7 +161,10 @@ def get_device_resolutions(device: str) -> Dict:
 
         # Get formats and resolutions with FPS
         result = subprocess.run(
-            ["v4l2-ctl", "-d", device, "--list-formats-ext"], capture_output=True, text=True, timeout=5
+            ["v4l2-ctl", "-d", device, "--list-formats-ext"],
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
 
         resolutions_fps = {}  # {resolution: [fps list]}
@@ -188,7 +203,9 @@ def get_device_resolutions(device: str) -> Dict:
 
         # Sort resolutions by pixel count (highest first)
         sorted_resolutions = sorted(
-            resolutions_fps.keys(), key=lambda x: tuple(map(int, x.split("x"))) if "x" in x else (0, 0), reverse=True
+            resolutions_fps.keys(),
+            key=lambda x: tuple(map(int, x.split("x"))) if "x" in x else (0, 0),
+            reverse=True,
         )
 
         return {

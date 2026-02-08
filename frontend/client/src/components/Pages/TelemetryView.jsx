@@ -12,18 +12,18 @@ const TelemetryView = () => {
   const { showToast } = useToast()
   const { showModal } = useModal()
   const { messages } = useWebSocket()
-  
+
   // Router state
   const [outputs, setOutputs] = useState([])
   const [presets, setPresets] = useState({})
   const [loading, setLoading] = useState(false)
-  
+
   // Form state
   const [outputType, setOutputType] = useState('tcp_server')
   const [host, setHost] = useState('0.0.0.0')
   const [port, setPort] = useState('14550')
   const [editingId, setEditingId] = useState(null)
-  
+
   // Load presets from API
   const loadPresets = useCallback(async () => {
     try {
@@ -40,11 +40,11 @@ const TelemetryView = () => {
       setPresets({
         qgc_udp: { type: 'udp', host: '0.0.0.0', port: '14550' },
         mission_planner_tcp: { type: 'tcp_server', host: '0.0.0.0', port: '5760' },
-        tcp_client: { type: 'tcp_client', host: '192.168.1.100', port: '5760' }
+        tcp_client: { type: 'tcp_client', host: '192.168.1.100', port: '5760' },
       })
     }
   }, [])
-  
+
   const fetchOutputs = useCallback(async () => {
     try {
       // Fetch router outputs
@@ -59,31 +59,31 @@ const TelemetryView = () => {
       console.error('Error fetching outputs:', error)
     }
   }, [])
-  
+
   // Load outputs and presets on mount
   useEffect(() => {
     fetchOutputs()
     loadPresets()
   }, [fetchOutputs, loadPresets])
-  
+
   // Listen for router updates via WebSocket
   useEffect(() => {
     if (messages.router_status) {
       setOutputs(messages.router_status)
     }
   }, [messages.router_status])
-  
+
   const handleCancelEdit = () => {
     setEditingId(null)
     setOutputType('tcp_server')
     setHost('0.0.0.0')
     setPort('14550')
   }
-  
+
   const handleCreateOutput = async (e) => {
     e.preventDefault()
     setLoading(true)
-    
+
     try {
       if (editingId) {
         // Update existing output
@@ -93,10 +93,10 @@ const TelemetryView = () => {
           body: JSON.stringify({
             type: outputType,
             host: host,
-            port: parseInt(port)
-          })
+            port: parseInt(port),
+          }),
         })
-        
+
         if (response.ok) {
           showToast(t('router.outputUpdated'), 'success')
           handleCancelEdit()
@@ -113,10 +113,10 @@ const TelemetryView = () => {
           body: JSON.stringify({
             type: outputType,
             host: host,
-            port: parseInt(port)
-          })
+            port: parseInt(port),
+          }),
         })
-        
+
         if (response.ok) {
           showToast(t('router.outputCreated'), 'success')
           // Clear form
@@ -145,10 +145,10 @@ const TelemetryView = () => {
     // Scroll to form
     document.querySelector('.router-form')?.scrollIntoView({ behavior: 'smooth' })
   }
-  
+
   const handleDeleteOutput = async (outputId) => {
-    const output = outputs.find(o => o.id === outputId)
-    
+    const output = outputs.find((o) => o.id === outputId)
+
     showModal({
       title: t('router.confirmDelete'),
       message: `${t('router.confirmDeleteMessage')} ${output?.host}:${output?.port}?`,
@@ -158,9 +158,9 @@ const TelemetryView = () => {
       onConfirm: async () => {
         try {
           const response = await fetchWithTimeout(`${API_MAVLINK_ROUTER}/outputs/${outputId}`, {
-            method: 'DELETE'
+            method: 'DELETE',
           })
-          
+
           if (response.ok) {
             showToast(t('router.outputDeleted'), 'success')
             await fetchOutputs()
@@ -171,22 +171,22 @@ const TelemetryView = () => {
           showToast(t('router.deleteError'), 'error')
           console.error('Error deleting output:', error)
         }
-      }
+      },
     })
   }
-  
+
   const applyPreset = (presetKey) => {
     const preset = presets[presetKey]
     setOutputType(preset.type)
     setHost(preset.host)
     setPort(preset.port.toString())
   }
-  
+
   const getTypeLabel = (type) => {
     const typeMap = {
-      'tcp_server': t('router.tcpServer'),
-      'tcp_client': t('router.tcpClient'),
-      'udp': t('router.udp')
+      tcp_server: t('router.tcpServer'),
+      tcp_client: t('router.tcpClient'),
+      udp: t('router.udp'),
     }
     return typeMap[type] || type
   }
@@ -196,14 +196,14 @@ const TelemetryView = () => {
       {/* MAVLink Router Card */}
       <div className="card router-card">
         <h2>📡 {t('router.title')}</h2>
-        
+
         {/* Create Output Form */}
         <form onSubmit={handleCreateOutput} className="router-form">
           <div className="connection-grid">
             <div className="form-group">
               <label>{t('router.type')}</label>
-              <select 
-                value={outputType} 
+              <select
+                value={outputType}
                 onChange={(e) => setOutputType(e.target.value)}
                 disabled={loading}
               >
@@ -212,7 +212,7 @@ const TelemetryView = () => {
                 <option value="udp">{t('router.udp')}</option>
               </select>
             </div>
-            
+
             <div className="form-group">
               <PeerSelector
                 label={t('router.host')}
@@ -222,7 +222,7 @@ const TelemetryView = () => {
                 placeholder="0.0.0.0"
               />
             </div>
-            
+
             <div className="form-group">
               <label>{t('router.port')}</label>
               <input
@@ -236,32 +236,33 @@ const TelemetryView = () => {
               />
             </div>
           </div>
-          
+
           <div className="button-group">
             <button type="submit" className="btn-primary" disabled={loading}>
-              {editingId ? '💾 ' : '➕ '}{editingId ? t('router.save') : t('router.create')}
+              {editingId ? '💾 ' : '➕ '}
+              {editingId ? t('router.save') : t('router.create')}
             </button>
             {editingId && (
-              <button 
-                type="button" 
-                className="btn-secondary" 
+              <button
+                type="button"
+                className="btn-secondary"
                 onClick={handleCancelEdit}
                 disabled={loading}
               >
                 ❌ {t('router.cancel')}
               </button>
             )}
-            <button 
-              type="button" 
-              className="btn-secondary" 
+            <button
+              type="button"
+              className="btn-secondary"
               onClick={() => applyPreset('qgc_udp')}
               disabled={loading}
             >
               📱 {t('router.presetQGC')}
             </button>
-            <button 
-              type="button" 
-              className="btn-secondary" 
+            <button
+              type="button"
+              className="btn-secondary"
               onClick={() => applyPreset('mission_planner_tcp')}
               disabled={loading}
             >
@@ -269,20 +270,22 @@ const TelemetryView = () => {
             </button>
           </div>
         </form>
-        
+
         {/* Configured Outputs */}
         {outputs.length > 0 && (
           <div className="outputs-section">
             <h3>📋 {t('router.configuredOutputs')}</h3>
             <div className="outputs-list">
-              {outputs.map(output => (
+              {outputs.map((output) => (
                 <div key={output.id} className={`output-item ${output.running ? 'active' : ''}`}>
                   <div className="output-info">
                     <span className={`status-indicator ${output.running ? 'running' : 'stopped'}`}>
                       {output.running ? '🟢' : '🔴'}
                     </span>
                     <span className="output-type">{getTypeLabel(output.type)}</span>
-                    <span className="output-address">{output.host}:{output.port}</span>
+                    <span className="output-address">
+                      {output.host}:{output.port}
+                    </span>
                     {output.type === 'tcp_server' && (
                       <span className="client-count">
                         👥 {output.clients || 0} {t('router.clients')}
@@ -295,17 +298,14 @@ const TelemetryView = () => {
                     )}
                   </div>
                   <div className="output-actions">
-                    <button 
-                      className="btn-edit" 
+                    <button
+                      className="btn-edit"
                       onClick={() => handleEditOutput(output)}
                       disabled={loading}
                     >
                       ✏️ {t('router.edit')}
                     </button>
-                    <button 
-                      className="btn-delete" 
-                      onClick={() => handleDeleteOutput(output.id)}
-                    >
+                    <button className="btn-delete" onClick={() => handleDeleteOutput(output.id)}>
                       🗑 {t('router.delete')}
                     </button>
                   </div>

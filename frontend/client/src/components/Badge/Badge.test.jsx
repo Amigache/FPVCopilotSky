@@ -1,6 +1,6 @@
 /**
  * Badge Component Tests
- * 
+ *
  * Tests for the Badge component which displays status indicators
  */
 

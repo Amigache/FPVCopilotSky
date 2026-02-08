@@ -41,7 +41,12 @@ class X264Encoder(VideoEncoderProvider):
             "codec_family": self.codec_family,
             "encoder_type": self.encoder_type,
             "available": self.is_available(),
-            "supported_resolutions": [(640, 480), (960, 720), (1280, 720), (1920, 1080)],
+            "supported_resolutions": [
+                (640, 480),
+                (960, 720),
+                (1280, 720),
+                (1920, 1080),
+            ],
             "supported_framerates": [15, 24, 25, 30, 60],
             "min_bitrate": 100,
             "max_bitrate": 10000,
@@ -79,7 +84,12 @@ class X264Encoder(VideoEncoderProvider):
                 {
                     "name": "queue_pre",
                     "element": "queue",
-                    "properties": {"max-size-buffers": 2, "max-size-time": 0, "max-size-bytes": 0, "leaky": 2},
+                    "properties": {
+                        "max-size-buffers": 2,
+                        "max-size-time": 0,
+                        "max-size-bytes": 0,
+                        "leaky": 2,
+                    },
                 },
                 {
                     "name": "encoder",
@@ -99,9 +109,18 @@ class X264Encoder(VideoEncoderProvider):
                 {
                     "name": "queue_post",
                     "element": "queue",
-                    "properties": {"max-size-buffers": 3, "max-size-time": 0, "max-size-bytes": 0, "leaky": 2},
+                    "properties": {
+                        "max-size-buffers": 3,
+                        "max-size-time": 0,
+                        "max-size-bytes": 0,
+                        "leaky": 2,
+                    },
                 },
-                {"name": "h264parse", "element": "h264parse", "properties": {"config-interval": -1}},
+                {
+                    "name": "h264parse",
+                    "element": "h264parse",
+                    "properties": {"config-interval": -1},
+                },
             ]
 
             return {
@@ -110,7 +129,11 @@ class X264Encoder(VideoEncoderProvider):
                 "caps": [],
                 "rtp_payload_type": self.rtp_payload_type,
                 "rtp_payloader": "rtph264pay",
-                "rtp_payloader_properties": {"pt": self.rtp_payload_type, "mtu": 1400, "config-interval": -1},
+                "rtp_payloader_properties": {
+                    "pt": self.rtp_payload_type,
+                    "mtu": 1400,
+                    "config-interval": -1,
+                },
             }
         except Exception as e:
             logger.error(f"Failed to build x264 pipeline: {e}")

@@ -47,7 +47,7 @@ echo "$result" | python3 -m json.tool
 
 if echo "$result" | grep -q '"success": true'; then
     echo -e "${GREEN}✅ Auto-adjust successful${NC}"
-    
+
     # Check if network changed
     if echo "$result" | grep -q '"changed": true'; then
         reason=$(echo "$result" | python3 -c "import sys, json; print(json.load(sys.stdin).get('reason', 'N/A'))")

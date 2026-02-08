@@ -26,13 +26,13 @@ echo -e "${BLUE}🔍${NC} Checking for USB modems..."
 # Function to configure Huawei modems
 configure_huawei_modem() {
     echo -e "${YELLOW}🔄${NC} Huawei modem found in mass storage mode, switching to modem mode..."
-    
+
     if sudo usb_modeswitch -v 12d1 -p 1f01 -M "55534243123456780000000000000a11062000000000000100000000000000" 2>/dev/null; then
         echo -e "${GREEN}✅${NC} Mode switch command executed successfully"
-        
+
         echo "   Waiting 5 seconds for modem to switch modes..."
         sleep 5
-        
+
         if lsusb | grep -q "12d1:14dc.*HiLink Modem"; then
             echo -e "${GREEN}✅${NC} Huawei modem successfully switched to HiLink modem mode"
         elif lsusb | grep -q "12d1:"; then
@@ -66,7 +66,7 @@ fi
 echo -e "\n${BLUE}🔍${NC} Checking ModemManager detection..."
 if command -v mmcli &> /dev/null; then
     sleep 2  # Wait for ModemManager to detect
-    
+
     MMCLI_OUTPUT=$(mmcli -L 2>/dev/null || echo "")
     if echo "$MMCLI_OUTPUT" | grep -q "^/org/freedesktop/ModemManager1/Modem/"; then
         MODEM_COUNT=$(echo "$MMCLI_OUTPUT" | grep -c "^/org/freedesktop/ModemManager1/Modem/" || echo "0")
@@ -79,12 +79,12 @@ if command -v mmcli &> /dev/null; then
         if lsusb | grep -q "12d1:14dc.*HiLink"; then
             echo -e "${BLUE}ℹ️${NC}  Note: HiLink modems (like E3372) work as network interfaces, not traditional modems"
             echo "   This is NORMAL behavior - your modem is working correctly!"
-            
+
             # Check HiLink network status
             if ip addr show | grep -A5 "enx" | grep -q "192\.168\.8\."; then
                 HILINK_IP=$(ip addr show | grep "inet.*192\.168\.8\." | awk '{print $2}' | head -1)
                 echo -e "${GREEN}✅${NC} HiLink network interface active: $HILINK_IP"
-                
+
                 if ping -c 1 -W 2 192.168.8.1 &>/dev/null; then
                     echo -e "${GREEN}✅${NC} HiLink gateway 192.168.8.1 responding - modem is fully functional!"
                 else
