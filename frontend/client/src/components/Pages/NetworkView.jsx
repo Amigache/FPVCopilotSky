@@ -80,7 +80,8 @@ const NetworkView = () => {
       setLoading(false)
     }
     loadAll()
-  }, [loadStatus])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Lazy load WiFi networks after initial load
   useEffect(() => {
