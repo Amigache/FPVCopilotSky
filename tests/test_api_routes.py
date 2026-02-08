@@ -21,6 +21,7 @@ class TestStatusRouteModule:
         """Test that status route can be imported"""
         try:
             from app.api.routes import status
+
             assert hasattr(status, "router"), "Status module should have router"
         except ImportError as e:
             pytest.skip(f"Status route import failed: {e}")
@@ -38,6 +39,7 @@ class TestSystemRouteModule:
         """Test that system route can be imported"""
         try:
             from app.api.routes import system
+
             assert hasattr(system, "router"), "System module should have router"
         except ImportError as e:
             pytest.skip(f"System route import failed: {e}")
@@ -55,6 +57,7 @@ class TestNetworkRouteModule:
         """Test that network route can be imported"""
         try:
             from app.api.routes import network
+
             assert hasattr(network, "router"), "Network module should have router"
         except ImportError as e:
             pytest.skip(f"Network route import failed: {e}")
@@ -72,6 +75,7 @@ class TestVideoRouteModule:
         """Test that video route can be imported"""
         try:
             from app.api.routes import video
+
             assert hasattr(video, "router"), "Video module should have router"
         except ImportError as e:
             pytest.skip(f"Video route import failed: {e}")
@@ -89,6 +93,7 @@ class TestVPNRouteModule:
         """Test that VPN route can be imported"""
         try:
             from app.api.routes import vpn
+
             assert hasattr(vpn, "router"), "VPN module should have router"
         except ImportError as e:
             pytest.skip(f"VPN route import failed: {e}")
@@ -106,6 +111,7 @@ class TestModemRouteModule:
         """Test that modem route can be imported"""
         try:
             from app.api.routes import modem
+
             assert hasattr(modem, "router"), "Modem module should have router"
         except ImportError as e:
             pytest.skip(f"Modem route import failed: {e}")
@@ -116,9 +122,7 @@ class TestRouteStructure:
 
     def test_all_route_files_have_routers(self):
         """Test that all route files define routers"""
-        route_files = [
-            "status", "system", "network", "video", "vpn", "modem"
-        ]
+        route_files = ["status", "system", "network", "video", "vpn", "modem"]
         for route_name in route_files:
             try:
                 module = __import__(f"app.api.routes.{route_name}", fromlist=[route_name])

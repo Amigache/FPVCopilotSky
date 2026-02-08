@@ -18,6 +18,7 @@ class TestServicesImports:
         """Test that preferences service module exists"""
         try:
             from app.services import preferences
+
             assert preferences is not None
         except ImportError:
             pytest.skip("Preferences service not available")
@@ -26,6 +27,7 @@ class TestServicesImports:
         """Test that MAVLink bridge module exists"""
         try:
             from app.services import mavlink_bridge
+
             assert mavlink_bridge is not None
         except ImportError:
             pytest.skip("MAVLink bridge not available")
@@ -34,6 +36,7 @@ class TestServicesImports:
         """Test that WebSocket manager module exists"""
         try:
             from app.services import websocket_manager
+
             assert websocket_manager is not None
         except ImportError:
             pytest.skip("WebSocket manager not available")
@@ -46,6 +49,7 @@ class TestProvidersExists:
         """Test that providers package exists"""
         try:
             from app import providers
+
             assert providers is not None
         except ImportError:
             pytest.skip("Providers package not available")
@@ -54,6 +58,7 @@ class TestProvidersExists:
         """Test that board provider module exists"""
         try:
             from app.providers import board
+
             assert board is not None
         except ImportError:
             pytest.skip("Board provider not available")
@@ -62,6 +67,7 @@ class TestProvidersExists:
         """Test that network providers module exists"""
         try:
             from app.providers import network
+
             assert network is not None
         except ImportError:
             pytest.skip("Network providers not available")
