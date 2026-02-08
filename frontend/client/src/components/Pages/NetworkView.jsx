@@ -86,7 +86,7 @@ const NetworkView = () => {
   // Lazy load WiFi networks after initial load
   useEffect(() => {
     if (!loading) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+       
       loadWifiNetworks()
     }
   }, [loading, loadWifiNetworks])
@@ -94,7 +94,7 @@ const NetworkView = () => {
   // Lazy load modem status after initial load
   useEffect(() => {
     if (!loading) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+       
       loadHilinkStatus()
     }
   }, [loading, loadHilinkStatus])
@@ -102,7 +102,7 @@ const NetworkView = () => {
   // Update from WebSocket - network status
   useEffect(() => {
     if (messages.network_status) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+       
       setStatus(messages.network_status)
       setLoading(false)
     }

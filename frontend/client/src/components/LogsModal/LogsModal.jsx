@@ -24,7 +24,7 @@ const LogsModal = ({ show, onClose, type, onRefresh }) => {
     if (show) {
       loadLogs();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [show, type, loadLogs]);
 
   const handleRefresh = () => {
