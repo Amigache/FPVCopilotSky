@@ -27,7 +27,9 @@ class OpenH264Encoder(VideoEncoderProvider):
     def is_available(self) -> bool:
         """Check if openh264enc is available in GStreamer"""
         try:
-            result = subprocess.run(["gst-inspect-1.0", "openh264enc"], capture_output=True, timeout=2)
+            result = subprocess.run(
+                ["gst-inspect-1.0", "openh264enc"], capture_output=True, timeout=2
+            )
             return result.returncode == 0
         except Exception as e:
             logger.error(f"Failed to check openh264enc availability: {e}")
@@ -41,7 +43,12 @@ class OpenH264Encoder(VideoEncoderProvider):
             "codec_family": self.codec_family,
             "encoder_type": self.encoder_type,
             "available": self.is_available(),
-            "supported_resolutions": [(640, 480), (960, 720), (1280, 720), (1920, 1080)],
+            "supported_resolutions": [
+                (640, 480),
+                (960, 720),
+                (1280, 720),
+                (1920, 1080),
+            ],
             "supported_framerates": [15, 24, 25, 30, 60],
             "min_bitrate": 500,
             "max_bitrate": 8000,
@@ -80,13 +87,19 @@ class OpenH264Encoder(VideoEncoderProvider):
                 {
                     "name": "queue_pre",
                     "element": "queue",
-                    "properties": {"max-size-buffers": 2, "max-size-time": 0, "max-size-bytes": 0, "leaky": 2},
+                    "properties": {
+                        "max-size-buffers": 2,
+                        "max-size-time": 0,
+                        "max-size-bytes": 0,
+                        "leaky": 2,
+                    },
                 },
                 {
                     "name": "encoder",
                     "element": "openh264enc",
                     "properties": {
-                        "bitrate": bitrate * 1000,  # OpenH264 expects bps (bits per second)
+                        "bitrate": bitrate
+                        * 1000,  # OpenH264 expects bps (bits per second)
                         "rate-control": 1,  # CBR (Constant Bitrate) mode
                         "gop-size": gop_size,  # Keyframe interval from config
                     },
@@ -94,9 +107,18 @@ class OpenH264Encoder(VideoEncoderProvider):
                 {
                     "name": "queue_post",
                     "element": "queue",
-                    "properties": {"max-size-buffers": 3, "max-size-time": 0, "max-size-bytes": 0, "leaky": 2},
+                    "properties": {
+                        "max-size-buffers": 3,
+                        "max-size-time": 0,
+                        "max-size-bytes": 0,
+                        "leaky": 2,
+                    },
                 },
-                {"name": "h264parse", "element": "h264parse", "properties": {"config-interval": -1}},
+                {
+                    "name": "h264parse",
+                    "element": "h264parse",
+                    "properties": {"config-interval": -1},
+                },
             ]
 
             return {
@@ -105,7 +127,11 @@ class OpenH264Encoder(VideoEncoderProvider):
                 "caps": [],
                 "rtp_payload_type": self.rtp_payload_type,
                 "rtp_payloader": "rtph264pay",
-                "rtp_payloader_properties": {"pt": self.rtp_payload_type, "mtu": 1400, "config-interval": -1},
+                "rtp_payloader_properties": {
+                    "pt": self.rtp_payload_type,
+                    "mtu": 1400,
+                    "config-interval": -1,
+                },
             }
         except Exception as e:
             logger.error(f"Failed to build OpenH264 pipeline: {e}")

@@ -214,7 +214,9 @@ class TestPreferencesIntegration:
                 for i in range(20):
                     # Mix of operations
                     if i % 3 == 0:
-                        prefs.set_serial_config(port=f"/dev/ttyUSB{worker_id}", baudrate=115200)
+                        prefs.set_serial_config(
+                            port=f"/dev/ttyUSB{worker_id}", baudrate=115200
+                        )
                     elif i % 3 == 1:
                         prefs.set_video_config({"bitrate": 1000 + worker_id * 100})
                     else:

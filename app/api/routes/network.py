@@ -75,7 +75,9 @@ async def _run_command(cmd: List[str]) -> tuple:
 
 async def _detect_wifi_interface() -> Optional[str]:
     """Detect WiFi interface using nmcli"""
-    stdout, _, returncode = await _run_command(["nmcli", "-t", "-f", "DEVICE,TYPE,STATE", "device"])
+    stdout, _, returncode = await _run_command(
+        ["nmcli", "-t", "-f", "DEVICE,TYPE,STATE", "device"]
+    )
     if returncode == 0:
         for line in stdout.split("\n"):
             if ":wifi:" in line:
@@ -120,7 +122,9 @@ async def _get_interfaces() -> List[Dict]:
                         gateway = parts[i + 1]
 
                 if iface:
-                    if iface not in routes_by_iface or (metric and metric < routes_by_iface[iface].get("metric", 999)):
+                    if iface not in routes_by_iface or (
+                        metric and metric < routes_by_iface[iface].get("metric", 999)
+                    ):
                         routes_by_iface[iface] = {"metric": metric, "gateway": gateway}
 
     # Get interface details
@@ -129,7 +133,9 @@ async def _get_interfaces() -> List[Dict]:
     if returncode == 0:
         seen_interfaces = set()
         for line in stdout.split("\n"):
-            match = re.search(r"^\d+:\s+(\S+)\s+inet\s+(\d+\.\d+\.\d+\.\d+)/(\d+)", line)
+            match = re.search(
+                r"^\d+:\s+(\S+)\s+inet\s+(\d+\.\d+\.\d+\.\d+)/(\d+)", line
+            )
             if match:
                 iface = match.group(1)
                 ip = match.group(2)
@@ -138,7 +144,9 @@ async def _get_interfaces() -> List[Dict]:
                     seen_interfaces.add(iface)
 
                     # Get interface state
-                    state_stdout, _, _ = await _run_command(["ip", "link", "show", iface])
+                    state_stdout, _, _ = await _run_command(
+                        ["ip", "link", "show", iface]
+                    )
                     state = "UP" if "state UP" in state_stdout else "DOWN"
 
                     # Determine interface type
@@ -147,13 +155,19 @@ async def _get_interfaces() -> List[Dict]:
                     if iface.startswith("wlan") or iface.startswith("wl"):
                         iface_type = "wifi"
                         # Get WiFi connection name
-                        nmcli_stdout, _, _ = await _run_command(["nmcli", "-t", "-f", "DEVICE,CONNECTION", "device"])
+                        nmcli_stdout, _, _ = await _run_command(
+                            ["nmcli", "-t", "-f", "DEVICE,CONNECTION", "device"]
+                        )
                         for nmcli_line in nmcli_stdout.split("\n"):
                             if nmcli_line.startswith(f"{iface}:"):
                                 parts = nmcli_line.split(":")
                                 if len(parts) > 1 and parts[1]:
                                     connection = parts[1]
-                    elif "192.168.8." in ip or iface.startswith("enx") or iface.startswith("usb"):
+                    elif (
+                        "192.168.8." in ip
+                        or iface.startswith("enx")
+                        or iface.startswith("usb")
+                    ):
                         iface_type = "modem"
                     elif iface.startswith("eth") or iface.startswith("en"):
                         iface_type = "ethernet"
@@ -195,7 +209,9 @@ async def _scan_wifi_networks() -> List[Dict]:
                 break
 
     # Scan WiFi networks (requires sudo)
-    stdout, _, returncode = await _run_command(["sudo", "iw", "dev", wifi_interface, "scan"])
+    stdout, _, returncode = await _run_command(
+        ["sudo", "iw", "dev", wifi_interface, "scan"]
+    )
 
     if returncode == 0:
         seen_ssids = set()
@@ -214,7 +230,12 @@ async def _scan_wifi_networks() -> List[Dict]:
                         networks.append(current_network)
 
                 # Start new network
-                current_network = {"ssid": None, "signal": 0, "security": "Open", "connected": False}
+                current_network = {
+                    "ssid": None,
+                    "signal": 0,
+                    "security": "Open",
+                    "connected": False,
+                }
 
                 # Check if this is the connected network
                 if "-- associated" in line:
@@ -235,9 +256,11 @@ async def _scan_wifi_networks() -> List[Dict]:
                     signal_dbm = float(signal_str.split()[0])
                     # Convert dBm to percentage (rough approximation)
                     # -30 dBm = 100%, -90 dBm = 0%
-                    signal_percent = max(0, min(100, int((signal_dbm + 90) * (100 / 60))))
+                    signal_percent = max(
+                        0, min(100, int((signal_dbm + 90) * (100 / 60)))
+                    )
                     current_network["signal"] = signal_percent
-                except:
+                except Exception:
                     pass
 
             # Security
@@ -287,7 +310,13 @@ async def _get_routes() -> List[Dict]:
 
 async def _get_modem_info(modem_interface: Optional[str]) -> Dict:
     """Get modem information"""
-    info = {"detected": False, "connected": False, "interface": None, "ip_address": None, "gateway": None}
+    info = {
+        "detected": False,
+        "connected": False,
+        "interface": None,
+        "ip_address": None,
+        "gateway": None,
+    }
 
     if not modem_interface:
         return info
@@ -306,7 +335,9 @@ async def _get_modem_info(modem_interface: Optional[str]) -> Dict:
             info["ip_address"] = ip_match.group(1)
 
     # Get gateway
-    stdout, _, returncode = await _run_command(["ip", "route", "show", "dev", modem_interface])
+    stdout, _, returncode = await _run_command(
+        ["ip", "route", "show", "dev", modem_interface]
+    )
     if returncode == 0:
         for line in stdout.split("\n"):
             if "default" in line:
@@ -443,83 +474,167 @@ async def set_priority_mode(request: PriorityModeRequest):
         mode: 'wifi' (WiFi primary), 'modem' (4G primary), or 'auto' (4G preferred)
     """
     if request.mode not in ["wifi", "modem", "auto"]:
-        raise HTTPException(status_code=400, detail="Mode must be 'wifi', 'modem', or 'auto'")
+        raise HTTPException(
+            status_code=400, detail="Mode must be 'wifi', 'modem', or 'auto'"
+        )
 
     try:
         # Detect interfaces
         wifi_interface = await _detect_wifi_interface()
         modem_interface = await _detect_modem_interface()
-        
+
         if not wifi_interface and not modem_interface:
-            raise HTTPException(status_code=503, detail="No network interfaces detected")
-        
+            raise HTTPException(
+                status_code=503, detail="No network interfaces detected"
+            )
+
         # Get current routes
         routes = await _get_routes()
-        
+
         if request.mode == "wifi":
             # Set WiFi as primary (lower metric)
             if wifi_interface:
                 # First, get current routes for both interfaces
-                wifi_routes = [r for r in routes if r.get("interface") == wifi_interface]
-                modem_routes = [r for r in routes if r.get("interface") == modem_interface]
-                
+                wifi_routes = [
+                    r for r in routes if r.get("interface") == wifi_interface
+                ]
+                modem_routes = [
+                    r for r in routes if r.get("interface") == modem_interface
+                ]
+
                 # Delete existing default routes
                 for route in wifi_routes + modem_routes:
                     gateway = route.get("gateway")
                     interface = route.get("interface")
                     if gateway and interface:
-                        cmd = ["sudo", "ip", "route", "del", "default", "via", gateway, "dev", interface]
+                        cmd = [
+                            "sudo",
+                            "ip",
+                            "route",
+                            "del",
+                            "default",
+                            "via",
+                            gateway,
+                            "dev",
+                            interface,
+                        ]
                         await _run_command(cmd)
-                
+
                 # Re-add routes with new metrics (lower = higher priority)
                 # WiFi as primary (metric 100)
                 if wifi_routes:
                     gateway = wifi_routes[0].get("gateway")
                     if gateway:
-                        cmd = ["sudo", "ip", "route", "add", "default", "via", gateway, "dev", wifi_interface, "metric", "100"]
+                        cmd = [
+                            "sudo",
+                            "ip",
+                            "route",
+                            "add",
+                            "default",
+                            "via",
+                            gateway,
+                            "dev",
+                            wifi_interface,
+                            "metric",
+                            "100",
+                        ]
                         await _run_command(cmd)
-                
+
                 # Modem as backup (metric 200)
                 if modem_interface and modem_routes:
                     gateway = modem_routes[0].get("gateway")
                     if gateway:
-                        cmd = ["sudo", "ip", "route", "add", "default", "via", gateway, "dev", modem_interface, "metric", "200"]
+                        cmd = [
+                            "sudo",
+                            "ip",
+                            "route",
+                            "add",
+                            "default",
+                            "via",
+                            gateway,
+                            "dev",
+                            modem_interface,
+                            "metric",
+                            "200",
+                        ]
                         await _run_command(cmd)
             else:
-                raise HTTPException(status_code=503, detail="WiFi interface not detected")
-                
+                raise HTTPException(
+                    status_code=503, detail="WiFi interface not detected"
+                )
+
         elif request.mode == "modem":
             # Set Modem as primary (lower metric)
             if modem_interface:
                 # Get current routes for both interfaces
-                wifi_routes = [r for r in routes if r.get("interface") == wifi_interface]
-                modem_routes = [r for r in routes if r.get("interface") == modem_interface]
-                
+                wifi_routes = [
+                    r for r in routes if r.get("interface") == wifi_interface
+                ]
+                modem_routes = [
+                    r for r in routes if r.get("interface") == modem_interface
+                ]
+
                 # Delete existing default routes
                 for route in wifi_routes + modem_routes:
                     gateway = route.get("gateway")
                     interface = route.get("interface")
                     if gateway and interface:
-                        cmd = ["sudo", "ip", "route", "del", "default", "via", gateway, "dev", interface]
+                        cmd = [
+                            "sudo",
+                            "ip",
+                            "route",
+                            "del",
+                            "default",
+                            "via",
+                            gateway,
+                            "dev",
+                            interface,
+                        ]
                         await _run_command(cmd)
-                
+
                 # Re-add routes with new metrics
                 # Modem as primary (metric 100)
                 if modem_routes:
                     gateway = modem_routes[0].get("gateway")
                     if gateway:
-                        cmd = ["sudo", "ip", "route", "add", "default", "via", gateway, "dev", modem_interface, "metric", "100"]
+                        cmd = [
+                            "sudo",
+                            "ip",
+                            "route",
+                            "add",
+                            "default",
+                            "via",
+                            gateway,
+                            "dev",
+                            modem_interface,
+                            "metric",
+                            "100",
+                        ]
                         await _run_command(cmd)
-                
+
                 # WiFi as backup (metric 200)
                 if wifi_interface and wifi_routes:
                     gateway = wifi_routes[0].get("gateway")
                     if gateway:
-                        cmd = ["sudo", "ip", "route", "add", "default", "via", gateway, "dev", wifi_interface, "metric", "200"]
+                        cmd = [
+                            "sudo",
+                            "ip",
+                            "route",
+                            "add",
+                            "default",
+                            "via",
+                            gateway,
+                            "dev",
+                            wifi_interface,
+                            "metric",
+                            "200",
+                        ]
                         await _run_command(cmd)
             else:
-                raise HTTPException(status_code=503, detail="Modem interface not detected")
-        
+                raise HTTPException(
+                    status_code=503, detail="Modem interface not detected"
+                )
+
         elif request.mode == "auto":
             # Auto mode: 4G preferred if available
             if modem_interface:
@@ -528,13 +643,17 @@ async def set_priority_mode(request: PriorityModeRequest):
                 return await set_priority_mode(PriorityModeRequest(mode="wifi"))
             else:
                 raise HTTPException(status_code=503, detail="No interfaces available")
-        
+
         # Wait a bit for routes to settle
         await asyncio.sleep(0.5)
-        
+
         logger.info(f"Network priority set to {request.mode}")
-        return {"success": True, "mode": request.mode, "message": f"Priority set to {request.mode}"}
-        
+        return {
+            "success": True,
+            "mode": request.mode,
+            "message": f"Priority set to {request.mode}",
+        }
+
     except HTTPException:
         raise
     except Exception as e:
@@ -728,10 +847,26 @@ async def get_modem_status():
         provider = _get_modem_provider()
 
         # Gather all modem info in parallel
-        device_task = provider.async_get_device_info() if hasattr(provider, "async_get_device_info") else None
-        signal_task = provider.async_get_signal_info() if hasattr(provider, "async_get_signal_info") else None
-        network_task = provider.async_get_network_info() if hasattr(provider, "async_get_network_info") else None
-        traffic_task = provider.async_get_traffic_stats() if hasattr(provider, "async_get_traffic_stats") else None
+        device_task = (
+            provider.async_get_device_info()
+            if hasattr(provider, "async_get_device_info")
+            else None
+        )
+        signal_task = (
+            provider.async_get_signal_info()
+            if hasattr(provider, "async_get_signal_info")
+            else None
+        )
+        network_task = (
+            provider.async_get_network_info()
+            if hasattr(provider, "async_get_network_info")
+            else None
+        )
+        traffic_task = (
+            provider.async_get_traffic_stats()
+            if hasattr(provider, "async_get_traffic_stats")
+            else None
+        )
 
         # Wait for all tasks
         results = await asyncio.gather(
@@ -742,10 +877,26 @@ async def get_modem_status():
             return_exceptions=True,
         )
 
-        device_info = results[0] if device_task and not isinstance(results[0], Exception) else None
-        signal_info = results[1] if signal_task and not isinstance(results[1], Exception) else None
-        network_info = results[2] if network_task and not isinstance(results[2], Exception) else None
-        traffic_info = results[3] if traffic_task and not isinstance(results[3], Exception) else None
+        device_info = (
+            results[0]
+            if device_task and not isinstance(results[0], Exception)
+            else None
+        )
+        signal_info = (
+            results[1]
+            if signal_task and not isinstance(results[1], Exception)
+            else None
+        )
+        network_info = (
+            results[2]
+            if network_task and not isinstance(results[2], Exception)
+            else None
+        )
+        traffic_info = (
+            results[3]
+            if traffic_task and not isinstance(results[3], Exception)
+            else None
+        )
 
         # Check if modem is available (at least one successful response)
         available = any([device_info, signal_info, network_info, traffic_info])
@@ -767,17 +918,25 @@ async def get_modem_status():
             response["signal"] = signal_info
             # Add signal_bars (1-5) based on signal_percent
             signal_percent = signal_info.get("signal_percent", 0)
-            response["signal"]["signal_bars"] = min(5, max(0, int(signal_percent / 20))) if signal_percent else 0
+            response["signal"]["signal_bars"] = (
+                min(5, max(0, int(signal_percent / 20))) if signal_percent else 0
+            )
 
         # Add network info
         if network_info:
             dns_servers = getattr(network_info, "dns_servers", None) or []
             # Calculate signal_icon from signal_percent if available
             signal_percent = signal_info.get("signal_percent", 0) if signal_info else 0
-            signal_icon = min(5, max(0, int(signal_percent / 20))) if signal_percent else 0
+            signal_icon = (
+                min(5, max(0, int(signal_percent / 20))) if signal_percent else 0
+            )
 
             response["network"] = {
-                "network_type": str(network_info.network_type) if hasattr(network_info, "network_type") else None,
+                "network_type": (
+                    str(network_info.network_type)
+                    if hasattr(network_info, "network_type")
+                    else None
+                ),
                 "signal_icon": signal_icon,
                 "roaming": getattr(network_info, "roaming", False),
                 "primary_dns": dns_servers[0] if len(dns_servers) > 0 else None,
@@ -795,10 +954,20 @@ async def get_modem_status():
 
     except HTTPException:
         # Modem provider not available
-        return {"success": True, "available": False, "connected": False, "error": "Modem provider not available"}
+        return {
+            "success": True,
+            "available": False,
+            "connected": False,
+            "error": "Modem provider not available",
+        }
     except Exception as e:
         logger.error(f"Error getting modem status: {e}")
-        return {"success": True, "available": False, "connected": False, "error": str(e)}
+        return {
+            "success": True,
+            "available": False,
+            "connected": False,
+            "error": str(e),
+        }
 
 
 @router.get("/modem/device")
@@ -811,7 +980,11 @@ async def get_modem_device():
         info = provider.get_modem_info()
 
     if info:
-        return {"success": True, "device": str(info), "name": getattr(info, "name", "Unknown")}
+        return {
+            "success": True,
+            "device": str(info),
+            "name": getattr(info, "name", "Unknown"),
+        }
     raise HTTPException(status_code=503, detail="Could not get device info")
 
 
@@ -882,12 +1055,16 @@ async def set_modem_mode(request: NetworkModeRequest):
     """
     valid_modes = ["00", "01", "02", "03"]
     if request.mode not in valid_modes:
-        raise HTTPException(status_code=400, detail=f"Mode must be one of: {valid_modes}")
+        raise HTTPException(
+            status_code=400, detail=f"Mode must be one of: {valid_modes}"
+        )
 
     provider = _get_modem_provider()
     if hasattr(provider, "set_network_mode"):
         loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, lambda: provider.set_network_mode(request.mode))
+        result = await loop.run_in_executor(
+            None, lambda: provider.set_network_mode(request.mode)
+        )
         if result:
             return {"success": True, "message": f"Network mode set to {request.mode}"}
     raise HTTPException(status_code=500, detail="Failed to set network mode")
@@ -945,13 +1122,18 @@ async def set_lte_band(request: LTEBandRequest):
     - 'balanced': B3+B20
     """
     if not request.preset and request.custom_mask is None:
-        raise HTTPException(status_code=400, detail="Provide either preset or custom_mask")
+        raise HTTPException(
+            status_code=400, detail="Provide either preset or custom_mask"
+        )
 
     provider = _get_modem_provider()
     if hasattr(provider, "set_lte_band"):
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
-            None, lambda: provider.set_lte_band(preset=request.preset, custom_mask=request.custom_mask)
+            None,
+            lambda: provider.set_lte_band(
+                preset=request.preset, custom_mask=request.custom_mask
+            ),
         )
         if result and result.get("success"):
             return result
@@ -971,7 +1153,9 @@ async def get_video_quality():
     provider = _get_modem_provider()
     if hasattr(provider, "get_video_quality_assessment"):
         loop = asyncio.get_event_loop()
-        assessment = await loop.run_in_executor(None, provider.get_video_quality_assessment)
+        assessment = await loop.run_in_executor(
+            None, provider.get_video_quality_assessment
+        )
         return {"success": assessment.get("available", False), **assessment}
     raise HTTPException(status_code=503, detail="Could not assess video quality")
 
@@ -983,12 +1167,26 @@ async def get_enhanced_status():
         provider = _get_modem_provider()
 
         # Gather all modem info in parallel using raw methods for full data
-        device_task = provider.async_get_raw_device_info() if hasattr(provider, "async_get_raw_device_info") else None
-        signal_task = provider.async_get_signal_info() if hasattr(provider, "async_get_signal_info") else None
-        network_task = (
-            provider.async_get_raw_network_info() if hasattr(provider, "async_get_raw_network_info") else None
+        device_task = (
+            provider.async_get_raw_device_info()
+            if hasattr(provider, "async_get_raw_device_info")
+            else None
         )
-        traffic_task = provider.async_get_traffic_stats() if hasattr(provider, "async_get_traffic_stats") else None
+        signal_task = (
+            provider.async_get_signal_info()
+            if hasattr(provider, "async_get_signal_info")
+            else None
+        )
+        network_task = (
+            provider.async_get_raw_network_info()
+            if hasattr(provider, "async_get_raw_network_info")
+            else None
+        )
+        traffic_task = (
+            provider.async_get_traffic_stats()
+            if hasattr(provider, "async_get_traffic_stats")
+            else None
+        )
 
         # Wait for all tasks
         results = await asyncio.gather(
@@ -999,10 +1197,26 @@ async def get_enhanced_status():
             return_exceptions=True,
         )
 
-        device_info = results[0] if device_task and not isinstance(results[0], Exception) else None
-        signal_info = results[1] if signal_task and not isinstance(results[1], Exception) else None
-        network_info = results[2] if network_task and not isinstance(results[2], Exception) else None
-        traffic_info = results[3] if traffic_task and not isinstance(results[3], Exception) else None
+        device_info = (
+            results[0]
+            if device_task and not isinstance(results[0], Exception)
+            else None
+        )
+        signal_info = (
+            results[1]
+            if signal_task and not isinstance(results[1], Exception)
+            else None
+        )
+        network_info = (
+            results[2]
+            if network_task and not isinstance(results[2], Exception)
+            else None
+        )
+        traffic_info = (
+            results[3]
+            if traffic_task and not isinstance(results[3], Exception)
+            else None
+        )
 
         # Ensure dicts (not None)
         device_info = device_info or {}
@@ -1034,7 +1248,9 @@ async def get_enhanced_status():
         if signal_info:
             try:
                 loop = asyncio.get_event_loop()
-                vq = await loop.run_in_executor(None, provider.get_video_quality_assessment)
+                vq = await loop.run_in_executor(
+                    None, provider.get_video_quality_assessment
+                )
                 if vq and vq.get("available"):
                     response["video_quality"] = vq
             except Exception:
@@ -1107,10 +1323,20 @@ async def get_enhanced_status():
 
     except HTTPException:
         # Modem provider not available
-        return {"success": True, "available": False, "connected": False, "error": "Modem provider not available"}
+        return {
+            "success": True,
+            "available": False,
+            "connected": False,
+            "error": "Modem provider not available",
+        }
     except Exception as e:
         logger.error(f"Error getting enhanced modem status: {e}")
-        return {"success": True, "available": False, "connected": False, "error": str(e)}
+        return {
+            "success": True,
+            "available": False,
+            "connected": False,
+            "error": str(e),
+        }
 
 
 # =============================
@@ -1140,13 +1366,18 @@ async def set_apn(request: APNRequest):
     - 'simyo': Simyo (uses Orange network)
     """
     if not request.preset and not request.custom_apn:
-        raise HTTPException(status_code=400, detail="Provide either preset or custom_apn")
+        raise HTTPException(
+            status_code=400, detail="Provide either preset or custom_apn"
+        )
 
     provider = _get_modem_provider()
     if hasattr(provider, "set_apn"):
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
-            None, lambda: provider.set_apn(preset=request.preset, custom_apn=request.custom_apn)
+            None,
+            lambda: provider.set_apn(
+                preset=request.preset, custom_apn=request.custom_apn
+            ),
         )
         if result and result.get("success"):
             return result
@@ -1176,7 +1407,9 @@ async def set_roaming(request: RoamingRequest):
     provider = _get_modem_provider()
     if hasattr(provider, "set_roaming"):
         loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, lambda: provider.set_roaming(request.enabled))
+        result = await loop.run_in_executor(
+            None, lambda: provider.set_roaming(request.enabled)
+        )
         if result and result.get("success"):
             return result
     raise HTTPException(status_code=500, detail="Failed to set roaming")
@@ -1273,7 +1506,10 @@ async def record_flight_sample():
                 return result
             else:
                 # Session not active, return success=False instead of 400 error
-                return {"success": False, "message": result.get("message", "No active session")}
+                return {
+                    "success": False,
+                    "message": result.get("message", "No active session"),
+                }
     return {"success": False, "message": "Flight session not available"}
 
 
@@ -1304,7 +1540,8 @@ async def measure_latency_custom(request: LatencyTestRequest):
     if hasattr(provider, "measure_latency"):
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
-            None, lambda: provider.measure_latency(host=request.host, count=request.count)
+            None,
+            lambda: provider.measure_latency(host=request.host, count=request.count),
         )
         if result and result.get("success"):
             return result

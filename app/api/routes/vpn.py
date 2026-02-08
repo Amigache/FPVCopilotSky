@@ -48,12 +48,17 @@ def _get_vpn_provider(provider_name: Optional[str] = None, lang: str = "en"):
             provider_name = installed[0]["name"]
 
     if not provider_name:
-        raise HTTPException(status_code=400, detail=translate("vpn.no_provider_configured", lang))
+        raise HTTPException(
+            status_code=400, detail=translate("vpn.no_provider_configured", lang)
+        )
 
     provider = registry.get_vpn_provider(provider_name)
     if not provider:
         raise HTTPException(
-            status_code=503, detail=translate("vpn.provider_not_available", lang, provider=provider_name)
+            status_code=503,
+            detail=translate(
+                "vpn.provider_not_available", lang, provider=provider_name
+            ),
         )
 
     return provider
@@ -101,7 +106,9 @@ async def get_status(request: Request, provider: Optional[str] = None):
         return status
     except HTTPException as e:
         # If no VPN provider configured, return a neutral status instead of 400
-        if e.status_code == 400 and translate("vpn.no_provider_configured", lang) in str(e.detail):
+        if e.status_code == 400 and translate(
+            "vpn.no_provider_configured", lang
+        ) in str(e.detail):
             return {
                 "success": False,
                 "installed": False,
@@ -133,7 +140,9 @@ async def get_peers(request: Request, provider: Optional[str] = None):
         return {"success": True, "peers": peers, "count": len(peers)}
     except HTTPException as e:
         # If no VPN provider configured, return empty list instead of error
-        if e.status_code == 400 and translate("vpn.no_provider_configured", lang) in str(e.detail):
+        if e.status_code == 400 and translate(
+            "vpn.no_provider_configured", lang
+        ) in str(e.detail):
             return {"success": True, "peers": [], "count": 0}
         raise
     except Exception as e:
@@ -270,10 +279,18 @@ async def save_vpn_preferences(preferences: VPNPreferencesModel, request: Reques
             and saved_config.get("enabled") == config.get("enabled")
             and saved_config.get("auto_connect") == config.get("auto_connect")
         ):
-            return {"success": True, "message": translate("vpn.preferences_saved", lang), "preferences": config}
+            return {
+                "success": True,
+                "message": translate("vpn.preferences_saved", lang),
+                "preferences": config,
+            }
         else:
             print(f"⚠️ VPN preferences verification failed")
-            return {"success": False, "message": "Failed to verify saved preferences", "preferences": saved_config}
+            return {
+                "success": False,
+                "message": "Failed to verify saved preferences",
+                "preferences": saved_config,
+            }
     except Exception as e:
         import traceback
 

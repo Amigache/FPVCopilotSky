@@ -105,11 +105,11 @@ echo -e "\n${BLUE}� Sudo Permissions${NC}"
 # Check Tailscale sudo permissions
 if [ -f "/etc/sudoers.d/tailscale" ]; then
     echo -e "${GREEN}✓${NC} Tailscale sudoers file exists"
-    
+
     # Check if sudoers file contains correct user
     if sudo grep -q "^$USER ALL=" /etc/sudoers.d/tailscale 2>/dev/null; then
         echo -e "${GREEN}✓${NC} Sudoers configured for user: $USER"
-        
+
         # Test if tailscale commands work without password
         # We capture both stdout and stderr to check if command runs without password prompt
         TAILSCALE_TEST=$(sudo -n tailscale status 2>&1)
@@ -136,7 +136,7 @@ fi
 # Check system management sudo permissions
 if [ -f "/etc/sudoers.d/fpvcopilot-system" ]; then
     echo -e "${GREEN}✓${NC} System management sudoers file exists"
-    
+
     # Test if systemctl commands work without password
     SYSTEMCTL_TEST=$(sudo -n systemctl status fpvcopilot-sky 2>&1)
     SYSTEMCTL_EXIT=$?
@@ -145,7 +145,7 @@ if [ -f "/etc/sudoers.d/fpvcopilot-system" ]; then
     else
         echo -e "${YELLOW}⚠️${NC}  systemctl commands may require password"
     fi
-    
+
     # Test if journalctl commands work without password
     JOURNALCTL_TEST=$(sudo -n journalctl -u fpvcopilot-sky -n 1 2>&1)
     JOURNALCTL_EXIT=$?
@@ -218,10 +218,10 @@ if [ -n "$ROUTES" ]; then
     PRIMARY_IFACE=$(echo "$ROUTES" | sort -t' ' -k9 -n | head -1 | grep -oP 'dev \K\S+')
     PRIMARY_METRIC=$(echo "$ROUTES" | sort -t' ' -k9 -n | head -1 | grep -oP 'metric \K\d+')
     PRIMARY_GW=$(echo "$ROUTES" | sort -t' ' -k9 -n | head -1 | grep -oP 'via \K\S+')
-    
+
     # Detect modem interface
     MODEM_IFACE=$(ip -o addr show 2>/dev/null | grep "192\.168\.8\." | awk '{print $2}' | head -1)
-    
+
     # Check if primary is 4G modem
     if [ -n "$MODEM_IFACE" ] && [ "$PRIMARY_IFACE" = "$MODEM_IFACE" ]; then
         echo -e "${GREEN}✅${NC} Primary: 4G modem ($PRIMARY_IFACE) metric $PRIMARY_METRIC via $PRIMARY_GW"
@@ -231,7 +231,7 @@ if [ -n "$ROUTES" ]; then
             echo -e "    ${BLUE}ℹ️${NC}  4G modem detected ($MODEM_IFACE) but not primary"
         fi
     fi
-    
+
     # Show all routes
     ROUTE_COUNT=$(echo "$ROUTES" | wc -l)
     if [ "$ROUTE_COUNT" -gt 1 ]; then

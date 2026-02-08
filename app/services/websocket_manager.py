@@ -33,7 +33,9 @@ class WebSocketManager:
         """Remove a WebSocket connection"""
         try:
             self.active_connections.remove(websocket)
-            print(f"❌ WebSocket client disconnected (total: {len(self.active_connections)})")
+            print(
+                f"❌ WebSocket client disconnected (total: {len(self.active_connections)})"
+            )
         except ValueError:
             pass
 

@@ -123,11 +123,17 @@ async def get_interface_status(interface_name: str) -> Dict:
         provider = registry.get_network_interface(interface_name)
 
         if not provider:
-            raise HTTPException(status_code=404, detail=f"Network interface provider '{interface_name}' not found")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Network interface provider '{interface_name}' not found",
+            )
 
         # Check if interface is detected
         if not provider.detect():
-            return {"success": False, "error": f"Interface '{interface_name}' not detected on system"}
+            return {
+                "success": False,
+                "error": f"Interface '{interface_name}' not detected on system",
+            }
 
         # Get status
         status = provider.get_status()
@@ -145,7 +151,9 @@ async def get_interface_status(interface_name: str) -> Dict:
 
 
 @router.post("/bring-up/{interface_name}")
-async def bring_up_interface(interface_name: str, request: Request) -> InterfaceActionResponse:
+async def bring_up_interface(
+    interface_name: str, request: Request
+) -> InterfaceActionResponse:
     """
     Bring up a network interface.
 
@@ -161,11 +169,17 @@ async def bring_up_interface(interface_name: str, request: Request) -> Interface
         provider = registry.get_network_interface(interface_name)
 
         if not provider:
-            raise HTTPException(status_code=404, detail=f"Network interface provider '{interface_name}' not found")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Network interface provider '{interface_name}' not found",
+            )
 
         # Check if interface exists
         if not provider.detect():
-            raise HTTPException(status_code=404, detail=f"Interface '{interface_name}' not detected on system")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Interface '{interface_name}' not detected on system",
+            )
 
         # Bring up the interface
         success = provider.bring_up()
@@ -176,7 +190,9 @@ async def bring_up_interface(interface_name: str, request: Request) -> Interface
         return InterfaceActionResponse(
             success=success,
             message=(
-                translate("network.interface_brought_up", lang, interface=interface_name)
+                translate(
+                    "network.interface_brought_up", lang, interface=interface_name
+                )
                 if success
                 else translate("network.interface_up_failed", lang)
             ),
@@ -192,7 +208,9 @@ async def bring_up_interface(interface_name: str, request: Request) -> Interface
 
 
 @router.post("/bring-down/{interface_name}")
-async def bring_down_interface(interface_name: str, request: Request) -> InterfaceActionResponse:
+async def bring_down_interface(
+    interface_name: str, request: Request
+) -> InterfaceActionResponse:
     """
     Bring down a network interface.
 
@@ -208,11 +226,17 @@ async def bring_down_interface(interface_name: str, request: Request) -> Interfa
         provider = registry.get_network_interface(interface_name)
 
         if not provider:
-            raise HTTPException(status_code=404, detail=f"Network interface provider '{interface_name}' not found")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Network interface provider '{interface_name}' not found",
+            )
 
         # Check if interface exists
         if not provider.detect():
-            raise HTTPException(status_code=404, detail=f"Interface '{interface_name}' not detected on system")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Interface '{interface_name}' not detected on system",
+            )
 
         # Bring down the interface
         success = provider.bring_down()
@@ -223,7 +247,9 @@ async def bring_down_interface(interface_name: str, request: Request) -> Interfa
         return InterfaceActionResponse(
             success=success,
             message=(
-                translate("network.interface_brought_down", lang, interface=interface_name)
+                translate(
+                    "network.interface_brought_down", lang, interface=interface_name
+                )
                 if success
                 else translate("network.interface_down_failed", lang)
             ),
@@ -267,15 +293,23 @@ async def set_interface_metric(
         provider = registry.get_network_interface(interface_name)
 
         if not provider:
-            raise HTTPException(status_code=404, detail=f"Network interface provider '{interface_name}' not found")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Network interface provider '{interface_name}' not found",
+            )
 
         # Check if interface exists
         if not provider.detect():
-            raise HTTPException(status_code=404, detail=f"Interface '{interface_name}' not detected on system")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Interface '{interface_name}' not detected on system",
+            )
 
         # Validate metric range
         if request_body.metric < 0 or request_body.metric > 999:
-            raise HTTPException(status_code=400, detail="Metric must be between 0 and 999")
+            raise HTTPException(
+                status_code=400, detail="Metric must be between 0 and 999"
+            )
 
         # Set metric
         success = provider.set_metric(request_body.metric)
@@ -286,7 +320,12 @@ async def set_interface_metric(
         return InterfaceActionResponse(
             success=success,
             message=(
-                translate("network.metric_set", lang, metric=request_body.metric, interface=interface_name)
+                translate(
+                    "network.metric_set",
+                    lang,
+                    metric=request_body.metric,
+                    interface=interface_name,
+                )
                 if success
                 else translate("network.metric_set_failed", lang)
             ),
@@ -328,11 +367,18 @@ async def scan_wifi_networks() -> Dict:
         provider = registry.get_network_interface("wifi")
 
         if not provider:
-            raise HTTPException(status_code=404, detail="WiFi interface provider not found")
+            raise HTTPException(
+                status_code=404, detail="WiFi interface provider not found"
+            )
 
         # Check if WiFi interface exists
         if not provider.detect():
-            return {"success": False, "error": "No WiFi interface detected on system", "networks": [], "count": 0}
+            return {
+                "success": False,
+                "error": "No WiFi interface detected on system",
+                "networks": [],
+                "count": 0,
+            }
 
         # Scan networks
         networks = provider.scan_networks()
@@ -367,11 +413,15 @@ async def connect_wifi(request: WiFiConnectRequest) -> InterfaceActionResponse:
         provider = registry.get_network_interface("wifi")
 
         if not provider:
-            raise HTTPException(status_code=404, detail="WiFi interface provider not found")
+            raise HTTPException(
+                status_code=404, detail="WiFi interface provider not found"
+            )
 
         # Check if WiFi interface exists
         if not provider.detect():
-            raise HTTPException(status_code=404, detail="No WiFi interface detected on system")
+            raise HTTPException(
+                status_code=404, detail="No WiFi interface detected on system"
+            )
 
         # Connect to network
         success = provider.connect(request.ssid, request.password)
@@ -381,7 +431,11 @@ async def connect_wifi(request: WiFiConnectRequest) -> InterfaceActionResponse:
 
         return InterfaceActionResponse(
             success=success,
-            message=f"Connected to '{request.ssid}'" if success else f"Failed to connect to '{request.ssid}'",
+            message=(
+                f"Connected to '{request.ssid}'"
+                if success
+                else f"Failed to connect to '{request.ssid}'"
+            ),
             interface_name=status.get("interface_name") if status else None,
             status=status,
         )
@@ -406,11 +460,15 @@ async def disconnect_wifi() -> InterfaceActionResponse:
         provider = registry.get_network_interface("wifi")
 
         if not provider:
-            raise HTTPException(status_code=404, detail="WiFi interface provider not found")
+            raise HTTPException(
+                status_code=404, detail="WiFi interface provider not found"
+            )
 
         # Check if WiFi interface exists
         if not provider.detect():
-            raise HTTPException(status_code=404, detail="No WiFi interface detected on system")
+            raise HTTPException(
+                status_code=404, detail="No WiFi interface detected on system"
+            )
 
         # Disconnect
         success = provider.disconnect()

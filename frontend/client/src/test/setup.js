@@ -1,6 +1,6 @@
 /**
  * Vitest test setup
- * 
+ *
  * Configuration and global setup for all tests
  */
 

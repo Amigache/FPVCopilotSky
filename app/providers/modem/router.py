@@ -19,7 +19,12 @@ class RouterModemProvider(ModemProvider):
     Example: TP-Link M7200 in router mode (typically 192.168.0.1)
     """
 
-    def __init__(self, router_ip: str = "192.168.0.1", username: str = "admin", password: str = "admin"):
+    def __init__(
+        self,
+        router_ip: str = "192.168.0.1",
+        username: str = "admin",
+        password: str = "admin",
+    ):
         super().__init__()
         self.name = "router_modem"
         self.display_name = "Router Gateway Modem"
@@ -32,7 +37,11 @@ class RouterModemProvider(ModemProvider):
         """Detect if router is accessible"""
         try:
             # Try ping to router
-            result = subprocess.run(["ping", "-c", "1", "-W", "2", self.router_ip], capture_output=True, timeout=3)
+            result = subprocess.run(
+                ["ping", "-c", "1", "-W", "2", self.router_ip],
+                capture_output=True,
+                timeout=3,
+            )
             return result.returncode == 0
         except:
             return False
@@ -67,12 +76,21 @@ class RouterModemProvider(ModemProvider):
 
     def disconnect(self) -> Dict:
         """Deactivate modem connection"""
-        return {"success": False, "message": "Manual disconnection not supported for router modems"}
+        return {
+            "success": False,
+            "message": "Manual disconnection not supported for router modems",
+        }
 
     def get_modem_info(self) -> Optional[ModemInfo]:
         """Get modem hardware information"""
         # Router modems typically don't expose detailed info
-        return ModemInfo(name="Router Gateway Modem", model="Unknown", imei="N/A", imsi="N/A", manufacturer="Unknown")
+        return ModemInfo(
+            name="Router Gateway Modem",
+            model="Unknown",
+            imei="N/A",
+            imsi="N/A",
+            manufacturer="Unknown",
+        )
 
     def get_network_info(self) -> Optional[NetworkInfo]:
         """Get network connection information"""
@@ -90,11 +108,17 @@ class RouterModemProvider(ModemProvider):
 
     def configure_band(self, band_mask: int) -> Dict:
         """Configure LTE band preference"""
-        return {"success": False, "message": "Band configuration not supported via router gateway mode"}
+        return {
+            "success": False,
+            "message": "Band configuration not supported via router gateway mode",
+        }
 
     def reboot(self) -> Dict:
         """Reboot the modem"""
-        return {"success": False, "message": "Reboot not supported via API (use web interface)"}
+        return {
+            "success": False,
+            "message": "Reboot not supported via API (use web interface)",
+        }
 
     def get_info(self) -> Dict:
         """Get provider information"""
@@ -102,7 +126,10 @@ class RouterModemProvider(ModemProvider):
             "name": self.name,
             "display_name": self.display_name,
             "description": "Generic router/gateway modem provider (limited functionality)",
-            "features": ["Basic connectivity detection", "Router IP: " + self.router_ip],
+            "features": [
+                "Basic connectivity detection",
+                "Router IP: " + self.router_ip,
+            ],
             "modes": ["Router/Gateway mode"],
             "note": "For full features, use direct modem API (e.g., HiLink mode)",
         }
@@ -122,7 +149,12 @@ class TPLinkM7200Provider(RouterModemProvider):
             "name": self.name,
             "display_name": self.display_name,
             "description": "TP-Link M7200 4G LTE mobile WiFi router",
-            "features": ["LTE Cat 4", "WiFi hotspot", "Up to 10 devices", "Router mode: " + self.router_ip],
+            "features": [
+                "LTE Cat 4",
+                "WiFi hotspot",
+                "Up to 10 devices",
+                "Router mode: " + self.router_ip,
+            ],
             "modes": ["Router mode"],
             "note": "Advanced features require web interface at " + self.router_ip,
         }

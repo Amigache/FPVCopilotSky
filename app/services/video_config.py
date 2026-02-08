@@ -17,7 +17,12 @@ def get_device_identity(device: str) -> Optional[Dict[str, str]]:
     Returns None if the device is not a valid capture device.
     """
     try:
-        result = subprocess.run(["v4l2-ctl", "--device", device, "--info"], capture_output=True, text=True, timeout=2)
+        result = subprocess.run(
+            ["v4l2-ctl", "--device", device, "--info"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
         if result.returncode != 0:
             return None
 
@@ -88,7 +93,10 @@ def auto_detect_camera() -> str:
             try:
                 # Check if it's a USB camera (uvcvideo driver)
                 result = subprocess.run(
-                    ["v4l2-ctl", "--device", device, "--info"], capture_output=True, text=True, timeout=2
+                    ["v4l2-ctl", "--device", device, "--info"],
+                    capture_output=True,
+                    text=True,
+                    timeout=2,
                 )
 
                 if result.returncode == 0:
@@ -117,7 +125,12 @@ def get_device_resolutions(device: str) -> Dict:
     """
     try:
         # Get device info
-        info_result = subprocess.run(["v4l2-ctl", "-d", device, "--info"], capture_output=True, text=True, timeout=5)
+        info_result = subprocess.run(
+            ["v4l2-ctl", "-d", device, "--info"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
 
         device_name = device
         device_type = "Dispositivo de captura"
@@ -130,7 +143,10 @@ def get_device_resolutions(device: str) -> Dict:
                 parts = line.split(":", 1)
                 if len(parts) > 1:
                     device_name = parts[1].strip()
-                    if "camera" in device_name.lower() or "webcam" in device_name.lower():
+                    if (
+                        "camera" in device_name.lower()
+                        or "webcam" in device_name.lower()
+                    ):
                         device_type = "Cámara"
             elif "Driver name" in line:
                 parts = line.split(":", 1)
@@ -149,7 +165,10 @@ def get_device_resolutions(device: str) -> Dict:
 
         # Get formats and resolutions with FPS
         result = subprocess.run(
-            ["v4l2-ctl", "-d", device, "--list-formats-ext"], capture_output=True, text=True, timeout=5
+            ["v4l2-ctl", "-d", device, "--list-formats-ext"],
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
 
         resolutions_fps = {}  # {resolution: [fps list]}
@@ -188,7 +207,9 @@ def get_device_resolutions(device: str) -> Dict:
 
         # Sort resolutions by pixel count (highest first)
         sorted_resolutions = sorted(
-            resolutions_fps.keys(), key=lambda x: tuple(map(int, x.split("x"))) if "x" in x else (0, 0), reverse=True
+            resolutions_fps.keys(),
+            key=lambda x: tuple(map(int, x.split("x"))) if "x" in x else (0, 0),
+            reverse=True,
         )
 
         return {

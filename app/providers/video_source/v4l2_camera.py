@@ -34,7 +34,9 @@ class V4L2CameraSource(VideoSourceProvider):
     def is_available(self) -> bool:
         """Check if v4l2-ctl is available"""
         try:
-            result = subprocess.run(["which", "v4l2-ctl"], capture_output=True, timeout=2)
+            result = subprocess.run(
+                ["which", "v4l2-ctl"], capture_output=True, timeout=2
+            )
             return result.returncode == 0
         except Exception as e:
             logger.error(f"Failed to check v4l2-ctl availability: {e}")
@@ -64,7 +66,9 @@ class V4L2CameraSource(VideoSourceProvider):
 
                 # Get identity info
                 identity = caps.get("identity", {})
-                bus_info = identity.get("bus_info", device)  # Fallback to device if no bus_info
+                bus_info = identity.get(
+                    "bus_info", device
+                )  # Fallback to device if no bus_info
 
                 # Group by bus_info - only keep the first device for each physical camera
                 if bus_info not in devices_by_identity:
@@ -75,7 +79,9 @@ class V4L2CameraSource(VideoSourceProvider):
                         "device": device,
                         "capabilities": caps,
                         "provider": self.display_name,
-                        "all_devices": [device],  # Track all /dev/video* for this camera
+                        "all_devices": [
+                            device
+                        ],  # Track all /dev/video* for this camera
                     }
                 else:
                     # Same physical camera, just track the device path
@@ -109,7 +115,10 @@ class V4L2CameraSource(VideoSourceProvider):
 
             # Get device identity info
             info_result = subprocess.run(
-                ["v4l2-ctl", "-d", device, "--info"], capture_output=True, text=True, timeout=5
+                ["v4l2-ctl", "-d", device, "--info"],
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
 
             if info_result.returncode != 0:
@@ -144,7 +153,10 @@ class V4L2CameraSource(VideoSourceProvider):
 
             # Get formats and resolutions with FPS
             formats_result = subprocess.run(
-                ["v4l2-ctl", "-d", device, "--list-formats-ext"], capture_output=True, text=True, timeout=5
+                ["v4l2-ctl", "-d", device, "--list-formats-ext"],
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
 
             # Parse formats and resolutions
@@ -173,8 +185,13 @@ class V4L2CameraSource(VideoSourceProvider):
                             current_resolution = part
                             if current_resolution not in resolutions_fps:
                                 resolutions_fps[current_resolution] = []
-                            if current_resolution not in format_resolutions[current_format]:
-                                format_resolutions[current_format].append(current_resolution)
+                            if (
+                                current_resolution
+                                not in format_resolutions[current_format]
+                            ):
+                                format_resolutions[current_format].append(
+                                    current_resolution
+                                )
 
                 # Parse FPS line
                 if "Interval: Discrete" in line and current_resolution:
@@ -206,11 +223,17 @@ class V4L2CameraSource(VideoSourceProvider):
                 default_format = formats[0]
 
             # Check for hardware encoding capability
-            hardware_encoding = any(fmt in ["H264", "HEVC", "VP8", "VP9"] for fmt in formats)
+            hardware_encoding = any(
+                fmt in ["H264", "HEVC", "VP8", "VP9"] for fmt in formats
+            )
 
             return {
                 "is_capture_device": True,
-                "identity": {"name": device_name, "driver": driver, "bus_info": bus_info},
+                "identity": {
+                    "name": device_name,
+                    "driver": driver,
+                    "bus_info": bus_info,
+                },
                 "is_usb": driver == "uvcvideo",
                 "supported_formats": formats,
                 "default_format": default_format,
@@ -238,7 +261,10 @@ class V4L2CameraSource(VideoSourceProvider):
         try:
             caps = self.get_source_capabilities(source_id)
             if not caps:
-                return {"success": False, "error": f"Device {source_id} not available or not a capture device"}
+                return {
+                    "success": False,
+                    "error": f"Device {source_id} not available or not a capture device",
+                }
 
             width = config.get("width", 960)
             height = config.get("height", 720)
@@ -259,7 +285,9 @@ class V4L2CameraSource(VideoSourceProvider):
             gst_format = format_mapping.get(pixel_format, "image/jpeg")
 
             # Build caps filter string
-            caps_str = f"{gst_format},width={width},height={height},framerate={framerate}/1"
+            caps_str = (
+                f"{gst_format},width={width},height={height},framerate={framerate}/1"
+            )
 
             return {
                 "success": True,
@@ -318,11 +346,18 @@ class V4L2CameraSource(VideoSourceProvider):
             if resolution in caps["supported_framerates"]:
                 supported_fps = caps["supported_framerates"][resolution]
                 if framerate not in supported_fps:
-                    warnings.append(f"Framerate {framerate} may not be supported. Available: {supported_fps}")
+                    warnings.append(
+                        f"Framerate {framerate} may not be supported. Available: {supported_fps}"
+                    )
 
         # Check format
         if pixel_format and pixel_format not in caps["supported_formats"]:
             errors.append(f"Format {pixel_format} not supported")
             warnings.append(f"Available formats: {caps['supported_formats']}")
 
-        return {"valid": len(errors) == 0, "errors": errors, "warnings": warnings, "adjusted_config": adjusted}
+        return {
+            "valid": len(errors) == 0,
+            "errors": errors,
+            "warnings": warnings,
+            "adjusted_config": adjusted,
+        }

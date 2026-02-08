@@ -20,13 +20,21 @@ def check_python_dependencies():
 
         # Read lines once
         with open(requirements_path, "r") as f:
-            lines = [line.strip() for line in f if line.strip() and not line.startswith("#")]
+            lines = [
+                line.strip() for line in f if line.strip() and not line.startswith("#")
+            ]
 
         missing = []
         for line in lines:
             # Extract package name, removing extras like [standard]
             package = (
-                line.split("[")[0].split("==")[0].split(">=")[0].split("<=")[0].split("<")[0].split(">")[0].strip()
+                line.split("[")[0]
+                .split("==")[0]
+                .split(">=")[0]
+                .split("<=")[0]
+                .split("<")[0]
+                .split(">")[0]
+                .strip()
             )
 
             try:
@@ -101,8 +109,17 @@ def get_user_permissions():
                         with open(filepath, "r") as f:
                             for line in f:
                                 line = line.strip()
-                                if line and not line.startswith("#") and user.pw_name in line:
-                                    sudoers_list.append({"source": f"sudoers.d/{filename}", "entry": line})
+                                if (
+                                    line
+                                    and not line.startswith("#")
+                                    and user.pw_name in line
+                                ):
+                                    sudoers_list.append(
+                                        {
+                                            "source": f"sudoers.d/{filename}",
+                                            "entry": line,
+                                        }
+                                    )
                     except:
                         pass
         except:
@@ -184,7 +201,9 @@ def get_frontend_version():
 def get_node_version():
     """Get Node.js version from the runtime if available."""
     try:
-        result = subprocess.run(["node", "-v"], capture_output=True, text=True, check=True)
+        result = subprocess.run(
+            ["node", "-v"], capture_output=True, text=True, check=True
+        )
         version = result.stdout.strip()
         if version.startswith("v"):
             version = version[1:]
@@ -236,7 +255,11 @@ async def get_permissions():
 @router.get("/dependencies")
 async def get_dependencies():
     """Get dependency status for both backend and frontend."""
-    return {"success": True, "backend": check_python_dependencies(), "frontend": check_npm_dependencies()}
+    return {
+        "success": True,
+        "backend": check_python_dependencies(),
+        "frontend": check_npm_dependencies(),
+    }
 
 
 @router.get("/system")

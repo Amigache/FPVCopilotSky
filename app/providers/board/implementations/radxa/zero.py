@@ -68,7 +68,10 @@ class RadxaZeroProvider(BoardProvider):
         try:
             with open("/proc/device-tree/model", "r") as f:
                 model = f.read().strip()
-                if criteria.device_tree_contains and criteria.device_tree_contains in model:
+                if (
+                    criteria.device_tree_contains
+                    and criteria.device_tree_contains in model
+                ):
                     logger.info(f"Detected Radxa Zero via device tree: {model}")
                     return True
         except Exception as e:
@@ -169,14 +172,21 @@ class RadxaZeroProvider(BoardProvider):
                 variant = variants[0]  # Usa default (current)
                 variant.storage_type = storage_type
                 variant.kernel_version = kernel_version
-                variant.distro_family = DistroFamily.DEBIAN if "debian" in distro_name else DistroFamily.UBUNTU
+                variant.distro_family = (
+                    DistroFamily.DEBIAN
+                    if "debian" in distro_name
+                    else DistroFamily.UBUNTU
+                )
                 variant.distro_version = distro_version
                 variant.name = f"{distro_name.capitalize()} {distro_version}"
                 logger.info(f"Detected Radxa Zero ({distro_name} {distro_version})")
                 return variant
 
             # Last resort: usa variante default con specs detectados
-            logger.warning(f"Unknown distro on Radxa Zero: {distro_name} {distro_version}, " "using default variant")
+            logger.warning(
+                f"Unknown distro on Radxa Zero: {distro_name} {distro_version}, "
+                "using default variant"
+            )
             variants = self.get_variants()
             variant = variants[0]
             variant.storage_type = storage_type

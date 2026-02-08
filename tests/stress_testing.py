@@ -47,7 +47,9 @@ class LoadSimulator:
         self.latencies: List[float] = []
         self.errors: List[Exception] = []
 
-    def run_sync(self, func: Callable, requests: int, *args, **kwargs) -> StressTestResult:
+    def run_sync(
+        self, func: Callable, requests: int, *args, **kwargs
+    ) -> StressTestResult:
         """Run synchronous load test"""
         start = time.perf_counter()
 
@@ -69,11 +71,15 @@ class LoadSimulator:
 
         return self._create_result(elapsed)
 
-    async def run_async(self, func: Callable, requests: int, *args, **kwargs) -> StressTestResult:
+    async def run_async(
+        self, func: Callable, requests: int, *args, **kwargs
+    ) -> StressTestResult:
         """Run asynchronous load test"""
         start = time.perf_counter()
 
-        tasks = [self._execute_async_request(func, args, kwargs) for _ in range(requests)]
+        tasks = [
+            self._execute_async_request(func, args, kwargs) for _ in range(requests)
+        ]
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -95,7 +101,9 @@ class LoadSimulator:
         return (time.perf_counter() - start) * 1000
 
     @staticmethod
-    async def _execute_async_request(func: Callable, args: tuple, kwargs: dict) -> float:
+    async def _execute_async_request(
+        func: Callable, args: tuple, kwargs: dict
+    ) -> float:
         """Execute single async request and measure latency"""
         start = time.perf_counter()
         await func(*args, **kwargs)
@@ -172,8 +180,16 @@ class SpikeTest:
         spike = self.results["spike"]
 
         return {
-            "throughput_increase": ((spike.throughput_rps - baseline.throughput_rps) / baseline.throughput_rps * 100),
-            "latency_increase": ((spike.avg_latency_ms - baseline.avg_latency_ms) / baseline.avg_latency_ms * 100),
+            "throughput_increase": (
+                (spike.throughput_rps - baseline.throughput_rps)
+                / baseline.throughput_rps
+                * 100
+            ),
+            "latency_increase": (
+                (spike.avg_latency_ms - baseline.avg_latency_ms)
+                / baseline.avg_latency_ms
+                * 100
+            ),
             "error_rate_change": spike.error_rate - baseline.error_rate,
         }
 
@@ -199,7 +215,9 @@ class EnduranceTest:
             while time.perf_counter() - start < self.duration:
                 for _ in range(self.workers):
                     if time.perf_counter() - start < self.duration:
-                        future = executor.submit(self._execute_request, func, args, kwargs)
+                        future = executor.submit(
+                            self._execute_request, func, args, kwargs
+                        )
                         futures.append(future)
 
                 # Check completed futures
@@ -221,7 +239,11 @@ class EnduranceTest:
             "duration_seconds": elapsed,
             "total_requests": request_count,
             "errors": error_count,
-            "error_rate": error_count / (request_count + error_count) * 100 if (request_count + error_count) > 0 else 0,
+            "error_rate": (
+                error_count / (request_count + error_count) * 100
+                if (request_count + error_count) > 0
+                else 0
+            ),
             "throughput": request_count / elapsed if elapsed > 0 else 0,
             "avg_latency_ms": sum(latencies) / len(latencies) if latencies else 0,
             "min_latency_ms": min(latencies) if latencies else 0,
@@ -293,6 +315,8 @@ class FailureSimulator:
             "total_attempts": self.recovery_attempts,
             "successful_recoveries": self.successful_recoveries,
             "recovery_rate": (
-                self.successful_recoveries / self.recovery_attempts * 100 if self.recovery_attempts > 0 else 0
+                self.successful_recoveries / self.recovery_attempts * 100
+                if self.recovery_attempts > 0
+                else 0
             ),
         }

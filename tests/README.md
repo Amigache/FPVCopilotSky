@@ -88,9 +88,9 @@ from app.services.preferences import PreferencesService
 async def test_save_preferences(temp_preferences):
     """Test saving preferences"""
     prefs = PreferencesService(config_path=str(temp_preferences))
-    
+
     result = prefs.set_serial_config(port="/dev/ttyUSB0", baudrate=115200)
-    
+
     assert result is True
     config = prefs.get_serial_config()
     assert config["port"] == "/dev/ttyUSB0"
@@ -99,14 +99,14 @@ async def test_save_preferences(temp_preferences):
 ### Frontend Example
 
 ```javascript
-import { render, screen } from '@testing-library/react'
-import { expect, test } from 'vitest'
-import MyComponent from '../MyComponent'
+import { render, screen } from "@testing-library/react";
+import { expect, test } from "vitest";
+import MyComponent from "../MyComponent";
 
-test('renders component', () => {
-  render(<MyComponent />)
-  expect(screen.getByText(/expected text/i)).toBeInTheDocument()
-})
+test("renders component", () => {
+  render(<MyComponent />);
+  expect(screen.getByText(/expected text/i)).toBeInTheDocument();
+});
 ```
 
 ## 🧩 Fixtures disponibles
@@ -222,7 +222,7 @@ Ver: `.github/workflows/ci.yml`
 
 1. **Lint** - flake8, black, mypy, eslint, prettier
 2. **Test Backend** - pytest con coverage
-3. **Test Frontend** - vitest con coverage  
+3. **Test Frontend** - vitest con coverage
 4. **Build** - Validar build de producción
 5. **Security** - Trivy, Safety, npm audit
 

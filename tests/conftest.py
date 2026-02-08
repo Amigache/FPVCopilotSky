@@ -27,7 +27,9 @@ def mock_serial_port():
         mock_port.port = "/dev/ttyUSB0"
 
         # Mock MAVLink heartbeat packet (minimal valid packet)
-        mock_port.read.return_value = b"\xfe\x09\x00\x01\x01\x00\x00\x00\x00\x00\x06\x08\x00\x00\x00\x03"
+        mock_port.read.return_value = (
+            b"\xfe\x09\x00\x01\x01\x00\x00\x00\x00\x00\x06\x08\x00\x00\x00\x03"
+        )
 
         mock.return_value = mock_port
         yield mock_port
@@ -124,7 +126,11 @@ def mock_gstreamer():
         # Mock pipeline
         mock_pipeline = MagicMock()
         mock_pipeline.set_state.return_value = (True, 0, 0)
-        mock_pipeline.get_state.return_value = (1, 4, 0)  # SUCCESS, PLAYING, VOID_PENDING
+        mock_pipeline.get_state.return_value = (
+            1,
+            4,
+            0,
+        )  # SUCCESS, PLAYING, VOID_PENDING
 
         mock_gst.Pipeline.return_value = mock_pipeline
         mock_gst.State.PLAYING = 4
@@ -340,11 +346,23 @@ def mock_api_services(monkeypatch):
         "bitrate": 2000,
         "auto_start": True,
     }
-    mock_prefs.get_vpn_config.return_value = {"provider": "tailscale", "auto_connect": True}
+    mock_prefs.get_vpn_config.return_value = {
+        "provider": "tailscale",
+        "auto_connect": True,
+    }
     mock_prefs.get_router_outputs.return_value = [
-        {"id": "test-tcp", "type": "tcp_server", "host": "0.0.0.0", "port": 5760, "enabled": True}
+        {
+            "id": "test-tcp",
+            "type": "tcp_server",
+            "host": "0.0.0.0",
+            "port": 5760,
+            "enabled": True,
+        }
     ]
-    monkeypatch.setattr("app.services.preferences.PreferencesService", lambda *args, **kwargs: mock_prefs)
+    monkeypatch.setattr(
+        "app.services.preferences.PreferencesService",
+        lambda *args, **kwargs: mock_prefs,
+    )
 
     # Mock MAVLinkService
     mock_mavlink = Mock()
@@ -356,7 +374,10 @@ def mock_api_services(monkeypatch):
         "message_count": 150,
         "last_heartbeat": 0.5,
     }
-    monkeypatch.setattr("app.services.mavlink_bridge.MAVLinkBridge", lambda *args, **kwargs: mock_mavlink)
+    monkeypatch.setattr(
+        "app.services.mavlink_bridge.MAVLinkBridge",
+        lambda *args, **kwargs: mock_mavlink,
+    )
 
     # Mock VideoConfig
     mock_video_config = Mock()
@@ -364,7 +385,10 @@ def mock_api_services(monkeypatch):
         {"id": "/dev/video0", "name": "USB Camera", "type": "usbcamera"}
     ]
     mock_video_config.get_available_encoders.return_value = ["h264", "h265", "mjpeg"]
-    monkeypatch.setattr("app.services.video_config.VideoConfig", lambda *args, **kwargs: mock_video_config)
+    monkeypatch.setattr(
+        "app.services.video_config.VideoConfig",
+        lambda *args, **kwargs: mock_video_config,
+    )
 
     return {
         "preferences": mock_prefs,
@@ -380,6 +404,8 @@ def pytest_configure(config):
 
     Add custom markers and configuration
     """
-    config.addinivalue_line("markers", "hardware: tests requiring physical hardware (deselect in CI)")
+    config.addinivalue_line(
+        "markers", "hardware: tests requiring physical hardware (deselect in CI)"
+    )
     config.addinivalue_line("markers", "slow: slow running tests")
     config.addinivalue_line("markers", "integration: integration tests")

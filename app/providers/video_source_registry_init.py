@@ -5,7 +5,12 @@ Automatically registers all available video source providers at import time
 
 import logging
 from .registry import get_provider_registry
-from .video_source import V4L2CameraSource, LibCameraSource, HDMICaptureSource, NetworkStreamSource
+from .video_source import (
+    V4L2CameraSource,
+    LibCameraSource,
+    HDMICaptureSource,
+    NetworkStreamSource,
+)
 
 logger = logging.getLogger(__name__)
 

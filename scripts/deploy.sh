@@ -34,31 +34,31 @@ echo -e "${GREEN}✅ Systemd service installed${NC}"
 # Step 3: Setup nginx if installed
 if command -v nginx &> /dev/null; then
     echo -e "\n${BLUE}🌐 Configuring nginx...${NC}"
-    
+
     # Backup existing config if it exists
     if [ -f /etc/nginx/sites-available/fpvcopilot-sky ]; then
         sudo cp /etc/nginx/sites-available/fpvcopilot-sky /etc/nginx/sites-available/fpvcopilot-sky.backup
     fi
-    
+
     # Copy nginx config with production optimizations:
     # - Uses 127.0.0.1 instead of localhost (avoids IPv6 resolution issues)
     # - Optimized timeouts for API (10s) and WebSocket (7d)
     sudo cp "$PROJECT_DIR/systemd/fpvcopilot-sky.nginx" /etc/nginx/sites-available/fpvcopilot-sky
-    
+
     # Enable FPV site
     sudo ln -sf /etc/nginx/sites-available/fpvcopilot-sky /etc/nginx/sites-enabled/
-    
+
     # IMPORTANT: Disable default nginx site to prevent it from interfering
     if [ -L /etc/nginx/sites-enabled/default ]; then
         echo -e "${YELLOW}Disabling default nginx site...${NC}"
         sudo rm /etc/nginx/sites-enabled/default
     fi
-    
+
     # Fix permissions for frontend build
     # dist/ is owned by hector (can rebuild) and www-data (can read)
     sudo chown -R $USER:www-data "$PROJECT_DIR/frontend/client/dist"
     sudo chmod -R 755 "$PROJECT_DIR/frontend/client/dist"
-    
+
     # Test nginx config
     if sudo nginx -t; then
         echo -e "${GREEN}✅ Nginx configuration is valid${NC}"

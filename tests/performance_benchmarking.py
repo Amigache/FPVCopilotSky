@@ -74,7 +74,9 @@ class PerformanceProfiler:
 
             self.metrics.append(metrics)
 
-    def measure_latency(self, func: Callable, *args, iterations: int = 10, **kwargs) -> float:
+    def measure_latency(
+        self, func: Callable, *args, iterations: int = 10, **kwargs
+    ) -> float:
         """Measure function latency"""
         latencies = []
 

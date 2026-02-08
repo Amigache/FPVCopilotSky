@@ -59,7 +59,9 @@ class PreferencesService:
     COMMON_BAUDRATES = [115200, 57600, 921600, 460800, 230400]
 
     def __init__(self, config_path: str = None):
-        self._lock = threading.RLock()  # RLock allows re-entrant locking from same thread
+        self._lock = (
+            threading.RLock()
+        )  # RLock allows re-entrant locking from same thread
         self._preferences: Dict[str, Any] = self._default_preferences()
         self._config_path = config_path if config_path else self._get_config_path()
         self._load()
@@ -73,7 +75,12 @@ class PreferencesService:
     def _default_preferences(self) -> Dict[str, Any]:
         """Return default preferences structure."""
         return {
-            "serial": {"port": "", "baudrate": 115200, "auto_connect": True, "last_successful": False},
+            "serial": {
+                "port": "",
+                "baudrate": 115200,
+                "auto_connect": True,
+                "last_successful": False,
+            },
             "router": {"outputs": []},  # No outputs by default, user creates them
             "video": {
                 "device": "",  # Will be auto-detected when user saves first time
@@ -100,7 +107,9 @@ class PreferencesService:
             },
             "flight_session": {
                 "auto_start_on_arm": False,  # Auto-start flight session when drone arms
-                "log_directory": os.path.expanduser("~/flight-records"),  # Default log directory
+                "log_directory": os.path.expanduser(
+                    "~/flight-records"
+                ),  # Default log directory
             },
             "ui": {"language": "es", "theme": "dark"},
             "system": {"version": "1.0.0", "first_run": True},
@@ -182,7 +191,9 @@ class PreferencesService:
                     and saved_config.get("baudrate") == baudrate
                     and saved_config.get("last_successful") == successful
                 ):
-                    print(f"✅ Serial preferences saved: {port} @ {baudrate} baud (successful={successful})")
+                    print(
+                        f"✅ Serial preferences saved: {port} @ {baudrate} baud (successful={successful})"
+                    )
                 else:
                     print(f"⚠️ Serial preferences save verification failed")
         except Exception as e:
@@ -265,7 +276,10 @@ class PreferencesService:
                 else:
                     # Device path exists - verify it's the same camera
                     current_identity = get_device_identity(device)
-                    if not current_identity or current_identity.get("name") != saved_name:
+                    if (
+                        not current_identity
+                        or current_identity.get("name") != saved_name
+                    ):
                         # Device path exists but is a different camera or not a capture device
                         needs_rematch = True
 
@@ -273,13 +287,17 @@ class PreferencesService:
                     # Find the camera by its name/bus_info
                     new_device = find_device_by_identity(saved_name, saved_bus)
                     if new_device:
-                        print(f"🔄 Camera '{saved_name}' moved: {device} → {new_device}")
+                        print(
+                            f"🔄 Camera '{saved_name}' moved: {device} → {new_device}"
+                        )
                         config["device"] = new_device
                         # Persist the corrected device path
                         self._preferences["video"]["device"] = new_device
                         self._save()
                     else:
-                        print(f"⚠️ Camera '{saved_name}' not found on any /dev/video* device")
+                        print(
+                            f"⚠️ Camera '{saved_name}' not found on any /dev/video* device"
+                        )
                         # Fallback: find any capture device
                         self._fallback_detect_device(config, device)
             elif device and not os.path.exists(device):
@@ -301,9 +319,15 @@ class PreferencesService:
             for dev in devices:
                 try:
                     result = subprocess.run(
-                        ["v4l2-ctl", "--device", dev, "--info"], capture_output=True, text=True, timeout=2
+                        ["v4l2-ctl", "--device", dev, "--info"],
+                        capture_output=True,
+                        text=True,
+                        timeout=2,
                     )
-                    if result.returncode == 0 and "video capture" in result.stdout.lower():
+                    if (
+                        result.returncode == 0
+                        and "video capture" in result.stdout.lower()
+                    ):
                         config["device"] = dev
                         if old_device:
                             print(f"⚠️ Video device {old_device} not found, using {dev}")
@@ -314,12 +338,16 @@ class PreferencesService:
                     continue
             else:
                 if old_device:
-                    print(f"⚠️ Video device {old_device} not found and no alternative detected")
+                    print(
+                        f"⚠️ Video device {old_device} not found and no alternative detected"
+                    )
                 else:
                     print(f"ℹ️ No video capture devices detected")
         else:
             if old_device:
-                print(f"⚠️ Video device {old_device} not found, no /dev/video* devices available")
+                print(
+                    f"⚠️ Video device {old_device} not found, no /dev/video* devices available"
+                )
             else:
                 print(f"ℹ️ No video devices detected")
 
@@ -352,8 +380,13 @@ class PreferencesService:
                 enabled = config.get("enabled", False)
                 auto_start = config.get("auto_start", False)
 
-                if saved.get("enabled") == enabled and saved.get("auto_start") == auto_start:
-                    print(f"✅ Streaming preferences saved: enabled={enabled}, auto_start={auto_start}")
+                if (
+                    saved.get("enabled") == enabled
+                    and saved.get("auto_start") == auto_start
+                ):
+                    print(
+                        f"✅ Streaming preferences saved: enabled={enabled}, auto_start={auto_start}"
+                    )
                 else:
                     print(f"⚠️ Streaming preferences save verification failed")
         except Exception as e:

@@ -168,17 +168,17 @@
     max-width: 90%;
     margin: 20px;
   }
-  
+
   .modal-header,
   .modal-body,
   .modal-footer {
     padding: 16px;
   }
-  
+
   .modal-footer {
     flex-direction: column;
   }
-  
+
   .modal-btn {
     width: 100%;
   }

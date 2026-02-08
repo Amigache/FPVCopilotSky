@@ -11,14 +11,14 @@ const ModemView = () => {
   const { showToast } = useToast()
   const { showModal } = useModal()
   const { messages: wsMessages } = useWebSocket()
-  
+
   // State
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState(null)
   const [bandPresets, setBandPresets] = useState(null)
   const [videoQuality, setVideoQuality] = useState(null)
   const [latency, setLatency] = useState(null)
-  
+
   // Loading states
   const [changingBand, setChangingBand] = useState(false)
   const [changingMode, setChangingMode] = useState(false)
@@ -78,10 +78,7 @@ const ModemView = () => {
   useEffect(() => {
     const loadAll = async () => {
       setLoading(true)
-      await Promise.all([
-        loadStatus(),
-        loadBandPresets()
-      ])
+      await Promise.all([loadStatus(), loadBandPresets()])
       setLoading(false)
       // Auto-test latency on first load
       handleTestLatency()
@@ -144,10 +141,10 @@ const ModemView = () => {
     const actionMsg = status?.video_mode_active ? 'Desactivando' : 'Activando'
     showToast(`⏳ ${actionMsg} modo video...`, 'info')
     try {
-      const endpoint = status?.video_mode_active 
+      const endpoint = status?.video_mode_active
         ? '/api/network/hilink/video-mode/disable'
         : '/api/network/hilink/video-mode/enable'
-      
+
       const response = await api.post(endpoint, {}, 20000)
       if (response.ok) {
         const data = await response.json()
@@ -177,7 +174,7 @@ const ModemView = () => {
           const response = await api.post('/api/network/hilink/reboot')
           if (response.ok) {
             showToast(`⏳ ${t('network.modemRebooting')}`, 'info')
-            
+
             // Poll for modem to come back online (check every 5s for up to 60s)
             let attempts = 0
             const maxAttempts = 12
@@ -197,7 +194,7 @@ const ModemView = () => {
               } catch (_e) {
                 // Expected during reboot
               }
-              
+
               if (attempts < maxAttempts) {
                 setTimeout(checkModem, 5000)
               } else {
@@ -205,7 +202,7 @@ const ModemView = () => {
                 showToast(`⚠️ ${t('modem.modemNoResponse')}`, 'warning')
               }
             }
-            
+
             // Start checking after initial delay
             setTimeout(checkModem, 10000)
           } else {
@@ -217,19 +214,25 @@ const ModemView = () => {
           setModemRebooting(false)
           showToast(error.message, 'error')
         }
-      }
+      },
     })
   }
 
   // Get quality color class
   const getQualityColorClass = (level) => {
     switch (level) {
-      case 'excellent': return 'quality-excellent'
-      case 'good': return 'quality-good'
-      case 'moderate': return 'quality-moderate'
-      case 'poor': return 'quality-poor'
-      case 'critical': return 'quality-critical'
-      default: return 'quality-unknown'
+      case 'excellent':
+        return 'quality-excellent'
+      case 'good':
+        return 'quality-good'
+      case 'moderate':
+        return 'quality-moderate'
+      case 'poor':
+        return 'quality-poor'
+      case 'critical':
+        return 'quality-critical'
+      default:
+        return 'quality-unknown'
     }
   }
 
@@ -280,18 +283,20 @@ const ModemView = () => {
               {status.video_mode_active ? t('modem.videoModeActive') : t('modem.normalMode')}
             </span>
             <span className="banner-description">
-              {status.video_mode_active 
-                ? t('modem.videoModeDesc')
-                : t('modem.normalModeDesc')}
+              {status.video_mode_active ? t('modem.videoModeDesc') : t('modem.normalModeDesc')}
             </span>
           </div>
         </div>
-        <button 
+        <button
           className={`btn-video-mode ${status.video_mode_active ? 'active' : ''}`}
           onClick={handleToggleVideoMode}
           disabled={togglingVideoMode}
         >
-          {togglingVideoMode ? '⏳' : status.video_mode_active ? `⏹️ ${t('modem.deactivate')}` : `🎬 ${t('modem.activateVideoMode')}`}
+          {togglingVideoMode
+            ? '⏳'
+            : status.video_mode_active
+              ? `⏹️ ${t('modem.deactivate')}`
+              : `🎬 ${t('modem.activateVideoMode')}`}
         </button>
       </div>
 
@@ -304,13 +309,21 @@ const ModemView = () => {
             <div className="info-column">
               <div className="section-header">
                 <span className="section-title">{t('modem.operatorSection')}</span>
-                <span className={`connection-badge ${network.connection_status === 'Connected' ? 'connected' : 'disconnected'}`}>
-                  {network.connection_status === 'Connected' ? `● ${t('network.connected')}` : `○ ${t('modem.disconnected')}`}
+                <span
+                  className={`connection-badge ${
+                    network.connection_status === 'Connected' ? 'connected' : 'disconnected'
+                  }`}
+                >
+                  {network.connection_status === 'Connected'
+                    ? `● ${t('network.connected')}`
+                    : `○ ${t('modem.disconnected')}`}
                 </span>
               </div>
               <div className="operator-main-info">
                 <span className="operator-name">{network.operator || t('modem.unknown')}</span>
-                <span className="tech-badge">{network.network_type_ex || network.network_type || '-'}</span>
+                <span className="tech-badge">
+                  {network.network_type_ex || network.network_type || '-'}
+                </span>
               </div>
               <div className="info-grid">
                 <div className="info-item">
@@ -364,7 +377,7 @@ const ModemView = () => {
         {/* === CARD 2: KPIs - Calidad, Latencia, Señal, Tráfico === */}
         <div className="card kpi-card">
           <h2>📊 {t('modem.performanceMetrics')}</h2>
-          
+
           <div className="kpi-sections">
             {/* Video Quality Section */}
             <div className="kpi-section">
@@ -383,7 +396,9 @@ const ModemView = () => {
                   {videoQuality.warnings?.length > 0 && (
                     <div className="quality-warnings">
                       {videoQuality.warnings.map((w, i) => (
-                        <span key={i} className="warning-tag">⚠️ {w}</span>
+                        <span key={i} className="warning-tag">
+                          ⚠️ {w}
+                        </span>
                       ))}
                     </div>
                   )}
@@ -397,11 +412,7 @@ const ModemView = () => {
             <div className="kpi-section">
               <div className="kpi-header">
                 <span className="kpi-title">⏱️ {t('modem.latency')}</span>
-                <button 
-                  className="btn-mini" 
-                  onClick={handleTestLatency}
-                  disabled={testingLatency}
-                >
+                <button className="btn-mini" onClick={handleTestLatency} disabled={testingLatency}>
                   {testingLatency ? '...' : '🔄'}
                 </button>
               </div>
@@ -475,7 +486,8 @@ const ModemView = () => {
                   <span className="traffic-val">{traffic.current_upload || '-'}</span>
                 </div>
                 <div className="traffic-total">
-                  {t('modem.total')}: ⬇️ {traffic.total_download || '-'} / ⬆️ {traffic.total_upload || '-'}
+                  {t('modem.total')}: ⬇️ {traffic.total_download || '-'} / ⬆️{' '}
+                  {traffic.total_upload || '-'}
                 </div>
               </div>
             </div>
@@ -485,38 +497,40 @@ const ModemView = () => {
         {/* === CARD 3: CONFIGURACIÓN - Banda, Modo, Sesión === */}
         <div className="card config-card">
           <h2>⚙️ {t('modem.configuration')}</h2>
-          
+
           <div className="config-sections">
             {/* Band Config */}
             <div className="config-section">
               <div className="config-header">
                 <span className="config-title">📡 {t('modem.lteBand')}</span>
               </div>
-              
-              {changingBand && (
-                <div className="config-loading">⏳ {t('modem.applying')}</div>
-              )}
-              
+
+              {changingBand && <div className="config-loading">⏳ {t('modem.applying')}</div>}
+
               <div className="band-info">
                 <span className="band-enabled">
-                  {t('modem.enabled')}: <strong>{currentBand.enabled_bands?.length > 0 
-                    ? currentBand.enabled_bands.join(', ') 
-                    : t('modem.all')}</strong>
+                  {t('modem.enabled')}:{' '}
+                  <strong>
+                    {currentBand.enabled_bands?.length > 0
+                      ? currentBand.enabled_bands.join(', ')
+                      : t('modem.all')}
+                  </strong>
                 </span>
               </div>
-              
+
               <div className="preset-grid">
-                {bandPresets?.presets && Object.entries(bandPresets.presets).map(([key, preset]) => (
-                  <button
-                    key={key}
-                    className="btn-preset-compact"
-                    onClick={() => handleSetBand(key)}
-                    disabled={changingBand}
-                    title={preset.description}
-                  >
-                    {preset.name}
-                  </button>
-                ))}
+                {bandPresets?.presets &&
+                  Object.entries(bandPresets.presets).map(([key, preset]) => (
+                    <button
+                      key={key}
+                      className="btn-preset-compact"
+                      onClick={() => handleSetBand(key)}
+                      disabled={changingBand}
+                      title={preset.description}
+                    >
+                      {preset.name}
+                    </button>
+                  ))}
               </div>
             </div>
 
@@ -527,32 +541,37 @@ const ModemView = () => {
               <div className="config-header">
                 <span className="config-title">📶 {t('modem.networkMode')}</span>
               </div>
-              
-              {changingMode && (
-                <div className="config-loading">⏳ {t('modem.changing')}</div>
-              )}
-              
+
+              {changingMode && <div className="config-loading">⏳ {t('modem.changing')}</div>}
+
               <div className="current-mode-info">
-                {t('modem.current')}: <strong>{status.mode?.network_mode_name || network.network_type || '-'}</strong>
+                {t('modem.current')}:{' '}
+                <strong>{status.mode?.network_mode_name || network.network_type || '-'}</strong>
               </div>
-              
+
               <div className="mode-grid">
-                <button 
-                  className={`btn-mode-compact ${status.mode?.network_mode === '00' ? 'active' : ''}`}
+                <button
+                  className={`btn-mode-compact ${
+                    status.mode?.network_mode === '00' ? 'active' : ''
+                  }`}
                   onClick={() => handleSetNetworkMode('00')}
                   disabled={changingMode}
                 >
                   Auto
                 </button>
-                <button 
-                  className={`btn-mode-compact ${status.mode?.network_mode === '03' ? 'active' : ''}`}
+                <button
+                  className={`btn-mode-compact ${
+                    status.mode?.network_mode === '03' ? 'active' : ''
+                  }`}
                   onClick={() => handleSetNetworkMode('03')}
                   disabled={changingMode}
                 >
                   4G Only
                 </button>
-                <button 
-                  className={`btn-mode-compact ${status.mode?.network_mode === '02' ? 'active' : ''}`}
+                <button
+                  className={`btn-mode-compact ${
+                    status.mode?.network_mode === '02' ? 'active' : ''
+                  }`}
                   onClick={() => handleSetNetworkMode('02')}
                   disabled={changingMode}
                 >
@@ -567,11 +586,7 @@ const ModemView = () => {
             <h3>🔄 {t('modem.rebootSection')}</h3>
             <div className="reboot-container">
               <span className="reboot-hint">{t('modem.rebootHint')}</span>
-              <button 
-                className="btn-reboot" 
-                onClick={handleRebootModem}
-                disabled={modemRebooting}
-              >
+              <button className="btn-reboot" onClick={handleRebootModem} disabled={modemRebooting}>
                 {modemRebooting ? `⏳ ${t('modem.rebooting')}` : `🔄 ${t('modem.rebootModem')}`}
               </button>
             </div>

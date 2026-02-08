@@ -198,7 +198,9 @@
 }
 
 @keyframes vpn-spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .button-group {
@@ -471,11 +473,11 @@
   .auth-actions .vpn-btn {
     width: 100%;
   }
-  
+
   .provider-info {
     padding: 0.5rem;
   }
-  
+
   .info-box,
   .warning-box,
   .auth-banner {

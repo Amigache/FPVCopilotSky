@@ -248,7 +248,9 @@
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Preferences section */
@@ -446,15 +448,15 @@
   .monitor-columns {
     grid-template-columns: 1fr;
   }
-  
+
   .system-controls {
     flex-direction: column;
   }
-  
+
   .logs-controls {
     flex-direction: column;
   }
-  
+
   .btn-view-logs {
     min-width: 100%;
   }
@@ -490,7 +492,9 @@
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .restarting-content h3 {
@@ -514,8 +518,13 @@
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 
 @media (max-width: 480px) {
@@ -523,16 +532,16 @@
     min-width: 300px;
     padding: 30px;
   }
-  
+
   .restarting-spinner {
     width: 50px;
     height: 50px;
   }
-  
+
   .restarting-content h3 {
     font-size: 20px;
   }
-  
+
   .restarting-content p {
     font-size: 14px;
   }
@@ -646,7 +655,8 @@
 }
 
 @keyframes pulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
   }
   50% {

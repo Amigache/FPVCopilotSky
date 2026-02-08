@@ -14,22 +14,20 @@ export const ToastProvider = ({ children }) => {
   const [toasts, setToasts] = useState([])
 
   const showToast = useCallback((message, type = 'info', duration = 3000) => {
-    const id = (typeof crypto !== "undefined" && crypto.randomUUID)
-      ? crypto.randomUUID()
-      : Math.random().toString(36).substr(2, 9);
+    const id =
+      typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : Math.random().toString(36).substr(2, 9)
 
-    setToasts(prev => [
-      { id, message, type, duration },
-      ...prev
-    ])
+    setToasts((prev) => [{ id, message, type, duration }, ...prev])
 
     setTimeout(() => {
-      setToasts(prev => prev.filter(t => t.id !== id))
+      setToasts((prev) => prev.filter((t) => t.id !== id))
     }, duration)
   }, [])
 
   const removeToast = useCallback((id) => {
-    setToasts(prev => prev.filter(t => t.id !== id))
+    setToasts((prev) => prev.filter((t) => t.id !== id))
   }, [])
 
   return (
@@ -38,7 +36,7 @@ export const ToastProvider = ({ children }) => {
 
       <div className="toast-container">
         <AnimatePresence initial={false}>
-          {toasts.map(toast => (
+          {toasts.map((toast) => (
             <motion.div
               key={toast.id}
               layout

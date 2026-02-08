@@ -36,7 +36,9 @@ class TestMAVLinkConnection:
 
     def test_connect_no_heartbeat(self, mock_serial_port, mock_mavlink_connection):
         """Test connection fails without heartbeat"""
-        mock_mavlink_connection.wait_heartbeat = Mock(side_effect=TimeoutError("No heartbeat"))
+        mock_mavlink_connection.wait_heartbeat = Mock(
+            side_effect=TimeoutError("No heartbeat")
+        )
 
         bridge = MAVLinkBridge()
 
@@ -171,7 +173,9 @@ class TestMAVLinkParameters:
         try:
             bridge.connect("/dev/ttyUSB0", 115200)
             # Just verify connection works
-            assert bridge.is_connected() or not bridge.is_connected()  # Always true but safe
+            assert (
+                bridge.is_connected() or not bridge.is_connected()
+            )  # Always true but safe
         except Exception as e:
             pytest.skip(f"Serial connection not available: {e}")
 

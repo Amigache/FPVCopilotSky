@@ -11,7 +11,7 @@ const NetworkView = () => {
   const { showToast } = useToast()
   const { showModal: _showModal } = useModal()
   const { messages } = useWebSocket()
-  
+
   // State
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState(null)
@@ -19,12 +19,12 @@ const NetworkView = () => {
   const [wifiNetworks, setWifiNetworks] = useState([])
   const [wifiScanning, setWifiScanning] = useState(false)
   const [changingMode, setChangingMode] = useState(false)
-  
+
   // WiFi Connect Modal
   const [connectModal, setConnectModal] = useState({ open: false, ssid: '', security: '' })
   const [wifiPassword, setWifiPassword] = useState('')
   const [connecting, setConnecting] = useState(false)
-  
+
   // Mode Change Confirmation Modal
   const [modeChangeModal, setModeChangeModal] = useState({ open: false, targetMode: '' })
 
@@ -55,7 +55,11 @@ const NetworkView = () => {
     } catch (error) {
       // Timeout or network error - modem is likely disconnected
       // This is expected when modem is not connected, no need to log
-      setHilinkStatus({ available: false, connected: false, error: error.message || 'Connection error' })
+      setHilinkStatus({
+        available: false,
+        connected: false,
+        error: error.message || 'Connection error',
+      })
     }
   }, [])
 
@@ -89,7 +93,6 @@ const NetworkView = () => {
   // Lazy load WiFi networks after initial load
   useEffect(() => {
     if (!loading) {
-       
       loadWifiNetworks()
     }
   }, [loading, loadWifiNetworks])
@@ -97,7 +100,6 @@ const NetworkView = () => {
   // Lazy load modem status after initial load
   useEffect(() => {
     if (!loading) {
-       
       loadHilinkStatus()
     }
   }, [loading, loadHilinkStatus])
@@ -105,7 +107,6 @@ const NetworkView = () => {
   // Update from WebSocket - network status
   useEffect(() => {
     if (messages.network_status) {
-       
       setStatus(messages.network_status)
       setLoading(false)
     }
@@ -119,7 +120,7 @@ const NetworkView = () => {
       return
     }
   }
-  
+
   // Perform the actual mode change
   const performModeChange = async (mode) => {
     setChangingMode(true)
@@ -129,8 +130,8 @@ const NetworkView = () => {
       if (response.ok) {
         await loadStatus()
         showToast(
-          mode === 'wifi' 
-            ? t('network.wifiPrimarySet', 'WiFi set as primary') 
+          mode === 'wifi'
+            ? t('network.wifiPrimarySet', 'WiFi set as primary')
             : t('network.modemPrimarySet', '4G set as primary'),
           'success'
         )
@@ -143,8 +144,6 @@ const NetworkView = () => {
     }
     setChangingMode(false)
   }
-
-  
 
   // Open WiFi connect modal
   const handleWifiClick = (network) => {
@@ -161,10 +160,13 @@ const NetworkView = () => {
       if (wifiPassword) {
         payload.password = wifiPassword
       }
-      
+
       const response = await api.post('/api/network/wifi/connect', payload)
       if (response.ok) {
-        showToast(t('network.wifiConnected', 'Connected to {{ssid}}', { ssid: connectModal.ssid }), 'success')
+        showToast(
+          t('network.wifiConnected', 'Connected to {{ssid}}', { ssid: connectModal.ssid }),
+          'success'
+        )
         setConnectModal({ open: false, ssid: '', security: '' })
         await loadStatus()
         await loadWifiNetworks()
@@ -228,31 +230,35 @@ const NetworkView = () => {
   return (
     <div className="network-view">
       {/* Mode Banner */}
-      <div className={`network-mode-banner ${currentMode === 'modem' ? 'modem-primary' : 'wifi-primary'}`}>
+      <div
+        className={`network-mode-banner ${
+          currentMode === 'modem' ? 'modem-primary' : 'wifi-primary'
+        }`}
+      >
         <div className="mode-info">
           <span className="mode-icon">{currentMode === 'modem' ? '📶' : '📡'}</span>
           <div className="mode-text">
             <span className="mode-title">
-              {currentMode === 'modem' 
-                ? t('network.modemPrimary', '4G Primary Mode') 
+              {currentMode === 'modem'
+                ? t('network.modemPrimary', '4G Primary Mode')
                 : t('network.wifiPrimary', 'WiFi Primary Mode')}
             </span>
             <span className="mode-description">
-              {currentMode === 'modem' 
+              {currentMode === 'modem'
                 ? t('network.modemPrimaryDesc', 'Using 4G modem as main connection')
                 : t('network.wifiPrimaryDesc', 'Using WiFi as main connection')}
             </span>
           </div>
         </div>
         <div className="mode-toggle">
-          <button 
+          <button
             className={`mode-btn ${currentMode === 'wifi' ? 'active' : ''}`}
             onClick={() => handleSetMode('wifi')}
             disabled={changingMode || currentMode === 'wifi' || !status?.wifi_interface}
           >
             📡 WiFi
           </button>
-          <button 
+          <button
             className={`mode-btn ${currentMode === 'modem' ? 'active' : ''}`}
             onClick={() => handleSetMode('modem')}
             disabled={changingMode || currentMode === 'modem' || !modem.detected}
@@ -270,9 +276,11 @@ const NetworkView = () => {
             <h2>🔌 {t('network.interfaces', 'Interfaces')}</h2>
             <div className="interfaces-list">
               {interfaces.map((iface) => (
-                <div 
-                  key={iface.name} 
-                  className={`interface-item ${iface.state === 'UP' ? 'connected' : 'disconnected'}`}
+                <div
+                  key={iface.name}
+                  className={`interface-item ${
+                    iface.state === 'UP' ? 'connected' : 'disconnected'
+                  }`}
                 >
                   <div className="interface-info">
                     <span className="interface-name">
@@ -318,21 +326,15 @@ const NetworkView = () => {
                 <tbody>
                   {routes.map((route, idx) => (
                     <tr key={idx}>
-                      <td className={idx === 0 ? 'primary-route' : ''}>
-                        {route.interface}
-                      </td>
+                      <td className={idx === 0 ? 'primary-route' : ''}>{route.interface}</td>
                       <td>{route.gateway}</td>
-                      <td className={idx === 0 ? 'primary-route' : ''}>
-                        {route.metric || '-'}
-                      </td>
+                      <td className={idx === 0 ? 'primary-route' : ''}>{route.metric || '-'}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             ) : (
-              <div className="loading-indicator">
-                {t('network.noRoutes', 'No default routes')}
-              </div>
+              <div className="loading-indicator">{t('network.noRoutes', 'No default routes')}</div>
             )}
           </div>
         </div>
@@ -343,15 +345,11 @@ const NetworkView = () => {
           <div className="card">
             <div className="card-header">
               <h2>📡 {t('network.wifiNetworks', 'WiFi Networks')}</h2>
-              <button 
-                className="btn-refresh" 
-                onClick={loadWifiNetworks} 
-                disabled={wifiScanning}
-              >
+              <button className="btn-refresh" onClick={loadWifiNetworks} disabled={wifiScanning}>
                 {wifiScanning ? '...' : '🔍'}
               </button>
             </div>
-            
+
             {wifiScanning ? (
               <div className="loading-indicator">
                 <div className="spinner"></div>
@@ -360,7 +358,7 @@ const NetworkView = () => {
             ) : (
               <div className="wifi-networks">
                 {wifiNetworks.map((network) => (
-                  <div 
+                  <div
                     key={network.ssid}
                     className={`wifi-network ${network.connected ? 'connected' : ''}`}
                     onClick={() => handleWifiClick(network)}
@@ -369,9 +367,11 @@ const NetworkView = () => {
                       <div className="wifi-signal">
                         <div className="signal-bars">
                           {[1, 2, 3, 4].map((bar) => (
-                            <div 
+                            <div
                               key={bar}
-                              className={`signal-bar ${bar <= getSignalBars(network.signal) ? 'active' : ''}`}
+                              className={`signal-bar ${
+                                bar <= getSignalBars(network.signal) ? 'active' : ''
+                              }`}
                             />
                           ))}
                         </div>
@@ -402,8 +402,8 @@ const NetworkView = () => {
             <div className="card-header">
               <h2>📶 MÓDEM 4G</h2>
               {hilinkStatus?.available && (
-                <button 
-                  className="btn-refresh" 
+                <button
+                  className="btn-refresh"
                   onClick={loadHilinkStatus}
                   title={t('network.refresh', 'Refresh')}
                 >
@@ -428,9 +428,15 @@ const NetworkView = () => {
                   <div className="modem-signal-section">
                     <div className="signal-bars-large">
                       {[1, 2, 3, 4, 5].map((bar) => (
-                        <div 
+                        <div
                           key={bar}
-                          className={`signal-bar-large ${bar <= (hilinkStatus.signal?.signal_bars || Math.ceil((hilinkStatus.signal?.signal_percent || 0) / 20)) ? 'active' : ''}`}
+                          className={`signal-bar-large ${
+                            bar <=
+                            (hilinkStatus.signal?.signal_bars ||
+                              Math.ceil((hilinkStatus.signal?.signal_percent || 0) / 20))
+                              ? 'active'
+                              : ''
+                          }`}
                         />
                       ))}
                     </div>
@@ -438,9 +444,7 @@ const NetworkView = () => {
                       <span className="signal-percent">
                         {hilinkStatus.signal?.signal_percent || 0}%
                       </span>
-                      <span className="signal-rssi">
-                        {hilinkStatus.signal?.rssi || '-'}
-                      </span>
+                      <span className="signal-rssi">{hilinkStatus.signal?.rssi || '-'}</span>
                     </div>
                   </div>
 
@@ -448,11 +452,15 @@ const NetworkView = () => {
                   <div className="modem-traffic">
                     <div className="traffic-stat">
                       <span className="traffic-icon">↓</span>
-                      <span className="traffic-value">{hilinkStatus.traffic?.current_download || '0 B'}</span>
+                      <span className="traffic-value">
+                        {hilinkStatus.traffic?.current_download || '0 B'}
+                      </span>
                     </div>
                     <div className="traffic-stat">
                       <span className="traffic-icon">↑</span>
-                      <span className="traffic-value">{hilinkStatus.traffic?.current_upload || '0 B'}</span>
+                      <span className="traffic-value">
+                        {hilinkStatus.traffic?.current_upload || '0 B'}
+                      </span>
                     </div>
                   </div>
 
@@ -464,16 +472,20 @@ const NetworkView = () => {
                     </div>
                     <div className="modem-detail">
                       <span className="modem-label">IMEI</span>
-                      <span className="modem-value">{hilinkStatus.device?.imei?.slice(-8) || '-'}</span>
+                      <span className="modem-value">
+                        {hilinkStatus.device?.imei?.slice(-8) || '-'}
+                      </span>
                     </div>
                     <div className="modem-detail">
                       <span className="modem-label">DNS</span>
-                      <span className="modem-value">{hilinkStatus.network?.primary_dns || '-'}</span>
+                      <span className="modem-value">
+                        {hilinkStatus.network?.primary_dns || '-'}
+                      </span>
                     </div>
                     <div className="modem-detail">
                       <span className="modem-label">{t('network.connectTime', 'Uptime')}</span>
                       <span className="modem-value">
-                        {hilinkStatus.traffic?.current_connect_time 
+                        {hilinkStatus.traffic?.current_connect_time
                           ? `${Math.floor(hilinkStatus.traffic.current_connect_time / 60)}m`
                           : '-'}
                       </span>
@@ -485,8 +497,8 @@ const NetworkView = () => {
                   <div className={modem.connected ? 'modem-connected' : 'modem-disconnected'}>
                     <span>{modem.connected ? '✓' : '○'}</span>
                     <span>
-                      {modem.connected 
-                        ? t('network.modemConnected', 'Connected') 
+                      {modem.connected
+                        ? t('network.modemConnected', 'Connected')
                         : t('network.modemDisconnected', 'Disconnected')}
                     </span>
                   </div>
@@ -520,12 +532,16 @@ const NetworkView = () => {
 
       {/* WiFi Connect Modal */}
       {connectModal.open && (
-        <div className="wifi-modal-overlay" onClick={() => setConnectModal({ open: false, ssid: '', security: '' })}>
+        <div
+          className="wifi-modal-overlay"
+          onClick={() => setConnectModal({ open: false, ssid: '', security: '' })}
+        >
           <div className="wifi-modal" onClick={(e) => e.stopPropagation()}>
             <h3>
-              {t('network.connectTo', 'Connect to')} <span className="wifi-modal-ssid">{connectModal.ssid}</span>
+              {t('network.connectTo', 'Connect to')}{' '}
+              <span className="wifi-modal-ssid">{connectModal.ssid}</span>
             </h3>
-            
+
             {connectModal.security && connectModal.security !== '--' && (
               <div className="form-group">
                 <label>{t('network.password', 'Password')}</label>
@@ -539,20 +555,18 @@ const NetworkView = () => {
                 />
               </div>
             )}
-            
+
             <div className="wifi-modal-buttons">
-              <button 
-                className="btn-cancel" 
+              <button
+                className="btn-cancel"
                 onClick={() => setConnectModal({ open: false, ssid: '', security: '' })}
               >
                 {t('common.cancel', 'Cancel')}
               </button>
-              <button 
-                className="btn-connect" 
-                onClick={handleWifiConnect}
-                disabled={connecting}
-              >
-                {connecting ? t('network.connecting', 'Connecting...') : t('network.connect', 'Connect')}
+              <button className="btn-connect" onClick={handleWifiConnect} disabled={connecting}>
+                {connecting
+                  ? t('network.connecting', 'Connecting...')
+                  : t('network.connect', 'Connect')}
               </button>
             </div>
           </div>
@@ -561,35 +575,48 @@ const NetworkView = () => {
 
       {/* Mode Change Confirmation Modal */}
       {modeChangeModal.open && (
-        <div className="wifi-modal-overlay" onClick={() => setModeChangeModal({ open: false, targetMode: '' })}>
+        <div
+          className="wifi-modal-overlay"
+          onClick={() => setModeChangeModal({ open: false, targetMode: '' })}
+        >
           <div className="wifi-modal" onClick={(e) => e.stopPropagation()}>
             <h3>⚠️ {t('network.confirmModeChange', 'Confirm Mode Change')}</h3>
-            
+
             <div style={{ marginTop: '16px', marginBottom: '20px', lineHeight: '1.5' }}>
               <p>
                 {modeChangeModal.targetMode === 'modem'
-                  ? t('network.confirmModeChangeToModem', '¿Are you sure you want to switch from WiFi to 4G as the primary connection?')
-                  : t('network.confirmModeChangeToWifi', '¿Are you sure you want to switch from 4G to WiFi as the primary connection?')
-                }
+                  ? t(
+                      'network.confirmModeChangeToModem',
+                      '¿Are you sure you want to switch from WiFi to 4G as the primary connection?'
+                    )
+                  : t(
+                      'network.confirmModeChangeToWifi',
+                      '¿Are you sure you want to switch from 4G to WiFi as the primary connection?'
+                    )}
               </p>
               <p style={{ marginTop: '8px', fontSize: '0.9rem', opacity: 0.8 }}>
-                {t('network.confirmModeChangeWarning', 'This will change your default network route.')}
+                {t(
+                  'network.confirmModeChangeWarning',
+                  'This will change your default network route.'
+                )}
               </p>
             </div>
-            
+
             <div className="wifi-modal-buttons">
-              <button 
-                className="btn-cancel" 
+              <button
+                className="btn-cancel"
                 onClick={() => setModeChangeModal({ open: false, targetMode: '' })}
               >
                 {t('common.cancel', 'Cancel')}
               </button>
-              <button 
-                className="btn-connect" 
+              <button
+                className="btn-connect"
                 onClick={() => performModeChange(modeChangeModal.targetMode)}
                 disabled={changingMode}
               >
-                {changingMode ? t('network.changing', 'Changing...') : t('network.confirm', 'Confirm')}
+                {changingMode
+                  ? t('network.changing', 'Changing...')
+                  : t('network.confirm', 'Confirm')}
               </button>
             </div>
           </div>

@@ -15,9 +15,13 @@ logger = logging.getLogger(__name__)
 class VPNInterface(NetworkInterface):
     """VPN network interface provider"""
 
-    def __init__(self, interface_pattern: str = "tailscale", interface_name: Optional[str] = None):
+    def __init__(
+        self, interface_pattern: str = "tailscale", interface_name: Optional[str] = None
+    ):
         super().__init__()
-        self.interface_pattern = interface_pattern  # Pattern to search for (e.g., "tailscale", "zt", "wg")
+        self.interface_pattern = (
+            interface_pattern  # Pattern to search for (e.g., "tailscale", "zt", "wg")
+        )
         self.interface_name = interface_name  # Actual interface name if known
         self.name = f"vpn_{interface_pattern}"
         self.display_name = f"VPN ({interface_pattern})"
@@ -34,7 +38,10 @@ class VPNInterface(NetworkInterface):
                 return False
 
             result = subprocess.run(
-                ["ip", "link", "show", self.interface_name], capture_output=True, text=True, timeout=2
+                ["ip", "link", "show", self.interface_name],
+                capture_output=True,
+                text=True,
+                timeout=2,
             )
             return result.returncode == 0
         except:
@@ -43,7 +50,9 @@ class VPNInterface(NetworkInterface):
     def _find_interface(self) -> Optional[str]:
         """Find VPN interface by pattern"""
         try:
-            result = subprocess.run(["ip", "link", "show"], capture_output=True, text=True, timeout=2)
+            result = subprocess.run(
+                ["ip", "link", "show"], capture_output=True, text=True, timeout=2
+            )
 
             if result.returncode == 0:
                 for line in result.stdout.split("\n"):
@@ -68,7 +77,10 @@ class VPNInterface(NetworkInterface):
         try:
             # Get interface state
             result = subprocess.run(
-                ["ip", "addr", "show", self.interface_name], capture_output=True, text=True, timeout=2
+                ["ip", "addr", "show", self.interface_name],
+                capture_output=True,
+                text=True,
+                timeout=2,
             )
 
             if result.returncode != 0:
@@ -128,11 +140,17 @@ class VPNInterface(NetworkInterface):
 
     def bring_up(self) -> Dict:
         """Bring VPN interface up (not typically used - VPN service manages this)"""
-        return {"success": False, "error": "VPN interfaces are managed by their respective VPN services"}
+        return {
+            "success": False,
+            "error": "VPN interfaces are managed by their respective VPN services",
+        }
 
     def bring_down(self) -> Dict:
         """Bring VPN interface down (not typically used - VPN service manages this)"""
-        return {"success": False, "error": "VPN interfaces are managed by their respective VPN services"}
+        return {
+            "success": False,
+            "error": "VPN interfaces are managed by their respective VPN services",
+        }
 
     def get_ip_address(self) -> Optional[str]:
         """Get IP address of interface"""
@@ -150,11 +168,17 @@ class VPNInterface(NetworkInterface):
                 # VPN interfaces might not have explicit gateway, use interface directly
                 # Get all routes for this interface
                 result = subprocess.run(
-                    ["ip", "route", "show", "dev", self.interface_name], capture_output=True, text=True, timeout=2
+                    ["ip", "route", "show", "dev", self.interface_name],
+                    capture_output=True,
+                    text=True,
+                    timeout=2,
                 )
 
                 if result.returncode != 0 or "default" not in result.stdout:
-                    return {"success": False, "error": "No default route found for VPN interface"}
+                    return {
+                        "success": False,
+                        "error": "No default route found for VPN interface",
+                    }
 
                 # For VPN, modify existing routes with metric
                 routes = []
@@ -165,7 +189,11 @@ class VPNInterface(NetworkInterface):
                 for route in routes:
                     if "default" in route:
                         # Delete old default route
-                        subprocess.run(["sudo", "ip", "route", "del"] + route.split(), capture_output=True, timeout=2)
+                        subprocess.run(
+                            ["sudo", "ip", "route", "del"] + route.split(),
+                            capture_output=True,
+                            timeout=2,
+                        )
 
                         # Add back with metric
                         route_parts = route.split()
@@ -175,7 +203,9 @@ class VPNInterface(NetworkInterface):
                             route_parts = route_parts[:idx] + route_parts[idx + 2 :]
 
                         result = subprocess.run(
-                            ["sudo", "ip", "route", "add"] + route_parts + ["metric", str(metric)],
+                            ["sudo", "ip", "route", "add"]
+                            + route_parts
+                            + ["metric", str(metric)],
                             capture_output=True,
                             text=True,
                             timeout=5,
@@ -187,11 +217,24 @@ class VPNInterface(NetworkInterface):
                                 "message": f"Metric set to {metric} for {self.interface_name}",
                                 "metric": metric,
                             }
-                        return {"success": False, "error": result.stderr or "Failed to set metric"}
+                        return {
+                            "success": False,
+                            "error": result.stderr or "Failed to set metric",
+                        }
             else:
                 # Traditional approach with gateway
                 subprocess.run(
-                    ["sudo", "ip", "route", "del", "default", "via", gateway, "dev", self.interface_name],
+                    [
+                        "sudo",
+                        "ip",
+                        "route",
+                        "del",
+                        "default",
+                        "via",
+                        gateway,
+                        "dev",
+                        self.interface_name,
+                    ],
                     capture_output=True,
                     timeout=2,
                 )
@@ -221,7 +264,10 @@ class VPNInterface(NetworkInterface):
                         "message": f"Metric set to {metric} for {self.interface_name}",
                         "metric": metric,
                     }
-                return {"success": False, "error": result.stderr or "Failed to set metric"}
+                return {
+                    "success": False,
+                    "error": result.stderr or "Failed to set metric",
+                }
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -232,7 +278,10 @@ class VPNInterface(NetworkInterface):
                 return None
 
             result = subprocess.run(
-                ["ip", "route", "show", "dev", self.interface_name], capture_output=True, text=True, timeout=2
+                ["ip", "route", "show", "dev", self.interface_name],
+                capture_output=True,
+                text=True,
+                timeout=2,
             )
 
             if result.returncode == 0:
@@ -252,7 +301,10 @@ class VPNInterface(NetworkInterface):
                 return None
 
             result = subprocess.run(
-                ["ip", "route", "show", "dev", self.interface_name], capture_output=True, text=True, timeout=2
+                ["ip", "route", "show", "dev", self.interface_name],
+                capture_output=True,
+                text=True,
+                timeout=2,
             )
 
             if result.returncode == 0:

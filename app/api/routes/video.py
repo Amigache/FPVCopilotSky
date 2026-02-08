@@ -56,7 +56,9 @@ async def get_status(request: Request):
     """Get video streaming status"""
     lang = get_language_from_request(request)
     if not _video_service:
-        raise HTTPException(status_code=503, detail=translate("services.video_not_initialized", lang))
+        raise HTTPException(
+            status_code=503, detail=translate("services.video_not_initialized", lang)
+        )
 
     return _video_service.get_status()
 
@@ -66,7 +68,9 @@ async def get_cameras(request: Request):
     """Get available cameras from all video source providers"""
     lang = get_language_from_request(request)
     if not _video_service:
-        raise HTTPException(status_code=503, detail=translate("services.video_not_initialized", lang))
+        raise HTTPException(
+            status_code=503, detail=translate("services.video_not_initialized", lang)
+        )
 
     # Import here to avoid circular dependency
     from app.providers.registry import get_provider_registry
@@ -100,7 +104,9 @@ async def get_codecs(request: Request):
     """Get available video codecs/encoders"""
     lang = get_language_from_request(request)
     if not _video_service:
-        raise HTTPException(status_code=503, detail=translate("services.video_not_initialized", lang))
+        raise HTTPException(
+            status_code=503, detail=translate("services.video_not_initialized", lang)
+        )
 
     # Import here to avoid circular dependency
     from app.providers.registry import get_provider_registry
@@ -138,7 +144,9 @@ async def start_streaming(request: Request):
     """Start video streaming"""
     lang = get_language_from_request(request)
     if not _video_service:
-        raise HTTPException(status_code=503, detail=translate("services.video_not_initialized", lang))
+        raise HTTPException(
+            status_code=503, detail=translate("services.video_not_initialized", lang)
+        )
 
     result = _video_service.start()
 
@@ -153,7 +161,9 @@ async def stop_streaming(request: Request):
     """Stop video streaming"""
     lang = get_language_from_request(request)
     if not _video_service:
-        raise HTTPException(status_code=503, detail=translate("services.video_not_initialized", lang))
+        raise HTTPException(
+            status_code=503, detail=translate("services.video_not_initialized", lang)
+        )
 
     result = _video_service.stop()
 
@@ -168,7 +178,9 @@ async def restart_streaming(request: Request):
     """Restart video streaming with current configuration"""
     lang = get_language_from_request(request)
     if not _video_service:
-        raise HTTPException(status_code=503, detail=translate("services.video_not_initialized", lang))
+        raise HTTPException(
+            status_code=503, detail=translate("services.video_not_initialized", lang)
+        )
 
     result = _video_service.restart()
 
@@ -183,7 +195,9 @@ async def configure_video(config: VideoConfigRequest, request: Request):
     """Update video configuration"""
     lang = get_language_from_request(request)
     if not _video_service:
-        raise HTTPException(status_code=503, detail=translate("services.video_not_initialized", lang))
+        raise HTTPException(
+            status_code=503, detail=translate("services.video_not_initialized", lang)
+        )
 
     # Convert to dict, excluding None values
     config_dict = {k: v for k, v in config.model_dump().items() if v is not None}
@@ -219,7 +233,9 @@ async def configure_video(config: VideoConfigRequest, request: Request):
                 if identity:
                     current["device_name"] = identity.get("name", "")
                     current["device_bus_info"] = identity.get("bus_info", "")
-                    print(f"📹 Saved camera identity: {identity.get('name')} ({identity.get('bus_info', 'N/A')})")
+                    print(
+                        f"📹 Saved camera identity: {identity.get('name')} ({identity.get('bus_info', 'N/A')})"
+                    )
             except Exception as e:
                 print(f"⚠️ Failed to detect camera identity: {e}")
 
@@ -230,13 +246,23 @@ async def configure_video(config: VideoConfigRequest, request: Request):
         if "device" in config_dict and saved.get("device") == config_dict["device"]:
             print(f"✅ Video device preference verified: {saved.get('device')}")
         elif "width" in config_dict and saved.get("width") == config_dict["width"]:
-            print(f"✅ Video config preference verified: {config_dict['width']}x{config_dict.get('height')}")
+            print(
+                f"✅ Video config preference verified: {config_dict['width']}x{config_dict.get('height')}"
+            )
     except Exception as e:
         print(f"⚠️ Failed to save video config: {e}")
 
-    return {"success": True, "message": translate("video.configuration_updated", lang), "config": config_dict}
+    return {
+        "success": True,
+        "message": translate("video.configuration_updated", lang),
+        "config": config_dict,
+    }
 
-    return {"success": True, "message": translate("video.configuration_updated", lang), "config": config_dict}
+    return {
+        "success": True,
+        "message": translate("video.configuration_updated", lang),
+        "config": config_dict,
+    }
 
 
 @router.post("/config/streaming")
@@ -244,7 +270,9 @@ async def configure_streaming(config: StreamingConfigRequest, request: Request):
     """Update streaming configuration"""
     lang = get_language_from_request(request)
     if not _video_service:
-        raise HTTPException(status_code=503, detail=translate("services.video_not_initialized", lang))
+        raise HTTPException(
+            status_code=503, detail=translate("services.video_not_initialized", lang)
+        )
 
     # Convert to dict, excluding None values
     config_dict = {k: v for k, v in config.model_dump().items() if v is not None}
@@ -266,14 +294,22 @@ async def configure_streaming(config: StreamingConfigRequest, request: Request):
 
         # Verify the save
         saved = prefs.get_streaming_config()
-        if saved.get("auto_start") == config_dict.get("auto_start", saved.get("auto_start")):
-            print(f"✅ Streaming auto_start preference verified: {saved.get('auto_start')}")
+        if saved.get("auto_start") == config_dict.get(
+            "auto_start", saved.get("auto_start")
+        ):
+            print(
+                f"✅ Streaming auto_start preference verified: {saved.get('auto_start')}"
+            )
         else:
             print(f"⚠️ Streaming preference save verification failed")
     except Exception as e:
         print(f"⚠️ Failed to save streaming config: {e}")
 
-    return {"success": True, "message": translate("video.streaming_configuration_updated", lang), "config": config_dict}
+    return {
+        "success": True,
+        "message": translate("video.streaming_configuration_updated", lang),
+        "config": config_dict,
+    }
 
 
 @router.post("/live-update")
@@ -282,7 +318,9 @@ async def live_update(req: LivePropertyRequest, request: Request):
     Only quality (MJPEG) or h264_bitrate (H.264) are allowed."""
     lang = get_language_from_request(request)
     if not _video_service:
-        raise HTTPException(status_code=503, detail=translate("services.video_not_initialized", lang))
+        raise HTTPException(
+            status_code=503, detail=translate("services.video_not_initialized", lang)
+        )
 
     result = _video_service.update_live_property(req.property, req.value)
 
@@ -308,7 +346,9 @@ async def get_pipeline_string(request: Request):
     """Get GStreamer pipeline string for Mission Planner"""
     lang = get_language_from_request(request)
     if not _video_service:
-        raise HTTPException(status_code=503, detail=translate("services.video_not_initialized", lang))
+        raise HTTPException(
+            status_code=503, detail=translate("services.video_not_initialized", lang)
+        )
 
     return {
         "pipeline": _video_service.get_pipeline_string(),

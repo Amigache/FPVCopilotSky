@@ -43,7 +43,10 @@ class SerialDetector:
         self.last_detection: Optional[Dict[str, Any]] = None
 
     def detect_flight_controller(
-        self, preferred_port: str = "", preferred_baudrate: int = 0, timeout_per_port: float = 3.0
+        self,
+        preferred_port: str = "",
+        preferred_baudrate: int = 0,
+        timeout_per_port: float = 3.0,
     ) -> Optional[Dict[str, Any]]:
         """
         Auto-detect flight controller.
@@ -110,7 +113,9 @@ class SerialDetector:
 
         return baudrates
 
-    def _try_connect(self, port: str, baudrate: int, timeout: float) -> Optional[Dict[str, Any]]:
+    def _try_connect(
+        self, port: str, baudrate: int, timeout: float
+    ) -> Optional[Dict[str, Any]]:
         """
         Try to connect to a specific port/baudrate.
 
@@ -120,7 +125,9 @@ class SerialDetector:
         try:
             print(f"   Trying {port} @ {baudrate}...", end=" ", flush=True)
 
-            ser = serial.Serial(port=port, baudrate=baudrate, timeout=0.1, write_timeout=1)
+            ser = serial.Serial(
+                port=port, baudrate=baudrate, timeout=0.1, write_timeout=1
+            )
 
             # Create parser
             mav = mavlink2.MAVLink(None)

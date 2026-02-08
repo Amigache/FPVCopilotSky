@@ -28,15 +28,15 @@ Este documento describe la estrategia de **Continuous Integration** y **Continuo
 
 ## 🎯 Objetivos
 
-| Objetivo | Descripción |
-|----------|-------------|
-| **Calidad de código** | Lint, formato y type checking automático |
-| **Testing automático** | Tests unitarios e integración en cada PR |
-| **Build validation** | Validar que el frontend se construye correctamente |
-| **Security** | Escaneo de vulnerabilidades en dependencias |
-| **Deploy automático** | Deploy a staging en cada merge a `main` |
-| **Releases** | Generación automática de packages y changelogs |
-| **Feedback rápido** | Resultados de CI en <5 minutos |
+| Objetivo               | Descripción                                        |
+| ---------------------- | -------------------------------------------------- |
+| **Calidad de código**  | Lint, formato y type checking automático           |
+| **Testing automático** | Tests unitarios e integración en cada PR           |
+| **Build validation**   | Validar que el frontend se construye correctamente |
+| **Security**           | Escaneo de vulnerabilidades en dependencias        |
+| **Deploy automático**  | Deploy a staging en cada merge a `main`            |
+| **Releases**           | Generación automática de packages y changelogs     |
+| **Feedback rápido**    | Resultados de CI en <5 minutos                     |
 
 ---
 
@@ -56,24 +56,25 @@ lint-backend:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
       with:
-        python-version: '3.12'
-    
+        python-version: "3.12"
+
     - name: Install dependencies
       run: |
         pip install flake8 black mypy
         pip install -r requirements.txt
-    
+
     - name: Lint with flake8
       run: flake8 app/ --max-line-length=120 --exclude=__pycache__
-    
+
     - name: Check formatting with black
       run: black --check app/
-    
+
     - name: Type check with mypy
       run: mypy app/ --ignore-missing-imports --no-strict-optional
 ```
 
 **Reglas de lint:**
+
 - `flake8`: PEP 8 compliance, max line length 120
 - `black`: Consistent formatting style
 - `mypy`: Type hints validation
@@ -87,22 +88,23 @@ lint-frontend:
     - uses: actions/checkout@v4
     - uses: actions/setup-node@v4
       with:
-        node-version: '20'
-    
+        node-version: "20"
+
     - name: Install dependencies
       working-directory: frontend/client
       run: npm ci
-    
+
     - name: Lint with ESLint
       working-directory: frontend/client
       run: npm run lint
-    
+
     - name: Check formatting with Prettier
       working-directory: frontend/client
       run: npx prettier --check src/
 ```
 
 **Reglas de lint:**
+
 - `ESLint`: React best practices, hooks rules
 - `Prettier`: Consistent code formatting
 
@@ -115,13 +117,13 @@ test-backend:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
       with:
-        python-version: '3.12'
-    
+        python-version: "3.12"
+
     - name: Install dependencies
       run: |
         pip install pytest pytest-asyncio pytest-cov pytest-mock
         pip install -r requirements.txt
-    
+
     - name: Run unit tests
       run: |
         pytest tests/ \
@@ -131,14 +133,14 @@ test-backend:
           --cov-report=term \
           -v \
           --tb=short
-    
+
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4
       with:
         file: ./coverage.xml
         flags: backend
         name: backend-coverage
-    
+
     - name: Check coverage threshold
       run: |
         COVERAGE=$(grep -oP 'line-rate="\K[0-9.]+' coverage.xml | head -1)
@@ -150,6 +152,7 @@ test-backend:
 ```
 
 **Test requirements:**
+
 - Minimum 70% code coverage
 - All tests must pass
 - Mock external dependencies (serial, modem, GStreamer)
@@ -163,16 +166,16 @@ test-frontend:
     - uses: actions/checkout@v4
     - uses: actions/setup-node@v4
       with:
-        node-version: '20'
-    
+        node-version: "20"
+
     - name: Install dependencies
       working-directory: frontend/client
       run: npm ci
-    
+
     - name: Run unit tests
       working-directory: frontend/client
       run: npm run test -- --coverage --run
-    
+
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4
       with:
@@ -182,6 +185,7 @@ test-frontend:
 ```
 
 **Test framework:**
+
 - `Vitest` for unit tests
 - `@testing-library/react` for component testing
 - Coverage target: >60%
@@ -195,16 +199,16 @@ build-frontend:
     - uses: actions/checkout@v4
     - uses: actions/setup-node@v4
       with:
-        node-version: '20'
-    
+        node-version: "20"
+
     - name: Install dependencies
       working-directory: frontend/client
       run: npm ci
-    
+
     - name: Build production bundle
       working-directory: frontend/client
       run: npm run build
-    
+
     - name: Check bundle size
       working-directory: frontend/client
       run: |
@@ -213,7 +217,7 @@ build-frontend:
           echo "Bundle size ${SIZE}MB exceeds 5MB limit"
           exit 1
         fi
-    
+
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
@@ -223,6 +227,7 @@ build-frontend:
 ```
 
 **Build validation:**
+
 - Bundle size must be <5MB
 - No build errors or warnings
 - Assets are properly optimized
@@ -234,32 +239,33 @@ security-scan:
   runs-on: ubuntu-latest
   steps:
     - uses: actions/checkout@v4
-    
+
     - name: Run Trivy vulnerability scanner
       uses: aquasecurity/trivy-action@master
       with:
-        scan-type: 'fs'
-        scan-ref: '.'
-        format: 'sarif'
-        output: 'trivy-results.sarif'
-        severity: 'CRITICAL,HIGH'
-    
+        scan-type: "fs"
+        scan-ref: "."
+        format: "sarif"
+        output: "trivy-results.sarif"
+        severity: "CRITICAL,HIGH"
+
     - name: Upload Trivy results to GitHub Security
       uses: github/codeql-action/upload-sarif@v2
       with:
-        sarif_file: 'trivy-results.sarif'
-    
+        sarif_file: "trivy-results.sarif"
+
     - name: Python security check with Safety
       run: |
         pip install safety
         safety check --json --output safety-report.json || true
-    
+
     - name: Node.js security audit
       working-directory: frontend/client
       run: npm audit --audit-level=high
 ```
 
 **Security checks:**
+
 - Trivy: Scan for vulnerabilities in dependencies
 - Safety: Python package vulnerabilities
 - npm audit: JavaScript package vulnerabilities
@@ -286,18 +292,18 @@ jobs:
     environment: staging
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-      
+          node-version: "20"
+
       - name: Build frontend
         working-directory: frontend/client
         run: |
           npm ci
           npm run build
-      
+
       - name: Create deployment package
         run: |
           mkdir -p release
@@ -312,7 +318,7 @@ jobs:
             systemd/ \
             requirements.txt \
             install.sh
-      
+
       - name: Deploy to staging SBC via SSH
         uses: appleboy/ssh-action@v1.0.0
         with:
@@ -323,37 +329,37 @@ jobs:
           script: |
             set -e
             echo "🚀 Starting deployment to staging..."
-            
+
             cd /opt/FPVCopilotSky
-            
+
             # Backup current version
             sudo cp preferences.json preferences.json.backup || true
-            
+
             # Pull latest code
             git fetch origin
             git reset --hard origin/main
-            
+
             # Deploy
             sudo bash scripts/deploy.sh
-            
+
             echo "✅ Deployment complete"
-      
+
       - name: Wait for service startup
         run: sleep 15
-      
+
       - name: Health check
         run: |
           echo "🔍 Checking health endpoint..."
           curl -f http://${{ secrets.STAGING_HOST }}/api/status || exit 1
           echo "✅ Health check passed"
-      
+
       - name: Smoke tests
         run: |
           # Test critical endpoints
           curl -f http://${{ secrets.STAGING_HOST }}/api/mavlink-router/outputs || exit 1
           curl -f http://${{ secrets.STAGING_HOST }}/api/video/sources || exit 1
           echo "✅ Smoke tests passed"
-      
+
       - name: Notify on failure
         if: failure()
         run: |
@@ -371,6 +377,7 @@ jobs:
 ```
 
 **Staging environment:**
+
 - Dedicated SBC (Radxa Zero or similar)
 - Accessible via VPN or SSH tunnel
 - Same configuration as production
@@ -380,14 +387,14 @@ jobs:
 
 Ejecutado en **push de tags** (`v*`).
 
-```yaml
+````yaml
 # .github/workflows/release.yml
 name: Release - Create Package
 
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
 
 jobs:
   create-release:
@@ -397,26 +404,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Full history for changelog
-      
+          fetch-depth: 0 # Full history for changelog
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-      
+          node-version: "20"
+
       - name: Build frontend for production
         working-directory: frontend/client
         run: |
           npm ci
           npm run build
-      
+
       - name: Create release package
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
           echo "Creating release package for version $VERSION"
-          
+
           mkdir -p release
-          
+
           # Full package
           tar -czf release/fpvcopilot-sky-v${VERSION}.tar.gz \
             --exclude='venv' \
@@ -436,12 +443,12 @@ jobs:
             README.md \
             CONTRIBUTING.md \
             LICENSE
-          
+
           # Checksums
           cd release
           sha256sum fpvcopilot-sky-v${VERSION}.tar.gz > checksums.txt
           md5sum fpvcopilot-sky-v${VERSION}.tar.gz >> checksums.txt
-      
+
       - name: Generate changelog
         id: changelog
         uses: mikepenz/release-changelog-builder-action@v4
@@ -474,17 +481,17 @@ jobs:
             }
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           body: |
             # FPV Copilot Sky ${{ github.ref_name }}
-            
+
             ${{ steps.changelog.outputs.changelog }}
-            
+
             ## 📦 Installation
-            
+
             ```bash
             VERSION="${{ github.ref_name }}"
             wget https://github.com/${{ github.repository }}/releases/download/${VERSION}/fpvcopilot-sky-${VERSION}.tar.gz
@@ -492,9 +499,9 @@ jobs:
             cd /opt/FPVCopilotSky
             sudo bash install.sh
             ```
-            
+
             ## 🔍 Verify Download
-            
+
             ```bash
             sha256sum -c checksums.txt
             ```
@@ -505,7 +512,7 @@ jobs:
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
+
       - name: Notify Discord/Slack
         if: success()
         run: |
@@ -533,9 +540,10 @@ jobs:
                 ]
               }]
             }'
-```
+````
 
 **Release artifacts:**
+
 - Complete package with pre-built frontend
 - Checksums (SHA256, MD5)
 - Auto-generated changelog
@@ -567,10 +575,10 @@ def mock_serial_port():
         mock_port.in_waiting = 0
         mock_port.baudrate = 115200
         mock_port.port = '/dev/ttyUSB0'
-        
+
         # Mock MAVLink heartbeat packet
         mock_port.read.return_value = b'\xfe\x09\x00\x01\x01\x00\x00\x00\x00\x00\x06\x08\x00\x00\x00\x03'
-        
+
         mock.return_value = mock_port
         yield mock_port
 
@@ -581,17 +589,17 @@ def mock_mavlink_connection():
         mock_conn = Mock()
         mock_conn.target_system = 1
         mock_conn.target_component = 1
-        
+
         # Mock heartbeat message
         mock_heartbeat = Mock()
         mock_heartbeat.get_type.return_value = 'HEARTBEAT'
         mock_heartbeat.custom_mode = 0
         mock_heartbeat.base_mode = 81
         mock_heartbeat.system_status = 4
-        
+
         mock_conn.recv_match.return_value = mock_heartbeat
         mock_conn.wait_heartbeat.return_value = True
-        
+
         mock.return_value = mock_conn
         yield mock_conn
 
@@ -600,7 +608,7 @@ def mock_hilink_modem():
     """Mock Huawei HiLink API"""
     with patch('huawei_lte_api.Connection') as mock:
         mock_conn = Mock()
-        
+
         # Mock device info
         mock_conn.device.information.return_value = {
             'DeviceName': 'E3372h-320',
@@ -608,7 +616,7 @@ def mock_hilink_modem():
             'HardwareVersion': 'CL2E3372HM',
             'SoftwareVersion': '22.333.01.00.00'
         }
-        
+
         # Mock signal info
         mock_conn.device.signal.return_value = {
             'rssi': '-65',
@@ -617,14 +625,14 @@ def mock_hilink_modem():
             'sinr': '15',
             'cell_id': '12345678'
         }
-        
+
         # Mock network info
         mock_conn.net.current_plmn.return_value = {
             'FullName': 'Orange Spain',
             'ShortName': 'Orange',
             'Numeric': '21407'
         }
-        
+
         mock.return_value = mock_conn
         yield mock_conn
 
@@ -635,11 +643,11 @@ def mock_gstreamer():
         mock_pipeline = MagicMock()
         mock_pipeline.set_state.return_value = (True, 0, 0)
         mock_pipeline.get_state.return_value = (1, 4, 0)  # SUCCESS, PLAYING, VOID_PENDING
-        
+
         mock_gst.Pipeline.return_value = mock_pipeline
         mock_gst.State.PLAYING = 4
         mock_gst.State.NULL = 1
-        
+
         yield mock_gst
 
 @pytest.fixture
@@ -693,7 +701,7 @@ async def test_connect_success(mock_serial_port, mock_mavlink_connection):
     """Test successful MAVLink connection"""
     bridge = MAVLinkBridge()
     result = await bridge.connect("/dev/ttyUSB0", 115200)
-    
+
     assert result["success"] is True
     assert bridge.is_connected() is True
     assert bridge.get_system_id() == 1
@@ -702,10 +710,10 @@ async def test_connect_success(mock_serial_port, mock_mavlink_connection):
 async def test_connect_no_heartbeat(mock_serial_port, mock_mavlink_connection):
     """Test connection fails without heartbeat"""
     mock_mavlink_connection.wait_heartbeat.side_effect = TimeoutError()
-    
+
     bridge = MAVLinkBridge()
     result = await bridge.connect("/dev/ttyUSB0", 115200)
-    
+
     assert result["success"] is False
     assert "timeout" in result["message"].lower()
 
@@ -714,9 +722,9 @@ async def test_disconnect(mock_mavlink_connection):
     """Test clean disconnection"""
     bridge = MAVLinkBridge()
     await bridge.connect("/dev/ttyUSB0", 115200)
-    
+
     result = await bridge.disconnect()
-    
+
     assert result["success"] is True
     assert bridge.is_connected() is False
 
@@ -726,31 +734,31 @@ from app.services.preferences import PreferencesService
 def test_save_load_cycle(temp_preferences):
     """Test preferences are persisted correctly"""
     prefs = PreferencesService(config_path=str(temp_preferences))
-    
+
     # Modify serial config
     prefs.set_serial_config(port="/dev/ttyUSB1", baudrate=57600)
-    
+
     # Reload from disk
     prefs2 = PreferencesService(config_path=str(temp_preferences))
     config = prefs2.get_serial_config()
-    
+
     assert config["port"] == "/dev/ttyUSB1"
     assert config["baudrate"] == 57600
 
 def test_concurrent_access(temp_preferences):
     """Test thread-safe access with RLock"""
     prefs = PreferencesService(config_path=str(temp_preferences))
-    
+
     # Simulate concurrent access
     import concurrent.futures
-    
+
     def update_serial():
         prefs.set_serial_config(port="/dev/ttyUSB0", baudrate=115200)
-    
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         futures = [executor.submit(update_serial) for _ in range(10)]
         concurrent.futures.wait(futures)
-    
+
     # Should not deadlock
     config = prefs.get_serial_config()
     assert config["port"] == "/dev/ttyUSB0"
@@ -762,7 +770,7 @@ def test_get_status(mock_hilink_modem):
     """Test modem status retrieval"""
     provider = HuaweiHiLinkRouter()
     status = provider.get_status()
-    
+
     assert status["available"] is True
     assert "signal" in status
     assert status["signal"]["rssi"] == "-65"
@@ -771,7 +779,7 @@ def test_get_band_presets(mock_hilink_modem):
     """Test band presets are returned"""
     provider = HuaweiHiLinkRouter()
     presets = provider.get_band_presets()
-    
+
     assert "presets" in presets
     assert "all" in presets["presets"]
     assert "orange_spain" in presets["presets"]
@@ -791,9 +799,9 @@ async def test_start_stream(mock_gstreamer):
         "fps": 30,
         "bitrate": 2000
     }
-    
+
     result = await service.start_stream(config)
-    
+
     assert result["success"] is True
     assert service.is_streaming() is True
 
@@ -802,9 +810,9 @@ async def test_stop_stream(mock_gstreamer):
     """Test video stream stops cleanly"""
     service = GStreamerService()
     await service.start_stream({})
-    
+
     result = await service.stop_stream()
-    
+
     assert result["success"] is True
     assert service.is_streaming() is False
 ```
@@ -813,76 +821,77 @@ async def test_stop_stream(mock_gstreamer):
 
 ```jsx
 // frontend/client/src/components/__tests__/Header.test.jsx
-import { render, screen } from '@testing-library/react'
-import { BrowserRouter } from 'react-router-dom'
-import Header from '../Header/Header'
+import { render, screen } from "@testing-library/react";
+import { BrowserRouter } from "react-router-dom";
+import Header from "../Header/Header";
 
-test('renders header title', () => {
+test("renders header title", () => {
   render(
     <BrowserRouter>
       <Header />
-    </BrowserRouter>
-  )
-  const title = screen.getByText(/FPV Copilot Sky/i)
-  expect(title).toBeInTheDocument()
-})
+    </BrowserRouter>,
+  );
+  const title = screen.getByText(/FPV Copilot Sky/i);
+  expect(title).toBeInTheDocument();
+});
 
-test('displays connection status', () => {
+test("displays connection status", () => {
   render(
     <BrowserRouter>
       <Header streamOnline={true} fcConnected={true} />
-    </BrowserRouter>
-  )
-  
-  expect(screen.getByText(/Stream: Online/i)).toBeInTheDocument()
-  expect(screen.getByText(/FC Connected/i)).toBeInTheDocument()
-})
+    </BrowserRouter>,
+  );
+
+  expect(screen.getByText(/Stream: Online/i)).toBeInTheDocument();
+  expect(screen.getByText(/FC Connected/i)).toBeInTheDocument();
+});
 
 // frontend/client/src/components/__tests__/TelemetryView.test.jsx
-import { render, screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
-import TelemetryView from '../Pages/TelemetryView'
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import TelemetryView from "../Pages/TelemetryView";
 
-test('loads and displays router outputs', async () => {
+test("loads and displays router outputs", async () => {
   global.fetch = vi.fn(() =>
     Promise.resolve({
       ok: true,
-      json: () => Promise.resolve([
-        { id: 1, type: 'udp', host: '0.0.0.0', port: 14550, active: true }
-      ])
-    })
-  )
-  
-  render(<TelemetryView />)
-  
+      json: () =>
+        Promise.resolve([
+          { id: 1, type: "udp", host: "0.0.0.0", port: 14550, active: true },
+        ]),
+    }),
+  );
+
+  render(<TelemetryView />);
+
   await waitFor(() => {
-    expect(screen.getByText(/14550/)).toBeInTheDocument()
-  })
-})
+    expect(screen.getByText(/14550/)).toBeInTheDocument();
+  });
+});
 
-test('creates new output', async () => {
-  const user = userEvent.setup()
-  
+test("creates new output", async () => {
+  const user = userEvent.setup();
+
   global.fetch = vi.fn(() =>
     Promise.resolve({
       ok: true,
-      json: () => Promise.resolve({ success: true })
-    })
-  )
-  
-  render(<TelemetryView />)
-  
-  await user.type(screen.getByLabelText(/Host/i), '192.168.1.100')
-  await user.type(screen.getByLabelText(/Port/i), '5760')
-  await user.click(screen.getByText(/Create/i))
-  
+      json: () => Promise.resolve({ success: true }),
+    }),
+  );
+
+  render(<TelemetryView />);
+
+  await user.type(screen.getByLabelText(/Host/i), "192.168.1.100");
+  await user.type(screen.getByLabelText(/Port/i), "5760");
+  await user.click(screen.getByText(/Create/i));
+
   await waitFor(() => {
     expect(global.fetch).toHaveBeenCalledWith(
-      expect.stringContaining('/outputs'),
-      expect.objectContaining({ method: 'POST' })
-    )
-  })
-})
+      expect.stringContaining("/outputs"),
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+});
 ```
 
 ---
@@ -984,13 +993,13 @@ repos:
     hooks:
       - id: black
         language_version: python3.12
-  
+
   - repo: https://github.com/pycqa/flake8
     rev: 7.0.0
     hooks:
       - id: flake8
         args: [--max-line-length=120]
-  
+
   - repo: https://github.com/pre-commit/mirrors-prettier
     rev: v4.0.0-alpha.8
     hooks:
@@ -1025,6 +1034,7 @@ Añadir al [README.md](../README.md):
 ```
 
 **Métricas visibles:**
+
 - CI build status
 - Code coverage percentage
 - Latest release version
@@ -1040,12 +1050,14 @@ Añadir al [README.md](../README.md):
 **Objetivo**: Infraestructura CI básica funcionando
 
 - [x] **Día 1-2**: Configurar repositorio en GitHub
+
   - [x] Crear repositorio público/privado
   - [x] Configurar branch protection en `main`
   - [x] Añadir colaboradores y permisos
   - [x] Crear labels para issues (bug, feature, docs, etc.)
 
 - [x] **Día 3-4**: CI básico - Lint
+
   - [x] Crear `.github/workflows/ci.yml`
   - [x] Setup flake8, black, mypy para Python
   - [x] Setup ESLint, Prettier para JavaScript
@@ -1058,6 +1070,7 @@ Añadir al [README.md](../README.md):
   - [x] Configurar coverage reporting
 
 **Entregables**:
+
 - ✅ CI workflow ejecutándose en PRs
 - ✅ Lint checks pasando (Black, flake8, ESLint)
 - ✅ Tests básicos ejecutándose
@@ -1070,6 +1083,7 @@ Añadir al [README.md](../README.md):
 **Objetivo**: >70% coverage en backend, >60% en frontend
 
 - [x] **Semana 2**: Backend tests (28 tests)
+
   - [x] Mock completo de serial/MAVLink
   - [x] Mock completo de HuaweiHiLink
   - [x] Mock completo de GStreamer
@@ -1092,6 +1106,7 @@ Añadir al [README.md](../README.md):
   - [x] Snapshot testing para componentes estáticos
 
 **Entregables**:
+
 - ✅ Backend coverage: 80%+ (28 tests)
 - ✅ Frontend coverage: 75%+ (29 tests)
 - ✅ Codecov integration activo
@@ -1105,6 +1120,7 @@ Añadir al [README.md](../README.md):
 **Objetivo**: Cobertura completa de workflows y pipelines críticos
 
 - [x] **Workflows Completos** (66 tests)
+
   - [x] TestInitialStartupWorkflow (2 tests)
   - [x] TestNetworkConfigurationWorkflow (2 tests)
   - [x] TestSystemMonitoringWorkflow (2 tests)
@@ -1114,6 +1130,7 @@ Añadir al [README.md](../README.md):
   - [x] TestCompleteSystemWorkflow (2 tests)
 
 - [x] **WebSocket Integration** (31 tests)
+
   - [x] TestWebSocketConnectionLifecycle (3 tests)
   - [x] TestWebSocketMessageTypes (4 tests)
   - [x] TestWebSocketDataSynchronization (3 tests)
@@ -1132,6 +1149,7 @@ Añadir al [README.md](../README.md):
   - [x] TestStreamPerformance (4 tests)
 
 **Entregables**:
+
 - ✅ 138 E2E tests implementados
 - ✅ Cobertura completa de workflows críticos
 - ✅ Documentación: PHASE3_E2E_TESTING.md
@@ -1144,6 +1162,7 @@ Añadir al [README.md](../README.md):
 **Objetivo**: Infraestructura de profiling y benchmarking para optimización
 
 - [x] **Performance Tests** (46 tests)
+
   - [x] TestAPILatency (5 tests) - Latency de endpoints
   - [x] TestThroughput (3 tests) - Sequential, mixed, burst
   - [x] TestMemoryUsage (2 tests) - Memory profiling
@@ -1154,6 +1173,7 @@ Añadir al [README.md](../README.md):
   - [x] TestResponseTimeDistribution (2 tests) - Percentile analysis
 
 - [x] **Benchmarking Tools** (280+ líneas)
+
   - [x] PerformanceProfiler - Context manager profiling
   - [x] LatencyAnalyzer - Percentile analysis (P50, P95, P99)
   - [x] ThroughputBenchmark - Throughput measurement
@@ -1168,6 +1188,7 @@ Añadir al [README.md](../README.md):
   - [x] Artifacts: stress_testing.py
 
 **Entregables**:
+
 - ✅ 46 performance tests implementados
 - ✅ 600+ líneas de herramientas de benchmarking
 - ✅ Baselines de performance establecidas
@@ -1182,12 +1203,14 @@ Añadir al [README.md](../README.md):
 **Objetivo**: Deploy automático y releases automatizadas
 
 - [ ] **Staging environment**
+
   - [ ] Configurar SBC staging dedicado
   - [ ] Setup SSH keys y secrets en GitHub
   - [ ] Crear workflow `deploy-staging.yml`
   - [ ] Configurar rollback automático en caso de fallo
 
 - [ ] **Release automation**
+
   - [ ] Crear workflow `release.yml`
   - [ ] Configurar changelog generation
   - [ ] Setup artifact packaging
@@ -1200,6 +1223,7 @@ Añadir al [README.md](../README.md):
   - [ ] Documentar proceso de release
 
 **Próximos pasos**:
+
 - [ ] Deploy automático a staging funcionando
 - [ ] Release tags generan packages automáticamente
 - [ ] Notificaciones de status configuradas
@@ -1211,18 +1235,21 @@ Añadir al [README.md](../README.md):
 **Objetivo**: Mejorar velocidad, reliability y seguridad
 
 - [ ] **Optimización de CI**
+
   - [ ] Dependency caching mejorado
   - [ ] Parallel job execution
   - [ ] Matrix testing (Python 3.12, 3.13)
   - [ ] ARM emulation tests con QEMU
 
 - [ ] **Security hardening**
+
   - [ ] Dependabot configurado
   - [ ] SAST (Static Application Security Testing)
   - [ ] Secret scanning
   - [ ] License compliance checking
 
 - [ ] **Frontend Performance**
+
   - [ ] Lighthouse CI para frontend
   - [ ] Bundle size tracking
   - [ ] Load testing básico
@@ -1234,6 +1261,7 @@ Añadir al [README.md](../README.md):
   - [ ] Screenshot automation
 
 **Próximos entregables**:
+
 - [ ] CI time <5 minutes
 - [ ] Security scanning activo
 - [ ] Performance metrics tracked
@@ -1242,28 +1270,29 @@ Añadir al [README.md](../README.md):
 
 ## 🚦 Métricas de Éxito
 
-| Métrica | Objetivo | Actual | Estado |
-|---------|----------|--------|--------|
-| **Total Tests** | >300 | 330+ (Phase 1-4) | ✅ |
-| **Backend Coverage** | >70% | ~80% | ✅ |
-| **Frontend Coverage** | >60% | ~75% | ✅ |
-| **CI Build Time** | <5 min | ~3-4 min | ✅ |
-| **Tests Actualizados** | Phases 1-4 | 132 tests | ✅ |
-| **Backend Tests** | >50 | 28 (Phase 2) | ✅ |
-| **Frontend Tests** | >50 | 29 (Phase 2) | ✅ |
-| **E2E Tests** | >100 | 138 (Phase 3) | ✅ |
-| **Performance Tests** | >40 | 46 (Phase 4) | ✅ |
-| **Deploy Time** | <3 min | TBD (Phase 5) | ⏳ |
-| **Mean Time to Recovery** | <15 min | TBD | ⏳ |
-| **PR Review Time** | <24h | ~1-2h actual | ✅ |
-| **Security Vulns** | 0 high/critical | 0 | ✅ |
-| **Test Success Rate** | >95% | 100% (current) | ✅ |
+| Métrica                   | Objetivo        | Actual           | Estado |
+| ------------------------- | --------------- | ---------------- | ------ |
+| **Total Tests**           | >300            | 330+ (Phase 1-4) | ✅     |
+| **Backend Coverage**      | >70%            | ~80%             | ✅     |
+| **Frontend Coverage**     | >60%            | ~75%             | ✅     |
+| **CI Build Time**         | <5 min          | ~3-4 min         | ✅     |
+| **Tests Actualizados**    | Phases 1-4      | 132 tests        | ✅     |
+| **Backend Tests**         | >50             | 28 (Phase 2)     | ✅     |
+| **Frontend Tests**        | >50             | 29 (Phase 2)     | ✅     |
+| **E2E Tests**             | >100            | 138 (Phase 3)    | ✅     |
+| **Performance Tests**     | >40             | 46 (Phase 4)     | ✅     |
+| **Deploy Time**           | <3 min          | TBD (Phase 5)    | ⏳     |
+| **Mean Time to Recovery** | <15 min         | TBD              | ⏳     |
+| **PR Review Time**        | <24h            | ~1-2h actual     | ✅     |
+| **Security Vulns**        | 0 high/critical | 0                | ✅     |
+| **Test Success Rate**     | >95%            | 100% (current)   | ✅     |
 
 ---
 
 ## 📚 Referencias & Documentación Relacionada
 
 **Documentos Internos del Proyecto:**
+
 - [DEVELOPMENT.md](DEVELOPMENT.md) - Estrategia de ramas y workflow
 - [PHASE2_COMPLETION.md](PHASE2_COMPLETION.md) - Phase 2 testing summary
 - [PHASE3_E2E_TESTING.md](PHASE3_E2E_TESTING.md) - Phase 3 E2E testing suite
@@ -1272,6 +1301,7 @@ Añadir al [README.md](../README.md):
 - [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) - Guía para desarrolladores
 
 **Referencias Externas:**
+
 - [GitHub Actions Documentation](https://docs.github.com/en/actions)
 - [pytest Documentation](https://docs.pytest.org/)
 - [Vitest Documentation](https://vitest.dev/)
@@ -1296,6 +1326,7 @@ Las mejoras al sistema CI/CD son bienvenidas. Ver [CONTRIBUTING.md](../CONTRIBUT
 ## 📊 Resumen del Progreso (Febrero 2026)
 
 **Sesión Actual:**
+
 - ✅ Phase 1 (Setup Básico) - Completado
 - ✅ Phase 2 (Testing Completo) - Completado (100+ tests, PR #2 mergeado)
 - ✅ Phase 3 (E2E Testing) - Completado (138 tests, documentado)
@@ -1304,6 +1335,7 @@ Las mejoras al sistema CI/CD son bienvenidas. Ver [CONTRIBUTING.md](../CONTRIBUT
 - ⏳ Phase 6 (Optimizations & Security) - En backlog
 
 **Archivos Creados:**
+
 - tests/test_config.py - 5 tests
 - tests/test_api_routes.py - 8 tests
 - tests/test_preferences_extended.py - 10 tests
@@ -1316,6 +1348,7 @@ Las mejoras al sistema CI/CD son bienvenidas. Ver [CONTRIBUTING.md](../CONTRIBUT
 - tests/stress_testing.py - 5 tool classes
 
 **Total de Tests Implementados: 330+**
+
 - Backend: 28 tests (Phase 2)
 - Frontend: 29 tests (Phase 2)
 - E2E Workflows: 66 tests (Phase 3)
@@ -1325,6 +1358,7 @@ Las mejoras al sistema CI/CD son bienvenidas. Ver [CONTRIBUTING.md](../CONTRIBUT
 - **Total: 241 tests específicos + Coverage runners**
 
 **Documentación Generada:**
+
 - docs/CI_CD_STRATEGY.md (este documento, 1195 líneas)
 - docs/DEVELOPMENT.md (162 líneas)
 - docs/PHASE2_COMPLETION.md (210 líneas)
@@ -1332,6 +1366,7 @@ Las mejoras al sistema CI/CD son bienvenidas. Ver [CONTRIBUTING.md](../CONTRIBUT
 - docs/PHASE4_PERFORMANCE_PROFILING.md (403 líneas)
 
 **Próximos Pasos:**
+
 1. Phase 5: Implementar CD workflow (deploy-staging.yml, release.yml)
 2. Phase 6: Security hardening y optimizaciones
 3. Documentar testing patterns y best practices

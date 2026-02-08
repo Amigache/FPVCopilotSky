@@ -102,7 +102,15 @@ class MAVLinkDialect:
         21: "SURFTRAK",
     }
 
-    TRACKER_MODES = {0: "MANUAL", 1: "STOP", 2: "SCAN", 3: "SERVO_TEST", 4: "GUIDED", 10: "AUTO", 16: "INITIALISING"}
+    TRACKER_MODES = {
+        0: "MANUAL",
+        1: "STOP",
+        2: "SCAN",
+        3: "SERVO_TEST",
+        4: "GUIDED",
+        10: "AUTO",
+        16: "INITIALISING",
+    }
 
     # MAV_TYPE to mode mapping
     MAV_TYPE_MODES = {

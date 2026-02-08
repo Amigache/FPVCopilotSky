@@ -56,7 +56,9 @@ class FlightDataLogger:
             log_directory: Custom log directory path. If empty, uses ~/flight-records
         """
         self.mavlink_service = mavlink_service
-        self.log_directory = Path(log_directory) if log_directory else Path.home() / "flight-records"
+        self.log_directory = (
+            Path(log_directory) if log_directory else Path.home() / "flight-records"
+        )
         self.csv_file = None
         self.csv_writer = None
         self.file_path = None
@@ -142,7 +144,9 @@ class FlightDataLogger:
                 # System Status
                 "armed": telemetry.get("system", {}).get("armed", False),
                 "flight_mode": telemetry.get("system", {}).get("mode", "UNKNOWN"),
-                "vehicle_type": telemetry.get("system", {}).get("vehicle_type", "UNKNOWN"),
+                "vehicle_type": telemetry.get("system", {}).get(
+                    "vehicle_type", "UNKNOWN"
+                ),
                 # Modem Signal Quality
                 "rssi": modem_sample.get("rssi", ""),
                 "rsrp_dbm": modem_sample.get("rsrp", ""),

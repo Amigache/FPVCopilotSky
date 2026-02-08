@@ -37,11 +37,15 @@ class USBDongleProvider(ModemProvider):
                 return False
 
             # List modems
-            result = subprocess.run(["mmcli", "-L"], capture_output=True, text=True, timeout=5)
+            result = subprocess.run(
+                ["mmcli", "-L"], capture_output=True, text=True, timeout=5
+            )
 
             if result.returncode == 0 and "Modem/" in result.stdout:
                 # Extract modem path (e.g., /org/freedesktop/ModemManager1/Modem/0)
-                match = re.search(r"/org/freedesktop/ModemManager1/Modem/\d+", result.stdout)
+                match = re.search(
+                    r"/org/freedesktop/ModemManager1/Modem/\d+", result.stdout
+                )
                 if match:
                     self._modem_path = match.group(0)
                     logger.info(f"USB modem detected at {self._modem_path}")
@@ -55,7 +59,9 @@ class USBDongleProvider(ModemProvider):
     def _run_mmcli(self, args: list) -> Optional[str]:
         """Run mmcli command and return output"""
         try:
-            result = subprocess.run(["mmcli"] + args, capture_output=True, text=True, timeout=10)
+            result = subprocess.run(
+                ["mmcli"] + args, capture_output=True, text=True, timeout=10
+            )
             return result.stdout if result.returncode == 0 else None
         except Exception as e:
             logger.error(f"mmcli command failed: {e}")
@@ -77,7 +83,9 @@ class USBDongleProvider(ModemProvider):
 
         return {
             "available": True,
-            "status": ModemStatus.CONNECTED if network_info else ModemStatus.DISCONNECTED,
+            "status": (
+                ModemStatus.CONNECTED if network_info else ModemStatus.DISCONNECTED
+            ),
             "modem_info": modem_info,
             "network_info": network_info,
             "error": None,
@@ -86,14 +94,28 @@ class USBDongleProvider(ModemProvider):
     def connect(self) -> Dict:
         """Activate modem connection"""
         if not self._modem_path:
-            return {"success": False, "message": "Modem not detected", "network_info": None}
+            return {
+                "success": False,
+                "message": "Modem not detected",
+                "network_info": None,
+            }
 
         try:
             # Enable modem
-            output = self._run_mmcli(["-m", self._modem_path.split("/")[-1], "--enable"])
+            output = self._run_mmcli(
+                ["-m", self._modem_path.split("/")[-1], "--enable"]
+            )
             if output:
-                return {"success": True, "message": "Modem enabled", "network_info": self.get_network_info()}
-            return {"success": False, "message": "Failed to enable modem", "network_info": None}
+                return {
+                    "success": True,
+                    "message": "Modem enabled",
+                    "network_info": self.get_network_info(),
+                }
+            return {
+                "success": False,
+                "message": "Failed to enable modem",
+                "network_info": None,
+            }
         except Exception as e:
             return {"success": False, "message": str(e), "network_info": None}
 
@@ -104,7 +126,9 @@ class USBDongleProvider(ModemProvider):
 
         try:
             # Disable modem
-            output = self._run_mmcli(["-m", self._modem_path.split("/")[-1], "--disable"])
+            output = self._run_mmcli(
+                ["-m", self._modem_path.split("/")[-1], "--disable"]
+            )
             if output:
                 return {"success": True, "message": "Modem disabled"}
             return {"success": False, "message": "Failed to disable modem"}
@@ -139,7 +163,11 @@ class USBDongleProvider(ModemProvider):
                     imsi = line.split(":", 1)[1].strip()
 
             return ModemInfo(
-                name=f"{manufacturer} {model}", model=model, imei=imei, imsi=imsi, manufacturer=manufacturer
+                name=f"{manufacturer} {model}",
+                model=model,
+                imei=imei,
+                imsi=imsi,
+                manufacturer=manufacturer,
             )
         except Exception as e:
             logger.error(f"Failed to get modem info: {e}")
@@ -196,7 +224,10 @@ class USBDongleProvider(ModemProvider):
 
     def configure_band(self, band_mask: int) -> Dict:
         """Configure LTE band preference"""
-        return {"success": False, "message": "Band configuration via ModemManager not implemented yet"}
+        return {
+            "success": False,
+            "message": "Band configuration via ModemManager not implemented yet",
+        }
 
     def reboot(self) -> Dict:
         """Reboot the modem"""

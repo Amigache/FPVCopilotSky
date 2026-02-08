@@ -6,8 +6,8 @@ import './Toggle.css'
 const Toggle = ({ checked, onChange, disabled = false, label = '', className = '' }) => {
   return (
     <label className={`toggle-label ${className}`}>
-      <input 
-        type="checkbox" 
+      <input
+        type="checkbox"
         checked={checked}
         onChange={onChange}
         disabled={disabled}
@@ -20,4 +20,3 @@ const Toggle = ({ checked, onChange, disabled = false, label = '', className = '
 }
 
 export default Toggle
-

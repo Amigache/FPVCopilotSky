@@ -21,6 +21,7 @@
 ⚠️ **5 cambios requieren actualizaciones en tests**:
 
 ### 1. **Toggle Component** (NUEVO - 3 componentes)
+
 - `Toggle.jsx`, `Toggle.css`, `Toggle/index.js`
 - Usado en 3 vistas diferentes
 - **Nuevos tests requeridos**: Toggle.test.jsx (7 tests) ✅ CREADO
@@ -30,6 +31,7 @@
   - VideoView (auto-start toggle)
 
 ### 2. **StatusView - Flight Session** (250+ líneas)
+
 - Auto-start on arm feature completa
 - **Nuevos tests requeridos**: test_flight_session.py (12 tests) ✅ CREADO
 - Cubre:
@@ -39,6 +41,7 @@
   - CSV logging
 
 ### 3. **NetworkView - Priority Mode Confirmation** (80 líneas)
+
 - Modal de confirmación antes de cambiar WiFi/4G
 - **Nuevos tests requeridos**: test_network_priority.py (14 tests) ✅ CREADO
 - Cubre:
@@ -48,10 +51,12 @@
   - Route metrics
 
 ### 4. **Header - Network Badge** (NUEVO)
+
 - Badge mostrando conexión actual (WiFi/4G/No Network)
 - **Nuevos tests requeridos**: Agregar a Header.test.jsx (2 tests)
 
 ### 5. **Preferences Endpoints** (NUEVO)
+
 - GET/POST `/api/system/preferences`
 - **Nuevos tests requeridos**: Agregar a test_system_routes.py (3 tests)
 
@@ -60,15 +65,18 @@
 ## 📝 TESTS YA CREADOS
 
 ✅ **Toggle Component Tests** → `Toggle.test.jsx` (7 tests)
+
 - Render, label, onChange, checked, disabled, className, visual state
 
 ✅ **Flight Session Tests** → `test_flight_session.py` (12 tests)
+
 - Auto-start on arm/disarm
 - CSV file creation/logging/closure
 - Preference persistence
 - Recording and sampling
 
 ✅ **Network Priority Tests** → `test_network_priority.py` (14 tests)
+
 - Priority mode changes (WiFi/modem/auto)
 - Route metrics validation
 - Error handling
@@ -83,38 +91,43 @@
 Si tienes tests existentes que hacen clic en toggles:
 
 **ANTES** (búsqueda de input directo):
+
 ```javascript
-screen.getByRole('checkbox').click()
-await user.click(screen.getByRole('checkbox'))
+screen.getByRole("checkbox").click();
+await user.click(screen.getByRole("checkbox"));
 ```
 
 **DESPUÉS** (usar label - Toggle usa hidden checkbox):
+
 ```javascript
-const toggle = screen.getByLabelText('Auto-connect') // o label text
-await user.click(toggle)
+const toggle = screen.getByLabelText("Auto-connect"); // o label text
+await user.click(toggle);
 
 // O selectores más robustos:
-screen.getByRole('checkbox', { name: 'Auto-start' })
+screen.getByRole("checkbox", { name: "Auto-start" });
 ```
 
 ### Vistas Afectadas:
+
 - [ ] `FlightControllerView.test.jsx` - Auto-connect toggle
-- [ ] `VPNView.test.jsx` - Auto-connect toggle  
+- [ ] `VPNView.test.jsx` - Auto-connect toggle
 - [ ] `VideoView.test.jsx` - Auto-start toggle
 
 ### Network Mode Change Modal:
 
 **ANTES**:
+
 ```javascript
-await user.click(screen.getByRole('button', { name: /WiFi/i }))
+await user.click(screen.getByRole("button", { name: /WiFi/i }));
 // Cambio ejecutado inmediatamente
 ```
 
 **DESPUÉS**:
+
 ```javascript
-await user.click(screen.getByRole('button', { name: /WiFi/i }))
+await user.click(screen.getByRole("button", { name: /WiFi/i }));
 // Modal aparece
-await user.click(screen.getByRole('button', { name: /Confirm/i }))
+await user.click(screen.getByRole("button", { name: /Confirm/i }));
 // Cambio ejecutado
 ```
 
@@ -123,6 +136,7 @@ await user.click(screen.getByRole('button', { name: /Confirm/i }))
 ## 🔄 PLAN DE VALIDACIÓN PRE-COMMIT
 
 ### Paso 1: Tests Existentes (Verificación de No-Regresión)
+
 ```bash
 # Frontend
 cd /opt/FPVCopilotSky/frontend/client
@@ -135,24 +149,29 @@ pytest              # ✅ 155 tests pasando
 ```
 
 ### Paso 2: Nuevos Tests - Componentes Base
+
 ```bash
 cd /opt/FPVCopilotSky/frontend/client
 npm run test -- Toggle.test.jsx  # ✅ 7 tests
 ```
 
 ### Paso 3: Nuevos Tests - Flight Session
+
 ```bash
 cd /opt/FPVCopilotSky
 pytest tests/test_flight_session.py      # ✅ 12 tests
 ```
 
 ### Paso 4: Nuevos Tests - Network Priority
+
 ```bash
 pytest tests/test_network_priority.py    # ✅ 14 tests
 ```
 
 ### Paso 5: Verifica Selectores (si existen tests afectados)
+
 Búsqueda en repo para confirmar:
+
 ```bash
 grep -r "getByRole.*checkbox" tests/     # Find affected tests
 grep -r "toggle-switch" tests/           # Find CSS-specific tests
@@ -174,14 +193,14 @@ grep -r "toggle-switch" tests/           # Find CSS-specific tests
 
 ## 🎯 RESUMEN DE IMPACTO
 
-| Categoría | Cambios | Afecta Tests | Nuevos Tests |
-|-----------|---------|--------------|--------------|
-| Frontend Components | 15 | 5 | 7 (Toggle) |
-| Frontend Pages | 6 | 2 | 6 (Flight Session) + 3 (Network) |
-| Backend Services | 8 | 0 | 12 (Flight Session) + 14 (Network) |
-| Tests/Fixtures | 5 | 0 | - |
-| Docs | 2 | 0 | - |
-| **TOTAL** | **36+** | **7** | **42+** |
+| Categoría           | Cambios | Afecta Tests | Nuevos Tests                       |
+| ------------------- | ------- | ------------ | ---------------------------------- |
+| Frontend Components | 15      | 5            | 7 (Toggle)                         |
+| Frontend Pages      | 6       | 2            | 6 (Flight Session) + 3 (Network)   |
+| Backend Services    | 8       | 0            | 12 (Flight Session) + 14 (Network) |
+| Tests/Fixtures      | 5       | 0            | -                                  |
+| Docs                | 2       | 0            | -                                  |
+| **TOTAL**           | **36+** | **7**        | **42+**                            |
 
 ---
 
@@ -198,6 +217,7 @@ grep -r "toggle-switch" tests/           # Find CSS-specific tests
 ## 🚀 SIGUIENTE PASO
 
 ### Opción 1: Crear tests faltantes ahora
+
 ```bash
 # Crear test para StatusView flight session
 touch frontend/client/src/components/Pages/StatusView.test.jsx
@@ -210,6 +230,7 @@ touch frontend/client/src/components/Pages/NetworkView.test.jsx
 ```
 
 ### Opción 2: Commit con tests actuales y agregar después
+
 - Ejecutar todos los tests existentes
 - Commit con nuevo código
 - Crear tests en PR de seguimiento
@@ -224,4 +245,3 @@ touch frontend/client/src/components/Pages/NetworkView.test.jsx
 - **Toggle.test.jsx** - Tests del componente Toggle ✅
 - **test_flight_session.py** - Tests de flight session ✅
 - **test_network_priority.py** - Tests de network priority ✅
-

@@ -1,6 +1,6 @@
 /**
  * App Component Tests
- * 
+ *
  * Tests for the main App component
  */
 

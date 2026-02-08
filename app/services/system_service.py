@@ -64,7 +64,14 @@ class SystemService:
             }
         except Exception as e:
             print(f"⚠️ Error getting memory info: {e}")
-            return {"total_mb": 0, "used_mb": 0, "available_mb": 0, "percentage": 0, "buffers_mb": 0, "cached_mb": 0}
+            return {
+                "total_mb": 0,
+                "used_mb": 0,
+                "available_mb": 0,
+                "percentage": 0,
+                "buffers_mb": 0,
+                "cached_mb": 0,
+            }
 
     @staticmethod
     def get_cpu_info() -> Dict[str, Any]:
@@ -216,7 +223,10 @@ class SystemService:
             try:
                 # Check if service is active
                 result = subprocess.run(
-                    ["systemctl", "is-active", service_name], capture_output=True, text=True, timeout=5
+                    ["systemctl", "is-active", service_name],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
                 )
                 service_info["active"] = result.returncode == 0
                 service_info["status"] = result.stdout.strip()
@@ -247,9 +257,13 @@ class SystemService:
                                         mem_bytes = int(value)
                                         service_info["memory_bytes"] = mem_bytes
                                         if mem_bytes >= 1024 * 1024 * 1024:
-                                            service_info["memory"] = f"{mem_bytes / (1024*1024*1024):.1f} GB"
+                                            service_info["memory"] = (
+                                                f"{mem_bytes / (1024*1024*1024):.1f} GB"
+                                            )
                                         else:
-                                            service_info["memory"] = f"{mem_bytes // (1024*1024)} MB"
+                                            service_info["memory"] = (
+                                                f"{mem_bytes // (1024*1024)} MB"
+                                            )
                                     except:
                                         pass
                                 elif key == "ActiveEnterTimestamp":
@@ -262,7 +276,9 @@ class SystemService:
 
                     # Get CPU usage for the service's main process
                     if service_info["pid"]:
-                        cpu_percent = SystemService._get_process_cpu(service_info["pid"])
+                        cpu_percent = SystemService._get_process_cpu(
+                            service_info["pid"]
+                        )
                         if cpu_percent is not None:
                             service_info["cpu_percent"] = round(cpu_percent, 1)
 
@@ -334,7 +350,10 @@ class SystemService:
                 # Check if port exists and is accessible
                 if os.path.exists(port_path):
                     try:
-                        port_info = {"path": port_path, "name": os.path.basename(port_path)}
+                        port_info = {
+                            "path": port_path,
+                            "name": os.path.basename(port_path),
+                        }
                         ports.append(port_info)
                     except Exception as e:
                         print(f"⚠️ Error checking port {port_path}: {e}")
@@ -360,7 +379,10 @@ class SystemService:
         try:
             # Try to read device model
             device_model = "Unknown"
-            model_files = ["/proc/device-tree/model", "/sys/firmware/devicetree/base/model"]
+            model_files = [
+                "/proc/device-tree/model",
+                "/sys/firmware/devicetree/base/model",
+            ]
 
             for model_file in model_files:
                 if os.path.exists(model_file):
@@ -431,7 +453,10 @@ class SystemService:
                 start_new_session=True,
             )
 
-            return {"success": True, "message": "Nginx restart initiated. Connection will be lost momentarily."}
+            return {
+                "success": True,
+                "message": "Nginx restart initiated. Connection will be lost momentarily.",
+            }
         except Exception as e:
             return {"success": False, "message": f"Error restarting nginx: {str(e)}"}
 

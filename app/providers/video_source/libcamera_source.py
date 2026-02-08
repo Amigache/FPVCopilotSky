@@ -35,13 +35,17 @@ class LibCameraSource(VideoSourceProvider):
         """Check if libcamera and GStreamer element are available"""
         try:
             # Check if libcamera-hello exists (indicates libcamera is installed)
-            result = subprocess.run(["which", "libcamera-hello"], capture_output=True, timeout=2)
+            result = subprocess.run(
+                ["which", "libcamera-hello"], capture_output=True, timeout=2
+            )
 
             if result.returncode != 0:
                 return False
 
             # Check if GStreamer libcamerasrc element is available
-            gst_result = subprocess.run(["gst-inspect-1.0", "libcamerasrc"], capture_output=True, timeout=2)
+            gst_result = subprocess.run(
+                ["gst-inspect-1.0", "libcamerasrc"], capture_output=True, timeout=2
+            )
 
             return gst_result.returncode == 0
 
@@ -62,7 +66,12 @@ class LibCameraSource(VideoSourceProvider):
 
         try:
             # List cameras using libcamera-hello
-            result = subprocess.run(["libcamera-hello", "--list-cameras"], capture_output=True, text=True, timeout=5)
+            result = subprocess.run(
+                ["libcamera-hello", "--list-cameras"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
 
             if result.returncode != 0:
                 return []
@@ -96,7 +105,11 @@ class LibCameraSource(VideoSourceProvider):
                             if "x" in res_str:
                                 max_res = res_str
 
-                        current_camera = {"camera_id": camera_id, "sensor_name": sensor_name, "max_resolution": max_res}
+                        current_camera = {
+                            "camera_id": camera_id,
+                            "sensor_name": sensor_name,
+                            "max_resolution": max_res,
+                        }
 
             # If we found at least one camera, add it
             if current_camera:
@@ -146,14 +159,28 @@ class LibCameraSource(VideoSourceProvider):
 
             return {
                 "is_capture_device": True,
-                "identity": {"name": f"LibCamera {source_id}", "driver": "libcamera", "bus_info": "csi"},
+                "identity": {
+                    "name": f"LibCamera {source_id}",
+                    "driver": "libcamera",
+                    "bus_info": "csi",
+                },
                 "is_usb": False,
                 "is_csi": True,
-                "supported_formats": ["NV12", "YUYV", "RGB", "MJPEG", "H264"],  # LibCamera ISP can output many formats
+                "supported_formats": [
+                    "NV12",
+                    "YUYV",
+                    "RGB",
+                    "MJPEG",
+                    "H264",
+                ],  # LibCamera ISP can output many formats
                 "default_format": "NV12",  # Native format, best performance
                 "format_resolutions": {
                     "NV12": common_resolutions,
-                    "H264": ["1920x1080", "1280x720", "640x480"],  # Hardware encoding available
+                    "H264": [
+                        "1920x1080",
+                        "1280x720",
+                        "640x480",
+                    ],  # Hardware encoding available
                 },
                 "supported_resolutions": common_resolutions,
                 "supported_framerates": common_fps,
@@ -229,13 +256,22 @@ class LibCameraSource(VideoSourceProvider):
 
         # Check if resolution is supported
         if resolution not in caps["supported_resolutions"]:
-            warnings.append(f"Resolution {resolution} may not be optimal for this sensor")
+            warnings.append(
+                f"Resolution {resolution} may not be optimal for this sensor"
+            )
 
         # Check framerate
         if resolution in caps["supported_framerates"]:
             if framerate not in caps["supported_framerates"][resolution]:
                 max_fps = max(caps["supported_framerates"][resolution])
                 if framerate > max_fps:
-                    warnings.append(f"Framerate {framerate} may be too high. Max recommended: {max_fps}")
+                    warnings.append(
+                        f"Framerate {framerate} may be too high. Max recommended: {max_fps}"
+                    )
 
-        return {"valid": len(errors) == 0, "errors": errors, "warnings": warnings, "adjusted_config": adjusted}
+        return {
+            "valid": len(errors) == 0,
+            "errors": errors,
+            "warnings": warnings,
+            "adjusted_config": adjusted,
+        }

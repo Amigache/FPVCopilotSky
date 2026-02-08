@@ -26,14 +26,20 @@ class WiFiInterface(NetworkInterface):
         """Detect if WiFi interface exists"""
         try:
             result = subprocess.run(
-                ["iw", "dev", self.interface_name, "info"], capture_output=True, text=True, timeout=2
+                ["iw", "dev", self.interface_name, "info"],
+                capture_output=True,
+                text=True,
+                timeout=2,
             )
             return result.returncode == 0
         except:
             # Fallback: check via ip link
             try:
                 result = subprocess.run(
-                    ["ip", "link", "show", self.interface_name], capture_output=True, text=True, timeout=2
+                    ["ip", "link", "show", self.interface_name],
+                    capture_output=True,
+                    text=True,
+                    timeout=2,
                 )
                 return result.returncode == 0
             except:
@@ -52,7 +58,10 @@ class WiFiInterface(NetworkInterface):
         try:
             # Get interface state
             result = subprocess.run(
-                ["ip", "addr", "show", self.interface_name], capture_output=True, text=True, timeout=2
+                ["ip", "addr", "show", self.interface_name],
+                capture_output=True,
+                text=True,
+                timeout=2,
             )
 
             if result.returncode != 0:
@@ -115,12 +124,21 @@ class WiFiInterface(NetworkInterface):
         """Bring WiFi interface up"""
         try:
             result = subprocess.run(
-                ["sudo", "ip", "link", "set", self.interface_name, "up"], capture_output=True, text=True, timeout=5
+                ["sudo", "ip", "link", "set", self.interface_name, "up"],
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
 
             if result.returncode == 0:
-                return {"success": True, "message": f"Interface {self.interface_name} brought up"}
-            return {"success": False, "error": result.stderr or "Failed to bring interface up"}
+                return {
+                    "success": True,
+                    "message": f"Interface {self.interface_name} brought up",
+                }
+            return {
+                "success": False,
+                "error": result.stderr or "Failed to bring interface up",
+            }
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -128,12 +146,21 @@ class WiFiInterface(NetworkInterface):
         """Bring WiFi interface down"""
         try:
             result = subprocess.run(
-                ["sudo", "ip", "link", "set", self.interface_name, "down"], capture_output=True, text=True, timeout=5
+                ["sudo", "ip", "link", "set", self.interface_name, "down"],
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
 
             if result.returncode == 0:
-                return {"success": True, "message": f"Interface {self.interface_name} brought down"}
-            return {"success": False, "error": result.stderr or "Failed to bring interface down"}
+                return {
+                    "success": True,
+                    "message": f"Interface {self.interface_name} brought down",
+                }
+            return {
+                "success": False,
+                "error": result.stderr or "Failed to bring interface down",
+            }
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -151,7 +178,17 @@ class WiFiInterface(NetworkInterface):
 
             # Delete old route
             subprocess.run(
-                ["sudo", "ip", "route", "del", "default", "via", gateway, "dev", self.interface_name],
+                [
+                    "sudo",
+                    "ip",
+                    "route",
+                    "del",
+                    "default",
+                    "via",
+                    gateway,
+                    "dev",
+                    self.interface_name,
+                ],
                 capture_output=True,
                 timeout=2,
             )
@@ -190,7 +227,10 @@ class WiFiInterface(NetworkInterface):
         """Scan for available WiFi networks"""
         try:
             result = subprocess.run(
-                ["sudo", "iw", "dev", self.interface_name, "scan"], capture_output=True, text=True, timeout=10
+                ["sudo", "iw", "dev", self.interface_name, "scan"],
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
 
             if result.returncode != 0:
@@ -240,7 +280,10 @@ class WiFiInterface(NetworkInterface):
         """Get currently connected SSID"""
         try:
             result = subprocess.run(
-                ["iw", "dev", self.interface_name, "link"], capture_output=True, text=True, timeout=2
+                ["iw", "dev", self.interface_name, "link"],
+                capture_output=True,
+                text=True,
+                timeout=2,
             )
 
             if result.returncode == 0:
@@ -255,7 +298,10 @@ class WiFiInterface(NetworkInterface):
         """Get current signal strength in percentage"""
         try:
             result = subprocess.run(
-                ["iw", "dev", self.interface_name, "link"], capture_output=True, text=True, timeout=2
+                ["iw", "dev", self.interface_name, "link"],
+                capture_output=True,
+                text=True,
+                timeout=2,
             )
 
             if result.returncode == 0:
@@ -279,7 +325,10 @@ class WiFiInterface(NetworkInterface):
         """Get gateway for interface"""
         try:
             result = subprocess.run(
-                ["ip", "route", "show", "dev", self.interface_name], capture_output=True, text=True, timeout=2
+                ["ip", "route", "show", "dev", self.interface_name],
+                capture_output=True,
+                text=True,
+                timeout=2,
             )
 
             if result.returncode == 0:
@@ -296,7 +345,10 @@ class WiFiInterface(NetworkInterface):
         """Get current route metric"""
         try:
             result = subprocess.run(
-                ["ip", "route", "show", "dev", self.interface_name], capture_output=True, text=True, timeout=2
+                ["ip", "route", "show", "dev", self.interface_name],
+                capture_output=True,
+                text=True,
+                timeout=2,
             )
 
             if result.returncode == 0:
@@ -317,5 +369,10 @@ class WiFiInterface(NetworkInterface):
             "interface_name": self.interface_name,
             "type": self.interface_type.value,
             "description": f"Wireless WiFi interface {self.interface_name}",
-            "features": ["Wireless connection", "Network scanning", "Signal strength monitoring", "SSID detection"],
+            "features": [
+                "Wireless connection",
+                "Network scanning",
+                "Signal strength monitoring",
+                "SSID detection",
+            ],
         }

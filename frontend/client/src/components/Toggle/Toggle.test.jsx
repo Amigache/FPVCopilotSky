@@ -22,12 +22,12 @@ describe('Toggle Component', () => {
   it('calls onChange when clicked', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
-    
+
     render(<Toggle checked={false} onChange={onChange} label="Click me" />)
-    
+
     const label = screen.getByLabelText('Click me')
     await user.click(label)
-    
+
     expect(onChange).toHaveBeenCalled()
   })
 
