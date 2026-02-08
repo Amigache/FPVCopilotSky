@@ -4,7 +4,7 @@ Enables dynamic encoder discovery based on hardware/software capabilities
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Optional, Any
+from typing import Dict
 import logging
 
 logger = logging.getLogger(__name__)

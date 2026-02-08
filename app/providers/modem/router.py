@@ -43,7 +43,7 @@ class RouterModemProvider(ModemProvider):
                 timeout=3,
             )
             return result.returncode == 0
-        except:
+        except Exception:
             return False
 
     def get_status(self) -> Dict:

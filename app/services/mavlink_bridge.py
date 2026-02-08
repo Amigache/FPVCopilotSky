@@ -7,14 +7,14 @@ import os
 
 os.environ["MAVLINK20"] = "1"
 
-import socket
-import serial
-import threading
-import time
-import asyncio
-from typing import Optional, List, Dict, Any, TYPE_CHECKING
-from pymavlink.dialects.v20 import ardupilotmega as mavlink2
-from .mavlink_dialect import MAVLinkDialect
+import socket  # noqa: E402
+import serial  # noqa: E402
+import threading  # noqa: E402
+import time  # noqa: E402
+import asyncio  # noqa: E402
+from typing import Optional, List, Dict, Any, TYPE_CHECKING  # noqa: E402
+from pymavlink.dialects.v20 import ardupilotmega as mavlink2  # noqa: E402
+from .mavlink_dialect import MAVLinkDialect  # noqa: E402
 
 if TYPE_CHECKING:
     from .mavlink_router import MAVLinkRouter
@@ -229,7 +229,7 @@ class MAVLinkBridge:
             if self.serial_port:
                 try:
                     self.serial_port.close()
-                except:
+                except Exception:
                     pass
                 self.serial_port = None
             return {"success": False, "message": str(e)}
@@ -251,7 +251,7 @@ class MAVLinkBridge:
                 for client in self.tcp_clients:
                     try:
                         client.close()
-                    except:
+                    except Exception:
                         pass
                 self.tcp_clients.clear()
 
@@ -259,7 +259,7 @@ class MAVLinkBridge:
             if self.tcp_server:
                 try:
                     self.tcp_server.close()
-                except:
+                except Exception:
                     pass
                 self.tcp_server = None
 
@@ -267,7 +267,7 @@ class MAVLinkBridge:
             if self.serial_port:
                 try:
                     self.serial_port.close()
-                except:
+                except Exception:
                     pass
                 self.serial_port = None
 
@@ -415,7 +415,7 @@ class MAVLinkBridge:
 
         try:
             client.close()
-        except:
+        except Exception:
             pass
 
         print(f"📥 TCP reader stopped for {addr}")
@@ -466,7 +466,9 @@ class MAVLinkBridge:
                                     # Debug log (first heartbeat of each session)
                                     if not hasattr(self, "_heartbeat_logged"):
                                         print(
-                                            f"💓 Sending HEARTBEATs: Camera(SysID={self.mav_sender.srcSystem}, CompID={self.mav_sender.srcComponent}), GCS(SysID={self.gcs_sender.srcSystem})"
+                                            f"💓 Sending HEARTBEATs: Camera(SysID={self.mav_sender.srcSystem}, "
+                                            f"CompID={self.mav_sender.srcComponent}), "
+                                            f"GCS(SysID={self.gcs_sender.srcSystem})"
                                         )
                                         self._heartbeat_logged = True
                         finally:
@@ -500,7 +502,9 @@ class MAVLinkBridge:
                     effective_timeout = 30.0 if (time.time() - self._connect_time < 30.0) else self.heartbeat_timeout
                     if elapsed > effective_timeout:
                         print(
-                            f"⏱️ Heartbeat elapsed: {elapsed:.1f}s > {effective_timeout:.1f}s (parsed HBs: {getattr(self, '_serial_heartbeat_count', 0)}, msgs: {self.stats['serial_rx']})"
+                            f"⏱️ Heartbeat elapsed: {elapsed:.1f}s > {effective_timeout:.1f}s "
+                            f"(parsed HBs: {getattr(self, '_serial_heartbeat_count', 0)}, "
+                            f"msgs: {self.stats['serial_rx']})"
                         )
                         self._handle_serial_failure("heartbeat timeout")
                         break
@@ -584,7 +588,7 @@ class MAVLinkBridge:
                         self.tcp_clients.remove(dead)
                         try:
                             dead.close()
-                        except:
+                        except Exception:
                             pass
                         print(f"❌ TCP client disconnected, {len(self.tcp_clients)} remaining")
 
@@ -794,28 +798,18 @@ class MAVLinkBridge:
             with self._param_lock:
                 self._param_callbacks.pop(param_name, None)
 
-    def set_parameter(self, param_name: str, value: float, param_type: int = 9, timeout: float = 3.0) -> Dict[str, Any]:
-        """
-        Set a parameter on the flight controller and verify it was saved.
-
-        Args:
-            param_name: Parameter name (e.g., 'FS_THR_ENABLE')
-            value: New value (float, will be converted as needed)
-            param_type: MAV_PARAM_TYPE (9 = REAL32 is most common)
-            timeout: Timeout in seconds
-
-        Returns:
-            Dict with success status and verified value
-        """
-        if not self.connected or not self.serial_port:
-            return {"success": False, "error": "Not connected"}
-
     # Alias for compatibility with test expectations
     def param_set(self, param_name: str, value: float, param_type: int = 9, timeout: float = 3.0) -> Dict[str, Any]:
         """Alias for set_parameter() for compatibility."""
-        return self.set_parameter(param_name, value, param_type, timeout)
+        return self._set_parameter_impl(param_name, value, param_type, timeout)
 
     def set_parameter(self, param_name: str, value: float, param_type: int = 9, timeout: float = 3.0) -> Dict[str, Any]:
+        """Set a parameter (public interface)."""
+        return self._set_parameter_impl(param_name, value, param_type, timeout)
+
+    def _set_parameter_impl(
+        self, param_name: str, value: float, param_type: int = 9, timeout: float = 3.0
+    ) -> Dict[str, Any]:
         """
         Set a parameter on the flight controller and verify it was saved (actual implementation).
 
@@ -958,7 +952,7 @@ class MAVLinkBridge:
                 self.websocket_manager.broadcast("mavlink_status", self.get_status()),
                 self.event_loop,
             )
-        except:
+        except Exception:
             pass
 
     def _broadcast_telemetry(self):
@@ -976,5 +970,5 @@ class MAVLinkBridge:
                 self.websocket_manager.broadcast("telemetry", self.get_telemetry()),
                 self.event_loop,
             )
-        except:
+        except Exception:
             pass

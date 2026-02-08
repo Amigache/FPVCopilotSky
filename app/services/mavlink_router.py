@@ -5,9 +5,6 @@ Uses simplified approach: direct sockets without complex pymavlink connections
 
 import socket as socket_module
 import threading
-import time
-import json
-import os
 from typing import Dict, List, Optional, Any, Callable
 from dataclasses import dataclass, field
 from enum import Enum
@@ -75,7 +72,7 @@ class MAVLinkRouter:
         if self.on_status_change:
             try:
                 self.on_status_change()
-            except:
+            except Exception:
                 pass
 
     def set_serial_callback(self, callback: Callable[[bytes], None]):
@@ -102,7 +99,7 @@ class MAVLinkRouter:
                         self._send_to_tcp_client(state, data)
                     elif output_type == "udp":
                         self._send_to_udp(state, data)
-                except Exception as e:
+                except Exception:
                     state.stats["errors"] += 1
 
     def _send_to_tcp_clients(self, state: OutputState, data: bytes):
@@ -120,7 +117,7 @@ class MAVLinkRouter:
                 state.clients.remove(dead)
                 try:
                     dead.close()
-                except:
+                except Exception:
                     pass
 
     def _send_to_tcp_client(self, state: OutputState, data: bytes):
@@ -222,7 +219,7 @@ class MAVLinkRouter:
         for client in state.clients:
             try:
                 client.close()
-            except:
+            except Exception:
                 pass
         state.clients.clear()
 
@@ -230,7 +227,7 @@ class MAVLinkRouter:
         if state.sock:
             try:
                 state.sock.close()
-            except:
+            except Exception:
                 pass
             state.sock = None
 
@@ -326,7 +323,7 @@ class MAVLinkRouter:
                 state.clients.remove(client)
         try:
             client.close()
-        except:
+        except Exception:
             pass
         print(f"📤 Router: TCP client {addr} disconnected (output: {state.config.id})")
 

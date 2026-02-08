@@ -4,7 +4,6 @@ Detects and uses SoC hardware video encoding (V4L2 M2M, meson_venc, etc.)
 """
 
 import subprocess
-import os
 import glob
 import logging
 from typing import Dict
@@ -151,7 +150,9 @@ class HardwareH264Encoder(VideoEncoderProvider):
             "priority": self.priority,
             "device": self.encoder_device,
             "gst_element": self.gst_encoder_element,
-            "description": f"Encoding por hardware del SoC. CPU <10%, latencia ultra-baja. Device: {self.encoder_device}",
+            "description": (
+                "Encoding por hardware del SoC. CPU <10%, latencia ultra-baja. " f"Device: {self.encoder_device}"
+            ),
         }
 
     def build_pipeline_elements(self, config: Dict) -> Dict:

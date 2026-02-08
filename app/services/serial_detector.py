@@ -3,14 +3,14 @@ Serial Detector - Auto-detect flight controllers on serial ports
 Scans hardware serial ports and USB devices for MAVLink heartbeats
 """
 
+import os
 import serial
 import time
-import os
-from typing import Optional, Tuple, List, Dict, Any
+from typing import Optional, List, Dict, Any
 
-# MAVLink environment
+# MAVLink environment - set before importing pymavlink
 os.environ["MAVLINK20"] = "1"
-from pymavlink.dialects.v20 import ardupilotmega as mavlink2
+from pymavlink.dialects.v20 import ardupilotmega as mavlink2  # noqa: E402
 
 
 class SerialDetector:
@@ -62,7 +62,7 @@ class SerialDetector:
         ports = self._get_ports_to_scan(preferred_port)
         baudrates = self._get_baudrates_to_try(preferred_baudrate)
 
-        print(f"🔍 Auto-detecting flight controller...")
+        print("🔍 Auto-detecting flight controller...")
         print(f"   Ports: {ports[:5]}...")  # Show first 5
         print(f"   Baudrates: {baudrates}")
 

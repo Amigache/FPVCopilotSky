@@ -6,10 +6,9 @@ Uses provider-based architecture for codec-agnostic encoding
 """
 
 import os
-import subprocess
 import threading
 import asyncio
-from typing import Optional, Dict, Any, Callable
+from typing import Optional, Dict, Any
 
 # Check if GStreamer is available
 try:
@@ -106,7 +105,8 @@ class GStreamerService:
                     setattr(self.streaming_config, key, value)
 
         print(
-            f"📹 Video config updated: {self.video_config.width}x{self.video_config.height}@{self.video_config.framerate}fps"
+            f"📹 Video config updated: "
+            f"{self.video_config.width}x{self.video_config.height}@{self.video_config.framerate}fps"
         )
         print(f"📡 Streaming to: {self.streaming_config.udp_host}:{self.streaming_config.udp_port}")
 
@@ -646,7 +646,8 @@ class GStreamerService:
 
         self.is_streaming = True
         print(
-            f"🎥 Video streaming started: {self.video_config.codec.upper()} → {self.streaming_config.udp_host}:{self.streaming_config.udp_port}"
+            f"🎥 Video streaming started: {self.video_config.codec.upper()} → "
+            f"{self.streaming_config.udp_host}:{self.streaming_config.udp_port}"
         )
 
         self._start_stats_broadcast()

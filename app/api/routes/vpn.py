@@ -277,7 +277,7 @@ async def save_vpn_preferences(preferences: VPNPreferencesModel, request: Reques
                 "preferences": config,
             }
         else:
-            print(f"⚠️ VPN preferences verification failed")
+            print("⚠️ VPN preferences verification failed")
             return {
                 "success": False,
                 "message": "Failed to verify saved preferences",

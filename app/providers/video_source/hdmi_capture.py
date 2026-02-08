@@ -110,7 +110,6 @@ class HDMICaptureSource(VideoSourceProvider):
                 device_name = device
                 card_type = ""
                 driver = ""
-                bus_info = ""
                 is_capture = False
 
                 for line in info_result.stdout.split("\n"):
@@ -125,7 +124,7 @@ class HDMICaptureSource(VideoSourceProvider):
                     elif "Bus info" in line:
                         parts = line.split(":", 1)
                         if len(parts) > 1:
-                            bus_info = parts[1].strip()
+                            _ = parts[1].strip()  # bus_info not used
                     elif "Video Capture" in line:
                         is_capture = True
 

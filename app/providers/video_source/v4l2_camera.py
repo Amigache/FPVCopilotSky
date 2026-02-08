@@ -91,7 +91,8 @@ class V4L2CameraSource(VideoSourceProvider):
             cameras.append(identity_group)
 
         logger.info(
-            f"Discovered {len(cameras)} physical cameras (filtered {len(devices) - len(cameras)} duplicate device paths)"
+            f"Discovered {len(cameras)} physical cameras "
+            f"(filtered {len(devices) - len(cameras)} duplicate device paths)"
         )
         return cameras
 
@@ -120,7 +121,6 @@ class V4L2CameraSource(VideoSourceProvider):
 
             # Parse device info
             device_name = os.path.basename(device)
-            device_type = "Camera"
             driver = "unknown"
             bus_info = ""
             is_capture = False

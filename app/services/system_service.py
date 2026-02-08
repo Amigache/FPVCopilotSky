@@ -133,7 +133,7 @@ class SystemService:
                 with open("/proc/loadavg", "r") as f:
                     parts = f.read().split()
                     load_avg = [float(parts[0]), float(parts[1]), float(parts[2])]
-            except:
+            except Exception:
                 pass
 
             return {
@@ -173,7 +173,7 @@ class SystemService:
                         temp = int(f.read().strip())
                         # Temperature is in millidegrees
                         return round(temp / 1000, 1)
-            except:
+            except Exception:
                 pass
 
         return None
@@ -192,7 +192,7 @@ class SystemService:
                     with open(path, "r") as f:
                         freq_khz = int(f.read().strip())
                         return freq_khz // 1000
-            except:
+            except Exception:
                 pass
 
         return None
@@ -260,14 +260,14 @@ class SystemService:
                                             service_info["memory"] = f"{mem_bytes / (1024*1024*1024):.1f} GB"
                                         else:
                                             service_info["memory"] = f"{mem_bytes // (1024*1024)} MB"
-                                    except:
+                                    except Exception:
                                         pass
                                 elif key == "ActiveEnterTimestamp":
                                     service_info["uptime"] = value
                                 elif key == "MainPID":
                                     try:
                                         service_info["pid"] = int(value)
-                                    except:
+                                    except Exception:
                                         pass
 
                     # Get CPU usage for the service's main process
@@ -384,7 +384,7 @@ class SystemService:
                         with open(model_file, "r") as f:
                             device_model = f.read().strip().replace("\x00", "")
                             break
-                    except:
+                    except Exception:
                         pass
 
             return {

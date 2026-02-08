@@ -5,14 +5,13 @@ compatible with Mission Planner's "Pop-Out or within Map" video detection
 """
 
 import os
-
-os.environ["MAVLINK20"] = "1"
-
 import threading
 import time
 from typing import Optional, TYPE_CHECKING
 
-from pymavlink.dialects.v20 import ardupilotmega as mavlink2
+# MAVLink environment - set before importing pymavlink
+os.environ["MAVLINK20"] = "1"
+from pymavlink.dialects.v20 import ardupilotmega as mavlink2  # noqa: E402
 
 if TYPE_CHECKING:
     from .mavlink_bridge import MAVLinkBridge
@@ -57,7 +56,8 @@ class VideoStreamInfoService:
         self.sender_thread = threading.Thread(target=self._sender_loop, daemon=True, name="VideoStreamInfoSender")
         self.sender_thread.start()
         print(
-            f"✅ Video Stream Information service started (SysID={self.mavlink_bridge.source_system_id}, CompID=100 CAMERA)"
+            f"✅ Video Stream Information service started "
+            f"(SysID={self.mavlink_bridge.source_system_id}, CompID=100 CAMERA)"
         )
         return True
 
@@ -118,11 +118,11 @@ class VideoStreamInfoService:
                                 self.mavlink_bridge.router.forward_to_outputs(packed_msg)
                     finally:
                         self.mavlink_bridge.serial_lock.release()
-            except Exception as e:
+            except Exception:
                 # Silent fail - non-critical
                 pass
 
-        except Exception as e:
+        except Exception:
             # Silently ignore errors
             pass
 
@@ -206,11 +206,11 @@ class VideoStreamInfoService:
                     finally:
                         self.mavlink_bridge.serial_lock.release()
                 # If can't acquire lock, just skip this send - don't block
-            except Exception as e:
+            except Exception:
                 # Silent fail - this is just advisory
                 pass
 
-        except Exception as e:
+        except Exception:
             # Silently ignore errors in this non-critical service
             pass
 

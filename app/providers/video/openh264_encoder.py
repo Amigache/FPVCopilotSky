@@ -56,7 +56,10 @@ class OpenH264Encoder(VideoEncoderProvider):
             "latency_estimate": "very-low",  # ~20-50ms with gop-size=2 (2 keyframes/sec at 30fps)
             "cpu_usage": "low",  # ~25-35% on 720p30 (ARM NEON)
             "priority": self.priority,
-            "description": "Optimizado para FPV. Baja latencia (<50ms), menor CPU que x264. Gop-size ajustable: 1 (latencia mínima) a 15 (mayor compresión).",
+            "description": (
+                "Optimizado para FPV. Baja latencia (<50ms), menor CPU que x264. "
+                "Gop-size ajustable: 1 (latencia mínima) a 15 (mayor compresión)."
+            ),
         }
 
     def build_pipeline_elements(self, config: Dict) -> Dict:
@@ -159,7 +162,9 @@ class OpenH264Encoder(VideoEncoderProvider):
                 "min": 1,
                 "max": 15,
                 "default": 2,
-                "description": "Keyframe interval (frames). 1=menor latencia/+bitrate, 5=equilibrio, 15=+compresión/-latencia",
+                "description": (
+                    "Keyframe interval (frames). 1=menor latencia/+bitrate, " "5=equilibrio, 15=+compresión/-latencia"
+                ),
                 "multiplier": 1,  # Direct frame count
             },
         }

@@ -320,7 +320,8 @@ async def save_serial_preferences(preferences: SerialPreferencesModel, request: 
             saved_config = prefs.get_serial_config()
             if saved_config.auto_connect != preferences.auto_connect:
                 print(
-                    f"⚠️ Verification failed: requested auto_connect={preferences.auto_connect}, saved={saved_config.auto_connect}"
+                    f"⚠️ Verification failed: requested auto_connect={preferences.auto_connect}, "
+                    f"saved={saved_config.auto_connect}"
                 )
                 return {
                     "success": False,

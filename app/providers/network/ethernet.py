@@ -32,7 +32,7 @@ class EthernetInterface(NetworkInterface):
                 timeout=2,
             )
             return result.returncode == 0
-        except:
+        except Exception:
             return False
 
     def get_status(self) -> Dict:
@@ -228,7 +228,7 @@ class EthernetInterface(NetworkInterface):
                         if match:
                             return match.group(1)
             return None
-        except:
+        except Exception:
             return None
 
     def _get_metric(self) -> Optional[int]:
@@ -248,7 +248,7 @@ class EthernetInterface(NetworkInterface):
                         if match:
                             return int(match.group(1))
             return None
-        except:
+        except Exception:
             return None
 
     def get_info(self) -> Dict:

@@ -3,9 +3,8 @@ MAVLink Dialect Service
 Provides access to ArduPilot MAVLink enums, modes, and parameter metadata
 """
 
-from pymavlink import mavutil
 from pymavlink.dialects.v20 import ardupilotmega as apm
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 
 class MAVLinkDialect:
@@ -271,7 +270,7 @@ class MAVLinkDialect:
             if enum_dict and isinstance(enum_dict, dict):
                 return enum_dict.get(value_name)
             return None
-        except:
+        except Exception:
             return None
 
     @staticmethod
@@ -294,5 +293,5 @@ class MAVLinkDialect:
                     if v == value:
                         return k
             return None
-        except:
+        except Exception:
             return None

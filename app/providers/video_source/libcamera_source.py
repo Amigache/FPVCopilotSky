@@ -4,7 +4,6 @@ Handles CSI cameras via libcamera (modern Raspberry Pi, some Radxa boards)
 """
 
 import subprocess
-import json
 import logging
 from typing import Dict, List, Optional, Any
 from ..base.video_source_provider import VideoSourceProvider

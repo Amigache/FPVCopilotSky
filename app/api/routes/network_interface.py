@@ -3,7 +3,7 @@ Network Interface API endpoints - Provider-based network interface management
 """
 
 from fastapi import APIRouter, HTTPException, Request
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 from pydantic import BaseModel
 import logging
 

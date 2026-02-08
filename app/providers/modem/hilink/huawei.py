@@ -5,11 +5,10 @@ Optimized for FPV video streaming over 4G LTE
 """
 
 import asyncio
-import time
 import subprocess
 import requests
 import xml.etree.ElementTree as ET
-from typing import Dict, Optional, Any, List, Tuple
+from typing import Dict, Optional, List, Tuple
 from functools import partial
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -27,10 +26,6 @@ Connection = None
 try:
     from huawei_lte_api.Client import Client
     from huawei_lte_api.Connection import Connection
-    from huawei_lte_api.exceptions import (
-        ResponseErrorException,
-        ResponseErrorLoginRequiredException,
-    )
 
     HILINK_AVAILABLE = True
     logger.info("huawei-lte-api loaded successfully")
@@ -242,7 +237,7 @@ class HuaweiE3372hProvider(ModemProvider):
             # Check if it's the E3372h model
             model = info.get("DeviceName", "").lower()
             return "e3372" in model or "hilink" in model
-        except:
+        except Exception:
             return False
 
     def set_flight_logger(self, flight_logger):
@@ -386,7 +381,7 @@ class HuaweiE3372hProvider(ModemProvider):
         try:
             if self._connection:
                 self._connection.close()
-        except:
+        except Exception:
             pass
         self._connection = None
         self._client = None
@@ -622,7 +617,6 @@ class HuaweiE3372hProvider(ModemProvider):
             net_mode = self._client.net.net_mode()
             lte_band_hex = net_mode.get("LTEBand", "")
             network_mode = net_mode.get("NetworkMode", "")
-            network_band = net_mode.get("NetworkBand", "")
 
             # Convert hex to int for band detection
             lte_band_int = int(lte_band_hex, 16) if lte_band_hex else 0
@@ -1308,7 +1302,7 @@ class HuaweiE3372hProvider(ModemProvider):
                 try:
                     rssi = int(rssi_str.replace("dBm", "").strip())
                     signal_percent = max(0, min(100, int((rssi + 113) * 100 / 62)))
-                except:
+                except Exception:
                     pass
 
             return {
@@ -1394,7 +1388,7 @@ class HuaweiE3372hProvider(ModemProvider):
                 rat_code = plmn.get("Rat", "")
                 rat_types = {"0": "GSM", "2": "WCDMA", "7": "LTE", "12": "5G NR"}
                 rat = rat_types.get(str(rat_code), "")
-            except:
+            except Exception:
                 operator_name = status.get("FullName", "")
 
             conn_status_map = {
@@ -1445,7 +1439,7 @@ class HuaweiE3372hProvider(ModemProvider):
                             return f"{b:.1f} {unit}"
                         b /= 1024
                     return f"{b:.1f} TB"
-                except:
+                except Exception:
                     return b
 
             return {

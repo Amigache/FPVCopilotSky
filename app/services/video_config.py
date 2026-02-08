@@ -4,10 +4,9 @@ Supports MJPEG and H.264 encoding with UDP output
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict
 import subprocess
 import glob
-import os
 import re
 
 

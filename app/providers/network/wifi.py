@@ -32,7 +32,7 @@ class WiFiInterface(NetworkInterface):
                 timeout=2,
             )
             return result.returncode == 0
-        except:
+        except Exception:
             # Fallback: check via ip link
             try:
                 result = subprocess.run(
@@ -42,7 +42,7 @@ class WiFiInterface(NetworkInterface):
                     timeout=2,
                 )
                 return result.returncode == 0
-            except:
+            except Exception:
                 return False
 
     def get_status(self) -> Dict:
@@ -291,7 +291,7 @@ class WiFiInterface(NetworkInterface):
                     if "SSID:" in line:
                         return line.split("SSID:")[1].strip()
             return None
-        except:
+        except Exception:
             return None
 
     def _get_signal_strength(self) -> Optional[int]:
@@ -318,7 +318,7 @@ class WiFiInterface(NetworkInterface):
                             else:
                                 return 2 * (dbm + 100)
             return None
-        except:
+        except Exception:
             return None
 
     def _get_gateway(self) -> Optional[str]:
@@ -338,7 +338,7 @@ class WiFiInterface(NetworkInterface):
                         if match:
                             return match.group(1)
             return None
-        except:
+        except Exception:
             return None
 
     def _get_metric(self) -> Optional[int]:
@@ -358,7 +358,7 @@ class WiFiInterface(NetworkInterface):
                         if match:
                             return int(match.group(1))
             return None
-        except:
+        except Exception:
             return None
 
     def get_info(self) -> Dict:

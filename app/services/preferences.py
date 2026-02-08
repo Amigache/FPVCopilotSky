@@ -6,7 +6,7 @@ Stores serial connection, router outputs, and user preferences
 import json
 import os
 from typing import Dict, List, Any, Optional
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 import threading
 
 
@@ -126,7 +126,7 @@ class PreferencesService:
                 print(f"✅ Loaded preferences from {self._config_path}")
             else:
                 # First run - create preferences file with defaults
-                print(f"📝 First run detected - creating preferences file")
+                print("📝 First run detected - creating preferences file")
                 self._preferences = self._default_preferences()
                 self._save()
                 print(f"✅ Created default preferences at {self._config_path}")
@@ -189,7 +189,7 @@ class PreferencesService:
                 ):
                     print(f"✅ Serial preferences saved: {port} @ {baudrate} baud (successful={successful})")
                 else:
-                    print(f"⚠️ Serial preferences save verification failed")
+                    print("⚠️ Serial preferences save verification failed")
         except Exception as e:
             print(f"⚠️ Failed to save serial config: {e}")
 
@@ -324,12 +324,12 @@ class PreferencesService:
                 if old_device:
                     print(f"⚠️ Video device {old_device} not found and no alternative detected")
                 else:
-                    print(f"ℹ️ No video capture devices detected")
+                    print("ℹ️ No video capture devices detected")
         else:
             if old_device:
                 print(f"⚠️ Video device {old_device} not found, no /dev/video* devices available")
             else:
-                print(f"ℹ️ No video devices detected")
+                print("ℹ️ No video devices detected")
 
     def set_video_config(self, config: Dict[str, Any]):
         """Set video configuration."""
@@ -363,7 +363,7 @@ class PreferencesService:
                 if saved.get("enabled") == enabled and saved.get("auto_start") == auto_start:
                     print(f"✅ Streaming preferences saved: enabled={enabled}, auto_start={auto_start}")
                 else:
-                    print(f"⚠️ Streaming preferences save verification failed")
+                    print("⚠️ Streaming preferences save verification failed")
         except Exception as e:
             print(f"⚠️ Failed to save streaming config: {e}")
 
@@ -398,7 +398,7 @@ class PreferencesService:
                         f"✅ VPN preferences saved: provider={provider}, enabled={enabled}, auto_connect={auto_connect}"
                     )
                 else:
-                    print(f"⚠️ VPN preferences save verification failed")
+                    print("⚠️ VPN preferences save verification failed")
         except Exception as e:
             print(f"⚠️ Failed to save VPN config: {e}")
 
@@ -495,7 +495,7 @@ class PreferencesService:
                 # Reset to defaults
                 self._preferences = self._default_preferences()
                 self._save()
-                print(f"✅ Preferences reset to defaults")
+                print("✅ Preferences reset to defaults")
                 return True
         except Exception as e:
             print(f"⚠️ Failed to reset preferences: {e}")

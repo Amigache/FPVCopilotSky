@@ -7,10 +7,9 @@ and writes it to CSV files for flight analysis.
 
 import csv
 import logging
-import os
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Optional, Any
+from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 

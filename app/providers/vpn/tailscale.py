@@ -351,7 +351,9 @@ class TailscaleProvider(VPNProvider):
                 if "password is required" in error_msg or "a password is required" in error_msg.lower():
                     return {
                         "success": False,
-                        "error": 'Logout requires sudo password. Please run "sudo tailscale logout" manually in terminal.',
+                        "error": (
+                            "Logout requires sudo password. " 'Please run "sudo tailscale logout" manually in terminal.'
+                        ),
                     }
                 return {"success": False, "error": error_msg or "Logout failed"}
 

@@ -3,7 +3,6 @@
 import subprocess
 import os
 import sys
-import json
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from importlib import metadata
@@ -89,7 +88,7 @@ def get_user_permissions():
                         line = line.strip()
                         if line and not line.startswith("#") and user.pw_name in line:
                             sudoers_list.append({"source": "sudoers", "entry": line})
-        except:
+        except Exception:
             pass
 
         # Check /etc/sudoers.d
@@ -108,9 +107,9 @@ def get_user_permissions():
                                             "entry": line,
                                         }
                                     )
-                    except:
+                    except Exception:
                         pass
-        except:
+        except Exception:
             pass
 
         perms = {

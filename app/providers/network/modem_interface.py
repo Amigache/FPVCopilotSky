@@ -40,7 +40,7 @@ class ModemInterface(NetworkInterface):
                 timeout=2,
             )
             return result.returncode == 0
-        except:
+        except Exception:
             return False
 
     def _find_modem_interface(self) -> Optional[str]:
@@ -59,7 +59,7 @@ class ModemInterface(NetworkInterface):
                         if match:
                             return match.group(1)
             return None
-        except:
+        except Exception:
             return None
 
     def get_status(self) -> Dict:
@@ -264,7 +264,7 @@ class ModemInterface(NetworkInterface):
                         if match:
                             return match.group(1)
             return None
-        except:
+        except Exception:
             return None
 
     def _get_metric(self) -> Optional[int]:
@@ -287,7 +287,7 @@ class ModemInterface(NetworkInterface):
                         if match:
                             return int(match.group(1))
             return None
-        except:
+        except Exception:
             return None
 
     def get_info(self) -> Dict:
@@ -297,7 +297,7 @@ class ModemInterface(NetworkInterface):
             "display_name": self.display_name,
             "interface_name": self.interface_name or "auto-detect",
             "type": self.interface_type.value,
-            "description": f"USB/HiLink 4G/LTE modem interface",
+            "description": "USB/HiLink 4G/LTE modem interface",
             "features": [
                 "4G/LTE connectivity",
                 "Auto-detection via subnet pattern",

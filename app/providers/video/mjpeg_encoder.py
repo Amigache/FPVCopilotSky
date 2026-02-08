@@ -5,7 +5,7 @@ Ultra-low latency encoder using JPEG compression
 
 import subprocess
 import logging
-from typing import Dict, List
+from typing import Dict
 from ..base.video_encoder_provider import VideoEncoderProvider
 
 logger = logging.getLogger(__name__)
@@ -65,9 +65,6 @@ class MJPEGEncoder(VideoEncoderProvider):
         Pipeline: camera(MJPEG) → jpegdec → jpegenc → rtpjpegpay
         """
         try:
-            width = config.get("width", 960)
-            height = config.get("height", 720)
-            framerate = config.get("framerate", 30)
             quality = config.get("quality", 85)
 
             elements = [
