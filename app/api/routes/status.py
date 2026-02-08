@@ -109,11 +109,7 @@ def get_user_permissions():
                         with open(filepath, "r") as f:
                             for line in f:
                                 line = line.strip()
-                                if (
-                                    line
-                                    and not line.startswith("#")
-                                    and user.pw_name in line
-                                ):
+                                if line and not line.startswith("#") and user.pw_name in line:
                                     sudoers_list.append(
                                         {
                                             "source": f"sudoers.d/{filename}",

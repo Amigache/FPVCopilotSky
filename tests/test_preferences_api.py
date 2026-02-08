@@ -84,18 +84,14 @@ class TestPreferencesEndpoints:
 
     def test_post_update_ui_preferences(self, client):
         """Should be able to update UI preferences"""
-        response = client.post(
-            "/api/system/preferences", json={"ui": {"language": "en", "theme": "dark"}}
-        )
+        response = client.post("/api/system/preferences", json={"ui": {"language": "en", "theme": "dark"}})
 
         assert response.status_code in [200, 400]
 
     def test_preferences_persistence(self, client):
         """Updated preferences should persist"""
         # Update preference
-        response = client.post(
-            "/api/system/preferences", json={"ui": {"language": "es"}}
-        )
+        response = client.post("/api/system/preferences", json={"ui": {"language": "es"}})
 
         if response.status_code == 200:
             # Verify it was saved
@@ -115,9 +111,7 @@ class TestPreferencesEndpoints:
             original_keys = set(original_prefs.keys())
 
             # Update just one section
-            response = client.post(
-                "/api/system/preferences", json={"ui": {"theme": "light"}}
-            )
+            response = client.post("/api/system/preferences", json={"ui": {"theme": "light"}})
 
             # Verify other sections still exist
             if response.status_code == 200:
@@ -132,9 +126,7 @@ class TestPreferencesEndpoints:
 
     def test_invalid_preference_key(self, client):
         """Should handle invalid preference keys gracefully"""
-        response = client.post(
-            "/api/system/preferences", json={"invalid_key": {"value": "test"}}
-        )
+        response = client.post("/api/system/preferences", json={"invalid_key": {"value": "test"}})
 
         # Should either ignore or return error
         assert response.status_code in [200, 400, 422]

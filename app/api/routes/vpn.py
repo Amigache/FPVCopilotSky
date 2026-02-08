@@ -56,9 +56,7 @@ def _get_vpn_provider(provider_name: Optional[str] = None, lang: str = "en"):
     if not provider:
         raise HTTPException(
             status_code=503,
-            detail=translate(
-                "vpn.provider_not_available", lang, provider=provider_name
-            ),
+            detail=translate("vpn.provider_not_available", lang, provider=provider_name),
         )
 
     return provider

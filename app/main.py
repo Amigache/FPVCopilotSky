@@ -530,12 +530,8 @@ def auto_connect_serial():
             return
 
         detection = detector.detect_flight_controller(
-            preferred_port=(
-                serial_config.port if not serial_config.last_successful else None
-            ),
-            preferred_baudrate=(
-                serial_config.baudrate if not serial_config.last_successful else None
-            ),
+            preferred_port=(serial_config.port if not serial_config.last_successful else None),
+            preferred_baudrate=(serial_config.baudrate if not serial_config.last_successful else None),
         )
 
         if detection:
@@ -560,9 +556,7 @@ def auto_connect_serial():
                             baudrate=detection["baudrate"],
                             successful=True,
                         )
-                        print(
-                            f"✅ Auto-connected and saved: {detection['port']} @ {detection['baudrate']} baud"
-                        )
+                        print(f"✅ Auto-connected and saved: {detection['port']} @ {detection['baudrate']} baud")
                         return
                     except Exception as e:
                         print(f"⚠️ Connected but failed to save preferences: {e}")

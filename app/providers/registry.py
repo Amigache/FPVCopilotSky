@@ -527,11 +527,7 @@ class ProviderRegistry:
 
         # Sort by provider priority (highest first)
         all_sources.sort(
-            key=lambda s: (
-                self.get_video_source(s["type"]).priority
-                if self.get_video_source(s["type"])
-                else 0
-            ),
+            key=lambda s: (self.get_video_source(s["type"]).priority if self.get_video_source(s["type"]) else 0),
             reverse=True,
         )
 

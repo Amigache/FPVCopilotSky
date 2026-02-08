@@ -431,11 +431,7 @@ async def connect_wifi(request: WiFiConnectRequest) -> InterfaceActionResponse:
 
         return InterfaceActionResponse(
             success=success,
-            message=(
-                f"Connected to '{request.ssid}'"
-                if success
-                else f"Failed to connect to '{request.ssid}'"
-            ),
+            message=(f"Connected to '{request.ssid}'" if success else f"Failed to connect to '{request.ssid}'"),
             interface_name=status.get("interface_name") if status else None,
             status=status,
         )

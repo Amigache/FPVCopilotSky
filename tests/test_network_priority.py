@@ -23,9 +23,7 @@ class TestNetworkPriorityMode:
     @patch("app.api.routes.network._run_command")
     @patch("app.api.routes.network._detect_wifi_interface")
     @patch("app.api.routes.network._detect_modem_interface")
-    async def test_set_priority_wifi_primary(
-        self, mock_modem, mock_wifi, mock_cmd, client
-    ):
+    async def test_set_priority_wifi_primary(self, mock_modem, mock_wifi, mock_cmd, client):
         """Setting WiFi priority should set WiFi metric lower than modem"""
         mock_wifi.return_value = "wlan0"
         mock_modem.return_value = "eth0"
@@ -41,9 +39,7 @@ class TestNetworkPriorityMode:
     @patch("app.api.routes.network._run_command")
     @patch("app.api.routes.network._detect_wifi_interface")
     @patch("app.api.routes.network._detect_modem_interface")
-    async def test_set_priority_modem_primary(
-        self, mock_modem, mock_wifi, mock_cmd, client
-    ):
+    async def test_set_priority_modem_primary(self, mock_modem, mock_wifi, mock_cmd, client):
         """Setting modem priority should set modem metric lower than WiFi"""
         mock_wifi.return_value = "wlan0"
         mock_modem.return_value = "eth0"

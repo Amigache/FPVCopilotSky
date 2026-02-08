@@ -83,9 +83,7 @@ class USBDongleProvider(ModemProvider):
 
         return {
             "available": True,
-            "status": (
-                ModemStatus.CONNECTED if network_info else ModemStatus.DISCONNECTED
-            ),
+            "status": (ModemStatus.CONNECTED if network_info else ModemStatus.DISCONNECTED),
             "modem_info": modem_info,
             "network_info": network_info,
             "error": None,
