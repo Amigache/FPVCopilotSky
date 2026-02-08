@@ -516,9 +516,15 @@ Ejemplos:
         default="bridge",
         help="Tipo de test a ejecutar",
     )
-    parser.add_argument("--port", default="/dev/ttyAML0", help="Puerto serial (default: /dev/ttyAML0)")
-    parser.add_argument("--baudrate", type=int, default=115200, help="Baudrate (default: 115200)")
-    parser.add_argument("--tcp-port", type=int, default=5760, help="Puerto TCP (default: 5760)")
+    parser.add_argument(
+        "--port", default="/dev/ttyAML0", help="Puerto serial (default: /dev/ttyAML0)"
+    )
+    parser.add_argument(
+        "--baudrate", type=int, default=115200, help="Baudrate (default: 115200)"
+    )
+    parser.add_argument(
+        "--tcp-port", type=int, default=5760, help="Puerto TCP (default: 5760)"
+    )
 
     args = parser.parse_args()
 
