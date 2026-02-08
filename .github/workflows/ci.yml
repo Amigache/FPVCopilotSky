@@ -81,8 +81,8 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: |
-          # Phase 1: Only run preference tests (other tests have API mismatches - deferred to Phase 2)
-          pytest tests/test_preferences.py \
+          # Run all tests with coverage
+          pytest tests/ \
             --cov=app \
             --cov-report=xml \
             --cov-report=html \
