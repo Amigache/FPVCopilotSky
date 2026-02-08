@@ -9,7 +9,7 @@ import api from '../../services/api'
 const NetworkView = () => {
   const { t } = useTranslation()
   const { showToast } = useToast()
-  const { showModal } = useModal()
+  const { showModal: _showModal } = useModal()
   const { messages } = useWebSocket()
   
   // State
