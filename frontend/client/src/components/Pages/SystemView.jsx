@@ -84,6 +84,7 @@ const SystemView = () => {
     loadResources()
     loadBoard()
     // No polling needed - all updates come via WebSocket
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Update from WebSocket

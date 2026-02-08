@@ -105,6 +105,7 @@ const ModemView = () => {
       handleTestLatency()
     }
     loadAll()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadStatus, loadBandPresets, loadFlightSession])
 
   // WebSocket: update modem data from server push (replaces polling)

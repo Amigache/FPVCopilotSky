@@ -46,6 +46,7 @@ const StatusView = () => {
   // Load initial status
   useEffect(() => {
     loadStatus()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Update from WebSocket

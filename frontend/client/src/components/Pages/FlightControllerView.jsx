@@ -233,6 +233,7 @@ const FlightControllerView = () => {
     }
     
     loadSerialPreferences()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Save serial preferences
@@ -439,6 +440,7 @@ const FlightControllerView = () => {
         }
       })()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isConnected, vehicleType])
   
   // Reset auto-load when disconnected
