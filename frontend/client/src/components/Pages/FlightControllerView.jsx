@@ -135,7 +135,7 @@ const FlightControllerView = () => {
   const [serialPort, setSerialPort] = useState('/dev/ttyAML0')
   const [baudrate, setBaudrate] = useState('115200')
   const [isConnected, setIsConnected] = useState(false)
-  const [status, setStatus] = useState(t('views.flightController.disconnected'))
+  const [_status, setStatus] = useState(t('views.flightController.disconnected'))
   const [loading, setLoading] = useState(false)
   const [availablePorts, setAvailablePorts] = useState([])
   const [loadingPorts, setLoadingPorts] = useState(true)
