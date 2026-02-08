@@ -286,7 +286,7 @@ const VPNView = () => {
       } else if (data.error) {
         showToast(data.error, 'error')
       }
-    } catch (error) {
+    } catch (_error) {
       showToast(t('vpn.connectError'), 'error')
     }
     setConnecting(false)
@@ -308,7 +308,7 @@ const VPNView = () => {
         // Load status after cleaning auth state
         await loadStatus()
       }
-    } catch (error) {
+    } catch (_error) {
       showToast(t('vpn.disconnectError'), 'error')
     }
     setConnecting(false)
@@ -334,7 +334,7 @@ const VPNView = () => {
       } else if (data.error) {
         showToast(data.error, 'error')
       }
-    } catch (error) {
+    } catch (_error) {
       showToast(t('vpn.logoutError'), 'error')
     }
     setConnecting(false)

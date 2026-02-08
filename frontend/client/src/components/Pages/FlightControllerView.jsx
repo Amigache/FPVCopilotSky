@@ -135,7 +135,7 @@ const FlightControllerView = () => {
   const [serialPort, setSerialPort] = useState('/dev/ttyAML0')
   const [baudrate, setBaudrate] = useState('115200')
   const [isConnected, setIsConnected] = useState(false)
-  const [status, setStatus] = useState(t('views.flightController.disconnected'))
+  const [_status, setStatus] = useState(t('views.flightController.disconnected'))
   const [loading, setLoading] = useState(false)
   const [availablePorts, setAvailablePorts] = useState([])
   const [loadingPorts, setLoadingPorts] = useState(true)
@@ -233,6 +233,7 @@ const FlightControllerView = () => {
     }
     
     loadSerialPreferences()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Save serial preferences
@@ -439,6 +440,7 @@ const FlightControllerView = () => {
         }
       })()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isConnected, vehicleType])
   
   // Reset auto-load when disconnected
@@ -566,7 +568,7 @@ const FlightControllerView = () => {
 
   // Get display value for a parameter (modified or current)
   const getParamValue = (paramName) => {
-    if (paramsModified.hasOwnProperty(paramName)) {
+    if (Object.hasOwn(paramsModified, paramName)) {
       return paramsModified[paramName]
     }
     return params[paramName] ?? ''
@@ -587,7 +589,7 @@ const FlightControllerView = () => {
   const renderParamInput = (name, config, value) => {
     const recommended = config.recommended
     const isMatch = isRecommendedValue(name, recommended)
-    const isModified = paramsModified.hasOwnProperty(name)
+    const isModified = Object.hasOwn(paramsModified, name)
     const hasValue = value !== '' && value !== undefined
     
     return (
@@ -837,7 +839,7 @@ const FlightControllerView = () => {
                     {STREAM_RATE_PARAMS.main.map(sr => {
                       const value = getParamValue(sr.name)
                       const isMatch = isRecommendedValue(sr.name, sr.recommended)
-                      const isModified = paramsModified.hasOwnProperty(sr.name)
+                      const isModified = Object.hasOwn(paramsModified, sr.name)
                       
                       return (
                         <div key={sr.name} className={`stream-rate-item color-${sr.color} ${isModified ? 'modified' : ''}`}>

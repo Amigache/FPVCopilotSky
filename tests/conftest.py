@@ -290,6 +290,60 @@ def sample_mavlink_messages():
     }
 
 
+@pytest.fixture
+def mock_api_services(monkeypatch):
+    """
+    Mock all API service dependencies for endpoint testing
+
+    Provides mocked PreferencesService, MAVLinkService, VideoConfig, etc.
+    """
+    # Mock PreferencesService
+    mock_prefs = Mock()
+    mock_prefs.get_serial_config.return_value = Mock(
+        port="/dev/ttyUSB0", baudrate=115200, auto_connect=True, last_successful=True
+    )
+    mock_prefs.get_video_config.return_value = {
+        "device": "/dev/video0",
+        "codec": "h264",
+        "width": 1920,
+        "height": 1080,
+        "fps": 30,
+        "bitrate": 2000,
+        "auto_start": True,
+    }
+    mock_prefs.get_vpn_config.return_value = {"provider": "tailscale", "auto_connect": True}
+    mock_prefs.get_router_outputs.return_value = [
+        {"id": "test-tcp", "type": "tcp_server", "host": "0.0.0.0", "port": 5760, "enabled": True}
+    ]
+    monkeypatch.setattr("app.services.preferences.PreferencesService", lambda *args, **kwargs: mock_prefs)
+
+    # Mock MAVLinkService
+    mock_mavlink = Mock()
+    mock_mavlink.is_connected.return_value = True
+    mock_mavlink.get_status.return_value = {
+        "connected": True,
+        "system_id": 1,
+        "component_id": 1,
+        "message_count": 150,
+        "last_heartbeat": 0.5,
+    }
+    monkeypatch.setattr("app.services.mavlink_bridge.MAVLinkBridge", lambda *args, **kwargs: mock_mavlink)
+
+    # Mock VideoConfig
+    mock_video_config = Mock()
+    mock_video_config.get_available_sources.return_value = [
+        {"id": "/dev/video0", "name": "USB Camera", "type": "usbcamera"}
+    ]
+    mock_video_config.get_available_encoders.return_value = ["h264", "h265", "mjpeg"]
+    monkeypatch.setattr("app.services.video_config.VideoConfig", lambda *args, **kwargs: mock_video_config)
+
+    return {
+        "preferences": mock_prefs,
+        "mavlink": mock_mavlink,
+        "video_config": mock_video_config,
+    }
+
+
 # Pytest configuration hooks
 def pytest_configure(config):
     """

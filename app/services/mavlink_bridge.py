@@ -14,7 +14,7 @@ import time
 import asyncio
 from typing import Optional, List, Dict, Any, TYPE_CHECKING
 from pymavlink.dialects.v20 import ardupilotmega as mavlink2
-from services.mavlink_dialect import MAVLinkDialect
+from .mavlink_dialect import MAVLinkDialect
 
 if TYPE_CHECKING:
     from .mavlink_router import MAVLinkRouter

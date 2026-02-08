@@ -66,6 +66,7 @@ const VideoView = () => {
   // Update local config from WebSocket only on initial load or when no pending changes
   useEffect(() => {
     if (messages.video_status?.config && !hasChanges) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setConfig(prev => ({ ...prev, ...messages.video_status.config }))
       initialLoadDone.current = true
     }
@@ -244,6 +245,20 @@ const VideoView = () => {
     liveUpdateTimer.current = setTimeout(() => liveUpdate(property, value), 300)
   }
 
+  // Get pipeline based on codec
+  // Get pipeline string from server status (WebSocket updates it in real-time)
+  const getPipelineString = () => {
+    // Use the pipeline from server if available (works for all codecs)
+    if (status.pipeline_string) {
+      return status.pipeline_string
+    }
+    // Fallback to local generation for compatibility (should rarely happen)
+    if (config.codec === 'h264' || config.codec === 'h264_openh264') {
+      return `udpsrc port=${config.udp_port} caps="application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)H264, payload=(int)96" ! rtph264depay ! avdec_h264 ! videoconvert ! video/x-raw,format=BGRA ! appsink name=outsink sync=false`
+    }
+    return `udpsrc port=${config.udp_port} caps="application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)JPEG, payload=(int)26" ! rtpjpegdepay ! jpegdec ! videoconvert ! video/x-raw,format=BGRA ! appsink name=outsink sync=false`
+  }
+
   const copyPipeline = async () => {
     const pipeline = getPipelineString()
     
@@ -266,23 +281,9 @@ const VideoView = () => {
       setCopySuccess(true)
       showToast(t('views.video.pipelineCopied'), 'success')
       setTimeout(() => setCopySuccess(false), 2000)
-    } catch (error) {
+    } catch (_error) {
       showToast(t('views.video.errorCopying'), 'error')
     }
-  }
-
-  // Get pipeline based on codec
-  // Get pipeline string from server status (WebSocket updates it in real-time)
-  const getPipelineString = () => {
-    // Use the pipeline from server if available (works for all codecs)
-    if (status.pipeline_string) {
-      return status.pipeline_string
-    }
-    // Fallback to local generation for compatibility (should rarely happen)
-    if (config.codec === 'h264' || config.codec === 'h264_openh264') {
-      return `udpsrc port=${config.udp_port} caps="application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)H264, payload=(int)96" ! rtph264depay ! avdec_h264 ! videoconvert ! video/x-raw,format=BGRA ! appsink name=outsink sync=false`
-    }
-    return `udpsrc port=${config.udp_port} caps="application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)JPEG, payload=(int)26" ! rtpjpegdepay ! jpegdec ! videoconvert ! video/x-raw,format=BGRA ! appsink name=outsink sync=false`
   }
 
   // Get current camera info - fallback to first available if configured device not found
@@ -296,6 +297,7 @@ const VideoView = () => {
         const firstRes = firstCam.resolutions[0]
         const [w, h] = firstRes.split('x')
         const fps = firstCam.resolutions_fps?.[firstRes]?.[0] || 30
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setConfig(prev => ({
           ...prev,
           device: firstCam.device,

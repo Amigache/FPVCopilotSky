@@ -77,7 +77,7 @@ export const WebSocketProvider = ({ children }) => {
             ...prev,
             [message.type]: message.data
           }))
-        } catch (error) {
+        } catch (_error) {
           // Silently ignore parse errors
         }
       }
@@ -106,7 +106,7 @@ export const WebSocketProvider = ({ children }) => {
       }
 
       wsRef.current = ws
-    } catch (error) {
+    } catch (_error) {
       isConnectingRef.current = false
     }
   }, [])

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import './LogsModal.css';
 
@@ -8,23 +8,24 @@ const LogsModal = ({ show, onClose, type, onRefresh }) => {
   const [loading, setLoading] = useState(false);
   const logsRef = useRef(null);
 
-  useEffect(() => {
-    if (show) {
-      loadLogs();
-    }
-  }, [show, type]);
-
-  const loadLogs = async () => {
+  const loadLogs = useCallback(async () => {
     setLoading(true);
     try {
       const result = await onRefresh();
       setLogs(result || t('status.logs.noLogs'));
-    } catch (error) {
+    } catch (_error) {
       setLogs(t('status.logs.errorLoading'));
     } finally {
       setLoading(false);
     }
-  };
+  }, [onRefresh, t]);
+
+  useEffect(() => {
+    if (show) {
+      loadLogs();
+    }
+     
+  }, [show, type, loadLogs]);
 
   const handleRefresh = () => {
     loadLogs();

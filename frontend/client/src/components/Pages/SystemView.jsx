@@ -19,39 +19,6 @@ const SystemView = () => {
   const [boardInfo, setBoardInfo] = useState(null)
   const [boardLoading, setBoardLoading] = useState(true)
 
-  // Load initial status
-  useEffect(() => {
-    loadStatus()
-    loadServices()
-    loadResources()
-    loadBoard()
-    // No polling needed - all updates come via WebSocket
-  }, [])
-
-  // Update from WebSocket
-  useEffect(() => {
-    if (messages.status) {
-      setStatusData(messages.status)
-      setLoading(false)
-    }
-  }, [messages.status])
-
-  // Update resources from WebSocket
-  useEffect(() => {
-    if (messages.system_resources) {
-      setCpuInfo(messages.system_resources.cpu)
-      setMemoryInfo(messages.system_resources.memory)
-    }
-  }, [messages.system_resources])
-
-  // Update services from WebSocket
-  useEffect(() => {
-    if (messages.system_services) {
-      setServices(messages.system_services.services || [])
-      setServicesLoading(false)
-    }
-  }, [messages.system_services])
-
   const loadStatus = async () => {
     try {
       const response = await api.get('/api/status/health')
@@ -110,6 +77,40 @@ const SystemView = () => {
     }
   }
 
+  // Load initial status
+  useEffect(() => {
+    loadStatus()
+    loadServices()
+    loadResources()
+    loadBoard()
+    // No polling needed - all updates come via WebSocket
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Update from WebSocket
+  useEffect(() => {
+    if (messages.status) {
+      setStatusData(messages.status)
+      setLoading(false)
+    }
+  }, [messages.status])
+
+  // Update resources from WebSocket
+  useEffect(() => {
+    if (messages.system_resources) {
+      setCpuInfo(messages.system_resources.cpu)
+      setMemoryInfo(messages.system_resources.memory)
+    }
+  }, [messages.system_resources])
+
+  // Update services from WebSocket
+  useEffect(() => {
+    if (messages.system_services) {
+      setServices(messages.system_services.services || [])
+      setServicesLoading(false)
+    }
+  }, [messages.system_services])
+
   // Color helpers
   const getUsageColor = (percent) => {
     if (percent >= 90) return { border: 'rgba(244, 67, 54, 0.5)', bg: 'rgba(244, 67, 54, 0.25)', text: '#ffb3b8', bar: '#f44336', barGradient: '#d32f2f' }
@@ -148,7 +149,7 @@ const SystemView = () => {
   }
 
   const { backend } = statusData
-  const connectedColor = 'rgba(102, 102, 102, 0.3)'
+  const _connectedColor = 'rgba(102, 102, 102, 0.3)'
   const boardData = boardInfo?.data
   
   // Memory colors

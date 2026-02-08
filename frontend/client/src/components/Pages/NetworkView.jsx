@@ -9,7 +9,7 @@ import api from '../../services/api'
 const NetworkView = () => {
   const { t } = useTranslation()
   const { showToast } = useToast()
-  const { showModal } = useModal()
+  const { showModal: _showModal } = useModal()
   const { messages } = useWebSocket()
   
   // State
@@ -80,11 +80,13 @@ const NetworkView = () => {
       setLoading(false)
     }
     loadAll()
-  }, [loadStatus])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Lazy load WiFi networks after initial load
   useEffect(() => {
     if (!loading) {
+       
       loadWifiNetworks()
     }
   }, [loading, loadWifiNetworks])
@@ -92,6 +94,7 @@ const NetworkView = () => {
   // Lazy load modem status after initial load
   useEffect(() => {
     if (!loading) {
+       
       loadHilinkStatus()
     }
   }, [loading, loadHilinkStatus])
@@ -99,6 +102,7 @@ const NetworkView = () => {
   // Update from WebSocket - network status
   useEffect(() => {
     if (messages.network_status) {
+       
       setStatus(messages.network_status)
       setLoading(false)
     }
@@ -176,7 +180,7 @@ const NetworkView = () => {
   }
 
   // Get signal strength category
-  const getSignalCategory = (signal) => {
+  const _getSignalCategory = (signal) => {
     if (signal >= 75) return 'excellent'
     if (signal >= 50) return 'good'
     if (signal >= 25) return 'fair'

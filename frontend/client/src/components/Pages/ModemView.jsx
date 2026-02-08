@@ -68,10 +68,28 @@ const ModemView = () => {
         const data = await response.json()
         setFlightSession(data)
       }
-    } catch (error) {
+    } catch (_error) {
       // Ignore
     }
   }, [])
+
+  // Test latency
+  const handleTestLatency = async () => {
+    setTestingLatency(true)
+    try {
+      const response = await api.get('/api/network/hilink/latency')
+      if (response.ok) {
+        const data = await response.json()
+        setLatency(data)
+      } else {
+        const data = await response.json()
+        showToast(data.detail || 'Error en test de latencia', 'error')
+      }
+    } catch (error) {
+      showToast(error.message, 'error')
+    }
+    setTestingLatency(false)
+  }
 
   // Initial load (one-time HTTP for first paint, then WS takes over)
   useEffect(() => {
@@ -87,6 +105,7 @@ const ModemView = () => {
       handleTestLatency()
     }
     loadAll()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadStatus, loadBandPresets, loadFlightSession])
 
   // WebSocket: update modem data from server push (replaces polling)
@@ -162,24 +181,6 @@ const ModemView = () => {
     setTogglingVideoMode(false)
   }
 
-  // Test latency
-  const handleTestLatency = async () => {
-    setTestingLatency(true)
-    try {
-      const response = await api.get('/api/network/hilink/latency')
-      if (response.ok) {
-        const data = await response.json()
-        setLatency(data)
-      } else {
-        const data = await response.json()
-        showToast(data.detail || 'Error en test de latencia', 'error')
-      }
-    } catch (error) {
-      showToast(error.message, 'error')
-    }
-    setTestingLatency(false)
-  }
-
   // Start flight session
   const handleStartFlightSession = async () => {
     try {
@@ -196,6 +197,21 @@ const ModemView = () => {
     } catch (error) {
       showToast(error.message, 'error')
     }
+  }
+
+  // Format session summary
+  const formatSessionSummary = (stats) => {
+    if (!stats) return t('modem.noData')
+    
+    const duration = Math.floor(stats.duration_seconds / 60)
+    return `
+${t('modem.duration')}: ${duration} ${t('modem.minutes')}
+${t('modem.samples')}: ${stats.sample_count}
+SINR: ${stats.min_sinr?.toFixed(1) || 'N/A'} - ${stats.max_sinr?.toFixed(1) || 'N/A'} dB
+RSRP: ${stats.min_rsrp?.toFixed(0) || 'N/A'} - ${stats.max_rsrp?.toFixed(0) || 'N/A'} dBm
+${t('modem.avgLatency')}: ${stats.avg_latency_ms?.toFixed(0) || 'N/A'} ms
+${t('modem.bandChanges')}: ${stats.band_changes}
+    `.trim()
   }
 
   // Stop flight session
@@ -225,21 +241,6 @@ const ModemView = () => {
     } catch (error) {
       showToast(error.message, 'error')
     }
-  }
-
-  // Format session summary
-  const formatSessionSummary = (stats) => {
-    if (!stats) return t('modem.noData')
-    
-    const duration = Math.floor(stats.duration_seconds / 60)
-    return `
-${t('modem.duration')}: ${duration} ${t('modem.minutes')}
-${t('modem.samples')}: ${stats.sample_count}
-SINR: ${stats.min_sinr?.toFixed(1) || 'N/A'} - ${stats.max_sinr?.toFixed(1) || 'N/A'} dB
-RSRP: ${stats.min_rsrp?.toFixed(0) || 'N/A'} - ${stats.max_rsrp?.toFixed(0) || 'N/A'} dBm
-${t('modem.avgLatency')}: ${stats.avg_latency_ms?.toFixed(0) || 'N/A'} ms
-${t('modem.bandChanges')}: ${stats.band_changes}
-    `.trim()
   }
 
   // Reboot modem
@@ -273,7 +274,7 @@ ${t('modem.bandChanges')}: ${stats.band_changes}
                     return
                   }
                 }
-              } catch (e) {
+              } catch (_e) {
                 // Expected during reboot
               }
               

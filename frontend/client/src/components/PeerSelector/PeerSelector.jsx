@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { api } from '../../services/api'
 import './PeerSelector.css'
 
@@ -21,9 +21,25 @@ export const PeerSelector = ({
   const inputRef = useRef(null)
 
   // Load VPN peers
+  const loadPeers = useCallback(async () => {
+    setLoading(true)
+    try {
+      const data = await api.getVPNPeers()
+      // Extract peers array and include all peers (online and offline for selection)
+      const peersList = data.peers || []
+      setPeers(peersList.filter(peer => !peer.is_self))
+    } catch (_error) {
+      // Silently handle - VPN may not be connected
+      setPeers([])
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  // Load VPN peers
   useEffect(() => {
     loadPeers()
-  }, [])
+  }, [loadPeers])
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -38,21 +54,6 @@ export const PeerSelector = ({
       return () => document.removeEventListener('mousedown', handleClickOutside)
     }
   }, [showDropdown])
-
-  const loadPeers = async () => {
-    setLoading(true)
-    try {
-      const data = await api.getVPNPeers()
-      // Extract peers array and include all peers (online and offline for selection)
-      const peersList = data.peers || []
-      setPeers(peersList.filter(peer => !peer.is_self))
-    } catch (error) {
-      // Silently handle - VPN may not be connected
-      setPeers([])
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const handleSelectPeer = (peer) => {
     // Use MagicDNS name if available, fallback to IPv4

@@ -73,6 +73,13 @@ const TelemetryView = () => {
     }
   }, [messages.router_status])
   
+  const handleCancelEdit = () => {
+    setEditingId(null)
+    setOutputType('tcp_server')
+    setHost('0.0.0.0')
+    setPort('14550')
+  }
+  
   const handleCreateOutput = async (e) => {
     e.preventDefault()
     setLoading(true)
@@ -137,13 +144,6 @@ const TelemetryView = () => {
     setPort(output.port.toString())
     // Scroll to form
     document.querySelector('.router-form')?.scrollIntoView({ behavior: 'smooth' })
-  }
-
-  const handleCancelEdit = () => {
-    setEditingId(null)
-    setOutputType('tcp_server')
-    setHost('0.0.0.0')
-    setPort('14550')
   }
   
   const handleDeleteOutput = async (outputId) => {
