@@ -51,6 +51,15 @@ preferences.json.backup*
 .cache/
 .pytest_cache/
 
+# Testing & Coverage
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+.hypothesis/
+.tox/
+
 # Environment
 .env
 .env.local
