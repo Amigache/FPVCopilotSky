@@ -4,10 +4,10 @@ Supports MJPEG and H.264 encoding with UDP output
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict
+from typing import Optional, Dict
+import ipaddress
 import subprocess
 import glob
-import re
 
 
 def get_device_identity(device: str) -> Optional[Dict[str, str]]:
@@ -117,128 +117,6 @@ def auto_detect_camera() -> str:
     return "/dev/video0"
 
 
-def get_device_resolutions(device: str) -> Dict:
-    """
-    Get supported resolutions, fps, and device info for a video device using v4l2-ctl.
-    Returns dict with name, type, resolutions list, and resolutions_fps mapping.
-    """
-    try:
-        # Get device info
-        info_result = subprocess.run(
-            ["v4l2-ctl", "-d", device, "--info"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-
-        device_name = device
-        device_type = "Dispositivo de captura"
-        driver = "unknown"
-        bus_info = ""
-        is_capture = False
-
-        for line in info_result.stdout.split("\n"):
-            if "Card type" in line:
-                parts = line.split(":", 1)
-                if len(parts) > 1:
-                    device_name = parts[1].strip()
-                    if "camera" in device_name.lower() or "webcam" in device_name.lower():
-                        device_type = "Cámara"
-            elif "Driver name" in line:
-                parts = line.split(":", 1)
-                if len(parts) > 1:
-                    driver = parts[1].strip()
-            elif "Bus info" in line:
-                parts = line.split(":", 1)
-                if len(parts) > 1:
-                    bus_info = parts[1].strip()
-            elif "Video Capture" in line:
-                is_capture = True
-
-        # If not a capture device, skip
-        if not is_capture:
-            return None
-
-        # Get formats and resolutions with FPS
-        result = subprocess.run(
-            ["v4l2-ctl", "-d", device, "--list-formats-ext"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-
-        resolutions_fps = {}  # {resolution: [fps list]}
-        current_format = None
-        current_resolution = None
-
-        for line in result.stdout.split("\n"):
-            # Parse format line
-            if "'" in line and "'" in line:
-                parts = line.split("'")
-                if len(parts) >= 2:
-                    current_format = parts[1]
-
-            # Parse resolution line
-            if "Size: Discrete" in line and current_format:
-                parts = line.split()
-                for part in parts:
-                    if "x" in part and part[0].isdigit():
-                        current_resolution = part
-                        if current_resolution not in resolutions_fps:
-                            resolutions_fps[current_resolution] = []
-
-            # Parse FPS line
-            if "Interval: Discrete" in line and current_resolution:
-                # Extract FPS from "Interval: Discrete 0.033s (30.000 fps)"
-                fps_match = re.search(r"\(([0-9.]+)\s*fps\)", line)
-                if fps_match:
-                    fps = float(fps_match.group(1))
-                    fps_int = int(fps)
-                    if fps_int not in resolutions_fps[current_resolution]:
-                        resolutions_fps[current_resolution].append(fps_int)
-
-        # Sort FPS for each resolution (highest first)
-        for res in resolutions_fps:
-            resolutions_fps[res].sort(reverse=True)
-
-        # Sort resolutions by pixel count (highest first)
-        sorted_resolutions = sorted(
-            resolutions_fps.keys(),
-            key=lambda x: tuple(map(int, x.split("x"))) if "x" in x else (0, 0),
-            reverse=True,
-        )
-
-        return {
-            "device": device,
-            "name": device_name,
-            "type": device_type,
-            "driver": driver,
-            "bus_info": bus_info,
-            "is_usb": driver == "uvcvideo",
-            "resolutions": sorted_resolutions,
-            "resolutions_fps": resolutions_fps,
-        }
-    except Exception as e:
-        print(f"⚠️ Error getting resolutions for {device}: {e}")
-        return None
-
-
-def get_available_cameras() -> List[dict]:
-    """Get list of available camera devices with resolutions and FPS info"""
-    cameras = []
-    devices = glob.glob("/dev/video*")
-
-    for device in sorted(devices):
-        try:
-            device_info = get_device_resolutions(device)
-            if device_info and device_info.get("resolutions"):
-                cameras.append(device_info)
-        except Exception:
-            continue
-
-    return cameras
-
-
 @dataclass
 class VideoConfig:
     """Video capture and encoding configuration"""
@@ -264,18 +142,70 @@ class VideoConfig:
     # Buffer tuning
     max_latency_ms: int = 50
 
+    def __post_init__(self):
+        """Clamp all values to safe ranges."""
+        self.width = max(1, min(7680, int(self.width)))
+        self.height = max(1, min(4320, int(self.height)))
+        self.framerate = max(1, min(120, int(self.framerate)))
+        self.quality = max(1, min(100, int(self.quality)))
+        self.h264_bitrate = max(100, min(50000, int(self.h264_bitrate)))
+        self.gop_size = max(1, min(300, int(self.gop_size)))
+        if self.codec not in ("mjpeg", "h264", "h264_openh264", "h264_hardware", "h264_v4l2"):
+            self.codec = "mjpeg"
+
 
 @dataclass
 class StreamingConfig:
-    """Network streaming configuration"""
+    """Network streaming configuration with multiple modes"""
 
-    # UDP output for Mission Planner / QGroundControl
+    # Streaming mode: 'udp', 'rtsp', 'multicast'
+    mode: str = "udp"
+
+    # Mode 1: Direct UDP (unicast) - Current default
+    # Best for: Single client, minimum latency
     udp_host: str = "192.168.1.136"
     udp_port: int = 5600
+
+    # Mode 2: RTSP Server (multi-client via GStreamer RTSP Server)
+    # Best for: Multiple clients, VLC, Mission Planner, recording
+    rtsp_enabled: bool = False
+    rtsp_url: str = "rtsp://localhost:8554/fpv"
+    rtsp_transport: str = "tcp"  # 'tcp' or 'udp' (udp for lower latency)
+
+    # Mode 3: UDP Multicast (multiple clients on same LAN)
+    # Best for: Multiple clients on local network, low latency
+    multicast_group: str = "239.1.1.1"  # Multicast group address (239.0.0.0 - 239.255.255.255)
+    multicast_port: int = 5600
+    multicast_ttl: int = 1  # Time-to-live (1 = local network only)
 
     # Enable/disable streaming
     enabled: bool = True
     auto_start: bool = True
+
+    def __post_init__(self):
+        """Clamp and validate all values to safe ranges."""
+        if self.mode not in ("udp", "multicast", "rtsp"):
+            self.mode = "udp"
+        self.udp_port = max(1024, min(65535, int(self.udp_port)))
+        self.multicast_port = max(1024, min(65535, int(self.multicast_port)))
+        self.multicast_ttl = max(1, min(255, int(self.multicast_ttl)))
+        if self.rtsp_transport not in ("tcp", "udp"):
+            self.rtsp_transport = "tcp"
+        # Validate multicast group is in 224.0.0.0 – 239.255.255.255
+        try:
+            addr = ipaddress.IPv4Address(self.multicast_group)
+            if not addr.is_multicast:
+                self.multicast_group = "239.1.1.1"
+        except (ipaddress.AddressValueError, ValueError):
+            self.multicast_group = "239.1.1.1"
+        # Validate UDP host is valid IPv4
+        try:
+            ipaddress.IPv4Address(self.udp_host)
+        except (ipaddress.AddressValueError, ValueError):
+            self.udp_host = "127.0.0.1"
+        # Validate RTSP URL format
+        if self.rtsp_url and not self.rtsp_url.startswith("rtsp://"):
+            self.rtsp_url = "rtsp://localhost:8554/fpv"
 
 
 # Default configurations

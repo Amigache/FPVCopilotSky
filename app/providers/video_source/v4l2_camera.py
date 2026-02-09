@@ -163,7 +163,7 @@ class V4L2CameraSource(VideoSourceProvider):
 
             for line in formats_result.stdout.split("\n"):
                 # Parse format line (e.g., "[0]: 'MJPG' (Motion-JPEG)")
-                if "'" in line and "'" in line.split("'")[1:]:
+                if "'" in line:
                     parts = line.split("'")
                     if len(parts) >= 2:
                         current_format = parts[1]

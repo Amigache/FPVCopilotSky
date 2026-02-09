@@ -5,6 +5,7 @@ pyserial>=3.5
 python-multipart>=0.0.6
 pydantic>=2.5.0
 huawei-lte-api>=1.9.0
+PyGObject>=3.42.0
 
 # Testing dependencies
 pytest>=7.4.0

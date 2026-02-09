@@ -193,10 +193,22 @@ FPVCopilotSky/
 │   │   ├── main.jsx             # Punto de entrada
 │   │   ├── components/
 │   │   │   ├── Header/          # Barra superior con badges
-│   │   │   ├── Sidebar/         # Navegación lateral
-│   │   │   ├── Pages/           # Vistas: Modem, VPN, Video, Network…
+│   │   │   ├── TabBar/          # Navegación por pestañas
+│   │   │   ├── Toggle/          # Toggle switch reutilizable
 │   │   │   ├── PeerSelector/    # Selector de peers VPN
-│   │   │   └── Badge/, Modal/, Toast/
+│   │   │   ├── Badge/, Modal/, Toast/
+│   │   │   └── Pages/           # Vistas principales
+│   │   │       ├── VideoView.jsx          # Orquestador de video
+│   │   │       ├── video/                 # Sub-componentes de video
+│   │   │       │   ├── videoConstants.js   # Constantes, rangos, helpers
+│   │   │       │   ├── StatusBanner.jsx    # Estado: emitiendo/detenido/error
+│   │   │       │   ├── VideoSourceCard.jsx # Cámara, resolución, FPS
+│   │   │       │   ├── EncodingConfigCard.jsx # Codec, bitrate, calidad
+│   │   │       │   ├── NetworkSettingsCard.jsx # Modo, IP, puerto, RTSP
+│   │   │       │   ├── StreamControlCard.jsx   # Iniciar/detener/reiniciar
+│   │   │       │   ├── PipelineCard.jsx   # Pipeline GStreamer visible
+│   │   │       │   └── StatsCard.jsx      # FPS, bitrate, uptime en vivo
+│   │   │       └── Modem, VPN, Network, Status, System…
 │   │   ├── contexts/
 │   │   │   ├── WebSocketContext.jsx  # Hook useWebSocket()
 │   │   │   ├── ToastContext.jsx
@@ -220,7 +232,11 @@ FPVCopilotSky/
 │   └── fpvcopilot-sky.nginx     # Configuración nginx
 │
 ├── tests/
-│   └── test_mavlink_bridge.py
+│   ├── test_mavlink_bridge.py           # Tests MAVLink bridge
+│   ├── test_video_config_validation.py  # 59 tests: VideoConfig/StreamingConfig clamping
+│   ├── test_video_routes_validation.py  # 71 tests: Pydantic model validation
+│   ├── test_flight_session.py           # Tests de sesión de vuelo
+│   └── test_network_priority.py         # Tests de priorización de red
 │
 └── docs/                        # Documentación (wiki)
     ├── INDEX.md
@@ -262,9 +278,25 @@ bash scripts/deploy.sh                   # Desplegar todo
 ### Tests
 
 ```bash
+# Backend (pytest desde el venv)
 source venv/bin/activate
 python -m pytest tests/ -v
+
+# Frontend (Vitest)
+cd frontend/client
+npx vitest run                    # Todos (104 tests, 8 archivos)
+npx vitest run --reporter=verbose # Con detalle
 ```
+
+**Suite de tests de video:**
+
+| Archivo                           | Tests | Cubre                                                |
+| --------------------------------- | ----- | ---------------------------------------------------- |
+| `test_video_config_validation.py` | 59    | Clamping, codec whitelist, multicast, RTSP URL       |
+| `test_video_routes_validation.py` | 71    | Pydantic: rangos, Literal, validación IPv4           |
+| `videoConstants.test.js`          | 20    | safeInt, isValidMulticastIp, isValidIpv4, constantes |
+| `SubComponents.test.jsx`          | 41    | 7 sub-componentes de video                           |
+| `VideoView.test.jsx`              | 7     | Renderizado, GStreamer check, carga de datos         |
 
 ---
 
@@ -720,6 +752,30 @@ async def get_board_info():
 - Si no hay match perfecto, se puede retornar la variante por defecto
 - Los servicios consultan `BoardRegistry.get_detected_board()` para adaptar comportamiento
 
+### Troubleshooting del Board Provider
+
+```bash
+# Verificar detección
+curl -s http://localhost:8000/api/system/board | python3 -m json.tool
+
+# Comprobar device-tree (Radxa, RPi, Jetson…)
+cat /proc/device-tree/model
+
+# CPU info
+lscpu
+cat /proc/cpuinfo | grep -i "model name\|CPU arch"
+
+# RAM detectada
+grep MemTotal /proc/meminfo
+
+# Storage detectado
+df -h /
+
+# Kernel y distro
+uname -r
+cat /etc/os-release
+```
+
 ---
 
 ## 6.3 Proveedores de Video: Fuentes (Cámaras) y Codificadores
@@ -1079,11 +1135,18 @@ GET  /api/mavlink/telemetry           # Datos de telemetría
 GET  /api/video/status                # Estado del stream (incluye providers activos)
 POST /api/video/start                 # Iniciar streaming (auto-selecciona providers)
 POST /api/video/stop                  # Detener streaming
-POST /api/video/configure             # Aplicar configuración (codec, bitrate, etc.)
+POST /api/video/config/video          # Configurar video (Pydantic: VideoConfigRequest)
+POST /api/video/config/streaming      # Configurar red/emisión (StreamingConfigRequest)
 GET  /api/video/cameras               # Cámaras detectadas (todos los providers)
 GET  /api/video/codecs                # Codificadores disponibles (todos los providers)
-PUT  /api/video/update-property       # Cambiar bitrate/quality en vivo
+GET  /api/video/network/ip            # IP de la placa y URL RTSP sugerida
+PUT  /api/video/update-property       # Cambiar propiedad en vivo (LivePropertyRequest)
 ```
+
+> **Validación**: Las rutas POST/PUT usan modelos Pydantic con validación de rangos,
+> Literal types para enums (codec, mode, transport), y validación IPv4/multicast.
+> El backend aplica clamping adicional en `VideoConfig.__post_init__` y
+> `StreamingConfig.__post_init__` como segunda capa de defensa.
 
 **Ejemplo: Respuesta de `/api/video/status`**
 
@@ -1169,6 +1232,7 @@ POST /api/network/modem/video-mode/enable   # Activar modo video
 POST /api/network/modem/video-mode/disable  # Desactivar modo video
 POST /api/network/modem/flight-session/start  # Iniciar sesión de vuelo
 POST /api/network/modem/flight-session/stop   # Detener sesión de vuelo
+POST /api/network/modem/flight-session/sample # Registrar muestra (cada 5 s)
 GET  /api/network/wifi/scan           # Escanear redes WiFi
 POST /api/network/wifi/connect        # Conectar a WiFi
 ```

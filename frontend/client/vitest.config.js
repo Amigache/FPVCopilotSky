@@ -13,6 +13,16 @@ export default defineConfig({
       reporter: ['text', 'json', 'html', 'lcov'],
       exclude: ['node_modules/', 'src/test/', '**/*.config.js', '**/dist/**'],
     },
+    // Reduce memory usage for embedded systems
+    pool: 'forks',
+    poolOptions: {
+      forks: {
+        singleFork: true,
+      },
+    },
+    maxConcurrency: 1,
+    minWorkers: 1,
+    maxWorkers: 1,
   },
   resolve: {
     alias: {

@@ -78,7 +78,7 @@ class LibCameraSource(VideoSourceProvider):
             # 0 : imx219 [3280x2464] (/base/soc/i2c0mux/i2c@1/imx219@10)
             #     Modes: 'SRGGB10_CSI2P' : 640x480 [206.65 fps - (1000, 752)/1280x960 crop]
 
-            current_camera = None
+            parsed_cameras = []
             for line in result.stdout.split("\n"):
                 line = line.strip()
 
@@ -100,22 +100,24 @@ class LibCameraSource(VideoSourceProvider):
                             if "x" in res_str:
                                 max_res = res_str
 
-                        current_camera = {
-                            "camera_id": camera_id,
-                            "sensor_name": sensor_name,
-                            "max_resolution": max_res,
-                        }
+                        parsed_cameras.append(
+                            {
+                                "camera_id": camera_id,
+                                "sensor_name": sensor_name,
+                                "max_resolution": max_res,
+                            }
+                        )
 
-            # If we found at least one camera, add it
-            if current_camera:
-                caps = self.get_source_capabilities(current_camera["camera_id"])
+            # Add all discovered cameras
+            for cam in parsed_cameras:
+                caps = self.get_source_capabilities(cam["camera_id"])
                 if caps:
                     cameras.append(
                         {
-                            "source_id": f"libcamera:{current_camera['camera_id']}",
-                            "name": f"{current_camera['sensor_name']} (CSI)",
+                            "source_id": f"libcamera:{cam['camera_id']}",
+                            "name": f"{cam['sensor_name']} (CSI)",
                             "type": self.source_type,
-                            "device": current_camera["camera_id"],
+                            "device": cam["camera_id"],
                             "capabilities": caps,
                             "provider": self.display_name,
                         }

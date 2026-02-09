@@ -5,11 +5,19 @@ This module provides mock objects for hardware dependencies that are not availab
 in CI environments (serial ports, modems, cameras, etc.)
 """
 
-import os
-import pytest
-import json
-from unittest.mock import Mock, patch, MagicMock
-from pathlib import Path
+import sys
+from unittest.mock import MagicMock
+
+# Mock GObject Introspection (gi) module for CI environments where GStreamer isn't available
+# This must be done before any application imports that depend on gi
+sys.modules["gi"] = MagicMock()
+sys.modules["gi.repository"] = MagicMock()
+
+import os  # noqa: E402
+import pytest  # noqa: E402
+import json  # noqa: E402
+from unittest.mock import Mock, patch, MagicMock  # noqa: E402
+from pathlib import Path  # noqa: E402
 
 
 @pytest.fixture
@@ -344,6 +352,13 @@ def mock_api_services(monkeypatch):
         "bitrate": 2000,
         "auto_start": True,
     }
+    mock_prefs.get_streaming_config.return_value = {
+        "mode": "udp",
+        "udp_host": "192.168.1.136",
+        "udp_port": 5600,
+        "enabled": True,
+    }
+    mock_prefs.set_streaming_config.return_value = None
     mock_prefs.get_vpn_config.return_value = {
         "provider": "tailscale",
         "auto_connect": True,
@@ -388,10 +403,49 @@ def mock_api_services(monkeypatch):
         lambda *args, **kwargs: mock_video_config,
     )
 
+    # Mock GStreamerService (video service)
+    mock_video_service = Mock()
+    mock_video_service.get_status.return_value = {
+        "available": True,
+        "streaming": False,
+        "enabled": True,
+        "config": {
+            "device": "/dev/video0",
+            "codec": "h264",
+            "width": 1920,
+            "height": 1080,
+            "framerate": 30,
+            "quality": 85,
+            "h264_bitrate": 2000,
+            "auto_start": False,
+            "mode": "udp",
+            "udp_host": "192.168.1.136",
+            "udp_port": 5600,
+            "multicast_group": "239.1.1.1",
+            "multicast_port": 5600,
+            "multicast_ttl": 1,
+            "rtsp_enabled": False,
+            "rtsp_url": "rtsp://localhost:8554/fpv",
+            "rtsp_transport": "tcp",
+        },
+        "stats": {},
+        "providers": {},
+        "last_error": None,
+        "pipeline_string": "",
+    }
+    mock_video_service.configure.return_value = None
+    mock_video_service.is_available.return_value = True
+
+    # Patch the video routes module to inject the mock service
+    import app.api.routes.video as video_routes
+
+    video_routes._video_service = mock_video_service
+
     return {
         "preferences": mock_prefs,
         "mavlink": mock_mavlink,
         "video_config": mock_video_config,
+        "video_service": mock_video_service,
     }
 
 

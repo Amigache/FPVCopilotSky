@@ -42,6 +42,8 @@ BACKEND_RUNNING=$?
 check_service nginx
 NGINX_RUNNING=$?
 
+
+
 echo -e "\n${BLUE}🌐 Network Services${NC}"
 check_service NetworkManager
 check_service ModemManager
@@ -49,6 +51,36 @@ check_service ModemManager
 echo -e "\n${BLUE}🔌 Network Ports${NC}"
 check_port 80 "Nginx"
 check_port 8000 "Backend API"
+
+echo -e "\n${BLUE}🎥 Video / Cameras${NC}"
+# Cameras
+if ls /dev/video* > /dev/null 2>&1; then
+    CAM_COUNT=$(ls /dev/video* 2>/dev/null | wc -l)
+    echo -e "${GREEN}✅${NC} $CAM_COUNT video device(s) found"
+    v4l2-ctl --list-devices 2>/dev/null | head -8 || ls /dev/video*
+else
+    echo -e "${YELLOW}⚠️${NC}  No video devices found (/dev/video*)"
+fi
+# GStreamer
+if command -v gst-inspect-1.0 > /dev/null 2>&1; then
+    echo -e "${GREEN}✅${NC} GStreamer installed ($(gst-inspect-1.0 --version 2>/dev/null | head -1))"
+else
+    echo -e "${RED}❌${NC} GStreamer NOT installed"
+fi
+# Video streaming status via API
+if [ $BACKEND_RUNNING -eq 0 ]; then
+    VIDEO_STATUS=$(curl -s --max-time 3 http://localhost:8000/api/video/status 2>/dev/null)
+    if [ -n "$VIDEO_STATUS" ]; then
+        STREAMING=$(echo "$VIDEO_STATUS" | grep -o '"streaming":\s*true' | head -1)
+        if [ -n "$STREAMING" ]; then
+            echo -e "${GREEN}✅${NC} Video streaming is ACTIVE"
+        else
+            echo -e "${YELLOW}⚠️${NC}  Video streaming is stopped"
+        fi
+    fi
+fi
+
+
 
 echo -e "\n${BLUE}📁 Files & Directories${NC}"
 if [ -d "/opt/FPVCopilotSky/frontend/client/dist" ] && [ "$(ls -A /opt/FPVCopilotSky/frontend/client/dist 2>/dev/null)" ]; then
@@ -308,6 +340,8 @@ echo "   Local:      http://localhost"
 echo "   Network:    http://$IP"
 echo "   Backend:    http://$IP:8000"
 echo "   API Docs:   http://$IP:8000/docs"
+
+
 
 echo -e "\n${BLUE}⚡ Quick Actions${NC}"
 echo "   Start:   sudo systemctl start fpvcopilot-sky"

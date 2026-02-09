@@ -68,20 +68,74 @@ Puedes crear múltiples salidas simultáneas para enviar telemetría a distintos
 
 ## 3. Pestaña: Video
 
-Configura y controla el streaming de video.
+Configura y controla el streaming de video HD con baja latencia.
 
-### Configuración
+### Estado del sistema
 
-1. **Cámara**: selecciona la cámara USB detectada
-2. **Codec**: H.264 (mejor calidad) o MJPEG (menor latencia)
-3. **Resolución**: desde 480p hasta 1080p
-4. **IP destino**: donde enviar el stream (usa el selector de peers VPN)
-5. **Puerto**: típicamente 5600
+La barra de estado superior muestra en todo momento:
 
-### Controles
+- **Estado**: Detenido / Emitiendo / Error
+- **Destino actual**: IP:puerto, grupo multicast o URL RTSP según el modo elegido
 
-- **Iniciar / Detener stream**: arranca o para el pipeline GStreamer
-- **Aplicar configuración**: aplica cambios sin detener
+### Fuente de vídeo
+
+1. **Cámara**: selecciona entre las cámaras USB / CSI detectadas automáticamente
+2. **Resolución**: las resoluciones disponibles se adaptan a cada cámara
+3. **FPS**: framerate del stream (se adapta según las capacidades de la cámara)
+
+### Codificación
+
+- **Codec**: seleccionado automáticamente entre los disponibles en el sistema (H.264 hardware, H.264 software, MJPEG…)
+- **Calidad MJPEG**: slider de calidad (1-100) — visible solo con codec MJPEG
+- **Bitrate H.264**: selector de bitrate — visible solo con codecs H.264
+- **GOP Size**: intervalo de keyframes — visible solo con codecs H.264
+
+> 💡 **Ajuste en vivo**: calidad, bitrate, GOP size y framerate se pueden modificar **mientras se emite** sin reiniciar el stream (etiqueta `LIVE`).
+
+### Modos de emisión (streaming)
+
+| Modo            | Descripción                                        | Caso de uso                                |
+| --------------- | -------------------------------------------------- | ------------------------------------------ |
+| **UDP Unicast** | Envío directo a una IP:puerto                      | FPV punto a punto, mínima latencia         |
+| **Multicast**   | Envío a un grupo multicast (224.x.x.x – 239.x.x.x) | Múltiples receptores en la misma red       |
+| **RTSP**        | Servidor RTSP embebido                             | Clientes a demanda, compatible con VLC/OBS |
+
+#### UDP Unicast
+
+- **IP Destino**: dirección del receptor (usa el selector de peers VPN si tienes Tailscale)
+- **Puerto UDP**: típicamente 5600
+
+#### Multicast
+
+- **Grupo multicast**: dirección IP en rango 224.0.0.0 – 239.255.255.255
+- **Puerto**: puerto del grupo
+- **TTL**: saltos de red permitidos (1 = solo red local)
+
+#### RTSP
+
+- **URL RTSP**: se genera automáticamente con la IP de la placa (ej. `rtsp://192.168.1.145:8554/stream`)
+- **Transporte**: TCP (fiable) o UDP (menor latencia)
+
+### Controles de stream
+
+- **Aplicar + Iniciar**: guarda la configuración y arranca el pipeline GStreamer
+- **Detener**: para el stream
+- **Reiniciar**: aplica cambios y reinicia
+- **Inicio automático**: toggle para que el stream se inicie automáticamente al arrancar el sistema
+
+### Pipeline GStreamer
+
+Cuando el stream está activo, se muestra la cadena GStreamer completa. Puedes copiar la pipeline al portapapeles para depuración.
+
+### Estadísticas en vivo
+
+Durante la emisión se muestran en tiempo real:
+
+- Tiempo de emisión (uptime)
+- FPS y bitrate actuales
+- Codec en uso y resolución
+- Errores acumulados
+- Clientes RTSP conectados (solo en modo RTSP)
 
 ### Recibir video en tu GCS
 
@@ -104,11 +158,13 @@ Si no lo detecta automáticamente:
 #### VLC / ffplay
 
 ```bash
-# VLC
+# UDP Unicast / Multicast
 vlc rtp://@:5600
-
-# ffplay (mínima latencia)
 ffplay -fflags nobuffer -flags low_delay -probesize 32 -analyzeduration 0 rtp://@:5600
+
+# RTSP
+vlc rtsp://IP_DE_LA_PLACA:8554/stream
+ffplay -fflags nobuffer -rtsp_transport tcp rtsp://IP_DE_LA_PLACA:8554/stream
 ```
 
 ---
@@ -209,11 +265,36 @@ Activa ajustes del modem optimizados para streaming de video:
 
 ### Sesión de vuelo
 
-Grabación de métricas durante el vuelo:
+Grabación de métricas durante el vuelo para análisis post-vuelo:
 
-- **Iniciar sesión**: comienza a registrar RSSI, RSRP, SINR, latencia
-- **Detener sesión**: finaliza y muestra resumen
-- Útil para analizar cobertura post-vuelo
+- **Iniciar sesión**: pulsa **Start** para comenzar a registrar métricas
+- **Detener sesión**: pulsa **Stop** → muestra resumen con nº de muestras y duración
+- **Auto-inicio al armar**: activa el toggle para que la sesión inicie/pare automáticamente al armar/desarmar el vehículo (preferencia persistente)
+
+Los datos se guardan en archivos CSV en `~/flight-records/`:
+
+```
+~/flight-records/flight-2026-02-08_17-30-36.csv
+```
+
+**Cabeceras CSV:**
+
+```
+timestamp, latitude, longitude, altitude_msl, ground_speed_ms, air_speed_ms,
+climb_rate_ms, armed, flight_mode, vehicle_type, rssi, rsrp_dbm, rsrq_db,
+sinr_db, cell_id, pci, band, network_type, operator, latency_ms
+```
+
+- Se registra una muestra cada **5 segundos** combinando telemetría GPS + señal del modem
+- El directorio de logs es configurable en `preferences.json` → `flight_session.log_directory`
+
+**Verificar registros:**
+
+```bash
+ls -lh ~/flight-records/
+tail -5 ~/flight-records/flight-*.csv
+wc -l ~/flight-records/flight-*.csv
+```
 
 ---
 
