@@ -2,19 +2,20 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { I18nextProvider } from 'react-i18next'
 import OutputForm from './OutputForm'
-import i18n from '../../i18n/i18n'
+import i18n from '../../../i18n/i18n'
 
 // Mock contexts
 const mockShowToast = vi.fn()
 
-vi.mock('../../../../contexts/ToastContext', () => ({
+vi.mock('../../../contexts/ToastContext', () => ({
   useToast: () => ({ showToast: mockShowToast }),
 }))
 
-// Mock API
-vi.mock('../../../../services/api', () => ({
+// Mock API (include api for PeerSelector)
+vi.mock('../../../services/api', () => ({
   API_MAVLINK_ROUTER: '/api/mavlink-router',
   fetchWithTimeout: vi.fn(),
+  api: { getVPNPeers: vi.fn().mockResolvedValue({ peers: [] }) },
 }))
 
 const OutputFormWithProviders = (props) => (
@@ -32,8 +33,6 @@ describe('OutputForm Component', () => {
       qgc: { type: 'udp', host: '255.255.255.255', port: 14550 },
       missionplanner: { type: 'tcp_client', host: '127.0.0.1', port: 5760 },
     },
-    // editId: null, // optional prop for editing mode
-    // editData: null // optional prop for editing mode
   }
 
   beforeEach(() => {
@@ -43,8 +42,9 @@ describe('OutputForm Component', () => {
   describe('Module', () => {
     it('exports a valid React component named OutputForm', () => {
       expect(OutputForm).toBeDefined()
-      expect(OutputForm.name).toBe('OutputForm')
-      expect(typeof OutputForm).toBe('function')
+      expect(OutputForm.displayName).toBe('OutputForm')
+      // memo() wraps component as an object, not a function
+      expect(typeof OutputForm).toBe('object')
     })
   })
 
@@ -53,7 +53,8 @@ describe('OutputForm Component', () => {
       render(<OutputFormWithProviders {...defaultProps} />)
 
       expect(screen.getByLabelText(/type/i)).toBeInTheDocument()
-      expect(screen.getByLabelText(/host/i)).toBeInTheDocument()
+      // PeerSelector doesn't forward id, so use placeholder to find host input
+      expect(screen.getByPlaceholderText('127.0.0.1')).toBeInTheDocument()
       expect(screen.getByLabelText(/port/i)).toBeInTheDocument()
       expect(screen.getByRole('button', { name: /create/i })).toBeInTheDocument()
     })
@@ -73,8 +74,8 @@ describe('OutputForm Component', () => {
     it('renders preset buttons', () => {
       render(<OutputFormWithProviders {...defaultProps} />)
 
-      expect(screen.getByRole('button', { name: /preset qgc/i })).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: /preset.*mp/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Preset QGC/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Preset TCP Server/i })).toBeInTheDocument()
     })
 
     it('loads edit data correctly', () => {
@@ -86,7 +87,8 @@ describe('OutputForm Component', () => {
 
       render(<OutputFormWithProviders {...editProps} />)
 
-      expect(screen.getByDisplayValue('tcp_server')).toBeInTheDocument()
+      // For select, displayValue matches the option text, not the value attribute
+      expect(screen.getByLabelText(/type/i)).toHaveValue('tcp_server')
       expect(screen.getByDisplayValue('0.0.0.0')).toBeInTheDocument()
       expect(screen.getByDisplayValue('14550')).toBeInTheDocument()
     })
@@ -97,7 +99,7 @@ describe('OutputForm Component', () => {
       render(<OutputFormWithProviders {...defaultProps} />)
 
       const typeSelect = screen.getByLabelText(/type/i)
-      const hostInput = screen.getByLabelText(/host/i)
+      const hostInput = screen.getByPlaceholderText('127.0.0.1')
       const portInput = screen.getByLabelText(/port/i)
 
       fireEvent.change(typeSelect, { target: { value: 'tcp_client' } })
@@ -112,11 +114,11 @@ describe('OutputForm Component', () => {
     it('applies QGC preset when clicked', () => {
       render(<OutputFormWithProviders {...defaultProps} />)
 
-      const qgcButton = screen.getByRole('button', { name: /preset qgc/i })
+      const qgcButton = screen.getByRole('button', { name: /Preset QGC/i })
       fireEvent.click(qgcButton)
 
       const typeSelect = screen.getByLabelText(/type/i)
-      const hostInput = screen.getByLabelText(/host/i)
+      const hostInput = screen.getByPlaceholderText('127.0.0.1')
       const portInput = screen.getByLabelText(/port/i)
 
       expect(typeSelect.value).toBe('udp')
@@ -127,11 +129,11 @@ describe('OutputForm Component', () => {
     it('applies Mission Planner preset when clicked', () => {
       render(<OutputFormWithProviders {...defaultProps} />)
 
-      const mpButton = screen.getByRole('button', { name: /preset.*mp/i })
+      const mpButton = screen.getByRole('button', { name: /Preset TCP Server/i })
       fireEvent.click(mpButton)
 
       const typeSelect = screen.getByLabelText(/type/i)
-      const hostInput = screen.getByLabelText(/host/i)
+      const hostInput = screen.getByPlaceholderText('127.0.0.1')
       const portInput = screen.getByLabelText(/port/i)
 
       expect(typeSelect.value).toBe('tcp_client')
@@ -151,24 +153,22 @@ describe('OutputForm Component', () => {
       fireEvent.click(submitButton)
 
       await waitFor(() => {
-        expect(mockShowToast).toHaveBeenCalledWith(
-          expect.stringMatching(/port.*1024.*65535/i),
-          'error'
-        )
+        expect(mockShowToast).toHaveBeenCalledWith('Validation error', 'error')
       })
     })
 
-    it('validates host IP format', async () => {
+    it('validates host format', async () => {
       render(<OutputFormWithProviders {...defaultProps} />)
 
-      const hostInput = screen.getByLabelText(/host/i)
+      const hostInput = screen.getByPlaceholderText('127.0.0.1')
       const submitButton = screen.getByRole('button', { name: /create/i })
 
-      fireEvent.change(hostInput, { target: { value: 'invalid-ip' } })
+      // Use a truly invalid host (not a valid IP or hostname)
+      fireEvent.change(hostInput, { target: { value: '!!!' } })
       fireEvent.click(submitButton)
 
       await waitFor(() => {
-        expect(mockShowToast).toHaveBeenCalledWith(expect.stringMatching(/valid.*ip/i), 'error')
+        expect(mockShowToast).toHaveBeenCalledWith('Validation error', 'error')
       })
     })
 
@@ -177,20 +177,20 @@ describe('OutputForm Component', () => {
 
       const submitButton = screen.getByRole('button', { name: /create/i })
 
-      // Clear required fields
-      const hostInput = screen.getByLabelText(/host/i)
+      // Clear host field
+      const hostInput = screen.getByPlaceholderText('127.0.0.1')
       fireEvent.change(hostInput, { target: { value: '' } })
       fireEvent.click(submitButton)
 
       await waitFor(() => {
-        expect(mockShowToast).toHaveBeenCalledWith(expect.stringMatching(/required|fill/i), 'error')
+        expect(mockShowToast).toHaveBeenCalledWith('Validation error', 'error')
       })
     })
   })
 
   describe('Form Submission', () => {
     it('submits create request with valid data', async () => {
-      const { fetchWithTimeout } = await import('../../../../services/api')
+      const { fetchWithTimeout } = await import('../../../services/api')
       fetchWithTimeout.mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({ success: true, message: 'Output created' }),
@@ -199,7 +199,7 @@ describe('OutputForm Component', () => {
       render(<OutputFormWithProviders {...defaultProps} />)
 
       const typeSelect = screen.getByLabelText(/type/i)
-      const hostInput = screen.getByLabelText(/host/i)
+      const hostInput = screen.getByPlaceholderText('127.0.0.1')
       const portInput = screen.getByLabelText(/port/i)
       const submitButton = screen.getByRole('button', { name: /create/i })
 
@@ -227,7 +227,7 @@ describe('OutputForm Component', () => {
     })
 
     it('submits update request for edit mode', async () => {
-      const { fetchWithTimeout } = await import('../../../../services/api')
+      const { fetchWithTimeout } = await import('../../../services/api')
       fetchWithTimeout.mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({ success: true, message: 'Output updated' }),
@@ -256,7 +256,7 @@ describe('OutputForm Component', () => {
     })
 
     it('handles API errors gracefully', async () => {
-      const { fetchWithTimeout } = await import('../../../../services/api')
+      const { fetchWithTimeout } = await import('../../../services/api')
       fetchWithTimeout.mockResolvedValue({
         ok: false,
         json: () => Promise.resolve({ error: 'Port already in use' }),
@@ -265,7 +265,7 @@ describe('OutputForm Component', () => {
       render(<OutputFormWithProviders {...defaultProps} />)
 
       const typeSelect = screen.getByLabelText(/type/i)
-      const hostInput = screen.getByLabelText(/host/i)
+      const hostInput = screen.getByPlaceholderText('127.0.0.1')
       const portInput = screen.getByLabelText(/port/i)
       const submitButton = screen.getByRole('button', { name: /create/i })
 

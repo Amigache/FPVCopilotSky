@@ -4,10 +4,13 @@ import { I18nextProvider } from 'react-i18next'
 import { PeerSelector } from './PeerSelector'
 import i18n from '../../i18n/i18n'
 
-// Mock API
+// Mock API - component uses api.getVPNPeers()
+const mockGetVPNPeers = vi.fn()
+
 vi.mock('../../services/api', () => ({
-  API_VPN: '/api/vpn',
-  fetchWithTimeout: vi.fn(),
+  api: {
+    getVPNPeers: (...args) => mockGetVPNPeers(...args),
+  },
 }))
 
 const PeerSelectorWithProviders = (props) => (
@@ -16,18 +19,34 @@ const PeerSelectorWithProviders = (props) => (
   </I18nextProvider>
 )
 
+// Helper: create mock peer objects matching the actual data structure
+const createMockPeer = (hostname, ipv4, opts = {}) => ({
+  hostname,
+  ip_addresses: [ipv4],
+  dns_name: opts.dns_name || '',
+  os: opts.os || 'linux',
+  is_self: opts.is_self || false,
+})
+
+const mockPeers = [
+  createMockPeer('drone-1', '192.168.1.100', { dns_name: 'drone-1.ts.net', os: 'linux' }),
+  createMockPeer('gcs-station', '192.168.1.101', { dns_name: 'gcs.ts.net', os: 'windows' }),
+  createMockPeer('relay-node', '10.0.0.50', { os: 'linux' }),
+]
+
 describe('PeerSelector Component', () => {
   const mockOnChange = vi.fn()
 
   const defaultProps = {
     value: '',
     onChange: mockOnChange,
-    placeholder: 'Enter peer IP...',
+    placeholder: 'IP or hostname',
     disabled: false,
   }
 
   beforeEach(() => {
     vi.clearAllMocks()
+    mockGetVPNPeers.mockResolvedValue({ peers: mockPeers })
   })
 
   describe('Module', () => {
@@ -44,7 +63,7 @@ describe('PeerSelector Component', () => {
 
       const input = screen.getByRole('textbox')
       expect(input).toBeInTheDocument()
-      expect(input).toHaveAttribute('placeholder', 'Enter peer IP...')
+      expect(input).toHaveAttribute('placeholder', 'IP or hostname')
       expect(input).not.toBeDisabled()
     })
 
@@ -64,11 +83,20 @@ describe('PeerSelector Component', () => {
       expect(input).toHaveValue('192.168.1.100')
     })
 
+    it('renders dropdown toggle button', async () => {
+      render(<PeerSelectorWithProviders {...defaultProps} />)
+
+      // Wait for loading to complete so the SVG icon renders
+      await waitFor(() => {
+        const button = screen.getByRole('button', { name: /select from vpn peers/i })
+        expect(button).toBeInTheDocument()
+      })
+    })
+
     it('does not show dropdown initially', () => {
       render(<PeerSelectorWithProviders {...defaultProps} />)
 
-      const dropdown = screen.queryByRole('listbox')
-      expect(dropdown).not.toBeInTheDocument()
+      expect(screen.queryByText(/VPN Nodes/)).not.toBeInTheDocument()
     })
   })
 
@@ -82,86 +110,80 @@ describe('PeerSelector Component', () => {
       expect(mockOnChange).toHaveBeenCalledWith('10.0.0.1')
     })
 
-    it('shows dropdown on focus', async () => {
-      // Mock API response with peers
-      const { fetchWithTimeout } = await import('../../services/api')
-      fetchWithTimeout.mockResolvedValue({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            success: true,
-            peers: ['192.168.1.100', '10.0.0.50', '172.16.1.1'],
-          }),
-      })
-
+    it('refreshes peers on input focus when peers exist', async () => {
       render(<PeerSelectorWithProviders {...defaultProps} />)
+
+      // Wait for initial load
+      await waitFor(() => {
+        expect(mockGetVPNPeers).toHaveBeenCalledTimes(1)
+      })
 
       const input = screen.getByRole('textbox')
       fireEvent.focus(input)
 
       await waitFor(() => {
-        expect(screen.getByRole('listbox')).toBeInTheDocument()
-      })
-    })
-
-    it('hides dropdown on blur', async () => {
-      const { fetchWithTimeout } = await import('../../services/api')
-      fetchWithTimeout.mockResolvedValue({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            success: true,
-            peers: ['192.168.1.100'],
-          }),
-      })
-
-      render(<PeerSelectorWithProviders {...defaultProps} />)
-
-      const input = screen.getByRole('textbox')
-      fireEvent.focus(input)
-
-      await waitFor(() => {
-        expect(screen.getByRole('listbox')).toBeInTheDocument()
-      })
-
-      fireEvent.blur(input)
-
-      await waitFor(() => {
-        expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+        expect(mockGetVPNPeers).toHaveBeenCalledTimes(2)
       })
     })
   })
 
   describe('Dropdown Functionality', () => {
-    beforeEach(async () => {
-      // Mock peers data for dropdown tests
-      const { fetchWithTimeout } = await import('../../services/api')
-      fetchWithTimeout.mockResolvedValue({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            success: true,
-            peers: ['192.168.1.100', '192.168.1.101', '10.0.0.50'],
-          }),
-      })
-    })
-
-    it('displays Available IPs header', async () => {
+    it('opens dropdown when toggle button is clicked', async () => {
       render(<PeerSelectorWithProviders {...defaultProps} />)
-
-      const input = screen.getByRole('textbox')
-      fireEvent.focus(input)
 
       await waitFor(() => {
-        expect(screen.getByText(/Available IPs/i)).toBeInTheDocument()
+        expect(mockGetVPNPeers).toHaveBeenCalled()
+      })
+
+      const button = screen.getByRole('button', { name: /select from vpn peers/i })
+      fireEvent.click(button)
+
+      await waitFor(() => {
+        expect(screen.getByText(/VPN Nodes/)).toBeInTheDocument()
       })
     })
 
-    it('displays peer options in dropdown', async () => {
+    it('displays peer count in header', async () => {
       render(<PeerSelectorWithProviders {...defaultProps} />)
 
-      const input = screen.getByRole('textbox')
-      fireEvent.focus(input)
+      await waitFor(() => {
+        expect(mockGetVPNPeers).toHaveBeenCalled()
+      })
+
+      const button = screen.getByRole('button', { name: /select from vpn peers/i })
+      fireEvent.click(button)
+
+      await waitFor(() => {
+        expect(screen.getByText(`VPN Nodes (${mockPeers.length})`)).toBeInTheDocument()
+      })
+    })
+
+    it('displays peer hostnames in dropdown', async () => {
+      render(<PeerSelectorWithProviders {...defaultProps} />)
+
+      await waitFor(() => {
+        expect(mockGetVPNPeers).toHaveBeenCalled()
+      })
+
+      const button = screen.getByRole('button', { name: /select from vpn peers/i })
+      fireEvent.click(button)
+
+      await waitFor(() => {
+        expect(screen.getByText('drone-1')).toBeInTheDocument()
+        expect(screen.getByText('gcs-station')).toBeInTheDocument()
+        expect(screen.getByText('relay-node')).toBeInTheDocument()
+      })
+    })
+
+    it('displays peer IP addresses', async () => {
+      render(<PeerSelectorWithProviders {...defaultProps} />)
+
+      await waitFor(() => {
+        expect(mockGetVPNPeers).toHaveBeenCalled()
+      })
+
+      const button = screen.getByRole('button', { name: /select from vpn peers/i })
+      fireEvent.click(button)
 
       await waitFor(() => {
         expect(screen.getByText('192.168.1.100')).toBeInTheDocument()
@@ -170,206 +192,158 @@ describe('PeerSelector Component', () => {
       })
     })
 
-    it('filters peers based on input value', async () => {
+    it('displays DNS names when available', async () => {
       render(<PeerSelectorWithProviders {...defaultProps} />)
 
-      const input = screen.getByRole('textbox')
-      fireEvent.focus(input)
-
-      // Wait for initial dropdown to appear
       await waitFor(() => {
-        expect(screen.getByText('192.168.1.100')).toBeInTheDocument()
+        expect(mockGetVPNPeers).toHaveBeenCalled()
       })
 
-      // Type to filter
-      fireEvent.change(input, { target: { value: '192.168' } })
+      const button = screen.getByRole('button', { name: /select from vpn peers/i })
+      fireEvent.click(button)
 
       await waitFor(() => {
-        expect(screen.getByText('192.168.1.100')).toBeInTheDocument()
-        expect(screen.getByText('192.168.1.101')).toBeInTheDocument()
-        expect(screen.queryByText('10.0.0.50')).not.toBeInTheDocument()
+        expect(screen.getByText('drone-1.ts.net')).toBeInTheDocument()
+        expect(screen.getByText('gcs.ts.net')).toBeInTheDocument()
       })
     })
 
-    it('selects peer when option is clicked', async () => {
+    it('selects peer DNS name when option is clicked', async () => {
       render(<PeerSelectorWithProviders {...defaultProps} />)
 
-      const input = screen.getByRole('textbox')
-      fireEvent.focus(input)
-
       await waitFor(() => {
-        expect(screen.getByText('192.168.1.100')).toBeInTheDocument()
+        expect(mockGetVPNPeers).toHaveBeenCalled()
       })
 
-      const peerOption = screen.getByText('192.168.1.100')
-      fireEvent.click(peerOption)
+      const button = screen.getByRole('button', { name: /select from vpn peers/i })
+      fireEvent.click(button)
 
-      expect(mockOnChange).toHaveBeenCalledWith('192.168.1.100')
+      await waitFor(() => {
+        expect(screen.getByText('drone-1')).toBeInTheDocument()
+      })
+
+      // Click on the peer item (click on hostname text)
+      const peerItem = screen.getByText('drone-1').closest('.peer-selector-item')
+      fireEvent.click(peerItem)
+
+      // Should use DNS name when available
+      expect(mockOnChange).toHaveBeenCalledWith('drone-1.ts.net')
     })
 
-    it('shows "No matching peers" when filter has no results', async () => {
+    it('selects peer IP when no DNS name available', async () => {
       render(<PeerSelectorWithProviders {...defaultProps} />)
 
-      const input = screen.getByRole('textbox')
-      fireEvent.focus(input)
+      await waitFor(() => {
+        expect(mockGetVPNPeers).toHaveBeenCalled()
+      })
+
+      const button = screen.getByRole('button', { name: /select from vpn peers/i })
+      fireEvent.click(button)
 
       await waitFor(() => {
-        expect(screen.getByRole('listbox')).toBeInTheDocument()
+        expect(screen.getByText('relay-node')).toBeInTheDocument()
       })
 
-      fireEvent.change(input, { target: { value: '172.99.99.99' } })
+      const peerItem = screen.getByText('relay-node').closest('.peer-selector-item')
+      fireEvent.click(peerItem)
 
-      await waitFor(() => {
-        expect(screen.getByText(/No matching peers/i)).toBeInTheDocument()
-      })
-    })
-  })
-
-  describe('Keyboard Navigation', () => {
-    beforeEach(async () => {
-      const { fetchWithTimeout } = await import('../../services/api')
-      fetchWithTimeout.mockResolvedValue({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            success: true,
-            peers: ['192.168.1.100', '192.168.1.101', '10.0.0.50'],
-          }),
-      })
+      // Should fallback to IP when no DNS name
+      expect(mockOnChange).toHaveBeenCalledWith('10.0.0.50')
     })
 
-    it('navigates dropdown with arrow keys', async () => {
+    it('closes dropdown when toggle button is clicked again', async () => {
       render(<PeerSelectorWithProviders {...defaultProps} />)
 
-      const input = screen.getByRole('textbox')
-      fireEvent.focus(input)
-
       await waitFor(() => {
-        expect(screen.getByRole('listbox')).toBeInTheDocument()
+        expect(mockGetVPNPeers).toHaveBeenCalled()
       })
 
-      // Arrow down should highlight first option
-      fireEvent.keyDown(input, { key: 'ArrowDown', code: 'ArrowDown' })
+      const button = screen.getByRole('button', { name: /select from vpn peers/i })
 
-      // Check if first option is highlighted (implementation specific)
-      const options = screen.getAllByRole('option')
-      expect(options[0]).toHaveClass('highlighted')
+      // Open
+      fireEvent.click(button)
+      await waitFor(() => {
+        expect(screen.getByText(/VPN Nodes/)).toBeInTheDocument()
+      })
+
+      // Close
+      fireEvent.click(button)
+      await waitFor(() => {
+        expect(screen.queryByText(/VPN Nodes/)).not.toBeInTheDocument()
+      })
     })
 
-    it('selects highlighted option with Enter key', async () => {
+    it('shows empty state when no peers available', async () => {
+      mockGetVPNPeers.mockResolvedValue({ peers: [] })
+
       render(<PeerSelectorWithProviders {...defaultProps} />)
 
-      const input = screen.getByRole('textbox')
-      fireEvent.focus(input)
-
       await waitFor(() => {
-        expect(screen.getByRole('listbox')).toBeInTheDocument()
+        expect(mockGetVPNPeers).toHaveBeenCalled()
       })
 
-      // Navigate to first option and select
-      fireEvent.keyDown(input, { key: 'ArrowDown', code: 'ArrowDown' })
-      fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' })
-
-      expect(mockOnChange).toHaveBeenCalledWith('192.168.1.100')
-    })
-
-    it('closes dropdown with Escape key', async () => {
-      render(<PeerSelectorWithProviders {...defaultProps} />)
-
-      const input = screen.getByRole('textbox')
-      fireEvent.focus(input)
+      const button = screen.getByRole('button', { name: /select from vpn peers/i })
+      fireEvent.click(button)
 
       await waitFor(() => {
-        expect(screen.getByRole('listbox')).toBeInTheDocument()
-      })
-
-      fireEvent.keyDown(input, { key: 'Escape', code: 'Escape' })
-
-      await waitFor(() => {
-        expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+        expect(screen.getByText(/No VPN peers available/i)).toBeInTheDocument()
       })
     })
   })
 
   describe('API Integration', () => {
-    it('calls peers API on component mount', async () => {
-      const { fetchWithTimeout } = await import('../../services/api')
-      fetchWithTimeout.mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ success: true, peers: [] }),
-      })
-
+    it('calls getVPNPeers on component mount', async () => {
       render(<PeerSelectorWithProviders {...defaultProps} />)
 
       await waitFor(() => {
-        expect(fetchWithTimeout).toHaveBeenCalledWith('/api/vpn/peers', expect.any(Object))
+        expect(mockGetVPNPeers).toHaveBeenCalledTimes(1)
       })
     })
 
     it('handles API errors gracefully', async () => {
-      const { fetchWithTimeout } = await import('../../services/api')
-      fetchWithTimeout.mockRejectedValue(new Error('Network error'))
+      mockGetVPNPeers.mockRejectedValue(new Error('Network error'))
 
       render(<PeerSelectorWithProviders {...defaultProps} />)
 
       const input = screen.getByRole('textbox')
-      fireEvent.focus(input)
-
       // Should still render input even if API fails
       expect(input).toBeInTheDocument()
-
-      // Dropdown should show error state or empty state
-      await waitFor(() => {
-        const dropdown = screen.queryByRole('listbox')
-        if (dropdown) {
-          expect(screen.getByText(/No peers available/i)).toBeInTheDocument()
-        }
-      })
     })
 
-    it('shows empty state when no peers available', async () => {
-      const { fetchWithTimeout } = await import('../../services/api')
-      fetchWithTimeout.mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ success: true, peers: [] }),
-      })
+    it('filters out self peer from list', async () => {
+      const peersWithSelf = [
+        createMockPeer('this-device', '192.168.1.1', { is_self: true }),
+        createMockPeer('other-device', '192.168.1.2'),
+      ]
+      mockGetVPNPeers.mockResolvedValue({ peers: peersWithSelf })
 
       render(<PeerSelectorWithProviders {...defaultProps} />)
 
-      const input = screen.getByRole('textbox')
-      fireEvent.focus(input)
+      await waitFor(() => {
+        expect(mockGetVPNPeers).toHaveBeenCalled()
+      })
+
+      const button = screen.getByRole('button', { name: /select from vpn peers/i })
+      fireEvent.click(button)
 
       await waitFor(() => {
-        const dropdown = screen.queryByRole('listbox')
-        if (dropdown) {
-          expect(screen.getByText(/No peers available/i)).toBeInTheDocument()
-        }
+        expect(screen.getByText('other-device')).toBeInTheDocument()
+        expect(screen.queryByText('this-device')).not.toBeInTheDocument()
       })
     })
-  })
 
-  describe('Scroll Optimization', () => {
-    it('sets appropriate dropdown height based on available space', async () => {
-      // Mock a large list of peers to trigger scroll behavior
-      const { fetchWithTimeout } = await import('../../services/api')
-      const largePeersList = Array.from({ length: 20 }, (_, i) => `192.168.1.${i + 1}`)
-      fetchWithTimeout.mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ success: true, peers: largePeersList }),
-      })
-
+    it('shows refresh button in dropdown header', async () => {
       render(<PeerSelectorWithProviders {...defaultProps} />)
 
-      const input = screen.getByRole('textbox')
-      fireEvent.focus(input)
+      await waitFor(() => {
+        expect(mockGetVPNPeers).toHaveBeenCalled()
+      })
+
+      const toggleButton = screen.getByRole('button', { name: /select from vpn peers/i })
+      fireEvent.click(toggleButton)
 
       await waitFor(() => {
-        const dropdown = screen.getByRole('listbox')
-        expect(dropdown).toBeInTheDocument()
-
-        // Check if dropdown has appropriate styling for scrolling
-        const dropdownStyle = window.getComputedStyle(dropdown)
-        expect(dropdownStyle.overflowY).toBe('auto')
+        expect(screen.getByText('🔄')).toBeInTheDocument()
       })
     })
   })
@@ -384,28 +358,29 @@ describe('PeerSelector Component', () => {
       // Component should still be present and functional
       expect(screen.getByRole('textbox')).toBeInTheDocument()
     })
+  })
 
-    it('debounces API calls when typing rapidly', async () => {
-      const { fetchWithTimeout } = await import('../../services/api')
-      fetchWithTimeout.mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ success: true, peers: ['192.168.1.100'] }),
-      })
+  describe('Props', () => {
+    it('renders optional label when provided', () => {
+      render(<PeerSelectorWithProviders {...defaultProps} label="Host" />)
 
-      render(<PeerSelectorWithProviders {...defaultProps} />)
+      expect(screen.getByText('Host')).toBeInTheDocument()
+    })
+
+    it('applies error class when hasError is true', () => {
+      render(<PeerSelectorWithProviders {...defaultProps} hasError={true} />)
 
       const input = screen.getByRole('textbox')
+      expect(input).toHaveClass('input-error')
+    })
 
-      // Simulate rapid typing
-      fireEvent.focus(input)
-      fireEvent.change(input, { target: { value: '1' } })
-      fireEvent.change(input, { target: { value: '19' } })
-      fireEvent.change(input, { target: { value: '192' } })
-      fireEvent.change(input, { target: { value: '192.' } })
+    it('disables dropdown button when disabled', async () => {
+      render(<PeerSelectorWithProviders {...defaultProps} disabled={true} />)
 
-      // Should only make one API call after debounce
+      // Wait for loading to complete
       await waitFor(() => {
-        expect(fetchWithTimeout).toHaveBeenCalledTimes(1)
+        const button = screen.getByRole('button', { name: /select from vpn peers/i })
+        expect(button).toBeDisabled()
       })
     })
   })

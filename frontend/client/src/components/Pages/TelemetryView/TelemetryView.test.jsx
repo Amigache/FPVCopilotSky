@@ -2,29 +2,30 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { I18nextProvider } from 'react-i18next'
 import TelemetryView from './TelemetryView'
-import i18n from '../../i18n/i18n'
+import i18n from '../../../i18n/i18n'
 
 // Mock contexts
 const mockShowToast = vi.fn()
 const mockShowModal = vi.fn()
 const mockMessages = { router_status: [] }
 
-vi.mock('../../../../contexts/ToastContext', () => ({
+vi.mock('../../../contexts/ToastContext', () => ({
   useToast: () => ({ showToast: mockShowToast }),
 }))
 
-vi.mock('../../../../contexts/ModalContext', () => ({
+vi.mock('../../../contexts/ModalContext', () => ({
   useModal: () => ({ showModal: mockShowModal }),
 }))
 
-vi.mock('../../../../contexts/WebSocketContext', () => ({
+vi.mock('../../../contexts/WebSocketContext', () => ({
   useWebSocket: () => ({ messages: mockMessages }),
 }))
 
-// Mock API
-vi.mock('../../../../services/api', () => ({
+// Mock API (include api for PeerSelector)
+vi.mock('../../../services/api', () => ({
   API_MAVLINK_ROUTER: '/api/mavlink-router',
   fetchWithTimeout: vi.fn(),
+  api: { getVPNPeers: vi.fn().mockResolvedValue({ peers: [] }) },
 }))
 
 const TelemetryViewWithProviders = () => (
@@ -57,7 +58,8 @@ describe('TelemetryView Component', () => {
 
       // Check form elements exist
       expect(screen.getByLabelText(/type/i)).toBeInTheDocument()
-      expect(screen.getByLabelText(/host/i)).toBeInTheDocument()
+      // PeerSelector doesn't forward id, use placeholder to find host input
+      expect(screen.getByPlaceholderText('127.0.0.1')).toBeInTheDocument()
       expect(screen.getByLabelText(/port/i)).toBeInTheDocument()
       expect(screen.getByRole('button', { name: /create/i })).toBeInTheDocument()
     })
@@ -65,13 +67,13 @@ describe('TelemetryView Component', () => {
     it('renders preset buttons', () => {
       render(<TelemetryViewWithProviders />)
 
-      expect(screen.getByRole('button', { name: /preset qgc/i })).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: /preset.*mp/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Preset QGC/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Preset TCP Server/i })).toBeInTheDocument()
     })
 
     it('shows outputs section when outputs exist', async () => {
       // Mock outputs data
-      const { fetchWithTimeout } = await import('../../../../services/api')
+      const { fetchWithTimeout } = await import('../../../services/api')
       fetchWithTimeout.mockResolvedValue({
         ok: true,
         json: () =>
@@ -91,7 +93,7 @@ describe('TelemetryView Component', () => {
 
       // Wait for outputs to load
       await waitFor(() => {
-        expect(screen.getByText(/configured outputs/i)).toBeInTheDocument()
+        expect(screen.getByText(/Configured Outputs/i)).toBeInTheDocument()
       })
     })
   })
@@ -118,7 +120,7 @@ describe('TelemetryView Component', () => {
     it('applies QGC preset when clicked', async () => {
       render(<TelemetryViewWithProviders />)
 
-      const qgcButton = screen.getByRole('button', { name: /preset qgc/i })
+      const qgcButton = screen.getByRole('button', { name: /Preset QGC/i })
       fireEvent.click(qgcButton)
 
       await waitFor(() => {
@@ -133,7 +135,7 @@ describe('TelemetryView Component', () => {
 
   describe('Data Loading', () => {
     it('calls presets API on mount', async () => {
-      const { fetchWithTimeout } = await import('../../../../services/api')
+      const { fetchWithTimeout } = await import('../../../services/api')
       fetchWithTimeout.mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({ success: true, presets: {} }),
@@ -150,7 +152,7 @@ describe('TelemetryView Component', () => {
     })
 
     it('calls outputs API on mount', async () => {
-      const { fetchWithTimeout } = await import('../../../../services/api')
+      const { fetchWithTimeout } = await import('../../../services/api')
       fetchWithTimeout.mockResolvedValue({
         ok: true,
         json: () => Promise.resolve([]),
@@ -169,7 +171,7 @@ describe('TelemetryView Component', () => {
 
   describe('Error Handling', () => {
     it('shows toast on API error', async () => {
-      const { fetchWithTimeout } = await import('../../../../services/api')
+      const { fetchWithTimeout } = await import('../../../services/api')
       fetchWithTimeout.mockRejectedValue(new Error('Network error'))
 
       render(<TelemetryViewWithProviders />)
@@ -180,14 +182,14 @@ describe('TelemetryView Component', () => {
     })
 
     it('falls back to default presets on API failure', async () => {
-      const { fetchWithTimeout } = await import('../../../../services/api')
+      const { fetchWithTimeout } = await import('../../../services/api')
       fetchWithTimeout.mockRejectedValue(new Error('API error'))
 
       render(<TelemetryViewWithProviders />)
 
       // Should still render preset buttons with default presets
       await waitFor(() => {
-        expect(screen.getByRole('button', { name: /preset qgc/i })).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: /Preset QGC/i })).toBeInTheDocument()
       })
     })
   })

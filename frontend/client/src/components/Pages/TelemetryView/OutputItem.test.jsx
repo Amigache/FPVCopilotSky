@@ -2,24 +2,25 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { I18nextProvider } from 'react-i18next'
 import OutputItem from './OutputItem'
-import i18n from '../../i18n/i18n'
+import i18n from '../../../i18n/i18n'
 
 // Mock contexts
 const mockShowToast = vi.fn()
 const mockShowModal = vi.fn()
 
-vi.mock('../../../../contexts/ToastContext', () => ({
+vi.mock('../../../contexts/ToastContext', () => ({
   useToast: () => ({ showToast: mockShowToast }),
 }))
 
-vi.mock('../../../../contexts/ModalContext', () => ({
+vi.mock('../../../contexts/ModalContext', () => ({
   useModal: () => ({ showModal: mockShowModal }),
 }))
 
-// Mock API
-vi.mock('../../../../services/api', () => ({
+// Mock API (include api for PeerSelector if rendered indirectly)
+vi.mock('../../../services/api', () => ({
   API_MAVLINK_ROUTER: '/api/mavlink-router',
   fetchWithTimeout: vi.fn(),
+  api: { getVPNPeers: vi.fn().mockResolvedValue({ peers: [] }) },
 }))
 
 const OutputItemWithProviders = (props) => (
@@ -54,8 +55,9 @@ describe('OutputItem Component', () => {
   describe('Module', () => {
     it('exports a valid React component named OutputItem', () => {
       expect(OutputItem).toBeDefined()
-      expect(OutputItem.name).toBe('OutputItem')
-      expect(typeof OutputItem).toBe('function')
+      expect(OutputItem.displayName).toBe('OutputItem')
+      // memo() wraps component as an object, not a function
+      expect(typeof OutputItem).toBe('object')
     })
   })
 
@@ -70,9 +72,9 @@ describe('OutputItem Component', () => {
     it('shows running status indicator', () => {
       render(<OutputItemWithProviders {...defaultProps} />)
 
-      const statusElement = screen.getByText(/running/i)
+      const statusElement = screen.getByText('🟢')
       expect(statusElement).toBeInTheDocument()
-      expect(statusElement.closest('.output-status')).toHaveClass('running')
+      expect(statusElement).toHaveClass('status-indicator', 'running')
     })
 
     it('shows stopped status indicator when not running', () => {
@@ -81,9 +83,9 @@ describe('OutputItem Component', () => {
 
       render(<OutputItemWithProviders {...props} />)
 
-      const statusElement = screen.getByText(/stopped/i)
+      const statusElement = screen.getByText('🔴')
       expect(statusElement).toBeInTheDocument()
-      expect(statusElement.closest('.output-status')).toHaveClass('stopped')
+      expect(statusElement).toHaveClass('status-indicator', 'stopped')
     })
 
     it('displays client count for server types', () => {
@@ -108,9 +110,9 @@ describe('OutputItem Component', () => {
     it('renders action buttons', () => {
       render(<OutputItemWithProviders {...defaultProps} />)
 
-      expect(screen.getByLabelText(/edit/i)).toBeInTheDocument()
-      expect(screen.getByLabelText(/delete/i)).toBeInTheDocument()
-      expect(screen.getByLabelText(/restart/i)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /edit/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /delete/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /restart/i })).toBeInTheDocument()
     })
   })
 
@@ -121,7 +123,7 @@ describe('OutputItem Component', () => {
 
       render(<OutputItemWithProviders {...props} />)
 
-      expect(screen.getByText('TCP Server')).toBeInTheDocument()
+      expect(screen.getByText('TCP Server (listen)')).toBeInTheDocument()
     })
 
     it('displays TCP Client type correctly', () => {
@@ -130,7 +132,7 @@ describe('OutputItem Component', () => {
 
       render(<OutputItemWithProviders {...props} />)
 
-      expect(screen.getByText('TCP Client')).toBeInTheDocument()
+      expect(screen.getByText('TCP Client (outbound)')).toBeInTheDocument()
     })
 
     it('displays UDP type correctly', () => {
@@ -144,16 +146,20 @@ describe('OutputItem Component', () => {
     it('calls onEdit when edit button clicked', () => {
       render(<OutputItemWithProviders {...defaultProps} />)
 
-      const editButton = screen.getByLabelText(/edit/i)
+      const editButton = screen.getByRole('button', { name: /edit/i })
       fireEvent.click(editButton)
 
-      expect(mockOnEdit).toHaveBeenCalledWith(defaultOutput.id, defaultOutput)
+      expect(mockOnEdit).toHaveBeenCalledWith(defaultOutput.id, {
+        type: defaultOutput.type,
+        host: defaultOutput.host,
+        port: defaultOutput.port,
+      })
     })
 
     it('shows confirmation modal before delete', () => {
       render(<OutputItemWithProviders {...defaultProps} />)
 
-      const deleteButton = screen.getByLabelText(/delete/i)
+      const deleteButton = screen.getByRole('button', { name: /delete/i })
       fireEvent.click(deleteButton)
 
       expect(mockShowModal).toHaveBeenCalledWith(
@@ -165,7 +171,7 @@ describe('OutputItem Component', () => {
     })
 
     it('sends delete request when confirmed', async () => {
-      const { fetchWithTimeout } = await import('../../../../services/api')
+      const { fetchWithTimeout } = await import('../../../services/api')
       fetchWithTimeout.mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({ success: true, message: 'Output deleted' }),
@@ -173,7 +179,7 @@ describe('OutputItem Component', () => {
 
       render(<OutputItemWithProviders {...defaultProps} />)
 
-      const deleteButton = screen.getByLabelText(/delete/i)
+      const deleteButton = screen.getByRole('button', { name: /delete/i })
       fireEvent.click(deleteButton)
 
       // Get the confirm function from the modal call
@@ -191,7 +197,7 @@ describe('OutputItem Component', () => {
     })
 
     it('sends restart request when restart button clicked', async () => {
-      const { fetchWithTimeout } = await import('../../../../services/api')
+      const { fetchWithTimeout } = await import('../../../services/api')
       fetchWithTimeout.mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({ success: true, message: 'Output restarted' }),
@@ -199,7 +205,7 @@ describe('OutputItem Component', () => {
 
       render(<OutputItemWithProviders {...defaultProps} />)
 
-      const restartButton = screen.getByLabelText(/restart/i)
+      const restartButton = screen.getByRole('button', { name: /restart/i })
       fireEvent.click(restartButton)
 
       await waitFor(() => {
@@ -217,7 +223,7 @@ describe('OutputItem Component', () => {
 
   describe('Error Handling', () => {
     it('shows error toast on delete failure', async () => {
-      const { fetchWithTimeout } = await import('../../../../services/api')
+      const { fetchWithTimeout } = await import('../../../services/api')
       fetchWithTimeout.mockResolvedValue({
         ok: false,
         json: () => Promise.resolve({ error: 'Could not delete output' }),
@@ -225,7 +231,7 @@ describe('OutputItem Component', () => {
 
       render(<OutputItemWithProviders {...defaultProps} />)
 
-      const deleteButton = screen.getByLabelText(/delete/i)
+      const deleteButton = screen.getByRole('button', { name: /delete/i })
       fireEvent.click(deleteButton)
 
       const modalCall = mockShowModal.mock.calls[0][0]
@@ -237,19 +243,16 @@ describe('OutputItem Component', () => {
     })
 
     it('handles network errors gracefully', async () => {
-      const { fetchWithTimeout } = await import('../../../../services/api')
+      const { fetchWithTimeout } = await import('../../../services/api')
       fetchWithTimeout.mockRejectedValue(new Error('Network error'))
 
       render(<OutputItemWithProviders {...defaultProps} />)
 
-      const restartButton = screen.getByLabelText(/restart/i)
+      const restartButton = screen.getByRole('button', { name: /restart/i })
       fireEvent.click(restartButton)
 
       await waitFor(() => {
-        expect(mockShowToast).toHaveBeenCalledWith(
-          expect.stringMatching(/error.*restart/i),
-          'error'
-        )
+        expect(mockShowToast).toHaveBeenCalledWith('Network error', 'error')
       })
     })
   })
@@ -268,7 +271,7 @@ describe('OutputItem Component', () => {
     it('re-renders when output data changes', () => {
       const { rerender } = render(<OutputItemWithProviders {...defaultProps} />)
 
-      expect(screen.getByText(/running/i)).toBeInTheDocument()
+      expect(screen.getByText('🟢')).toBeInTheDocument()
 
       // Change output status
       const updatedOutput = { ...defaultOutput, running: false }
@@ -276,7 +279,7 @@ describe('OutputItem Component', () => {
 
       rerender(<OutputItemWithProviders {...updatedProps} />)
 
-      expect(screen.getByText(/stopped/i)).toBeInTheDocument()
+      expect(screen.getByText('🔴')).toBeInTheDocument()
     })
   })
 })
