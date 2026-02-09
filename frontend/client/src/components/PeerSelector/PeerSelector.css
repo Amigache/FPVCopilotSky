@@ -1,6 +1,7 @@
 .peer-selector {
   position: relative;
   width: 100%;
+  z-index: 1; /* Asegurar contexto de apilamiento */
 }
 
 .peer-selector label {
@@ -42,6 +43,16 @@
 .peer-selector-input:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.peer-selector-input.input-error {
+  border-color: #ff6b6b;
+  background: rgba(255, 107, 107, 0.1);
+}
+
+.peer-selector-input.input-error:focus {
+  border-color: #ff6b6b;
+  box-shadow: 0 0 0 1px rgba(255, 107, 107, 0.3);
 }
 
 .peer-selector-button {
@@ -101,8 +112,9 @@
   border: 1px solid rgba(120, 138, 190, 0.4);
   border-radius: 6px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-  z-index: 1000;
-  max-height: 280px;
+  z-index: 9999; /* Aumentado para estar por encima de todo */
+  /* Dynamic max-height based on viewport and content */
+  max-height: min(320px, calc(100vh - 200px));
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -152,7 +164,10 @@
 .peer-selector-list {
   overflow-y: auto;
   overflow-x: hidden;
-  max-height: 240px;
+  /* Dynamic height based on content */
+  max-height: min(280px, calc(100vh - 200px));
+  /* Minimum height to avoid jank */
+  min-height: 40px;
 }
 
 .peer-selector-item {

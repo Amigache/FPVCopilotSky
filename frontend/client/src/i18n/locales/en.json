@@ -282,7 +282,24 @@
     "stopError": "✗ Error stopping output",
     "confirmDelete": "Confirm deletion",
     "confirmDeleteMessage": "Are you sure you want to delete the output",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "description": "Configure connections to forward MAVLink telemetry to ground control stations like QGroundControl or Mission Planner",
+    "fetchError": "Error loading configuration",
+    "validationFailed": "Validation error",
+    "operationFailed": "Operation failed",
+    "update": "Update",
+    "cancelEdit": "Cancel Edit",
+    "noOutputs": "No outputs configured",
+    "restart": "Restart",
+    "outputRestarted": "✓ Output restarted",
+    "restartError": "✗ Error restarting output",
+    "validation": {
+      "typeRequired": "Output type is required",
+      "hostRequired": "Host is required",
+      "invalidHost": "Enter a valid IP address or hostname",
+      "portRequired": "Port is required",
+      "invalidPort": "Port must be between 1024 and 65535"
+    }
   },
   "network": {
     "title": "Network",
