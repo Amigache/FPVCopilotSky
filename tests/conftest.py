@@ -5,11 +5,19 @@ This module provides mock objects for hardware dependencies that are not availab
 in CI environments (serial ports, modems, cameras, etc.)
 """
 
-import os
-import pytest
-import json
-from unittest.mock import Mock, patch, MagicMock
-from pathlib import Path
+import sys
+from unittest.mock import MagicMock
+
+# Mock GObject Introspection (gi) module for CI environments where GStreamer isn't available
+# This must be done before any application imports that depend on gi
+sys.modules["gi"] = MagicMock()
+sys.modules["gi.repository"] = MagicMock()
+
+import os  # noqa: E402
+import pytest  # noqa: E402
+import json  # noqa: E402
+from unittest.mock import Mock, patch, MagicMock  # noqa: E402
+from pathlib import Path  # noqa: E402
 
 
 @pytest.fixture
