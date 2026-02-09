@@ -1,70 +1,80 @@
 import './VideoView.css'
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useWebSocket } from '../../contexts/WebSocketContext'
 import { useToast } from '../../contexts/ToastContext'
 import api from '../../services/api'
-import { PeerSelector } from '../PeerSelector/PeerSelector'
-import Toggle from '../Toggle/Toggle'
+import { VIDEO_DEFAULTS, FALLBACK_FPS, EMPTY_STATUS, TIMING, safeInt } from './video/videoConstants'
+import StatusBanner from './video/StatusBanner'
+import VideoSourceCard from './video/VideoSourceCard'
+import EncodingConfigCard from './video/EncodingConfigCard'
+import NetworkSettingsCard from './video/NetworkSettingsCard'
+import StreamControlCard from './video/StreamControlCard'
+import PipelineCard from './video/PipelineCard'
+import StatsCard from './video/StatsCard'
 
 const VideoView = () => {
   const { t } = useTranslation()
   const { messages } = useWebSocket()
   const { showToast } = useToast()
 
-  // State
+  // ── State ──────────────────────────────────────────────────────────────────
   const [loading, setLoading] = useState(true)
   const [cameras, setCameras] = useState([])
   const [availableCodecs, setAvailableCodecs] = useState([])
   const [config, setConfig] = useState({
-    device: '/dev/video0',
-    codec: 'mjpeg',
-    width: 960,
-    height: 720,
-    framerate: 30,
-    quality: 85,
-    h264_bitrate: 2000,
-    gop_size: 2,
-    udp_host: '192.168.1.136',
-    udp_port: 5600,
+    device: VIDEO_DEFAULTS.DEVICE,
+    codec: VIDEO_DEFAULTS.CODEC,
+    width: VIDEO_DEFAULTS.WIDTH,
+    height: VIDEO_DEFAULTS.HEIGHT,
+    framerate: VIDEO_DEFAULTS.FRAMERATE,
+    quality: VIDEO_DEFAULTS.QUALITY,
+    h264_bitrate: VIDEO_DEFAULTS.H264_BITRATE,
+    gop_size: VIDEO_DEFAULTS.GOP_SIZE,
+    mode: VIDEO_DEFAULTS.MODE,
+    udp_host: VIDEO_DEFAULTS.UDP_HOST,
+    udp_port: VIDEO_DEFAULTS.UDP_PORT,
+    multicast_group: VIDEO_DEFAULTS.MULTICAST_GROUP,
+    multicast_port: VIDEO_DEFAULTS.MULTICAST_PORT,
+    multicast_ttl: VIDEO_DEFAULTS.MULTICAST_TTL,
+    rtsp_enabled: false,
+    rtsp_url: VIDEO_DEFAULTS.RTSP_URL,
+    rtsp_transport: VIDEO_DEFAULTS.RTSP_TRANSPORT,
     auto_start: false,
   })
   const [actionLoading, setActionLoading] = useState(null)
   const [copySuccess, setCopySuccess] = useState(false)
-
-  // Track if user has unsaved changes
   const [hasChanges, setHasChanges] = useState(false)
+  const [networkIp, setNetworkIp] = useState(null)
   const initialLoadDone = useRef(false)
+  const liveUpdateTimer = useRef(null)
 
-  // Build video config payload including camera identity for stable device matching
-  const buildVideoConfigPayload = () => {
+  // Cleanup debounce timer on unmount
+  useEffect(() => {
+    return () => clearTimeout(liveUpdateTimer.current)
+  }, [])
+
+  // ── Payload builder ────────────────────────────────────────────────────────
+  const buildVideoConfigPayload = useCallback(() => {
     const camera = cameras.find((cam) => cam.device === config.device)
     return {
       device: config.device,
       device_name: camera?.name || '',
       device_bus_info: camera?.bus_info || '',
-      width: parseInt(config.width),
-      height: parseInt(config.height),
-      framerate: parseInt(config.framerate),
+      width: safeInt(config.width, VIDEO_DEFAULTS.WIDTH),
+      height: safeInt(config.height, VIDEO_DEFAULTS.HEIGHT),
+      framerate: safeInt(config.framerate, VIDEO_DEFAULTS.FRAMERATE),
       codec: config.codec,
-      quality: parseInt(config.quality),
-      h264_bitrate: parseInt(config.h264_bitrate),
-      gop_size: parseInt(config.gop_size || 2),
+      quality: safeInt(config.quality, VIDEO_DEFAULTS.QUALITY),
+      h264_bitrate: safeInt(config.h264_bitrate, VIDEO_DEFAULTS.H264_BITRATE),
+      gop_size: safeInt(config.gop_size, VIDEO_DEFAULTS.GOP_SIZE),
     }
-  }
+  }, [cameras, config])
 
-  // Get video status from WebSocket
-  const status = messages.video_status || {
-    available: false,
-    streaming: false,
-    enabled: true,
-    config: {},
-    stats: {},
-    last_error: null,
-    pipeline_string: '',
-  }
+  // ── WebSocket status ───────────────────────────────────────────────────────
+  const status = messages.video_status || EMPTY_STATUS
 
-  // Update local config from WebSocket only on initial load or when no pending changes
+  // Sync remote config → local when no pending changes
   useEffect(() => {
     if (messages.video_status?.config && !hasChanges) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -73,15 +83,15 @@ const VideoView = () => {
     }
   }, [messages.video_status, hasChanges])
 
-  // Wrapper to track changes
-  const updateConfig = (updater) => {
+  // Track local changes
+  const updateConfig = useCallback((updater) => {
     setConfig(updater)
     if (initialLoadDone.current) {
       setHasChanges(true)
     }
-  }
+  }, [])
 
-  // Load cameras only once (they don't change frequently)
+  // ── Data loading ───────────────────────────────────────────────────────────
   const loadCameras = useCallback(async () => {
     try {
       const response = await api.get('/api/video/cameras')
@@ -94,20 +104,16 @@ const VideoView = () => {
     }
   }, [])
 
-  // Load available codecs (hardware-dependent)
   const loadCodecs = useCallback(async () => {
     try {
       const response = await api.get('/api/video/codecs')
       if (response.ok) {
         const data = await response.json()
         setAvailableCodecs(data.codecs || [])
-
-        // If current codec is not available, select first available
         if (data.codecs.length > 0) {
           setConfig((prev) => {
             const currentCodecAvailable = data.codecs.some((c) => c.id === prev.codec)
             if (!currentCodecAvailable) {
-              console.warn(`Codec ${prev.codec} not available, switching to ${data.codecs[0].id}`)
               return { ...prev, codec: data.codecs[0].id }
             }
             return prev
@@ -117,26 +123,48 @@ const VideoView = () => {
     } catch (error) {
       console.error('Error loading codecs:', error)
     }
-  }, []) // No dependencies - only loads available codecs, doesn't depend on selection
+  }, [])
 
-  // Initial load - cameras and codecs only, status comes via WebSocket
+  const loadNetworkIp = useCallback(async () => {
+    try {
+      const response = await api.get('/api/video/network/ip')
+      if (response.ok) {
+        const data = await response.json()
+        setNetworkIp(data)
+      }
+    } catch (error) {
+      console.error('Error loading network IP:', error)
+    }
+  }, [])
+
+  // Initial data load
   useEffect(() => {
     const loadData = async () => {
       setLoading(true)
-      await Promise.all([loadCameras(), loadCodecs()])
+      await Promise.all([loadCameras(), loadCodecs(), loadNetworkIp()])
       setLoading(false)
     }
     loadData()
-  }, [loadCameras, loadCodecs])
+  }, [loadCameras, loadCodecs, loadNetworkIp])
 
-  // Actions - Apply config before starting
+  // RTSP mode: auto-populate URL + reload network IP (merged from two effects)
+  useEffect(() => {
+    if (config.mode === 'rtsp' && initialLoadDone.current) {
+      if (networkIp) {
+        const isDefaultUrl = config.rtsp_url === VIDEO_DEFAULTS.RTSP_URL || !config.rtsp_url
+        if (isDefaultUrl && networkIp.rtsp_url) {
+          updateConfig((prev) => ({ ...prev, rtsp_url: networkIp.rtsp_url }))
+        }
+      }
+      loadNetworkIp()
+    }
+  }, [config.mode]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Action handlers ────────────────────────────────────────────────────────
   const applyConfigAndStart = async () => {
     setActionLoading('start')
     try {
-      // First apply video config
       await api.post('/api/video/config/video', buildVideoConfigPayload())
-
-      // Then start
       const response = await api.post('/api/video/start')
       const data = await response.json()
       if (response.ok && data.success) {
@@ -169,9 +197,7 @@ const VideoView = () => {
   const restartStream = async () => {
     setActionLoading('restart')
     try {
-      // Apply config first, then restart
       await api.post('/api/video/config/video', buildVideoConfigPayload())
-
       const response = await api.post('/api/video/restart')
       const data = await response.json()
       if (response.ok && data.success) {
@@ -188,13 +214,17 @@ const VideoView = () => {
   const applySettings = async () => {
     setActionLoading('apply')
     try {
-      // Apply video config
       const videoRes = await api.post('/api/video/config/video', buildVideoConfigPayload())
-
-      // Apply streaming config (including auto_start)
       const streamRes = await api.post('/api/video/config/streaming', {
+        mode: config.mode,
         udp_host: config.udp_host,
-        udp_port: parseInt(config.udp_port),
+        udp_port: safeInt(config.udp_port, VIDEO_DEFAULTS.UDP_PORT),
+        multicast_group: config.multicast_group,
+        multicast_port: safeInt(config.multicast_port, VIDEO_DEFAULTS.MULTICAST_PORT),
+        multicast_ttl: safeInt(config.multicast_ttl, VIDEO_DEFAULTS.MULTICAST_TTL),
+        rtsp_enabled: config.rtsp_enabled,
+        rtsp_url: config.rtsp_url,
+        rtsp_transport: config.rtsp_transport,
         auto_start: config.auto_start,
       })
 
@@ -202,9 +232,7 @@ const VideoView = () => {
       const streamData = await streamRes.json()
 
       if (videoRes.ok && streamRes.ok && videoData.success && streamData.success) {
-        setHasChanges(false) // Reset changes flag after successful save
-
-        // If currently streaming, restart to apply changes
+        setHasChanges(false)
         if (status.streaming) {
           const restartRes = await api.post('/api/video/restart')
           const restartData = await restartRes.json()
@@ -217,13 +245,14 @@ const VideoView = () => {
           showToast(t('views.video.configAppliedAndSaved'), 'success')
         }
       } else {
-        const errMsg =
+        showToast(
           videoData.detail ||
-          streamData.detail ||
-          videoData.message ||
-          streamData.message ||
-          'Error'
-        showToast(errMsg, 'error')
+            streamData.detail ||
+            videoData.message ||
+            streamData.message ||
+            t('views.video.errorApplying'),
+          'error'
+        )
       }
     } catch (error) {
       showToast(error.message || t('views.video.errorApplying'), 'error')
@@ -231,128 +260,138 @@ const VideoView = () => {
     setActionLoading(null)
   }
 
-  // Live update - change property on-the-fly without restart
-  const liveUpdate = async (property, value) => {
-    try {
-      const response = await api.post('/api/video/live-update', {
-        property,
-        value: parseInt(value),
-      })
-      const data = await response.json()
-      if (!response.ok || !data.success) {
-        showToast(data.detail || data.message || t('views.video.errorLiveUpdate'), 'error')
+  // Live update — change property on-the-fly without restart
+  const liveUpdate = useCallback(
+    async (property, value) => {
+      try {
+        const response = await api.post('/api/video/live-update', {
+          property,
+          value: safeInt(value, 0),
+        })
+        const data = await response.json()
+        if (!response.ok || !data.success) {
+          showToast(data.detail || data.message || t('views.video.errorLiveUpdate'), 'error')
+        }
+      } catch (error) {
+        showToast(error.message || t('views.video.errorLiveUpdate'), 'error')
       }
-    } catch (error) {
-      showToast(error.message || t('views.video.errorLiveUpdate'), 'error')
-    }
-  }
+    },
+    [showToast, t]
+  )
 
-  // Debounced live update for sliders
-  const liveUpdateTimer = useRef(null)
-  const debouncedLiveUpdate = (property, value) => {
-    clearTimeout(liveUpdateTimer.current)
-    liveUpdateTimer.current = setTimeout(() => liveUpdate(property, value), 300)
-  }
+  const debouncedLiveUpdate = useCallback(
+    (property, value) => {
+      clearTimeout(liveUpdateTimer.current)
+      liveUpdateTimer.current = setTimeout(
+        () => liveUpdate(property, value),
+        TIMING.DEBOUNCE_LIVE_UPDATE
+      )
+    },
+    [liveUpdate]
+  )
 
-  // Get pipeline based on codec
-  // Get pipeline string from server status (WebSocket updates it in real-time)
-  const getPipelineString = () => {
-    // Use the pipeline from server if available (works for all codecs)
-    if (status.pipeline_string) {
-      return status.pipeline_string
-    }
-    // Fallback to local generation for compatibility (should rarely happen)
-    if (config.codec === 'h264' || config.codec === 'h264_openh264') {
-      return `udpsrc port=${config.udp_port} caps="application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)H264, payload=(int)96" ! rtph264depay ! avdec_h264 ! videoconvert ! video/x-raw,format=BGRA ! appsink name=outsink sync=false`
-    }
-    return `udpsrc port=${config.udp_port} caps="application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)JPEG, payload=(int)26" ! rtpjpegdepay ! jpegdec ! videoconvert ! video/x-raw,format=BGRA ! appsink name=outsink sync=false`
-  }
-
-  const copyPipeline = async () => {
-    const pipeline = getPipelineString()
-
-    try {
-      // Try modern clipboard API first (requires HTTPS)
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(pipeline)
-      } else {
-        const input = document.createElement('input')
-        input.value = pipeline
-        document.body.appendChild(input)
-        input.select()
-        document.execCommand('copy')
-        document.body.removeChild(input)
+  // Clipboard copy — modern API with execCommand fallback for non-secure contexts (HTTP over LAN)
+  const copyPipeline = useCallback(
+    async (text) => {
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text)
+        } else {
+          const textarea = document.createElement('textarea')
+          textarea.value = text
+          textarea.style.position = 'fixed'
+          textarea.style.opacity = '0'
+          document.body.appendChild(textarea)
+          textarea.select()
+          document.execCommand('copy')
+          document.body.removeChild(textarea)
+        }
+        setCopySuccess(true)
+        showToast(t('views.video.pipelineCopied'), 'success')
+        setTimeout(() => setCopySuccess(false), TIMING.COPY_SUCCESS_DURATION)
+      } catch (_error) {
+        showToast(t('views.video.errorCopying'), 'error')
       }
+    },
+    [showToast, t]
+  )
 
-      setCopySuccess(true)
-      showToast(t('views.video.pipelineCopied'), 'success')
-      setTimeout(() => setCopySuccess(false), 2000)
-    } catch (_error) {
-      showToast(t('views.video.errorCopying'), 'error')
-    }
-  }
+  // ── Memoized derived values ────────────────────────────────────────────────
+  const currentCamera = useMemo(
+    () => cameras.find((cam) => cam.device === config.device) || cameras[0],
+    [cameras, config.device]
+  )
 
-  // Get current camera info - fallback to first available if configured device not found
-  const currentCamera = cameras.find((cam) => cam.device === config.device) || cameras[0]
+  const availableResolutions = useMemo(() => currentCamera?.resolutions || [], [currentCamera])
+
+  const currentResolution = `${config.width}x${config.height}`
+
+  const availableFps = useMemo(
+    () => currentCamera?.resolutions_fps?.[currentResolution] || FALLBACK_FPS,
+    [currentCamera, currentResolution]
+  )
 
   // Auto-select first camera if configured device doesn't exist
   useEffect(() => {
     if (cameras.length > 0 && !cameras.find((cam) => cam.device === config.device)) {
       const firstCam = cameras[0]
-      if (firstCam.resolutions && firstCam.resolutions.length > 0) {
+      if (firstCam.resolutions?.length > 0) {
         const firstRes = firstCam.resolutions[0]
         const [w, h] = firstRes.split('x')
-        const fps = firstCam.resolutions_fps?.[firstRes]?.[0] || 30
+        const fps = firstCam.resolutions_fps?.[firstRes]?.[0] || VIDEO_DEFAULTS.FRAMERATE
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setConfig((prev) => ({
           ...prev,
           device: firstCam.device,
-          width: parseInt(w),
-          height: parseInt(h),
+          width: safeInt(w, VIDEO_DEFAULTS.WIDTH),
+          height: safeInt(h, VIDEO_DEFAULTS.HEIGHT),
           framerate: fps,
         }))
       }
     }
   }, [cameras, config.device])
 
-  // Get available resolutions for current camera
-  const availableResolutions = currentCamera?.resolutions || []
+  // Handle camera change — reset to first available resolution
+  const handleCameraChange = useCallback(
+    (device) => {
+      const camera = cameras.find((cam) => cam.device === device)
+      if (camera?.resolutions?.length > 0) {
+        const firstRes = camera.resolutions[0]
+        const [w, h] = firstRes.split('x')
+        const fps = camera.resolutions_fps?.[firstRes]?.[0] || VIDEO_DEFAULTS.FRAMERATE
+        updateConfig((prev) => ({
+          ...prev,
+          device,
+          width: safeInt(w, VIDEO_DEFAULTS.WIDTH),
+          height: safeInt(h, VIDEO_DEFAULTS.HEIGHT),
+          framerate: fps,
+        }))
+      } else {
+        updateConfig((prev) => ({ ...prev, device }))
+      }
+    },
+    [cameras, updateConfig]
+  )
 
-  // Get available FPS for current resolution
-  const currentResolution = `${config.width}x${config.height}`
-  const availableFps = currentCamera?.resolutions_fps?.[currentResolution] || [30, 24, 15]
-
-  // Handle camera change - reset to first available resolution
-  const handleCameraChange = (device) => {
-    const camera = cameras.find((cam) => cam.device === device)
-    if (camera && camera.resolutions && camera.resolutions.length > 0) {
-      const firstRes = camera.resolutions[0]
-      const [w, h] = firstRes.split('x')
-      const fps = camera.resolutions_fps?.[firstRes]?.[0] || 30
+  // Handle resolution change — reset to first available FPS
+  const handleResolutionChange = useCallback(
+    (resolution) => {
+      const [w, h] = resolution.split('x')
+      const fps = currentCamera?.resolutions_fps?.[resolution]?.[0] || VIDEO_DEFAULTS.FRAMERATE
       updateConfig((prev) => ({
         ...prev,
-        device,
-        width: parseInt(w),
-        height: parseInt(h),
+        width: safeInt(w, VIDEO_DEFAULTS.WIDTH),
+        height: safeInt(h, VIDEO_DEFAULTS.HEIGHT),
         framerate: fps,
       }))
-    } else {
-      updateConfig((prev) => ({ ...prev, device }))
-    }
-  }
+    },
+    [currentCamera, updateConfig]
+  )
 
-  // Handle resolution change - reset to first available FPS
-  const handleResolutionChange = (resolution) => {
-    const [w, h] = resolution.split('x')
-    const fps = currentCamera?.resolutions_fps?.[resolution]?.[0] || 30
-    updateConfig((prev) => ({
-      ...prev,
-      width: parseInt(w),
-      height: parseInt(h),
-      framerate: fps,
-    }))
-  }
+  // Pipeline string from backend (no more client-side duplication)
+  const pipelineString = status.pipeline_string || ''
 
+  // ── Render ─────────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="card">
@@ -376,425 +415,54 @@ const VideoView = () => {
 
   return (
     <div className="video-view">
-      {/* Status Banner */}
-      <div className={`status-banner ${status.streaming ? 'streaming' : 'stopped'}`}>
-        <div className="status-indicator">
-          <span className={`status-dot ${status.streaming ? 'live' : ''}`}></span>
-          <span className="status-text">
-            {status.streaming ? t('views.video.streaming') : t('views.video.stopped')}
-          </span>
-        </div>
-        {status.streaming && (
-          <div className="status-info">
-            {config.codec.toUpperCase()} • {config.width}x{config.height} • {config.udp_host}:
-            {config.udp_port}
-          </div>
-        )}
-        {status.last_error && <div className="status-error">❌ {status.last_error}</div>}
-      </div>
+      <StatusBanner status={status} config={config} />
 
       <div className="video-columns">
-        {/* Left Column - Video Settings */}
+        {/* Left Column — Video Settings */}
         <div className="video-col">
-          {/* Video Source Card */}
-          <div className="card">
-            <h2>{t('views.video.videoSourceSelection')}</h2>
-
-            <div className={`form-group ${status.streaming ? 'field-disabled' : ''}`}>
-              <label>{t('views.video.videoSource')}</label>
-              <select
-                value={config.device}
-                onChange={(e) => handleCameraChange(e.target.value)}
-                disabled={status.streaming}
-              >
-                {cameras.length === 0 ? (
-                  <option value="">{t('views.video.noCamerasAvailable')}</option>
-                ) : (
-                  cameras.map((cam) => (
-                    <option key={cam.device} value={cam.device}>
-                      {cam.name} {cam.provider && `[${cam.provider}]`} ({cam.device})
-                    </option>
-                  ))
-                )}
-              </select>
-            </div>
-
-            <div className="form-row">
-              <div className={`form-group ${status.streaming ? 'field-disabled' : ''}`}>
-                <label>{t('views.video.resolution')}</label>
-                <select
-                  value={`${config.width}x${config.height}`}
-                  onChange={(e) => handleResolutionChange(e.target.value)}
-                  disabled={status.streaming}
-                >
-                  {availableResolutions.length > 0 ? (
-                    availableResolutions.map((res) => (
-                      <option key={res} value={res}>
-                        {res}
-                      </option>
-                    ))
-                  ) : (
-                    <option value={`${config.width}x${config.height}`}>
-                      {config.width}x{config.height}
-                    </option>
-                  )}
-                </select>
-              </div>
-
-              <div className={`form-group ${status.streaming ? 'field-disabled' : ''}`}>
-                <label>{t('views.video.fps')}</label>
-                <select
-                  value={config.framerate}
-                  onChange={(e) =>
-                    updateConfig((prev) => ({ ...prev, framerate: parseInt(e.target.value) }))
-                  }
-                  disabled={status.streaming}
-                >
-                  {availableFps.map((fps) => (
-                    <option key={fps} value={fps}>
-                      {fps} fps
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {/* Encoding Configuration Card */}
-          <div className="card">
-            <h2>{t('views.video.encodingConfiguration')}</h2>
-
-            <div className={`form-group ${status.streaming ? 'field-disabled' : ''}`}>
-              <label>
-                {t('views.video.codec')}
-                {availableCodecs.length > 0 && (
-                  <span className="field-hint">
-                    {availableCodecs.length} {t('views.video.codecsAvailable')}
-                  </span>
-                )}
-              </label>
-              <select
-                value={config.codec}
-                onChange={(e) => {
-                  updateConfig((prev) => ({ ...prev, codec: e.target.value }))
-                  // Adjust default bitrate when changing codec
-                  const selectedCodec = availableCodecs.find((c) => c.id === e.target.value)
-                  if (selectedCodec && selectedCodec.default_bitrate) {
-                    updateConfig((prev) => ({
-                      ...prev,
-                      h264_bitrate: selectedCodec.default_bitrate,
-                    }))
-                  }
-                }}
-                disabled={status.streaming || availableCodecs.length === 0}
-              >
-                {availableCodecs.length === 0 ? (
-                  <>
-                    <option value="mjpeg">{t('views.video.codecMjpeg')}</option>
-                    <option value="h264">{t('views.video.codecH264')}</option>
-                  </>
-                ) : (
-                  availableCodecs.map((codec) => (
-                    <option key={codec.id} value={codec.id}>
-                      {codec.name}
-                      {codec.description && ` - ${codec.cpu_usage} CPU, ${codec.latency} latencia`}
-                    </option>
-                  ))
-                )}
-              </select>
-              {availableCodecs.length > 0 && config.codec && (
-                <small className="codec-info">
-                  {(() => {
-                    const currentCodec = availableCodecs.find((c) => c.id === config.codec)
-                    return currentCodec?.description || ''
-                  })()}
-                </small>
-              )}
-            </div>
-
-            {/* MJPEG Settings - editable live */}
-            {config.codec === 'mjpeg' && (
-              <div className={`form-group ${status.streaming ? 'field-live' : ''}`}>
-                <label>
-                  {t('views.video.jpegQuality')}: {config.quality}
-                  {status.streaming && <span className="live-tag">LIVE</span>}
-                </label>
-                <input
-                  type="range"
-                  min="10"
-                  max="100"
-                  value={config.quality}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value)
-                    updateConfig((prev) => ({ ...prev, quality: val }))
-                    if (status.streaming) debouncedLiveUpdate('quality', val)
-                  }}
-                  className="slider"
-                />
-              </div>
-            )}
-
-            {/* H.264 (x264) Settings - editable live */}
-            {config.codec === 'h264' && (
-              <div className={`form-group ${status.streaming ? 'field-live' : ''}`}>
-                <label>
-                  {t('views.video.bitrate')}
-                  {status.streaming && <span className="live-tag">LIVE</span>}
-                </label>
-                <select
-                  value={config.h264_bitrate}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value)
-                    updateConfig((prev) => ({ ...prev, h264_bitrate: val }))
-                    if (status.streaming) liveUpdate('bitrate', val)
-                  }}
-                >
-                  <option value="500">500 ({t('views.video.bitrateMobile')})</option>
-                  <option value="1000">1000</option>
-                  <option value="2000">2000 ({t('views.video.bitrateRecommended')})</option>
-                  <option value="3000">3000</option>
-                  <option value="5000">5000 ({t('views.video.bitrateWifi')})</option>
-                </select>
-              </div>
-            )}
-
-            {/* OpenH264 Settings - editable live */}
-            {config.codec === 'h264_openh264' && (
-              <>
-                <div className={`form-group ${status.streaming ? 'field-live' : ''}`}>
-                  <label>
-                    {t('views.video.bitrate')}
-                    {status.streaming && <span className="live-tag">LIVE</span>}
-                  </label>
-                  <select
-                    value={config.h264_bitrate}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value)
-                      updateConfig((prev) => ({ ...prev, h264_bitrate: val }))
-                      if (status.streaming) liveUpdate('bitrate', val)
-                    }}
-                  >
-                    <option value="500">500 (Móvil)</option>
-                    <option value="1000">1000</option>
-                    <option value="2000">2000 (Recomendado)</option>
-                    <option value="3000">3000</option>
-                    <option value="5000">5000 (WiFi)</option>
-                    <option value="8000">8000 (LAN)</option>
-                  </select>
-                </div>
-
-                <div className={`form-group ${status.streaming ? 'field-live' : ''}`}>
-                  <label>
-                    Keyframe Interval (GOP)
-                    {status.streaming && <span className="live-tag">LIVE</span>}
-                  </label>
-                  <select
-                    value={config.gop_size || 2}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value)
-                      updateConfig((prev) => ({ ...prev, gop_size: val }))
-                      if (status.streaming) liveUpdate('gop-size', val)
-                    }}
-                  >
-                    <option value="1">1 (Baja latencia, +bitrate)</option>
-                    <option value="2">2 (Balance FPV - recomendado)</option>
-                    <option value="3">3 (Normal)</option>
-                    <option value="5">5 (+Compresión)</option>
-                    <option value="10">10 (Alta compresión, +latencia)</option>
-                    <option value="15">15 (Máx. compresión)</option>
-                  </select>
-                  <small>
-                    Keyframes por segundo a 30fps: {Math.round(30 / (config.gop_size || 2))}
-                  </small>
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Network Settings */}
-          <div className={`card ${status.streaming ? 'card-disabled' : ''}`}>
-            <h2>{t('views.video.networkUdpRtp')}</h2>
-            <div className="form-row">
-              <div className={`form-group ${status.streaming ? 'field-disabled' : ''}`}>
-                <PeerSelector
-                  label={t('views.video.destinationIp')}
-                  value={config.udp_host}
-                  onChange={(value) => updateConfig((prev) => ({ ...prev, udp_host: value }))}
-                  placeholder="192.168.1.100"
-                  disabled={status.streaming}
-                />
-              </div>
-              <div className={`form-group ${status.streaming ? 'field-disabled' : ''}`}>
-                <label>{t('views.video.udpPort')}</label>
-                <input
-                  type="number"
-                  value={config.udp_port}
-                  min="1024"
-                  max="65535"
-                  onChange={(e) =>
-                    updateConfig((prev) => ({ ...prev, udp_port: parseInt(e.target.value) }))
-                  }
-                  disabled={status.streaming}
-                />
-              </div>
-            </div>
-
-            <div
-              className={`form-group auto-start-toggle ${status.streaming ? 'field-disabled' : ''}`}
-            >
-              <Toggle
-                checked={config.auto_start || false}
-                onChange={(e) =>
-                  updateConfig((prev) => ({ ...prev, auto_start: e.target.checked }))
-                }
-                disabled={status.streaming}
-                label={t('views.video.autoStart')}
-              />
-            </div>
-          </div>
+          <VideoSourceCard
+            config={config}
+            cameras={cameras}
+            streaming={status.streaming}
+            handleCameraChange={handleCameraChange}
+            handleResolutionChange={handleResolutionChange}
+            updateConfig={updateConfig}
+            availableResolutions={availableResolutions}
+            availableFps={availableFps}
+          />
+          <EncodingConfigCard
+            config={config}
+            streaming={status.streaming}
+            availableCodecs={availableCodecs}
+            updateConfig={updateConfig}
+            debouncedLiveUpdate={debouncedLiveUpdate}
+            liveUpdate={liveUpdate}
+          />
+          <NetworkSettingsCard
+            config={config}
+            streaming={status.streaming}
+            updateConfig={updateConfig}
+          />
         </div>
 
-        {/* Right Column - Controls & Pipeline */}
+        {/* Right Column — Controls & Pipeline */}
         <div className="video-col">
-          {/* Stream Control */}
-          <div className="card">
-            <h2>{t('views.video.streamControl')}</h2>
-            {!status.streaming ? (
-              /* Offline mode: Apply + Start */
-              <>
-                <div className="button-group">
-                  <button
-                    className="btn btn-apply"
-                    onClick={applySettings}
-                    disabled={actionLoading !== null}
-                  >
-                    {actionLoading === 'apply' ? '⏳' : t('views.video.apply')}
-                  </button>
-                  <button
-                    className="btn btn-start"
-                    onClick={applyConfigAndStart}
-                    disabled={actionLoading !== null}
-                  >
-                    {actionLoading === 'start' ? '⏳' : t('views.video.start')}
-                  </button>
-                </div>
-              </>
-            ) : (
-              /* Live mode: Stop + Restart */
-              <div className="button-group">
-                <button
-                  className="btn btn-stop"
-                  onClick={stopStream}
-                  disabled={actionLoading !== null}
-                >
-                  {actionLoading === 'stop' ? '⏳' : t('views.video.stop')}
-                </button>
-                <button
-                  className="btn btn-restart"
-                  onClick={restartStream}
-                  disabled={actionLoading !== null}
-                >
-                  {actionLoading === 'restart' ? '⏳' : t('views.video.restart')}
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* GStreamer Pipeline */}
-          <div className="card">
-            <h2>{t('views.video.pipelineTitle')}</h2>
-            <div className="info-box">{t('views.video.pipelineInstructions')}</div>
-            <div className="pipeline-box">
-              <code>{getPipelineString()}</code>
-            </div>
-            <button
-              className={`btn btn-copy ${copySuccess ? 'success' : ''}`}
-              onClick={copyPipeline}
-            >
-              {copySuccess ? t('views.video.copied') : t('views.video.copyToClipboard')}
-            </button>
-          </div>
-
-          {/* Stats */}
-          {status.streaming && status.stats && (
-            <div className="card stats-card">
-              <h2>{t('views.video.statistics')}</h2>
-
-              {/* Health Indicator */}
-              <div className={`health-indicator health-${status.stats.health}`}>
-                <span className="health-dot"></span>
-                <span className="health-text">
-                  {t(`views.video.health.${status.stats.health}`)}
-                </span>
-              </div>
-
-              {/* Main Stats Grid */}
-              <div className="stats-grid-main">
-                <div className="stat-item">
-                  <span className="stat-label">{t('views.video.uptime')}</span>
-                  <span className="stat-value">{status.stats.uptime_formatted}</span>
-                </div>
-                <div className="stat-item">
-                  <span className="stat-label">{t('views.video.fpsLabel')}</span>
-                  <span className="stat-value">{status.stats.current_fps}</span>
-                  <span className="stat-unit">/{status.config.framerate} fps</span>
-                </div>
-                <div className="stat-item">
-                  <span className="stat-label">{t('views.video.bitrateLabel')}</span>
-                  <span className="stat-value">{status.stats.current_bitrate}</span>
-                  <span className="stat-unit">kbps</span>
-                </div>
-              </div>
-
-              {/* Secondary Stats Grid */}
-              <div className="stats-grid-secondary">
-                <div className="stat-item-secondary">
-                  <span className="stat-label">{t('views.video.framesSent')}</span>
-                  <span className="stat-value-sm">{status.stats.frames_sent}</span>
-                </div>
-                <div className="stat-item-secondary">
-                  <span className="stat-label">{t('views.video.dataSent')}</span>
-                  <span className="stat-value-sm">{status.stats.bytes_sent_mb} MB</span>
-                </div>
-                <div className="stat-item-secondary">
-                  <span className="stat-label">{t('views.video.errors')}</span>
-                  <span className={`stat-value-sm ${status.stats.errors > 0 ? 'error-count' : ''}`}>
-                    {status.stats.errors}
-                  </span>
-                </div>
-              </div>
-
-              {/* Provider Info */}
-              <div className="pipeline-info">
-                <span className="info-label">📡 Providers:</span>
-                <span className="info-value">
-                  {status.providers?.encoder ? (
-                    <>
-                      {status.providers.encoder}
-                      {status.providers.source && ` (from ${status.providers.source})`}
-                    </>
-                  ) : (
-                    'No providers active'
-                  )}
-                </span>
-              </div>
-
-              {/* Pipeline Info */}
-              <div className="pipeline-info">
-                <span className="info-label">🔌 Pipeline:</span>
-                <span className="info-value">
-                  {status.config.codec.toUpperCase()} • {status.config.width}x{status.config.height}
-                  @{status.config.framerate}fps
-                </span>
-              </div>
-              <div className="pipeline-info">
-                <span className="info-label">📡 Destination:</span>
-                <span className="info-value">
-                  {status.config.udp_host}:{status.config.udp_port}
-                </span>
-              </div>
-            </div>
+          <StreamControlCard
+            streaming={status.streaming}
+            actionLoading={actionLoading}
+            applySettings={applySettings}
+            applyConfigAndStart={applyConfigAndStart}
+            stopStream={stopStream}
+            restartStream={restartStream}
+          />
+          {status.streaming && (
+            <PipelineCard
+              pipelineString={pipelineString}
+              onCopy={copyPipeline}
+              copySuccess={copySuccess}
+            />
           )}
+          {status.streaming && status.stats && <StatsCard status={status} />}
         </div>
       </div>
     </div>

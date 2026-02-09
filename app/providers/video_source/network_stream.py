@@ -131,6 +131,7 @@ class NetworkStreamSource(VideoSourceProvider):
             # Determine which source element to use based on protocol
             if uri.lower().startswith("rtsp://"):
                 # Use rtspsrc for better RTSP control
+                # Use decodebin to auto-detect codec (H.264, H.265, MJPEG, etc.)
                 return {
                     "success": True,
                     "source_element": {
@@ -146,17 +147,11 @@ class NetworkStreamSource(VideoSourceProvider):
                     },
                     "caps_filter": None,  # RTSP provides its own caps
                     "post_elements": [
-                        # rtspsrc outputs encoded stream, need depayloader
-                        {
-                            "name": "depay",
-                            "element": "rtph264depay",  # Assumes H264, TODO: auto-detect
-                            "properties": {},
-                        },
-                        {"name": "parse", "element": "h264parse", "properties": {}},
+                        # decodebin auto-detects codec and selects correct depayloader+decoder
                         {
                             "name": "decode",
-                            "element": "avdec_h264",
-                            "properties": {"max-threads": 2},
+                            "element": "decodebin",
+                            "properties": {},
                         },
                     ],
                     "output_format": "video/x-raw",  # After decoding

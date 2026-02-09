@@ -344,6 +344,13 @@ def mock_api_services(monkeypatch):
         "bitrate": 2000,
         "auto_start": True,
     }
+    mock_prefs.get_streaming_config.return_value = {
+        "mode": "udp",
+        "udp_host": "192.168.1.136",
+        "udp_port": 5600,
+        "enabled": True,
+    }
+    mock_prefs.set_streaming_config.return_value = None
     mock_prefs.get_vpn_config.return_value = {
         "provider": "tailscale",
         "auto_connect": True,
@@ -388,10 +395,49 @@ def mock_api_services(monkeypatch):
         lambda *args, **kwargs: mock_video_config,
     )
 
+    # Mock GStreamerService (video service)
+    mock_video_service = Mock()
+    mock_video_service.get_status.return_value = {
+        "available": True,
+        "streaming": False,
+        "enabled": True,
+        "config": {
+            "device": "/dev/video0",
+            "codec": "h264",
+            "width": 1920,
+            "height": 1080,
+            "framerate": 30,
+            "quality": 85,
+            "h264_bitrate": 2000,
+            "auto_start": False,
+            "mode": "udp",
+            "udp_host": "192.168.1.136",
+            "udp_port": 5600,
+            "multicast_group": "239.1.1.1",
+            "multicast_port": 5600,
+            "multicast_ttl": 1,
+            "rtsp_enabled": False,
+            "rtsp_url": "rtsp://localhost:8554/fpv",
+            "rtsp_transport": "tcp",
+        },
+        "stats": {},
+        "providers": {},
+        "last_error": None,
+        "pipeline_string": "",
+    }
+    mock_video_service.configure.return_value = None
+    mock_video_service.is_available.return_value = True
+
+    # Patch the video routes module to inject the mock service
+    import app.api.routes.video as video_routes
+
+    video_routes._video_service = mock_video_service
+
     return {
         "preferences": mock_prefs,
         "mavlink": mock_mavlink,
         "video_config": mock_video_config,
+        "video_service": mock_video_service,
     }
 
 

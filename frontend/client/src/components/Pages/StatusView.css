@@ -554,73 +554,13 @@
   line-height: 1.5;
 }
 
-/* Preference item (toggle) */
+/* Preference item (toggle) — toggle styles live in Toggle/Toggle.css */
 .preference-item {
   margin: 1rem 0;
   padding: 12px;
   background: rgba(102, 102, 102, 0.1);
   border-radius: 6px;
   border: 1px solid rgba(102, 102, 102, 0.2);
-}
-
-.toggle-label {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  cursor: pointer;
-  user-select: none;
-}
-
-.toggle-input {
-  display: none;
-}
-
-.toggle-switch {
-  position: relative;
-  width: 50px;
-  height: 26px;
-  background: rgba(102, 102, 102, 0.3);
-  border-radius: 13px;
-  border: 1px solid rgba(102, 102, 102, 0.4);
-  transition: all 0.3s ease;
-  flex-shrink: 0;
-}
-
-.toggle-switch::before {
-  content: '';
-  position: absolute;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  top: 2px;
-  left: 2px;
-  background: #666;
-  transition: all 0.3s ease;
-}
-
-.toggle-input:checked + .toggle-switch {
-  background: #4caf50;
-  border-color: #66bb6a;
-}
-
-.toggle-input:checked + .toggle-switch::before {
-  transform: translateX(24px);
-  background: #a5d6a7;
-}
-
-.toggle-input:disabled + .toggle-switch {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.toggle-label:has(.toggle-input:disabled) {
-  cursor: not-allowed;
-}
-
-.toggle-text {
-  color: #e0e6ff;
-  font-size: 0.95rem;
-  font-weight: 500;
 }
 
 .preference-description {

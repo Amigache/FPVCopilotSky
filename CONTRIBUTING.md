@@ -117,7 +117,6 @@ Archivos de documentación:
 - `docs/INSTALLATION.md` - Guía de instalación
 - `docs/USER_GUIDE.md` - Manual de usuario
 - `docs/DEVELOPER_GUIDE.md` - Guía técnica detallada
-- `docs/BOARD_PROVIDER_SYSTEM.md` - Sistema de detección de hardware
 
 ### Contribuir código
 
@@ -663,50 +662,99 @@ const ModemView = () => {
 
 ## 🧪 Testing
 
-### Backend (Python)
+### CI Pipeline
+
+Los tests se ejecutan automáticamente en GitHub Actions en cada Pull Request (`.github/workflows/ci.yml`):
+
+| Job              | Descripción                                 |
+| ---------------- | ------------------------------------------- |
+| `lint-backend`   | flake8, black, mypy                         |
+| `lint-frontend`  | eslint, prettier                            |
+| `test-backend`   | pytest con coverage                         |
+| `test-frontend`  | vitest con coverage                         |
+| `build-frontend` | Validar build de producción (bundle < 5 MB) |
+| `security-scan`  | Trivy, Safety, npm audit                    |
+| `summary`        | Resumen consolidado                         |
+
+### Backend (Python/pytest)
 
 ```bash
-# Instalar pytest
-pip install pytest pytest-asyncio
-
-# Ejecutar tests
-pytest tests/
+# Ejecutar todos los tests
+pytest
 
 # Con coverage
-pytest --cov=app tests/
+pytest --cov=app --cov-report=html
+
+# Ver reporte de coverage
+open htmlcov/index.html
+
+# Solo tests unitarios (excluir integration)
+pytest -m "not integration"
+
+# Tests rápidos (excluir slow)
+pytest -m "not slow"
 ```
 
-**Ejemplo de test:**
+#### Markers
 
 ```python
-# tests/test_mavlink_bridge.py
-import pytest
-from app.services.mavlink_bridge import MAVLinkBridge
-
-@pytest.mark.asyncio
-async def test_mavlink_connection():
-    bridge = MAVLinkBridge()
-    result = await bridge.connect("/dev/ttyUSB0", 115200)
-    assert result["success"] is True
-    assert bridge.is_connected() is True
+@pytest.mark.asyncio        # Test asíncrono
+@pytest.mark.slow           # Test lento (>1s)
+@pytest.mark.integration    # Test de integración
+@pytest.mark.unit           # Test unitario
+@pytest.mark.hardware       # Requiere hardware físico (skip en CI)
 ```
 
-### Frontend (React)
+#### Fixtures disponibles (`tests/conftest.py`)
+
+| Fixture                                 | Descripción                      |
+| --------------------------------------- | -------------------------------- |
+| `mock_serial_port`                      | Mock de puerto serial            |
+| `mock_mavlink_connection`               | Mock de conexión MAVLink         |
+| `mock_hilink_modem`                     | Mock de modem Huawei HiLink      |
+| `mock_gstreamer`                        | Mock de GStreamer pipeline       |
+| `mock_subprocess`                       | Mock de comandos subprocess      |
+| `temp_preferences`                      | Archivo temporal de preferencias |
+| `mock_network_manager`                  | Mock de NetworkManager           |
+| `mock_tailscale`                        | Mock de Tailscale CLI            |
+| `sample_mavlink_messages`               | Mensajes MAVLink de ejemplo      |
+| `mock_api_services`                     | Mock de servicios para API       |
+| `serial_port` / `baudrate` / `tcp_port` | Valores por defecto para tests   |
+
+#### Debugging pytest
+
+```bash
+pytest -v             # Salida detallada
+pytest -s             # Mostrar prints
+pytest -x             # Parar al primer fallo
+pytest --pdb          # Debugger interactivo al fallar
+pytest tests/test_preferences.py::TestPreferencesBasic::test_load  # Test específico
+```
+
+### Frontend (React/Vitest)
 
 ```bash
 cd frontend/client
 
-# Instalar Vitest
-npm install -D vitest @testing-library/react
-
 # Ejecutar tests
 npm run test
+
+# Con UI interactiva
+npm run test:ui
+
+# Con coverage
+npm run test:coverage
+
+# Watch mode
+npm run test -- --watch
+
+# Test específico
+npm run test -- Header.test.jsx
 ```
 
 **Ejemplo de test:**
 
 ```jsx
-// frontend/client/src/components/__tests__/Header.test.jsx
 import { render, screen } from "@testing-library/react";
 import Header from "../Header/Header";
 
@@ -716,6 +764,11 @@ test("renders header title", () => {
   expect(title).toBeInTheDocument();
 });
 ```
+
+### Objetivos de coverage
+
+- **Backend**: ≥ 20 % (configurado en `pyproject.toml` → `fail_under`)
+- **Frontend**: ≥ 60 %
 
 ---
 
@@ -728,7 +781,6 @@ La documentación vive en `/docs` y sigue Markdown con GitHub Flavored Markdown.
 - **INSTALLATION.md**: Guía de instalación paso a paso
 - **USER_GUIDE.md**: Manual de usuario con screenshots
 - **DEVELOPER_GUIDE.md**: Arquitectura técnica detallada
-- **BOARD_PROVIDER_SYSTEM.md**: Sistema de providers
 
 ### Actualizar documentación
 

@@ -126,6 +126,26 @@ class VideoStreamInfoService:
             # Silently ignore errors
             pass
 
+    def _get_companion_ip(self) -> str:
+        """Get this companion computer's IP address dynamically."""
+        try:
+            if self.gstreamer_service:
+                return self.gstreamer_service._get_streaming_ip()
+        except Exception:
+            pass
+        # Fallback: try to determine IP from network interfaces
+        try:
+            import socket
+
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.settimeout(0.5)
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+            s.close()
+            return ip
+        except Exception:
+            return "127.0.0.1"
+
     def _send_video_stream_information(self):
         """Build and send VIDEO_STREAM_INFORMATION message - NON-BLOCKING"""
         if not self.mavlink_bridge or not self.gstreamer_service:
@@ -159,7 +179,7 @@ class VideoStreamInfoService:
 
             # Build URI - use the companion computer's IP address, not the client's
             # Mission Planner will connect back to this address
-            companion_ip = "192.168.1.145"  # This companion's IP
+            companion_ip = self._get_companion_ip()
             uri = f"udp://{companion_ip}:{streaming_config.udp_port}"
             uri_bytes = uri[:160].encode("utf-8")
 

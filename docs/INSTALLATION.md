@@ -217,11 +217,12 @@ sudo journalctl -u fpvcopilot-sky -f    # Logs
 
 ### Puertos
 
-| Puerto | Servicio                           |
-| ------ | ---------------------------------- |
-| 80     | Nginx (HTTP)                       |
-| 8000   | FastAPI (backend)                  |
-| 5600   | Video RTP/UDP (streaming saliente) |
+| Puerto | Servicio                                   |
+| ------ | ------------------------------------------ |
+| 80     | Nginx (HTTP)                               |
+| 8000   | FastAPI (backend)                          |
+| 5600   | Video RTP/UDP (streaming saliente)         |
+| 8554   | RTSP Server (solo cuando modo RTSP activo) |
 
 ---
 

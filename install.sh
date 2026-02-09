@@ -357,6 +357,11 @@ if gst-inspect-1.0 rtpjpegpay > /dev/null 2>&1; then
 else
     echo "  ⚠ RTP JPEG payloader not found"
 fi
+if gst-inspect-1.0 rtph264pay > /dev/null 2>&1; then
+    echo "  ✓ RTP H.264 payloader found"
+else
+    echo "  ⚠ RTP H.264 payloader not found"
+fi
 
 # Check for camera
 echo ""
@@ -435,14 +440,18 @@ echo "To run the frontend:"
 echo "  cd frontend/client && npm run dev -- --host"
 echo ""
 echo "API Endpoints:"
-echo "  • MAVLink:  http://localhost:8000/api/mavlink"
-echo "  • Router:   http://localhost:8000/api/mavlink-router"
-echo "  • Video:    http://localhost:8000/api/video"
-echo "  • System:   http://localhost:8000/api/system"
-echo "  • WebSocket: ws://localhost:8000/ws"
+echo "  • MAVLink:    http://localhost:8000/api/mavlink"
+echo "  • Router:     http://localhost:8000/api/mavlink-router"
+echo "  • Video:      http://localhost:8000/api/video"
+echo "  • Codecs:     http://localhost:8000/api/video/codecs"
+echo "  • Network IP: http://localhost:8000/api/video/network/ip"
+echo "  • System:     http://localhost:8000/api/system"
+echo "  • WebSocket:  ws://localhost:8000/ws"
 echo ""
-echo "Mission Planner Video:"
-echo "  • Configure GStreamer source with UDP port 5600"
-echo "  • Use /api/video/pipeline-string for the pipeline"
+echo "Video Streaming:"
+echo "  • UDP Unicast:  configure destination IP + port 5600"
+echo "  • Multicast:    group 224.x.x.x + port"
+echo "  • RTSP Server:  rtsp://<IP>:8554/stream"
+echo "  • Pipeline visible in the web UI when streaming"
 echo ""
 echo "⚠️ You may need to log out and log back in for permissions to take effect."

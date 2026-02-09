@@ -27,8 +27,8 @@ from .video_config import (
     VideoConfig,
     StreamingConfig,
     auto_detect_camera,
-    get_available_cameras,
 )
+from .rtsp_server import RTSPServer
 
 
 class GStreamerService:
@@ -61,6 +61,13 @@ class GStreamerService:
         self.current_encoder_provider: Optional[str] = None
         self.current_source_provider: Optional[str] = None
 
+        # RTSP Server for RTSP streaming mode
+        self.rtsp_server: Optional[RTSPServer] = None
+        self._rtsp_stats_thread: Optional[threading.Thread] = None
+        self._rtsp_stats_running: bool = False
+        self._rtsp_monitor_thread: Optional[threading.Thread] = None
+        self._rtsp_monitor_running: bool = False
+
         # Statistics - counters for real-time metrics
         self.stats = {
             "frames_sent": 0,
@@ -78,6 +85,11 @@ class GStreamerService:
         import threading as th
 
         self.stats_lock = th.Lock()
+
+        # IP address cache to avoid excessive logging and recalculation
+        self._cached_ip: Optional[str] = None
+        self._cached_ip_time: float = 0
+        self._cached_ip_ttl: int = 30  # Cache IP for 30 seconds
 
         # Initialize GStreamer if available
         if GSTREAMER_AVAILABLE:
@@ -108,7 +120,21 @@ class GStreamerService:
             f"📹 Video config updated: "
             f"{self.video_config.width}x{self.video_config.height}@{self.video_config.framerate}fps"
         )
-        print(f"📡 Streaming to: {self.streaming_config.udp_host}:{self.streaming_config.udp_port}")
+
+        # Log streaming destination based on mode
+        mode = self.streaming_config.mode
+        if mode == "udp":
+            host = self.streaming_config.udp_host
+            port = self.streaming_config.udp_port
+            print(f"📡 Streaming mode: UDP unicast → {host}:{port}")
+        elif mode == "multicast":
+            group = self.streaming_config.multicast_group
+            mport = self.streaming_config.multicast_port
+            print(f"📡 Streaming mode: UDP multicast → {group}:{mport}")
+        elif mode == "rtsp":
+            print(f"📡 Streaming mode: RTSP Server → {self.streaming_config.rtsp_url}")
+        else:
+            print(f"📡 Streaming mode: {mode}")
 
         # Broadcast updated status
         self._broadcast_status()
@@ -368,15 +394,14 @@ class GStreamerService:
             pipeline.add(rtppay)
             elements_list.append(rtppay)
 
-            # Add UDP sink
-            udpsink = Gst.ElementFactory.make("udpsink", "udpsink")
-            udpsink.set_property("host", self.streaming_config.udp_host)
-            udpsink.set_property("port", self.streaming_config.udp_port)
-            udpsink.set_property("sync", False)
-            udpsink.set_property("async", False)
+            # Create sink based on streaming mode
+            sink = self._create_sink_for_mode()
+            if not sink:
+                print(f"❌ Failed to create sink for mode: {self.streaming_config.mode}")
+                return False
 
-            pipeline.add(udpsink)
-            elements_list.append(udpsink)
+            pipeline.add(sink)
+            elements_list.append(sink)
 
             # Link all elements in order
             for i in range(len(elements_list) - 1):
@@ -403,6 +428,62 @@ class GStreamerService:
             self.last_error = str(e)
             return False
 
+    def _create_sink_for_mode(self):
+        """
+        Create appropriate sink element based on streaming mode.
+        Returns GStreamer sink element or None on error.
+        """
+        mode = self.streaming_config.mode
+        print(f"📡 Creating sink for mode: {mode}")
+
+        try:
+            if mode == "udp":
+                # Mode 1: Direct UDP (unicast) - Default for single client
+                sink = Gst.ElementFactory.make("udpsink", "sink")
+                if not sink:
+                    return None
+                sink.set_property("host", self.streaming_config.udp_host)
+                sink.set_property("port", self.streaming_config.udp_port)
+                sink.set_property("sync", False)
+                sink.set_property("async", False)
+                print(f"   → UDP unicast to {self.streaming_config.udp_host}:{self.streaming_config.udp_port}")
+                return sink
+
+            elif mode == "multicast":
+                # Mode 3: UDP Multicast - Multiple clients on LAN
+                sink = Gst.ElementFactory.make("udpsink", "sink")
+                if not sink:
+                    return None
+                sink.set_property("host", self.streaming_config.multicast_group)
+                sink.set_property("port", self.streaming_config.multicast_port)
+                sink.set_property("auto-multicast", True)
+                sink.set_property("ttl", self.streaming_config.multicast_ttl)
+                sink.set_property("sync", False)
+                sink.set_property("async", False)
+                group = self.streaming_config.multicast_group
+                mport = self.streaming_config.multicast_port
+                print(f"   → UDP multicast to {group}:{mport}")
+                return sink
+
+            else:
+                print(f"⚠️ Unknown streaming mode: {mode}, falling back to UDP")
+                return self._create_fallback_udp_sink()
+
+        except Exception as e:
+            print(f"❌ Error creating sink for mode {mode}: {e}")
+            return None
+
+    def _create_fallback_udp_sink(self):
+        """Create fallback UDP sink when preferred sink is not available"""
+        sink = Gst.ElementFactory.make("udpsink", "sink")
+        if sink:
+            sink.set_property("host", self.streaming_config.udp_host)
+            sink.set_property("port", self.streaming_config.udp_port)
+            sink.set_property("sync", False)
+            sink.set_property("async", False)
+            print(f"   → Fallback to UDP: {self.streaming_config.udp_host}:{self.streaming_config.udp_port}")
+        return sink
+
     def _setup_stats_probes(self):
         """Setup probes to count frames and bytes"""
         if not GSTREAMER_AVAILABLE or not self.pipeline:
@@ -418,14 +499,14 @@ class GStreamerService:
                 if pad:
                     pad.add_probe(probe_types, self._on_frame_probe)
 
-            # Count bytes on the wire from udpsink sink pad
-            udpsink = self.pipeline.get_by_name("udpsink")
-            if udpsink:
-                pad = udpsink.get_static_pad("sink")
+            # Count bytes on the wire from sink pad
+            sink = self.pipeline.get_by_name("sink")
+            if sink:
+                pad = sink.get_static_pad("sink")
                 if pad:
                     pad.add_probe(probe_types, self._on_bytes_probe)
             else:
-                # Fallback: count bytes at RTP payloader if udpsink is unavailable
+                # Fallback: count bytes at RTP payloader if sink is unavailable
                 rtppay = self.pipeline.get_by_name("rtppay")
                 if rtppay:
                     pad = rtppay.get_static_pad("src")
@@ -520,11 +601,20 @@ class GStreamerService:
             self.last_error = str(err)
             self.stats["errors"] += 1
             print(f"❌ GStreamer Error: {err}")
+            if debug:
+                print(f"   Debug: {debug}")
             self._broadcast_status()
+            # Auto-stop to clean up pipeline state
+            try:
+                self.stop()
+            except Exception as e:
+                print(f"⚠️ Error during auto-stop after pipeline error: {e}")
 
         elif t == Gst.MessageType.WARNING:
             warn, debug = message.parse_warning()
             print(f"⚠️ GStreamer Warning: {warn}")
+            if debug:
+                print(f"   Debug: {debug}")
 
         elif t == Gst.MessageType.EOS:
             print("📹 End of stream")
@@ -599,7 +689,11 @@ class GStreamerService:
                 )
                 return {"success": False, "message": msg}
 
-        # Validate streaming configuration
+        # Check if using RTSP Server mode
+        if self.streaming_config.mode == "rtsp":
+            return self._start_rtsp_server()
+
+        # Validate streaming configuration for UDP/multicast modes
         if not self.streaming_config.udp_host:
             return {
                 "success": False,
@@ -662,8 +756,86 @@ class GStreamerService:
             "destination": f"{self.streaming_config.udp_host}:{self.streaming_config.udp_port}",
         }
 
+    def _start_rtsp_server(self) -> Dict[str, Any]:
+        """Start RTSP server for RTSP streaming mode"""
+        import time
+
+        print("📡 Starting RTSP Server mode...")
+
+        # Create RTSP server if not exists
+        if not self.rtsp_server:
+            self.rtsp_server = RTSPServer(port=8554, mount_point="/fpv")
+
+        # Start server with video configuration
+        try:
+            self.rtsp_server.start(
+                device=self.video_config.device,
+                codec=self.video_config.codec,
+                width=self.video_config.width,
+                height=self.video_config.height,
+                framerate=self.video_config.framerate,
+                bitrate=self.video_config.h264_bitrate,
+                quality=self.video_config.quality,
+            )
+
+            self.is_streaming = True
+
+            # Set provider info for RTSP mode
+            encoder_name = self.rtsp_server._encoder_display_name or self.video_config.codec
+            self.current_encoder_provider = f"RTSP Server ({encoder_name})"
+            self.current_source_provider = f"{self.video_config.device}"
+
+            # Initialize stats for RTSP mode (keep at 0 - RTSP only streams when clients connect)
+            with self.stats_lock:
+                self.stats["start_time"] = time.time()
+                self.stats["frames_sent"] = 0
+                self.stats["bytes_sent"] = 0
+                self.stats["last_stats_time"] = None
+                self.stats["last_frames_count"] = 0
+                self.stats["last_bytes_count"] = 0
+                self.stats["current_fps"] = 0
+                self.stats["current_bitrate"] = 0
+
+            # Start RTSP client monitor - will activate stats when clients connect
+            self._start_rtsp_client_monitor()
+
+            # Get streaming IP
+            ip_address = self._get_streaming_ip()
+            rtsp_url = self.rtsp_server.get_url(ip_address)
+
+            print("✅ RTSP Server started successfully")
+            print(f"   📺 Connect with VLC: {rtsp_url}")
+
+            self._broadcast_status()
+
+            return {
+                "success": True,
+                "message": "RTSP Server started",
+                "codec": self.video_config.codec,
+                "resolution": f"{self.video_config.width}x{self.video_config.height}",
+                "url": rtsp_url,
+            }
+        except Exception as e:
+            print(f"❌ Failed to start RTSP Server: {e}")
+            return {"success": False, "message": f"Failed to start RTSP Server: {str(e)}"}
+
     def stop(self) -> Dict[str, Any]:
         """Stop video streaming"""
+        # Stop RTSP monitors if running
+        if hasattr(self, "_rtsp_monitor_running") and self._rtsp_monitor_running:
+            self._stop_rtsp_client_monitor()
+        if hasattr(self, "_rtsp_stats_running") and self._rtsp_stats_running:
+            self._stop_rtsp_stats_estimator()
+
+        # Check if RTSP server is running
+        if self.rtsp_server and self.rtsp_server.is_running():
+            print("🛑 Stopping RTSP Server...")
+            self.rtsp_server.stop()
+            self.rtsp_server = None
+            self.is_streaming = False
+            self._broadcast_status()
+            return {"success": True, "message": "RTSP Server stopped"}
+
         if not self.is_streaming and not self.pipeline:
             return {"success": False, "message": "Not streaming"}
 
@@ -685,6 +857,99 @@ class GStreamerService:
         self._broadcast_status()
 
         return {"success": True, "message": "Streaming stopped"}
+
+    def _start_rtsp_client_monitor(self):
+        """Start monitoring RTSP clients and manage stats estimation"""
+        import threading
+
+        self._rtsp_monitor_running = True
+
+        def monitor_clients():
+            """Monitor RTSP clients and start/stop stats estimator accordingly"""
+            import time
+
+            stats_active = False
+
+            while self._rtsp_monitor_running and self.is_streaming:
+                time.sleep(1.0)  # Check every second
+
+                if not self.is_streaming or not self.rtsp_server:
+                    break
+
+                # Get number of clients from RTSP server
+                rtsp_stats = self.rtsp_server.get_stats()
+                clients = rtsp_stats.get("clients_connected", 0)
+
+                # Start stats when first client connects
+                if clients > 0 and not stats_active:
+                    print("📊 First RTSP client connected, starting stats estimation")
+                    self._start_rtsp_stats_estimator()
+                    stats_active = True
+
+                # Stop stats when all clients disconnect
+                elif clients == 0 and stats_active:
+                    print("⏹️  All RTSP clients disconnected, stopping stats estimation")
+                    self._stop_rtsp_stats_estimator()
+                    stats_active = False
+                    # Reset stats to 0
+                    with self.stats_lock:
+                        self.stats["frames_sent"] = 0
+                        self.stats["bytes_sent"] = 0
+                        self.stats["current_fps"] = 0
+                        self.stats["current_bitrate"] = 0
+                        self.stats["last_stats_time"] = None
+
+        self._rtsp_monitor_thread = threading.Thread(target=monitor_clients, daemon=True)
+        self._rtsp_monitor_thread.start()
+
+    def _stop_rtsp_client_monitor(self):
+        """Stop the RTSP client monitor thread"""
+        if hasattr(self, "_rtsp_monitor_running"):
+            self._rtsp_monitor_running = False
+        if hasattr(self, "_rtsp_monitor_thread") and self._rtsp_monitor_thread:
+            self._rtsp_monitor_thread.join(timeout=2)
+
+    def _start_rtsp_stats_estimator(self):
+        """Start a background thread to estimate RTSP statistics"""
+        import threading
+
+        self._rtsp_stats_running = True
+
+        def estimate_stats():
+            """Estimate statistics based on configured framerate and bitrate"""
+            import time
+
+            # Initialize timing
+            with self.stats_lock:
+                self.stats["last_stats_time"] = time.time()
+
+            while self._rtsp_stats_running and self.is_streaming:
+                time.sleep(1.0)  # Update every second
+
+                if not self.is_streaming:
+                    break
+
+                with self.stats_lock:
+                    # Estimate frames: framerate per second
+                    self.stats["frames_sent"] += self.video_config.framerate
+
+                    # Estimate bytes: (bitrate in kbps * 1000 / 8) bytes per second
+                    bytes_per_second = (self.video_config.h264_bitrate * 1000) // 8
+                    self.stats["bytes_sent"] += bytes_per_second
+
+                    # Update rates
+                    now = time.time()
+                    self._update_rates_locked(now)
+
+        self._rtsp_stats_thread = threading.Thread(target=estimate_stats, daemon=True)
+        self._rtsp_stats_thread.start()
+
+    def _stop_rtsp_stats_estimator(self):
+        """Stop the RTSP statistics estimator thread"""
+        if hasattr(self, "_rtsp_stats_running"):
+            self._rtsp_stats_running = False
+        if hasattr(self, "_rtsp_stats_thread") and self._rtsp_stats_thread:
+            self._rtsp_stats_thread.join(timeout=2)
 
     def update_live_property(self, property_name: str, value) -> Dict[str, Any]:
         """Update a pipeline element property without restarting using provider info"""
@@ -797,9 +1062,17 @@ class GStreamerService:
                 "framerate": self.video_config.framerate,
                 "quality": self.video_config.quality,
                 "h264_bitrate": self.video_config.h264_bitrate,
+                "auto_start": self.streaming_config.auto_start,
+                # Streaming mode configuration
+                "mode": self.streaming_config.mode,
                 "udp_host": self.streaming_config.udp_host,
                 "udp_port": self.streaming_config.udp_port,
-                "auto_start": self.streaming_config.auto_start,
+                "multicast_group": self.streaming_config.multicast_group,
+                "multicast_port": self.streaming_config.multicast_port,
+                "multicast_ttl": self.streaming_config.multicast_ttl,
+                "rtsp_enabled": self.streaming_config.rtsp_enabled,
+                "rtsp_url": self.streaming_config.rtsp_url,
+                "rtsp_transport": self.streaming_config.rtsp_transport,
             },
             "stats": stats_formatted,
             "providers": {
@@ -808,6 +1081,19 @@ class GStreamerService:
             },
             "last_error": self.last_error,
             "pipeline_string": self.get_pipeline_string(),
+            "rtsp_server": {
+                "running": self.rtsp_server.is_running() if self.rtsp_server else False,
+                "url": (
+                    self.rtsp_server.get_url(self._get_streaming_ip())
+                    if self.rtsp_server and self.rtsp_server.is_running()
+                    else None
+                ),
+                "clients_connected": (
+                    self.rtsp_server.get_stats().get("clients_connected", 0)
+                    if self.rtsp_server and self.rtsp_server.is_running()
+                    else 0
+                ),
+            },
         }
 
     def _format_uptime(self, seconds: int) -> str:
@@ -831,15 +1117,17 @@ class GStreamerService:
         else:
             return "poor"
 
-    def get_cameras(self) -> list:
-        """Get available cameras"""
-        return get_available_cameras()
-
     def get_pipeline_string(self) -> str:
         """Get GStreamer pipeline string for Mission Planner using provider"""
         codec_id = self.video_config.codec.lower()
         port = self.streaming_config.udp_port
+        mode = self.streaming_config.mode
 
+        # If using RTSP Server, generate RTSP pipeline string
+        if mode == "rtsp":
+            return self._get_rtsp_pipeline_string()
+
+        # Default UDP/multicast mode
         try:
             # Import here to avoid circular dependency
             from app.providers.registry import get_provider_registry
@@ -855,6 +1143,142 @@ class GStreamerService:
 
         # Should never reach here if providers are properly configured
         return f"udpsrc port={port} ! fakesink"
+
+    def _get_rtsp_pipeline_string(self) -> str:
+        """
+        Generate RTSP pipeline string for RTSP server mode.
+        Optimized for low-latency FPV streaming.
+        """
+        # Get appropriate IP address
+        ip_address = self._get_streaming_ip()
+
+        # Get RTSP URL from config or build default
+        rtsp_url = self.streaming_config.rtsp_url
+        if not rtsp_url or rtsp_url in ["rtsp://localhost:8554/fpv", "rtsp://localhost:8554/fpv/"]:
+            # Replace localhost with actual IP
+            rtsp_url = f"rtsp://{ip_address}:8554/fpv"
+
+        # Remove trailing slash if present
+        if rtsp_url.endswith("/"):
+            rtsp_url = rtsp_url[:-1]
+
+        # Get codec info
+        codec_id = self.video_config.codec.lower()
+
+        # Get transport protocol (tcp or udp)
+        transport = self.streaming_config.rtsp_transport.lower() if self.streaming_config.rtsp_transport else "tcp"
+
+        # Build RTSP pipeline based on codec
+        if codec_id in ["h264", "h264_openh264", "h264_x264", "h264_omx", "h264_v4l2"]:
+            # H.264 RTSP pipeline - compatible with Mission Planner
+            # Note: Mission Planner requires explicit depay/parse/decode chain
+            return (
+                f"rtspsrc location={rtsp_url} "
+                f"latency=20 protocols={transport} ! "
+                f"rtph264depay ! "
+                f"h264parse ! "
+                f"avdec_h264 ! "
+                f"videoconvert ! "
+                f"video/x-raw,format=BGRx ! "
+                f"appsink name=outsink sync=false max-buffers=1 drop=true"
+            )
+        elif codec_id in ["h265", "h265_x265"]:
+            # H.265 RTSP pipeline
+            return (
+                f"rtspsrc location={rtsp_url} "
+                f"latency=20 protocols={transport} ! "
+                f"rtph265depay ! "
+                f"h265parse ! "
+                f"avdec_h265 ! "
+                f"videoconvert ! "
+                f"video/x-raw,format=BGRx ! "
+                f"appsink name=outsink sync=false max-buffers=1 drop=true"
+            )
+        else:  # MJPEG
+            # MJPEG RTSP pipeline - compatible with Mission Planner
+            return (
+                f"rtspsrc location={rtsp_url} "
+                f"latency=20 protocols={transport} ! "
+                f"rtpjpegdepay ! "
+                f"jpegdec ! "
+                f"videoconvert ! "
+                f"video/x-raw,format=BGRx ! "
+                f"appsink name=outsink sync=false max-buffers=1 drop=true"
+            )
+
+    def _get_streaming_ip(self) -> str:
+        """
+        Get the appropriate IP address for streaming.
+        Priority: VPN IP (Tailscale) > Local WiFi IP > Fallback
+        Uses caching to avoid excessive recalculation and logging.
+        """
+        import subprocess
+        import time
+
+        # Check cache first
+        current_time = time.time()
+        if self._cached_ip and (current_time - self._cached_ip_time) < self._cached_ip_ttl:
+            return self._cached_ip
+
+        old_ip = self._cached_ip
+        new_ip = None
+
+        try:
+            # Check for Tailscale VPN interface
+            result = subprocess.run(
+                ["ip", "-o", "-4", "addr", "show", "tailscale0"], capture_output=True, text=True, timeout=1
+            )
+            if result.returncode == 0 and result.stdout:
+                # Extract IP from: "5: tailscale0    inet 100.x.x.x/32 ..."
+                parts = result.stdout.split()
+                for i, part in enumerate(parts):
+                    if part == "inet" and i + 1 < len(parts):
+                        new_ip = parts[i + 1].split("/")[0]
+                        break
+        except Exception:
+            pass
+
+        if not new_ip:
+            try:
+                # Get local WiFi/Ethernet IP (exclude loopback and docker)
+                result = subprocess.run(["ip", "-o", "-4", "addr", "show"], capture_output=True, text=True, timeout=1)
+                if result.returncode == 0:
+                    for line in result.stdout.split("\n"):
+                        # Skip loopback, docker, and local interfaces
+                        if any(iface in line for iface in ["lo:", "docker", "veth"]):
+                            continue
+                        if "inet " in line:
+                            parts = line.split()
+                            for i, part in enumerate(parts):
+                                if part == "inet" and i + 1 < len(parts):
+                                    ip = parts[i + 1].split("/")[0]
+                                    # Skip 127.x.x.x and 172.17.x.x (docker)
+                                    if not ip.startswith("127.") and not ip.startswith("172.17."):
+                                        new_ip = ip
+                                        break
+                            if new_ip:
+                                break
+            except Exception:
+                pass
+
+        # Fallback to localhost if nothing found
+        if not new_ip:
+            new_ip = "localhost"
+
+        # Update cache
+        self._cached_ip = new_ip
+        self._cached_ip_time = current_time
+
+        # Only log if IP changed or first time
+        if old_ip != new_ip:
+            if "tailscale0" in str(new_ip) or new_ip.startswith("100."):
+                print(f"📡 Using VPN IP for streaming: {new_ip}")
+            elif new_ip == "localhost":
+                print("⚠️ Using fallback IP: localhost")
+            else:
+                print(f"📡 Using local IP for streaming: {new_ip}")
+
+        return new_ip
 
     def _broadcast_status(self):
         """Broadcast status via WebSocket"""

@@ -18,7 +18,7 @@ FPV Copilot Sky convierte un SBC Linux (Radxa Zero, Raspberry Pi, Orange Pi…) 
 | Función                   | Descripción                                                                              |
 | ------------------------- | ---------------------------------------------------------------------------------------- |
 | **📡 Telemetría MAVLink** | Conexión directa al FC, auto-detección de puertos, múltiples salidas UDP/TCP simultáneas |
-| **🎥 Video HD**           | Streaming RTP/UDP ultra-baja latencia, H.264 y MJPEG, cámaras USB y CSI                  |
+| **🎥 Video HD**           | Streaming UDP, Multicast y RTSP — H.264 y MJPEG, cámaras USB y CSI, ajustes en vivo      |
 | **📱 Modem 4G/LTE**       | Gestión completa de Huawei HiLink, bandas LTE, modo video optimizado, test de latencia   |
 | **🔐 VPN Tailscale**      | Acceso remoto en 1 clic, conexión mesh P2P cifrada desde cualquier lugar                 |
 | **🌐 Red inteligente**    | Priorización WiFi/4G automática, failover, métricas de ruta                              |
@@ -40,8 +40,8 @@ FPV Copilot Sky convierte un SBC Linux (Radxa Zero, Raspberry Pi, Orange Pi…) 
         │                      │  │                    │
     ┌───▼──────┐    ┌─────────▼──▼───────┐    ┌──────▼────┐
     │ FC       │    │   Video Stream    │    │  Modem    │
-    │ MAVLink  │    │   GStreamer UDP   │    │  4G/LTE   │
-    │ Telemetry│    │   H.264 / MJPEG   │    │  Huawei   │
+    │ MAVLink  │    │  GStreamer UDP / │    │  4G/LTE   │
+    │ Telemetry│    │  Multicast/RTSP │    │  Huawei   │
     └──────────┘    └─────────┬─────────┘    └──────┬────┘
                               │                      │
                               ▼                      ▼

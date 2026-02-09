@@ -1,0 +1,51 @@
+import { useTranslation } from 'react-i18next'
+
+const StreamControlCard = ({
+  streaming,
+  actionLoading,
+  applySettings,
+  applyConfigAndStart,
+  stopStream,
+  restartStream,
+}) => {
+  const { t } = useTranslation()
+
+  return (
+    <div className="card">
+      <h2>{t('views.video.streamControl')}</h2>
+      {!streaming ? (
+        <div className="button-group">
+          <button
+            className="btn btn-apply"
+            onClick={applySettings}
+            disabled={actionLoading !== null}
+          >
+            {actionLoading === 'apply' ? '⏳' : t('views.video.apply')}
+          </button>
+          <button
+            className="btn btn-start"
+            onClick={applyConfigAndStart}
+            disabled={actionLoading !== null}
+          >
+            {actionLoading === 'start' ? '⏳' : t('views.video.start')}
+          </button>
+        </div>
+      ) : (
+        <div className="button-group">
+          <button className="btn btn-stop" onClick={stopStream} disabled={actionLoading !== null}>
+            {actionLoading === 'stop' ? '⏳' : t('views.video.stop')}
+          </button>
+          <button
+            className="btn btn-restart"
+            onClick={restartStream}
+            disabled={actionLoading !== null}
+          >
+            {actionLoading === 'restart' ? '⏳' : t('views.video.restart')}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default StreamControlCard
