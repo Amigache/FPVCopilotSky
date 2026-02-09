@@ -1,9 +1,9 @@
 import './SystemView.css'
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useToast } from '../../contexts/ToastContext'
-import { useWebSocket } from '../../contexts/WebSocketContext'
-import api from '../../services/api'
+import { useToast } from '../../../contexts/ToastContext'
+import { useWebSocket } from '../../../contexts/WebSocketContext'
+import api from '../../../services/api'
 
 const SystemView = () => {
   const { t } = useTranslation()

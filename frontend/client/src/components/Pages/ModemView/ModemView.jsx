@@ -1,10 +1,11 @@
 import './ModemView.css'
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useToast } from '../../contexts/ToastContext'
-import { useModal } from '../../contexts/ModalContext'
-import { useWebSocket } from '../../contexts/WebSocketContext'
-import api from '../../services/api'
+import { useToast } from '../../../contexts/ToastContext'
+import { useModal } from '../../../contexts/ModalContext'
+import { useWebSocket } from '../../../contexts/WebSocketContext'
+import api from '../../../services/api'
+import { MODEM_API_TIMEOUTS, REBOOT_CONFIG } from './modemConstants'
 
 const ModemView = () => {
   const { t } = useTranslation()
@@ -29,7 +30,10 @@ const ModemView = () => {
   // Load modem status
   const loadStatus = useCallback(async () => {
     try {
-      const response = await api.get('/api/network/hilink/status/enhanced', 15000)
+      const response = await api.get(
+        '/api/network/modem/status/enhanced',
+        MODEM_API_TIMEOUTS.STATUS_ENHANCED
+      )
       if (response.ok) {
         const data = await response.json()
         setStatus(data)
@@ -46,7 +50,7 @@ const ModemView = () => {
   // Load band presets
   const loadBandPresets = useCallback(async () => {
     try {
-      const response = await api.get('/api/network/hilink/band/presets')
+      const response = await api.get('/api/network/modem/band/presets')
       if (response.ok) {
         const data = await response.json()
         setBandPresets(data)
@@ -60,7 +64,7 @@ const ModemView = () => {
   const handleTestLatency = async () => {
     setTestingLatency(true)
     try {
-      const response = await api.get('/api/network/hilink/latency')
+      const response = await api.get('/api/network/modem/latency')
       if (response.ok) {
         const data = await response.json()
         setLatency(data)
@@ -101,7 +105,11 @@ const ModemView = () => {
     setChangingBand(true)
     showToast(`⏳ ${t('modem.changingBand')}`, 'info')
     try {
-      const response = await api.post('/api/network/hilink/band', { preset }, 20000)
+      const response = await api.post(
+        '/api/network/modem/band',
+        { preset },
+        MODEM_API_TIMEOUTS.BAND_CHANGE
+      )
       if (response.ok) {
         const data = await response.json()
         showToast(`✅ ${t('modem.bandChanged', { name: data.preset_name })}`, 'success')
@@ -121,7 +129,11 @@ const ModemView = () => {
     setChangingMode(true)
     showToast(`⏳ ${t('modem.changingNetworkMode')}`, 'info')
     try {
-      const response = await api.post('/api/network/hilink/mode', { mode }, 20000)
+      const response = await api.post(
+        '/api/network/modem/mode',
+        { mode },
+        MODEM_API_TIMEOUTS.MODE_CHANGE
+      )
       if (response.ok) {
         showToast(`✅ ${t('modem.networkModeChanged')}`, 'success')
         await loadStatus()
@@ -142,10 +154,10 @@ const ModemView = () => {
     showToast(`⏳ ${actionMsg} modo video...`, 'info')
     try {
       const endpoint = status?.video_mode_active
-        ? '/api/network/hilink/video-mode/disable'
-        : '/api/network/hilink/video-mode/enable'
+        ? '/api/network/modem/video-mode/disable'
+        : '/api/network/modem/video-mode/enable'
 
-      const response = await api.post(endpoint, {}, 20000)
+      const response = await api.post(endpoint, {}, MODEM_API_TIMEOUTS.VIDEO_MODE_TOGGLE)
       if (response.ok) {
         const data = await response.json()
         showToast(`✅ ${data.message}`, 'success')
@@ -171,17 +183,20 @@ const ModemView = () => {
       onConfirm: async () => {
         try {
           setModemRebooting(true)
-          const response = await api.post('/api/network/hilink/reboot')
+          const response = await api.post('/api/network/modem/reboot')
           if (response.ok) {
             showToast(`⏳ ${t('network.modemRebooting')}`, 'info')
 
             // Poll for modem to come back online (check every 5s for up to 60s)
             let attempts = 0
-            const maxAttempts = 12
+            const maxAttempts = REBOOT_CONFIG.MAX_ATTEMPTS
             const checkModem = async () => {
               attempts++
               try {
-                const checkResponse = await api.get('/api/network/hilink/status', 5000)
+                const checkResponse = await api.get(
+                  '/api/network/modem/status',
+                  MODEM_API_TIMEOUTS.STATUS_CHECK
+                )
                 if (checkResponse.ok) {
                   const data = await checkResponse.json()
                   if (data.available) {
@@ -204,7 +219,7 @@ const ModemView = () => {
             }
 
             // Start checking after initial delay
-            setTimeout(checkModem, 10000)
+            setTimeout(checkModem, REBOOT_CONFIG.CHECK_INTERVAL)
           } else {
             setModemRebooting(false)
             const data = await response.json()

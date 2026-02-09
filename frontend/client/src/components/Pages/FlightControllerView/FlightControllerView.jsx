@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useWebSocket } from '../../contexts/WebSocketContext'
-import { useToast } from '../../contexts/ToastContext'
-import { useModal } from '../../contexts/ModalContext'
-import { API_SYSTEM, API_MAVLINK, fetchWithTimeout } from '../../services/api'
-import Toggle from '../Toggle/Toggle'
+import { useWebSocket } from '../../../contexts/WebSocketContext'
+import { useToast } from '../../../contexts/ToastContext'
+import { useModal } from '../../../contexts/ModalContext'
+import { API_SYSTEM, API_MAVLINK, fetchWithTimeout } from '../../../services/api'
+import Toggle from '../../Toggle/Toggle'
 import './FlightControllerView.css'
 
 // Base parameters (common to all vehicles)

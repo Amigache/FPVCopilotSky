@@ -1,15 +1,14 @@
 import './NetworkView.css'
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useToast } from '../../contexts/ToastContext'
-import { useModal } from '../../contexts/ModalContext'
-import { useWebSocket } from '../../contexts/WebSocketContext'
-import api from '../../services/api'
+import { useToast } from '../../../contexts/ToastContext'
+import { useWebSocket } from '../../../contexts/WebSocketContext'
+import api from '../../../services/api'
+import { API_TIMEOUTS, UI_DELAYS, getSignalBars } from './networkConstants'
 
 const NetworkView = () => {
   const { t } = useTranslation()
   const { showToast } = useToast()
-  const { showModal: _showModal } = useModal()
   const { messages } = useWebSocket()
 
   // State
@@ -20,6 +19,10 @@ const NetworkView = () => {
   const [wifiScanning, setWifiScanning] = useState(false)
   const [changingMode, setChangingMode] = useState(false)
 
+  // Flight Mode
+  const [flightMode, setFlightMode] = useState(null)
+  const [togglingFlightMode, setTogglingFlightMode] = useState(false)
+
   // WiFi Connect Modal
   const [connectModal, setConnectModal] = useState({ open: false, ssid: '', security: '' })
   const [wifiPassword, setWifiPassword] = useState('')
@@ -28,42 +31,41 @@ const NetworkView = () => {
   // Mode Change Confirmation Modal
   const [modeChangeModal, setModeChangeModal] = useState({ open: false, targetMode: '' })
 
-  // Load network status
-  const loadStatus = useCallback(async () => {
+  // Load unified dashboard data (combines network, modem, wifi, flight mode)
+  const loadDashboard = useCallback(async (forceRefresh = false) => {
     try {
-      const response = await api.get('/api/network/status')
+      const url = forceRefresh
+        ? '/api/network/dashboard?force_refresh=true'
+        : '/api/network/dashboard'
+
+      const response = await api.get(url, API_TIMEOUTS.DASHBOARD)
       if (response.ok) {
         const data = await response.json()
-        setStatus(data)
+
+        // Update all states from unified response
+        if (data.network) {
+          setStatus(data.network)
+        }
+        if (data.modem) {
+          setHilinkStatus(data.modem)
+        }
+        if (data.wifi_networks) {
+          setWifiNetworks(data.wifi_networks)
+        }
+        if (data.flight_mode) {
+          setFlightMode(data.flight_mode)
+        }
+
+        return data
       }
     } catch (error) {
-      console.error('Error loading network status:', error)
+      console.error('Error loading dashboard:', error)
+      // Set fallback states
+      setHilinkStatus({ available: false, connected: false })
     }
   }, [])
 
-  // Load HiLink modem status (with shorter timeout since modem should respond quickly)
-  const loadHilinkStatus = useCallback(async () => {
-    try {
-      const response = await api.get('/api/network/hilink/status', 10000) // 10s timeout
-      if (response.ok) {
-        const data = await response.json()
-        setHilinkStatus(data)
-      } else {
-        // Modem not responding - set as disconnected (no error log needed)
-        setHilinkStatus({ available: false, connected: false, error: 'No response from modem' })
-      }
-    } catch (error) {
-      // Timeout or network error - modem is likely disconnected
-      // This is expected when modem is not connected, no need to log
-      setHilinkStatus({
-        available: false,
-        connected: false,
-        error: error.message || 'Connection error',
-      })
-    }
-  }, [])
-
-  // Load WiFi networks
+  // Load WiFi networks independently (for refresh button)
   const loadWifiNetworks = useCallback(async () => {
     setWifiScanning(true)
     try {
@@ -78,39 +80,72 @@ const NetworkView = () => {
     setWifiScanning(false)
   }, [])
 
-  // Initial load - load essentials first, then lazy load heavy components
+  // Initial load - use unified dashboard endpoint
   useEffect(() => {
     const loadAll = async () => {
       setLoading(true)
-      // Load essential network status first
-      await loadStatus()
+      setWifiScanning(true)
+      await loadDashboard(true) // Force refresh on initial load
       setLoading(false)
+      // Keep wifiScanning=true briefly to show spinner while networks load
+      await new Promise((resolve) => setTimeout(resolve, UI_DELAYS.WIFI_SCAN_ANIMATION))
+      setWifiScanning(false)
     }
     loadAll()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Lazy load WiFi networks after initial load
-  useEffect(() => {
-    if (!loading) {
-      loadWifiNetworks()
-    }
-  }, [loading, loadWifiNetworks])
+  // Toggle Flight Mode
+  const handleToggleFlightMode = async () => {
+    const isActive = flightMode?.flight_mode_active
+    setTogglingFlightMode(true)
 
-  // Lazy load modem status after initial load
-  useEffect(() => {
-    if (!loading) {
-      loadHilinkStatus()
+    try {
+      const endpoint = isActive
+        ? '/api/network/flight-mode/disable'
+        : '/api/network/flight-mode/enable'
+
+      const response = await api.post(endpoint)
+      if (response.ok) {
+        const data = await response.json()
+        showToast(
+          data.message || (isActive ? 'Flight Mode desactivado' : 'Flight Mode activado'),
+          data.success ? 'success' : 'warning'
+        )
+        // Reload dashboard to get updated state
+        await loadDashboard(true)
+      } else {
+        const data = await response.json()
+        showToast(data.detail || 'Error al cambiar Flight Mode', 'error')
+      }
+    } catch (error) {
+      showToast(error.message || 'Error al cambiar Flight Mode', 'error')
     }
-  }, [loading, loadHilinkStatus])
+    setTogglingFlightMode(false)
+  }
 
   // Update from WebSocket - network status
   useEffect(() => {
     if (messages.network_status) {
+      const prevModemDetected = status?.modem?.detected || false
+      const newModemDetected = messages.network_status?.modem?.detected || false
+
       setStatus(messages.network_status)
       setLoading(false)
+
+      // If modem was just detected, refresh dashboard to get HiLink status
+      if (!prevModemDetected && newModemDetected) {
+        loadDashboard(true)
+      }
     }
-  }, [messages.network_status])
+  }, [messages.network_status, status?.modem?.detected, loadDashboard])
+
+  // Update from WebSocket - modem HiLink status
+  useEffect(() => {
+    if (messages.modem_status) {
+      setHilinkStatus(messages.modem_status)
+    }
+  }, [messages.modem_status])
 
   // Set priority mode
   const handleSetMode = async (mode) => {
@@ -128,7 +163,7 @@ const NetworkView = () => {
     try {
       const response = await api.post('/api/network/priority', { mode })
       if (response.ok) {
-        await loadStatus()
+        await loadDashboard(true) // Reload dashboard after mode change
         showToast(
           mode === 'wifi'
             ? t('network.wifiPrimarySet', 'WiFi set as primary')
@@ -168,7 +203,7 @@ const NetworkView = () => {
           'success'
         )
         setConnectModal({ open: false, ssid: '', security: '' })
-        await loadStatus()
+        await loadDashboard(true) // Reload dashboard after WiFi connect
         await loadWifiNetworks()
       } else {
         const data = await response.json()
@@ -186,7 +221,7 @@ const NetworkView = () => {
       const response = await api.post('/api/network/wifi/disconnect')
       if (response.ok) {
         showToast(t('network.wifiDisconnected', 'Disconnected from WiFi'), 'success')
-        await loadStatus()
+        await loadDashboard(true) // Reload dashboard after WiFi disconnect
         await loadWifiNetworks()
       }
     } catch (error) {
@@ -194,21 +229,8 @@ const NetworkView = () => {
     }
   }
 
-  // Get signal strength category
-  const _getSignalCategory = (signal) => {
-    if (signal >= 75) return 'excellent'
-    if (signal >= 50) return 'good'
-    if (signal >= 25) return 'fair'
-    return 'poor'
-  }
-
   // Get signal bars count
-  const getSignalBars = (signal) => {
-    if (signal >= 75) return 4
-    if (signal >= 50) return 3
-    if (signal >= 25) return 2
-    return 1
-  }
+  const getSignalBarsLocal = (signal) => getSignalBars(signal)
 
   if (loading) {
     return (
@@ -264,6 +286,18 @@ const NetworkView = () => {
             disabled={changingMode || currentMode === 'modem' || !modem.detected}
           >
             📶 4G
+          </button>
+          <button
+            className={`mode-btn flight-mode-btn ${flightMode?.flight_mode_active ? 'active' : ''}`}
+            onClick={handleToggleFlightMode}
+            disabled={togglingFlightMode || !modem.detected}
+            title={
+              flightMode?.flight_mode_active
+                ? 'Flight Mode: Optimizaciones activas'
+                : 'Activar Flight Mode (Optimización completa)'
+            }
+          >
+            {togglingFlightMode ? '⏳' : flightMode?.flight_mode_active ? '🚀✓' : '🚀'} Flight
           </button>
         </div>
       </div>
@@ -370,7 +404,7 @@ const NetworkView = () => {
                             <div
                               key={bar}
                               className={`signal-bar ${
-                                bar <= getSignalBars(network.signal) ? 'active' : ''
+                                bar <= getSignalBarsLocal(network.signal) ? 'active' : ''
                               }`}
                             />
                           ))}
@@ -400,16 +434,7 @@ const NetworkView = () => {
           {/* Modem Card - Enhanced with HiLink API */}
           <div className="card modem-card">
             <div className="card-header">
-              <h2>📶 MÓDEM 4G</h2>
-              {hilinkStatus?.available && (
-                <button
-                  className="btn-refresh"
-                  onClick={loadHilinkStatus}
-                  title={t('network.refresh', 'Refresh')}
-                >
-                  🔄
-                </button>
-              )}
+              <h2>📶 {t('network.modem4G', 'MÓDEM 4G')}</h2>
             </div>
             <div className="modem-status">
               {hilinkStatus?.available ? (
@@ -468,7 +493,9 @@ const NetworkView = () => {
                   <div className="modem-details">
                     <div className="modem-detail">
                       <span className="modem-label">IP</span>
-                      <span className="modem-value">{modem.ip_address || '-'}</span>
+                      <span className="modem-value">
+                        {hilinkStatus.network?.ip_address || modem.ip_address || '-'}
+                      </span>
                     </div>
                     <div className="modem-detail">
                       <span className="modem-label">IMEI</span>

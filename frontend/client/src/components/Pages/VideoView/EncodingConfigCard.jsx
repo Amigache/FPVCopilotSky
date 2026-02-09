@@ -15,7 +15,7 @@ const EncodingConfigCard = ({
     config.codec === 'h264' || config.codec === 'h264_openh264' || config.codec === 'h264_hardware'
 
   return (
-    <div className="card">
+    <div className="card" data-testid="encoding-card">
       <h2>{t('views.video.encodingConfiguration')}</h2>
 
       {/* Codec selector */}

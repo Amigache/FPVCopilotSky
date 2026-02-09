@@ -15,6 +15,16 @@ from datetime import datetime
 import logging
 
 from ...base import ModemProvider, ModemStatus, ModemInfo, NetworkInfo
+from .constants import (
+    HILINK_MODEM_URL,
+    HILINK_CONNECTION_TIMEOUT,
+    HILINK_WRITE_TIMEOUT,
+    LATENCY_TEST_HOST,
+    LATENCY_TEST_COUNT,
+    NETWORK_MODE_NAMES,
+    CONNECTION_STATUS_CODES,
+    RAT_TYPE_NAMES,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -194,12 +204,6 @@ class FlightSessionStats:
 class HuaweiE3372hProvider(ModemProvider):
     """Huawei E3372h-153 HiLink modem provider"""
 
-    MODEM_URL = "http://192.168.8.1/"
-    CONNECTION_TIMEOUT = 5
-    WRITE_TIMEOUT = 15
-    LATENCY_TEST_HOST = "8.8.8.8"
-    LATENCY_TEST_COUNT = 3
-
     def __init__(self):
         super().__init__()
         self.name = "huawei_e3372h"
@@ -229,7 +233,7 @@ class HuaweiE3372hProvider(ModemProvider):
             return False
 
         try:
-            conn = Connection(self.MODEM_URL, timeout=self.CONNECTION_TIMEOUT)
+            conn = Connection(HILINK_MODEM_URL, timeout=HILINK_CONNECTION_TIMEOUT)
             client = Client(conn)
             info = client.device.information()
             conn.close()
@@ -367,7 +371,7 @@ class HuaweiE3372hProvider(ModemProvider):
                 # Clear any previous error before retrying
                 self._last_error = None
                 # Use very short timeout (500ms) to fail fast if modem not available
-                self._connection = Connection(self.MODEM_URL, timeout=0.5)
+                self._connection = Connection(HILINK_MODEM_URL, timeout=0.5)
                 self._client = Client(self._connection)
             return True
         except Exception as e:
@@ -390,11 +394,11 @@ class HuaweiE3372hProvider(ModemProvider):
         """Get a session with valid token for API calls"""
         try:
             session = requests.Session()
-            session.get(self.MODEM_URL, timeout=self.CONNECTION_TIMEOUT)
+            session.get(HILINK_MODEM_URL, timeout=HILINK_CONNECTION_TIMEOUT)
 
             r = session.get(
-                f"{self.MODEM_URL}api/webserver/SesTokInfo",
-                timeout=self.CONNECTION_TIMEOUT,
+                f"{HILINK_MODEM_URL}api/webserver/SesTokInfo",
+                timeout=HILINK_CONNECTION_TIMEOUT,
             )
             root = ET.fromstring(r.text)
             sesinfo = root.find("SesInfo").text
@@ -409,7 +413,7 @@ class HuaweiE3372hProvider(ModemProvider):
     def _direct_api_post(self, endpoint: str, xml_data: str, timeout: int = None) -> Tuple[bool, str]:
         """Make a direct POST request to the modem API"""
         if timeout is None:
-            timeout = self.WRITE_TIMEOUT
+            timeout = HILINK_WRITE_TIMEOUT
 
         try:
             session, token = self._get_session_token()
@@ -422,7 +426,7 @@ class HuaweiE3372hProvider(ModemProvider):
             }
 
             r = session.post(
-                f"{self.MODEM_URL}{endpoint}",
+                f"{HILINK_MODEM_URL}{endpoint}",
                 data=xml_data,
                 headers=headers,
                 timeout=timeout,
@@ -638,12 +642,7 @@ class HuaweiE3372hProvider(ModemProvider):
             signal = self._get_signal_info_sync()
             current_band = signal.get("band", "") if signal else ""
 
-            mode_names = {
-                "00": "Auto",
-                "01": "2G Only",
-                "02": "3G Only",
-                "03": "4G Only",
-            }
+            mode_names = NETWORK_MODE_NAMES
 
             return {
                 "lte_band_hex": lte_band_hex,
@@ -668,12 +667,7 @@ class HuaweiE3372hProvider(ModemProvider):
             net_mode = self._client.net.net_mode()
             network_mode = net_mode.get("NetworkMode", "00")
 
-            mode_names = {
-                "00": "Auto (4G/3G/2G)",
-                "01": "2G Only",
-                "02": "3G Only",
-                "03": "4G Only",
-            }
+            mode_names = NETWORK_MODE_NAMES
 
             return {
                 "network_mode": network_mode,
@@ -977,8 +971,8 @@ class HuaweiE3372hProvider(ModemProvider):
         Measure network latency using ping through the modem interface.
         Returns avg, min, max, jitter in milliseconds.
         """
-        target = host or self.LATENCY_TEST_HOST
-        ping_count = count or self.LATENCY_TEST_COUNT
+        target = host or LATENCY_TEST_HOST
+        ping_count = count or LATENCY_TEST_COUNT
 
         try:
             # Find modem interface (192.168.8.x route)
@@ -1386,17 +1380,12 @@ class HuaweiE3372hProvider(ModemProvider):
                 operator_name = plmn.get("FullName", "") or plmn.get("ShortName", "")
                 operator_code = plmn.get("Numeric", "")
                 rat_code = plmn.get("Rat", "")
-                rat_types = {"0": "GSM", "2": "WCDMA", "7": "LTE", "12": "5G NR"}
+                rat_types = RAT_TYPE_NAMES
                 rat = rat_types.get(str(rat_code), "")
             except Exception:
                 operator_name = status.get("FullName", "")
 
-            conn_status_map = {
-                "900": "Connecting",
-                "901": "Connected",
-                "902": "Disconnected",
-                "903": "Disconnecting",
-            }
+            conn_status_map = CONNECTION_STATUS_CODES
             conn_code = status.get("ConnectionStatus", "")
             connection_status = conn_status_map.get(str(conn_code), conn_code)
 

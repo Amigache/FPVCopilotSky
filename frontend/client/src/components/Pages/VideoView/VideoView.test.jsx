@@ -31,10 +31,10 @@ const { mockMessages, mockApi } = vi.hoisted(() => {
 })
 
 // ---------- Mock contexts ----------
-vi.mock('../../contexts/WebSocketContext', () => ({
+vi.mock('../../../contexts/WebSocketContext', () => ({
   useWebSocket: () => ({ messages: mockMessages }),
 }))
-vi.mock('../../contexts/ToastContext', () => ({
+vi.mock('../../../contexts/ToastContext', () => ({
   useToast: () => ({ showToast: vi.fn() }),
 }))
 vi.mock('react-i18next', () => ({
@@ -44,7 +44,7 @@ vi.mock('react-i18next', () => ({
 }))
 
 // ---------- Mock api service ----------
-vi.mock('../../services/api', () => ({ default: mockApi }))
+vi.mock('../../../services/api', () => ({ default: mockApi }))
 
 // ---------- Stub sub-components (tested individually) ----------
 vi.mock('./video/StatusBanner', () => ({ default: () => <div data-testid="status-banner" /> }))
@@ -134,7 +134,15 @@ describe('VideoView Component', () => {
         available: true,
         streaming: true,
         enabled: true,
-        config: {},
+        config: {
+          codec: 'h264',
+          width: 1920,
+          height: 1080,
+          framerate: 30,
+          mode: 'udp',
+          udp_host: '192.168.1.100',
+          udp_port: 5600,
+        },
         stats: { uptime: 10 },
         last_error: null,
         pipeline_string: 'fakepipeline',

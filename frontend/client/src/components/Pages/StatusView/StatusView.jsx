@@ -1,12 +1,12 @@
 import './StatusView.css'
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useToast } from '../../contexts/ToastContext'
-import { useModal } from '../../contexts/ModalContext'
-import { useWebSocket } from '../../contexts/WebSocketContext'
-import LogsModal from '../LogsModal/LogsModal'
-import api from '../../services/api'
-import Toggle from '../Toggle/Toggle'
+import { useToast } from '../../../contexts/ToastContext'
+import { useModal } from '../../../contexts/ModalContext'
+import { useWebSocket } from '../../../contexts/WebSocketContext'
+import LogsModal from '../../LogsModal/LogsModal'
+import api from '../../../services/api'
+import Toggle from '../../Toggle/Toggle'
 
 const StatusView = () => {
   const { t } = useTranslation()
@@ -161,7 +161,7 @@ const StatusView = () => {
   // Flight session handlers
   const loadFlightSession = async () => {
     try {
-      const response = await api.get('/api/network/hilink/flight-session')
+      const response = await api.get('/api/network/modem/flight-session')
       if (response.ok) {
         const data = await response.json()
         setFlightSession(data)
@@ -218,7 +218,7 @@ const StatusView = () => {
 
   const handleStartFlightSession = async () => {
     try {
-      const response = await api.post('/api/network/hilink/flight-session/start')
+      const response = await api.post('/api/network/modem/flight-session/start')
       if (response.ok) {
         showToast(t('status.flightSession.started', 'Flight session started'), 'success')
         await loadFlightSession()
@@ -226,7 +226,7 @@ const StatusView = () => {
         // Sample every 5 seconds
         const interval = setInterval(async () => {
           try {
-            const sampleResponse = await api.post('/api/network/hilink/flight-session/sample')
+            const sampleResponse = await api.post('/api/network/modem/flight-session/sample')
             if (sampleResponse.ok) {
               await loadFlightSession()
             }
@@ -251,7 +251,7 @@ const StatusView = () => {
       }
 
       try {
-        const response = await api.post('/api/network/hilink/flight-session/stop')
+        const response = await api.post('/api/network/modem/flight-session/stop')
         if (response.ok) {
           const data = await response.json()
           showToast(t('status.flightSession.stopped', 'Flight session stopped'), 'success')

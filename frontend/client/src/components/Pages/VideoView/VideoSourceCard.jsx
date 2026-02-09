@@ -14,7 +14,7 @@ const VideoSourceCard = ({
   const { t } = useTranslation()
 
   return (
-    <div className="card">
+    <div className="card" data-testid="video-source-card">
       <h2>{t('views.video.videoSourceSelection')}</h2>
 
       <div className={`form-group ${streaming ? 'field-disabled' : ''}`}>

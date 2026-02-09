@@ -292,6 +292,7 @@
     "routes": "Default Routes",
     "wifiNetworks": "WiFi Networks",
     "modem": "4G USB Modem",
+    "modem4G": "4G MODEM",
     "interface": "Interface",
     "gateway": "Gateway",
     "metric": "Metric",

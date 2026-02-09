@@ -1,11 +1,11 @@
 import './TelemetryView.css'
 import { useTranslation } from 'react-i18next'
 import { useState, useEffect, useCallback } from 'react'
-import { useToast } from '../../contexts/ToastContext'
-import { useModal } from '../../contexts/ModalContext'
-import { useWebSocket } from '../../contexts/WebSocketContext'
-import { API_MAVLINK_ROUTER, fetchWithTimeout } from '../../services/api'
-import { PeerSelector } from '../PeerSelector/PeerSelector'
+import { useToast } from '../../../contexts/ToastContext'
+import { useModal } from '../../../contexts/ModalContext'
+import { useWebSocket } from '../../../contexts/WebSocketContext'
+import { API_MAVLINK_ROUTER, fetchWithTimeout } from '../../../services/api'
+import { PeerSelector } from '../../PeerSelector/PeerSelector'
 
 const TelemetryView = () => {
   const { t } = useTranslation()
