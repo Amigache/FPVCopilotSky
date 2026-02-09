@@ -36,7 +36,7 @@ jobs:
       - name: Install linting dependencies
         run: |
           pip install flake8 black mypy
-          pip install -r requirements.txt
+          grep -v "PyGObject" requirements.txt | pip install -r /dev/stdin
 
       - name: Lint with flake8
         run: |
@@ -101,7 +101,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install pytest pytest-asyncio pytest-cov pytest-mock
-          pip install -r requirements.txt
+          grep -v "PyGObject" requirements.txt | pip install -r /dev/stdin
 
       - name: Run unit tests
         env:
