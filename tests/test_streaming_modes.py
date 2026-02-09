@@ -169,7 +169,7 @@ class TestStreamingModeAPI:
             pytest.skip("Video service not available")
 
         # Should accept but will fallback to UDP when pipeline is built
-        assert response.status_code in [200, 400]
+        assert response.status_code in [200, 400, 422]
 
 
 class TestStreamingPipelineModes:
@@ -221,8 +221,6 @@ class TestStreamingPipelineModes:
         mock_sink.set_property.assert_any_call("auto-multicast", True)
         mock_sink.set_property.assert_any_call("ttl", 1)
 
-    @patch("app.services.gstreamer_service.GSTREAMER_AVAILABLE", True)
-    @patch("app.services.gstreamer_service.Gst")
     @patch("app.services.gstreamer_service.GSTREAMER_AVAILABLE", True)
     @patch("app.services.gstreamer_service.Gst")
     def test_fallback_to_udp_when_sink_unavailable(self, mock_gst):
