@@ -18,7 +18,7 @@ export const DEFAULT_PRESETS = {
     port: 14550,
   },
   missionplanner: {
-    type: OUTPUT_TYPES.TCP_SERVER,
+    type: OUTPUT_TYPES.TCP_CLIENT,
     host: '127.0.0.1',
     port: 5760,
   },

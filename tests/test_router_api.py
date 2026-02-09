@@ -2,11 +2,18 @@ import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import Mock, patch, MagicMock
 import json
+import sys
+import os
 from pydantic import ValidationError
 
-# Assuming your app structure - adjust imports as needed
-from app.main import app
-from app.api.routes.router import AddOutputRequest, UpdateOutputRequest, set_router_service
+# Ensure app/ is in sys.path (same as main.py does)
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app"))
+
+from app.main import app  # noqa: E402
+from app.api.routes.router import (  # noqa: E402
+    AddOutputRequest,
+    UpdateOutputRequest,
+)
 
 
 @pytest.fixture
@@ -16,16 +23,18 @@ def mock_router_service():
     # Set default return values for common methods
     mock_service.get_status.return_value = {"outputs": []}
     mock_service.outputs = {}
-    set_router_service(mock_service)
     yield mock_service
-    # Cleanup: reset service after test
-    set_router_service(None)
 
 
 @pytest.fixture
 def client(mock_router_service):
-    """Create test client with mocked router service"""
-    return TestClient(app)
+    """Create test client with mocked router service.
+
+    main.py imports router via 'api.routes.router' (relative path),
+    so we must patch that module path, not 'app.api.routes.router'.
+    """
+    with patch("api.routes.router._router_service", mock_router_service):
+        yield TestClient(app)
 
 
 class TestMAVLinkRouterModels:

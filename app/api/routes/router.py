@@ -142,6 +142,7 @@ async def list_outputs(request: Request) -> JSONResponse:
     try:
         lang = get_language_from_request(request)
 
+        print(f"DEBUG: list_outputs called, _router_service = {_router_service}")
         if not _router_service:
             logger.error("Router service not initialized")
             return JSONResponse(
