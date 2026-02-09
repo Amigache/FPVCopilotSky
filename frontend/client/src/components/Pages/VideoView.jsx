@@ -153,6 +153,7 @@ const VideoView = () => {
       if (networkIp) {
         const isDefaultUrl = config.rtsp_url === VIDEO_DEFAULTS.RTSP_URL || !config.rtsp_url
         if (isDefaultUrl && networkIp.rtsp_url) {
+          // eslint-disable-next-line react-hooks/set-state-in-effect
           updateConfig((prev) => ({ ...prev, rtsp_url: networkIp.rtsp_url }))
         }
       }

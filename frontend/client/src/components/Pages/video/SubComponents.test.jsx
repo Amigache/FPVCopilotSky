@@ -207,7 +207,7 @@ describe('EncodingConfigCard', () => {
   })
 
   it('shows GOP select only for h264_openh264', () => {
-    const { container } = render(
+    render(
       <EncodingConfigCard {...baseProps} config={{ ...baseProps.config, codec: 'h264_openh264' }} />
     )
     // GOP select should be present (keyframe interval label)
