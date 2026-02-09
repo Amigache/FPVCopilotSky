@@ -3,6 +3,8 @@ VPN API Routes
 Endpoints for managing VPN connections
 """
 
+import asyncio
+
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
@@ -229,9 +231,6 @@ async def get_vpn_preferences():
     """
     try:
         prefs = _get_preferences_service()
-        # Run synchronous code in thread pool to avoid blocking
-        import asyncio
-
         loop = asyncio.get_event_loop()
         config = await loop.run_in_executor(None, prefs.get_vpn_config)
         return {"success": True, "preferences": config}
@@ -254,9 +253,6 @@ async def save_vpn_preferences(preferences: VPNPreferencesModel, request: Reques
         lang = get_language_from_request(request)
         prefs = _get_preferences_service()
         config = preferences.model_dump()
-
-        # Run synchronous code in thread pool to avoid blocking
-        import asyncio
 
         loop = asyncio.get_event_loop()
 
@@ -287,23 +283,4 @@ async def save_vpn_preferences(preferences: VPNPreferencesModel, request: Reques
         import traceback
 
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/available-providers")
-async def get_available_providers():
-    """
-    Get list of available VPN providers from the provider registry
-
-    This endpoint uses the new modular provider registry system.
-    Returns all registered VPN providers with their installation status.
-
-    Returns:
-        List of VPN providers with their names, display names, installation status, and class
-    """
-    try:
-        registry = get_provider_registry()
-        providers = registry.get_available_vpn_providers()
-        return {"success": True, "providers": providers, "count": len(providers)}
-    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
