@@ -18,6 +18,7 @@ i18n
     load: 'languageOnly', // Importante: ignora el código de región (es-ES -> es)
     debug: false, // Silenciar mensajes de debug/warning
     saveMissing: false, // No mostrar mensajes sobre claves faltantes
+    showSupportNotice: false, // Ocultar banner de locize.com
     interpolation: {
       escapeValue: false,
     },

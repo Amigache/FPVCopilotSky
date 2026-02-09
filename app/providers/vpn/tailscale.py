@@ -113,7 +113,7 @@ class TailscaleProvider(VPNProvider):
                     "ip_address": ip_address,
                     "hostname": hostname,
                     "interface": self._get_interface(),
-                    "peers": len(peers),
+                    "peers_count": len(peers),
                     "online_peers": online_peers,
                     "backend_state": backend_state,
                 }
@@ -130,36 +130,18 @@ class TailscaleProvider(VPNProvider):
 
                 return response
 
-            except json.JSONDecodeError:
-                # Fallback to text parsing
-                return self._parse_text_status()
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse Tailscale status JSON: {e}")
+                return {
+                    "success": False,
+                    "installed": True,
+                    "connected": False,
+                    "authenticated": False,
+                    "error": "Failed to parse Tailscale status",
+                }
 
         except Exception as e:
             logger.error(f"Error getting Tailscale status: {e}")
-            return {"success": False, "installed": True, "error": str(e)}
-
-    def _parse_text_status(self) -> Dict:
-        """Fallback text parsing for older Tailscale versions"""
-        try:
-            result = subprocess.run(["tailscale", "status"], capture_output=True, text=True, timeout=5)
-
-            connected = len(result.stdout.strip()) > 0 and "Logged out" not in result.stdout
-
-            # Get IP
-            ip_result = subprocess.run(["tailscale", "ip", "-4"], capture_output=True, text=True, timeout=2)
-            ip_address = ip_result.stdout.strip() if ip_result.returncode == 0 else None
-
-            return {
-                "success": True,
-                "installed": True,
-                "connected": connected,
-                "authenticated": connected,
-                "ip_address": ip_address,
-                "interface": self._get_interface(),
-                "status_output": result.stdout if connected else None,
-            }
-        except Exception as e:
-            logger.error(f"Error in text status parsing: {e}")
             return {"success": False, "installed": True, "error": str(e)}
 
     def _get_interface(self) -> Optional[str]:
