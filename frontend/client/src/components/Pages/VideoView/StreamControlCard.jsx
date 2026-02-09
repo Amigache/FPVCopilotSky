@@ -11,7 +11,7 @@ const StreamControlCard = ({
   const { t } = useTranslation()
 
   return (
-    <div className="card">
+    <div className="card" data-testid="stream-control">
       <h2>{t('views.video.streamControl')}</h2>
       {!streaming ? (
         <div className="button-group">

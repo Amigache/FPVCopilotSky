@@ -4,7 +4,10 @@ const StatusBanner = ({ status, config }) => {
   const { t } = useTranslation()
 
   return (
-    <div className={`status-banner ${status.streaming ? 'streaming' : 'stopped'}`}>
+    <div
+      className={`status-banner ${status.streaming ? 'streaming' : 'stopped'}`}
+      data-testid="status-banner"
+    >
       <div className="status-indicator">
         <span className={`status-dot ${status.streaming ? 'live' : ''}`}></span>
         <span className="status-text">

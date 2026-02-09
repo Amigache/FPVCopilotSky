@@ -15,7 +15,7 @@ const NetworkSettingsCard = ({ config, streaming, updateConfig }) => {
     config.mode === 'rtsp' && config.rtsp_url && !config.rtsp_url.startsWith('rtsp://')
 
   return (
-    <div className={`card ${streaming ? 'card-disabled' : ''}`}>
+    <div className={`card ${streaming ? 'card-disabled' : ''}`} data-testid="network-card">
       <h2>{t('views.video.networkUdpRtp')}</h2>
 
       {/* Streaming Mode Selector */}

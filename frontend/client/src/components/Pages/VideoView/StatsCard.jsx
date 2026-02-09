@@ -5,7 +5,7 @@ const StatsCard = ({ status }) => {
   const { stats, config } = status
 
   return (
-    <div className="card stats-card">
+    <div className="card stats-card" data-testid="stats-card">
       <h2>{t('views.video.statistics')}</h2>
 
       {/* Health Indicator */}

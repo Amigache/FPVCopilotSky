@@ -52,7 +52,14 @@ class LatencyMonitor:
     - Real-time statistics
     """
 
-    def __init__(self, targets: List[str] = None, interval: float = 2.0, history_size: int = 30, timeout: float = 2.0):
+    def __init__(
+        self,
+        targets: List[str] = None,
+        interval: float = 2.0,
+        history_size: int = 30,
+        timeout: float = 2.0,
+        test_mode: bool = False,
+    ):
         """
         Initialize latency monitor.
 
@@ -61,11 +68,13 @@ class LatencyMonitor:
             interval: Seconds between ping tests
             history_size: Number of historical samples to keep
             timeout: Ping timeout in seconds
+            test_mode: If True, use fake ping results for testing
         """
         self.targets = targets or ["8.8.8.8", "1.1.1.1", "9.9.9.9"]
         self.interval = interval
         self.history_size = history_size
         self.timeout = timeout
+        self.test_mode = test_mode
 
         # Historical data: {target: deque([LatencyResult, ...])}
         self.history: Dict[str, deque] = {target: deque(maxlen=history_size) for target in self.targets}
@@ -142,6 +151,18 @@ class LatencyMonitor:
         Returns:
             LatencyResult with measurement
         """
+        # In test mode, return fake results immediately
+        if self.test_mode:
+            import random
+
+            return LatencyResult(
+                target=target,
+                latency_ms=random.uniform(5.0, 25.0),  # Fake latency 5-25ms
+                timestamp=time.time(),
+                success=True,
+                interface=interface,
+            )
+
         cmd = ["ping", "-c", "1", "-W", str(int(self.timeout))]
 
         # Bind to specific interface if provided
