@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { I18nextProvider } from 'react-i18next'
-import OutputItem from '../OutputItem'
+import OutputItem from './OutputItem'
 import i18n from '../../../../i18n/i18n'
 
 // Mock contexts

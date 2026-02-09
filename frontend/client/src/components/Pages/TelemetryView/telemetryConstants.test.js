@@ -5,7 +5,7 @@ import {
   VALIDATION,
   API_ENDPOINTS,
   WEBSOCKET_EVENTS,
-} from '../telemetryConstants'
+} from './telemetryConstants'
 
 describe('TelemetryConstants', () => {
   describe('OUTPUT_TYPES', () => {

@@ -8,8 +8,6 @@ from pydantic import ValidationError
 from app.main import app
 from app.api.routes.router import AddOutputRequest, UpdateOutputRequest, set_router_service
 
-client = TestClient(app)
-
 
 @pytest.fixture
 def mock_router_service():
@@ -22,6 +20,12 @@ def mock_router_service():
     yield mock_service
     # Cleanup: reset service after test
     set_router_service(None)
+
+
+@pytest.fixture
+def client(mock_router_service):
+    """Create test client with mocked router service"""
+    return TestClient(app)
 
 
 class TestMAVLinkRouterModels:
@@ -73,7 +77,7 @@ class TestMAVLinkRouterModels:
 class TestMAVLinkRouterAPI:
     """Test MAVLink Router API endpoints"""
 
-    def test_get_outputs_success(self, mock_router_service):
+    def test_get_outputs_success(self, client, mock_router_service):
         """Test GET /api/mavlink-router/outputs success"""
         # Mock service response
         mock_router_service.get_status.return_value = {
@@ -90,7 +94,7 @@ class TestMAVLinkRouterAPI:
         assert data[0]["type"] == "udp"
         assert data[0]["port"] == 14550
 
-    def test_get_outputs_service_error(self, mock_router_service):
+    def test_get_outputs_service_error(self, client, mock_router_service):
         """Test GET /api/mavlink-router/outputs service error"""
         mock_router_service.get_status.side_effect = Exception("Service error")
 
@@ -101,7 +105,7 @@ class TestMAVLinkRouterAPI:
         assert "error" in data
         assert "Failed to get outputs" in data["error"]
 
-    def test_create_output_success(self, mock_router_service):
+    def test_create_output_success(self, client, mock_router_service):
         """Test POST /api/mavlink-router/outputs success"""
         # Mock get_status for conflict check (returns empty outputs)
         mock_router_service.get_status.return_value = {"outputs": []}
@@ -116,7 +120,7 @@ class TestMAVLinkRouterAPI:
         data = response.json()
         assert data["success"] is True
 
-    def test_create_output_validation_error(self, mock_router_service):
+    def test_create_output_validation_error(self, client, mock_router_service):
         """Test POST /api/mavlink-router/outputs validation error"""
         # Invalid data - port out of range
         payload = {"type": "udp", "host": "127.0.0.1", "port": 100}  # Too low
@@ -127,12 +131,10 @@ class TestMAVLinkRouterAPI:
         data = response.json()
         assert "detail" in data
 
-    def test_create_output_port_conflict(self, mock_router_service):
+    def test_create_output_port_conflict(self, client, mock_router_service):
         """Test POST /api/mavlink-router/outputs port conflict"""
         # Mock get_status to return existing output with same host:port
-        mock_router_service.get_status.return_value = {
-            "outputs": [{"host": "127.0.0.1", "port": 14550, "type": "udp"}]
-        }
+        mock_router_service.get_status.return_value = {"outputs": [{"host": "127.0.0.1", "port": 14550, "type": "udp"}]}
 
         payload = {"type": "udp", "host": "127.0.0.1", "port": 14550}
 
@@ -143,7 +145,7 @@ class TestMAVLinkRouterAPI:
         assert "error" in data
         assert "already in use" in data["error"]
 
-    def test_delete_output_success(self, mock_router_service):
+    def test_delete_output_success(self, client, mock_router_service):
         """Test DELETE /api/mavlink-router/outputs/{output_id} success"""
         # Mock outputs to contain the test output
         mock_router_service.outputs = {"test-id": Mock()}
@@ -156,7 +158,7 @@ class TestMAVLinkRouterAPI:
         data = response.json()
         assert data["success"] is True
 
-    def test_delete_output_not_found(self, mock_router_service):
+    def test_delete_output_not_found(self, client, mock_router_service):
         """Test DELETE /api/mavlink-router/outputs/{output_id} not found"""
         # Mock outputs as empty dict (output doesn't exist)
         mock_router_service.outputs = {}
@@ -167,7 +169,7 @@ class TestMAVLinkRouterAPI:
         data = response.json()
         assert "error" in data
 
-    def test_restart_output_success(self, mock_router_service):
+    def test_restart_output_success(self, client, mock_router_service):
         """Test POST /api/mavlink-router/outputs/{output_id}/restart success"""
         # Mock outputs to contain the test output
         mock_router_service.outputs = {"test-id": Mock()}
@@ -180,7 +182,7 @@ class TestMAVLinkRouterAPI:
         data = response.json()
         assert data["success"] is True
 
-    def test_get_presets_success(self):
+    def test_get_presets_success(self, client):
         """Test GET /api/mavlink-router/presets success (no mocking needed - returns static data)"""
         response = client.get("/api/mavlink-router/presets")
 
@@ -191,7 +193,7 @@ class TestMAVLinkRouterAPI:
         assert "qgc" in data["presets"]
         assert "missionplanner" in data["presets"]
 
-    def test_restart_router_success(self, mock_router_service):
+    def test_restart_router_success(self, client, mock_router_service):
         """Test POST /api/mavlink-router/restart success"""
         # Mock restart to return success
         mock_router_service.restart.return_value = (True, "Router restarted successfully")
@@ -206,13 +208,20 @@ class TestMAVLinkRouterAPI:
 class TestMAVLinkRouterIntegration:
     """Integration tests for MAVLink Router functionality"""
 
-    def test_full_output_lifecycle(self, mock_router_service):
+    def test_full_output_lifecycle(self, client, mock_router_service):
         """Test complete output lifecycle: create, get, restart, delete"""
 
         # Mock get_status for conflict check and get operations
         mock_router_service.get_status.return_value = {
             "outputs": [
-                {"id": "test-lifecycle", "type": "udp", "host": "127.0.0.1", "port": 14550, "running": True, "clients": 0}
+                {
+                    "id": "test-lifecycle",
+                    "type": "udp",
+                    "host": "127.0.0.1",
+                    "port": 14550,
+                    "running": True,
+                    "clients": 0,
+                }
             ]
         }
 
