@@ -61,7 +61,8 @@ const TelemetryView = () => {
   useEffect(() => {
     fetchOutputs()
     loadPresets()
-  }, [fetchOutputs, loadPresets])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Listen for WebSocket updates (debounced to prevent conflicts)
   useEffect(() => {

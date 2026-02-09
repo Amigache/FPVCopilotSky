@@ -2,7 +2,7 @@ import { memo, useState, useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useToast } from '../../../contexts/ToastContext'
 import { PeerSelector } from '../../PeerSelector/PeerSelector'
-import { fetchWithTimeout, API_MAVLINK_ROUTER } from '../../../services/api'
+import { fetchWithTimeout } from '../../../services/api'
 import {
   OUTPUT_TYPES,
   DEFAULT_PRESETS,

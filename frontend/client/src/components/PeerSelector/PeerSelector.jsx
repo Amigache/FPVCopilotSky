@@ -12,7 +12,6 @@ export const PeerSelector = ({
   placeholder = 'IP or hostname',
   disabled = false,
   label = null,
-  className = '',
   hasError = false,
 }) => {
   const [peers, setPeers] = useState([])
@@ -98,7 +97,6 @@ export const PeerSelector = ({
     }
     if (!showDropdown && dropdownRef.current) {
       const rect = dropdownRef.current.getBoundingClientRect()
-      const containerRect = dropdownRef.current.closest('.form-group')?.getBoundingClientRect()
       const viewportHeight = window.innerHeight
       const spaceBelow = viewportHeight - rect.bottom
       const spaceAbove = rect.top
