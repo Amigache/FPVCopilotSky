@@ -25,15 +25,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             python3-gi \
+            python3-gi-cairo \
             gir1.2-gst-plugins-base-1.0 \
             gir1.2-gstreamer-1.0 \
             gir1.2-gst-rtsp-server-1.0 \
-            libgirepository1.0-dev
+            libgirepository1.0-dev \
+            libcairo2-dev \
+            pkg-config
 
       - name: Install linting dependencies
         run: |
           pip install flake8 black mypy
-          pip install PyGObject
           pip install -r requirements.txt
 
       - name: Lint with flake8
@@ -99,7 +101,6 @@ jobs:
       - name: Install dependencies
         run: |
           pip install pytest pytest-asyncio pytest-cov pytest-mock
-          pip install PyGObject
           pip install -r requirements.txt
 
       - name: Run unit tests
