@@ -276,6 +276,67 @@ class WiFiInterface(NetworkInterface):
             logger.error(f"Error scanning networks: {e}")
             return []
 
+    def connect(self, ssid: str, password: Optional[str] = None) -> Dict:
+        """
+        Connect to a WiFi network using NetworkManager
+
+        Args:
+            ssid: Network SSID to connect to
+            password: Network password (None for open networks)
+
+        Returns:
+            Dict with success status and message
+        """
+        try:
+            # Build nmcli command
+            cmd = ["sudo", "nmcli", "device", "wifi", "connect", ssid]
+
+            if password:
+                cmd.extend(["password", password])
+
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+
+            if result.returncode == 0:
+                logger.info(f"Successfully connected to WiFi: {ssid}")
+                return {"success": True, "message": f"Connected to {ssid}", "ssid": ssid}
+            else:
+                error_msg = result.stderr if result.stderr else "Unknown error"
+                logger.error(f"Failed to connect to {ssid}: {error_msg}")
+                return {"success": False, "message": f"Failed to connect: {error_msg}", "error": error_msg}
+
+        except subprocess.TimeoutExpired:
+            return {"success": False, "message": "Connection timeout", "error": "Connection attempt timed out"}
+        except Exception as e:
+            logger.error(f"Error connecting to WiFi {ssid}: {e}")
+            return {"success": False, "message": "Connection failed", "error": str(e)}
+
+    def disconnect(self) -> Dict:
+        """
+        Disconnect from current WiFi network
+
+        Returns:
+            Dict with success status and message
+        """
+        try:
+            result = subprocess.run(
+                ["sudo", "nmcli", "device", "disconnect", self.interface_name],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+
+            if result.returncode == 0:
+                logger.info(f"Disconnected WiFi interface: {self.interface_name}")
+                return {"success": True, "message": "Disconnected from WiFi", "interface": self.interface_name}
+            else:
+                error_msg = result.stderr if result.stderr else "Unknown error"
+                logger.error(f"Failed to disconnect WiFi: {error_msg}")
+                return {"success": False, "message": f"Failed to disconnect: {error_msg}", "error": error_msg}
+
+        except Exception as e:
+            logger.error(f"Error disconnecting WiFi: {e}")
+            return {"success": False, "message": "Disconnection failed", "error": str(e)}
+
     def _get_ssid(self) -> Optional[str]:
         """Get currently connected SSID"""
         try:

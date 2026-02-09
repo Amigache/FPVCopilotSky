@@ -1,10 +1,10 @@
 import './VPNView.css'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useToast } from '../../contexts/ToastContext'
-import { useWebSocket } from '../../contexts/WebSocketContext'
-import api from '../../services/api'
-import Toggle from '../Toggle/Toggle'
+import { useToast } from '../../../contexts/ToastContext'
+import { useWebSocket } from '../../../contexts/WebSocketContext'
+import api from '../../../services/api'
+import Toggle from '../../Toggle/Toggle'
 
 // Helper function to format bytes
 const formatBytes = (bytes) => {

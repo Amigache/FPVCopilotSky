@@ -1,6 +1,6 @@
 import './DashboardView.css'
 import { useTranslation } from 'react-i18next'
-import { useWebSocket } from '../../contexts/WebSocketContext'
+import { useWebSocket } from '../../../contexts/WebSocketContext'
 
 const DashboardView = () => {
   const { t } = useTranslation()

@@ -2,6 +2,32 @@
 # FPV Copilot Sky - Installation Script
 # Installs all dependencies needed to run the project
 # Compatible with Linux systems (Radxa, Raspberry Pi, x86, etc.)
+#
+# System Configuration Changes:
+# =============================
+# This script modifies the following system files and settings:
+#
+# Network Configuration:
+#   - /etc/NetworkManager/NetworkManager.conf → managed=false → managed=true
+#   - /etc/netplan/30-wifis-dhcp.yaml → renderer: networkd → renderer: NetworkManager
+#   - wlan0 interface set to managed mode via nmcli
+#
+# Sudo Permissions (no-password):
+#   - /etc/sudoers.d/tailscale → Tailscale VPN management
+#   - /etc/sudoers.d/fpvcopilot-wifi → WiFi scan, connect, disconnect
+#
+# System Services:
+#   - NetworkManager service enabled and started
+#   - ModemManager service enabled and started
+#
+# Kernel Parameters:
+#   - /etc/sysctl.d/99-fpv-streaming.conf → Network optimizations for 4G/LTE video streaming
+#   - TCP buffer sizes, UDP optimizations, BBR congestion control
+#   - Network backlog and memory management tuning
+#
+# USB Modem Configuration:
+#   - Huawei E3372h modem mode switching (mass storage → modem mode)
+#
 
 set -e
 
@@ -54,6 +80,11 @@ sudo apt-get install -y \
 
 # Enable and start network services
 echo "🔧 Configuring network services..."
+
+# Configure NetworkManager to manage all interfaces
+echo "  📝 Configuring NetworkManager..."
+sudo sed -i 's/managed=false/managed=true/' /etc/NetworkManager/NetworkManager.conf 2>/dev/null || true
+
 sudo systemctl enable NetworkManager
 sudo systemctl start NetworkManager
 echo "  ✓ NetworkManager enabled and started"
@@ -61,6 +92,35 @@ echo "  ✓ NetworkManager enabled and started"
 sudo systemctl enable ModemManager
 sudo systemctl start ModemManager
 echo "  ✓ ModemManager enabled and started"
+
+# Ensure WiFi interface is managed by NetworkManager
+echo "  📡 Configuring WiFi management..."
+
+# Configure netplan to use NetworkManager for WiFi (if netplan is present)
+if [ -d "/etc/netplan" ]; then
+    NETPLAN_WIFI_FILE="/etc/netplan/30-wifis-dhcp.yaml"
+    if [ -f "$NETPLAN_WIFI_FILE" ]; then
+        # Check if it uses networkd renderer
+        if grep -q "renderer: networkd" "$NETPLAN_WIFI_FILE" 2>/dev/null; then
+            echo "  📝 Updating netplan to use NetworkManager renderer..."
+            sudo sed -i 's/renderer: networkd/renderer: NetworkManager/' "$NETPLAN_WIFI_FILE" 2>/dev/null || true
+            echo "  ✓ Netplan WiFi renderer updated to NetworkManager"
+            # Apply netplan changes
+            sudo netplan apply 2>/dev/null && sleep 2 || true
+        fi
+    fi
+fi
+
+if nmcli dev show wlan0 &>/dev/null; then
+    sudo nmcli dev set wlan0 managed yes 2>/dev/null || true
+    sleep 1
+    WLAN_STATE=$(nmcli dev status 2>/dev/null | grep wlan0 | awk '{print $3}')
+    if [ "$WLAN_STATE" = "unmanaged" ]; then
+        echo "  ⚠️  wlan0 still unmanaged (may need reboot)"
+    else
+        echo "  ✓ wlan0 set to managed (state: $WLAN_STATE)"
+    fi
+fi
 
 # Verify network tools work
 echo "🔍 Verifying network tools..."
@@ -191,6 +251,27 @@ EOF
     echo "  ✓ Tailscale sudo permissions configured"
 else
     echo "  ✓ Tailscale sudo permissions already configured"
+fi
+
+# Configure sudo permissions for WiFi management
+echo "🔐 Configuring WiFi sudo permissions..."
+WIFI_SUDOERS_FILE="/etc/sudoers.d/fpvcopilot-wifi"
+if [ ! -f "$WIFI_SUDOERS_FILE" ]; then
+    sudo tee "$WIFI_SUDOERS_FILE" > /dev/null << EOF
+# FPV Copilot Sky - WiFi management permissions
+$USER ALL=(ALL) NOPASSWD: /usr/sbin/iw dev * scan
+$USER ALL=(ALL) NOPASSWD: /usr/sbin/iw dev * scan *
+$USER ALL=(ALL) NOPASSWD: /usr/bin/nmcli device wifi connect *
+$USER ALL=(ALL) NOPASSWD: /usr/bin/nmcli device wifi disconnect
+$USER ALL=(ALL) NOPASSWD: /usr/bin/nmcli connection up *
+$USER ALL=(ALL) NOPASSWD: /usr/bin/nmcli connection down *
+$USER ALL=(ALL) NOPASSWD: /usr/bin/nmcli dev wifi rescan
+$USER ALL=(ALL) NOPASSWD: /usr/bin/nmcli dev set * managed *
+EOF
+    sudo chmod 440 "$WIFI_SUDOERS_FILE"
+    echo "  ✓ WiFi sudo permissions configured"
+else
+    echo "  ✓ WiFi sudo permissions already configured"
 fi
 
 # Configure sudo permissions for system management

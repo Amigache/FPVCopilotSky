@@ -1,6 +1,23 @@
 #!/bin/bash
 # Quick Status Check - FPV Copilot Sky
 # Verifica el estado de todos los componentes
+#
+# Checks performed:
+# =================
+# - System Services: fpvcopilot-sky, nginx, NetworkManager, ModemManager
+# - Network Ports: 80 (nginx), 8000 (backend API)
+# - Video: Cameras, GStreamer installation, video streaming status
+# - Network Configuration:
+#   * wlan0 interface state (managed/unmanaged)
+#   * WiFi scanning capability
+#   * NetworkManager configuration (managed interfaces)
+#   * Netplan WiFi renderer (NetworkManager vs networkd)
+# - Sudo Permissions:
+#   * Tailscale VPN management (no-password)
+#   * WiFi management (scan, connect, disconnect)
+#   * System management (service control, journalctl access)
+# - Files & Directories: Frontend build, Python venv
+# - Network Tools: nmcli, mmcli, hostapd, iwconfig, usb_modeswitch
 
 echo "🔍 FPV Copilot Sky - Status Check"
 echo "=================================="
@@ -133,7 +150,72 @@ else
     echo -e "${RED}❌${NC} usb_modeswitch NOT found"
 fi
 
-echo -e "\n${BLUE}� Sudo Permissions${NC}"
+echo -e "\n${BLUE}📡 WiFi Configuration${NC}"
+# Check wlan0 state
+if command -v nmcli &> /dev/null && nmcli dev show wlan0 &>/dev/null; then
+    WLAN_STATE=$(nmcli dev status 2>/dev/null | grep wlan0 | awk '{print $3}')
+    WLAN_CONNECTION=$(nmcli dev status 2>/dev/null | grep wlan0 | awk '{print $4}')
+
+    if [ "$WLAN_STATE" = "connected" ]; then
+        echo -e "${GREEN}✅${NC} wlan0 is $WLAN_STATE ($WLAN_CONNECTION)"
+    elif [ "$WLAN_STATE" = "unmanaged" ]; then
+        echo -e "${RED}❌${NC} wlan0 is UNMANAGED (WiFi scanning won't work)"
+        echo -e "    ${BLUE}ℹ️${NC}  Fix: sudo nmcli dev set wlan0 managed yes"
+    else
+        echo -e "${YELLOW}⚠️${NC}  wlan0 state: $WLAN_STATE"
+    fi
+
+    # Check if WiFi scanning works
+    if sudo -n iw dev wlan0 scan &>/dev/null 2>&1; then
+        WIFI_COUNT=$(sudo iw dev wlan0 scan 2>/dev/null | grep -c "^BSS " || echo "0")
+        if [ "$WIFI_COUNT" -gt 0 ]; then
+            echo -e "${GREEN}✅${NC} WiFi scanning works ($WIFI_COUNT networks detected)"
+        else
+            echo -e "${YELLOW}⚠️${NC}  WiFi scan returned 0 networks"
+        fi
+    else
+        echo -e "${YELLOW}⚠️${NC}  WiFi scanning requires sudo permissions"
+    fi
+else
+    echo -e "${RED}❌${NC} wlan0 interface not found"
+fi
+
+# Check NetworkManager configuration
+if [ -f "/etc/NetworkManager/NetworkManager.conf" ]; then
+    if grep -q "managed=true" /etc/NetworkManager/NetworkManager.conf 2>/dev/null; then
+        echo -e "${GREEN}✅${NC} NetworkManager configured to manage interfaces"
+    elif grep -q "managed=false" /etc/NetworkManager/NetworkManager.conf 2>/dev/null; then
+        echo -e "${RED}❌${NC} NetworkManager set to managed=false"
+        echo -e "    ${BLUE}ℹ️${NC}  Fix: sudo sed -i 's/managed=false/managed=true/' /etc/NetworkManager/NetworkManager.conf"
+    fi
+fi
+
+# Check netplan WiFi configuration (if exists)
+if [ -f "/etc/netplan/30-wifis-dhcp.yaml" ]; then
+    if grep -q "renderer: NetworkManager" /etc/netplan/30-wifis-dhcp.yaml 2>/dev/null; then
+        echo -e "${GREEN}✅${NC} Netplan WiFi using NetworkManager renderer"
+    elif grep -q "renderer: networkd" /etc/netplan/30-wifis-dhcp.yaml 2>/dev/null; then
+        echo -e "${YELLOW}⚠️${NC}  Netplan WiFi using networkd (should use NetworkManager)"
+        echo -e "    ${BLUE}ℹ️${NC}  Fix: Change renderer to NetworkManager in netplan"
+    fi
+fi
+
+echo -e "\n${BLUE}🔑 Sudo Permissions${NC}"
+# Check WiFi sudo permissions
+if [ -f "/etc/sudoers.d/fpvcopilot-wifi" ]; then
+    echo -e "${GREEN}✓${NC} WiFi management sudoers file exists"
+
+    # Test WiFi scan without password
+    if sudo -n iw dev wlan0 scan &>/dev/null 2>&1; then
+        echo -e "${GREEN}✓${NC} WiFi scan commands work without password"
+    else
+        echo -e "${YELLOW}⚠️${NC}  WiFi scan commands require password"
+    fi
+else
+    echo -e "${RED}❌${NC} WiFi management sudoers file missing"
+    echo -e "    ${BLUE}ℹ️${NC}  WiFi scanning functionality will require password prompts"
+    echo -e "    ${BLUE}ℹ️${NC}  Run: bash install.sh (will configure permissions)"
+fi
 # Check Tailscale sudo permissions
 if [ -f "/etc/sudoers.d/tailscale" ]; then
     echo -e "${GREEN}✓${NC} Tailscale sudoers file exists"

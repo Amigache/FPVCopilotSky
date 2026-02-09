@@ -31,10 +31,10 @@ const { mockMessages, mockApi } = vi.hoisted(() => {
 })
 
 // ---------- Mock contexts ----------
-vi.mock('../../contexts/WebSocketContext', () => ({
+vi.mock('../../../contexts/WebSocketContext', () => ({
   useWebSocket: () => ({ messages: mockMessages }),
 }))
-vi.mock('../../contexts/ToastContext', () => ({
+vi.mock('../../../contexts/ToastContext', () => ({
   useToast: () => ({ showToast: vi.fn() }),
 }))
 vi.mock('react-i18next', () => ({
@@ -44,7 +44,7 @@ vi.mock('react-i18next', () => ({
 }))
 
 // ---------- Mock api service ----------
-vi.mock('../../services/api', () => ({ default: mockApi }))
+vi.mock('../../../services/api', () => ({ default: mockApi }))
 
 // ---------- Stub sub-components (tested individually) ----------
 vi.mock('./video/StatusBanner', () => ({ default: () => <div data-testid="status-banner" /> }))

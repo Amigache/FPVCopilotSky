@@ -171,7 +171,7 @@ ffplay -fflags nobuffer -rtsp_transport tcp rtsp://IP_DE_LA_PLACA:8554/stream
 
 ## 4. Pestaña: Red
 
-Gestiona las interfaces de red, WiFi, y priorización de conexiones.
+Gestiona las interfaces de red, WiFi, priorización de conexiones, y optimizaciones para streaming 4G.
 
 ### Interfaces
 
@@ -179,8 +179,8 @@ Vista de todas las interfaces de red activas (WiFi, Ethernet, modem 4G, VPN) con
 
 ### WiFi
 
-- **Escanear redes**: busca SSIDs disponibles
-- **Conectar**: introduce la contraseña y conecta
+- **Escanear redes**: busca SSIDs disponibles con indicador de señal
+- **Conectar**: selecciona una red, introduce la contraseña y conecta (conexión real vía NetworkManager)
 - **Desconectar**: desconecta de la red WiFi actual
 
 ### Priorización de red
@@ -198,6 +198,121 @@ El sistema gestiona automáticamente la prioridad de las interfaces:
 - **Auto** (recomendado): el sistema decide la mejor interfaz
 - **Modem forzado**: prioriza 4G siempre
 - **WiFi forzado**: prioriza WiFi siempre
+
+### Flight Mode (Modo Vuelo) 🛩️
+
+**Flight Mode** es una optimización integral del sistema para maximizar la calidad del streaming por 4G. Combina configuraciones del modem con ajustes del sistema operativo.
+
+**Activación**: Botón **Flight Mode** en el banner de la pestaña Red (aparece con fondo naranja cuando está activo).
+
+**Optimizaciones aplicadas**:
+
+| Componente | Ajuste                            | Beneficio                       |
+| ---------- | --------------------------------- | ------------------------------- |
+| Modem      | 4G Only Mode (evita caídas a 3G)  | Latencia estable                |
+| Modem      | Bandas optimizadas (B3+B7 España) | Máxima velocidad en ciudad      |
+| Red        | MTU 1420 (evita fragmentación)    | -15% latencia                   |
+| Red        | QoS DSCP EF (46) en puertos video | Prioridad máxima para el stream |
+| TCP        | TCP BBR congestion control        | Mejor throughput en pérdidas    |
+| TCP        | Buffers 25MB (send/recv)          | Manejo de ráfagas               |
+| Power      | Ethernet power saving OFF         | Latencia consistente            |
+
+**Cuándo usar Flight Mode**:
+
+- ✅ Vuelos FPV por 4G donde la latencia es crítica
+- ✅ Streaming en áreas urbanas con bandas B3+B7 disponibles
+- ✅ Cuando detectes micro-cortes o jitter en el video
+
+**Cuándo NO usar Flight Mode**:
+
+- ❌ En zonas rurales con solo banda B20 (desactiva B20)
+- ❌ Si tu operadora no usa B3+B7
+- ❌ Streaming por WiFi (las optimizaciones son específicas para 4G)
+
+**Métricas**: El botón muestra métricas en tiempo real cuando está activo (buffer sizes, TCP algorithm, MTU actual).
+
+### Latency Monitoring (avanzado)
+
+Monitoreo continuo de latencia a múltiples destinos (Google DNS 8.8.8.8, Cloudflare 1.1.1.1, Quad9 9.9.9.9) para detectar degradación de red.
+
+- **Inicio automático**: se activa con Auto-Failover
+- **Métricas**: latencia promedio, mínima, máxima, packet loss
+- **Histórico**: mantiene 30 muestras (1 minuto de datos)
+
+**Acceso manual** (API):
+
+```bash
+# Iniciar monitoreo
+curl -X POST http://IP_PLACA:8000/api/network/latency/start
+
+# Ver estadísticas actuales
+curl http://IP_PLACA:8000/api/network/latency/current
+
+# Detener monitoreo
+curl -X POST http://IP_PLACA:8000/api/network/latency/stop
+```
+
+### Auto-Failover (avanzado)
+
+Sistema automático de cambio entre WiFi ↔ 4G basado en latencia para garantizar continuidad del stream.
+
+**Funcionamiento**:
+
+1. Monitorea latencia cada 2 segundos
+2. Si latencia > 200ms durante 30 segundos consecutivos → switch automático a interfaz alternativa
+3. Hysteresis de 30 segundos evita cambios rápidos (flapping)
+4. Restaura automáticamente al modo preferido (4G) cuando la latencia mejora
+
+**Configuración** (valores por defecto):
+
+- Threshold de latencia: **200 ms**
+- Ventana de decisión: **15 muestras malas** (30 segundos)
+- Cooldown entre switches: **30 segundos**
+- Delay antes de restore: **60 segundos**
+- Modo preferido: **4G/Modem**
+
+**Acceso manual** (API):
+
+```bash
+# Iniciar auto-failover
+curl -X POST http://IP_PLACA:8000/api/network/failover/start?initial_mode=modem
+
+# Ver estado
+curl http://IP_PLACA:8000/api/network/failover/status
+
+# Cambiar configuración (ejemplo: threshold a 250ms)
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"latency_threshold_ms": 250}' \
+  http://IP_PLACA:8000/api/network/failover/config
+
+# Detener
+curl -X POST http://IP_PLACA:8000/api/network/failover/stop
+```
+
+**Logs**: Los switches automáticos se registran en el log del servicio:
+
+```bash
+sudo journalctl -u fpvcopilot-sky -f | grep -i failover
+```
+
+### DNS Caching
+
+Caché DNS local con `dnsmasq` para reducir latencia de resolución de nombres (útil para RTSP, telemetría a hostnames).
+
+**Instalación y activación**:
+
+```bash
+# Instalar dnsmasq
+curl -X POST http://IP_PLACA:8000/api/network/dns/install
+
+# Iniciar servicio
+curl -X POST http://IP_PLACA:8000/api/network/dns/start
+
+# Verificar estado
+curl http://IP_PLACA:8000/api/network/dns/status
+```
+
+**Beneficio**: Reduce latencia de DNS lookups de ~50ms a ~2ms (95% mejora).
 
 ---
 

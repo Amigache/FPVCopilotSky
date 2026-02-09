@@ -13,7 +13,12 @@ from typing import Optional, Dict, List
 import logging
 import asyncio
 import re
+import time
 from providers import get_provider_registry
+from app.services.network_optimizer import get_network_optimizer
+from app.services.latency_monitor import get_latency_monitor, start_latency_monitoring, stop_latency_monitoring
+from app.services.auto_failover import get_auto_failover, stop_auto_failover, NetworkMode
+from app.services.dns_cache import get_dns_cache
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/network", tags=["network"])
@@ -381,6 +386,216 @@ async def get_network_status():
         }
 
 
+# =============================
+# Dashboard - Unified Endpoint
+# =============================
+
+# Simple in-memory cache
+_dashboard_cache = {"data": None, "timestamp": 0, "ttl": 2}  # Cache for 2 seconds
+
+
+@router.get("/dashboard")
+async def get_network_dashboard(force_refresh: bool = False):
+    """
+    Unified dashboard endpoint - returns all network data in one call
+
+    Combines:
+    - Network status (interfaces, routes, mode)
+    - Modem HiLink status (device, signal, network, traffic)
+    - WiFi networks list
+    - Flight Mode status
+
+    Uses intelligent caching (2s TTL) to avoid redundant calls.
+    Use ?force_refresh=true to bypass cache.
+
+    Returns:
+        Complete network dashboard data
+    """
+    current_time = time.time()
+
+    # Check cache (unless force refresh)
+    if not force_refresh and _dashboard_cache["data"] is not None:
+        cache_age = current_time - _dashboard_cache["timestamp"]
+        if cache_age < _dashboard_cache["ttl"]:
+            logger.debug(f"Returning cached dashboard (age: {cache_age:.2f}s)")
+            return {**_dashboard_cache["data"], "cached": True, "cache_age": round(cache_age, 2)}
+
+    try:
+        # Execute all data fetching in parallel for maximum speed
+        results = await asyncio.gather(
+            _get_network_status_internal(),  # Network status
+            _get_modem_status_internal(),  # Modem HiLink status
+            _get_wifi_networks_internal(),  # WiFi networks
+            _get_flight_mode_status_internal(),  # Flight Mode
+            return_exceptions=True,
+        )
+
+        network_status = results[0] if not isinstance(results[0], Exception) else {}
+        modem_status = results[1] if not isinstance(results[1], Exception) else {"available": False}
+        wifi_networks = results[2] if not isinstance(results[2], Exception) else []
+        flight_mode = results[3] if not isinstance(results[3], Exception) else {"active": False}
+
+        dashboard_data = {
+            "success": True,
+            "timestamp": current_time,
+            "network": network_status,
+            "modem": modem_status,
+            "wifi_networks": wifi_networks,
+            "flight_mode": flight_mode,
+            "cached": False,
+        }
+
+        # Update cache
+        _dashboard_cache["data"] = dashboard_data
+        _dashboard_cache["timestamp"] = current_time
+
+        logger.debug("Dashboard data refreshed")
+        return dashboard_data
+
+    except Exception as e:
+        logger.error(f"Error building dashboard: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to build dashboard: {str(e)}")
+
+
+async def _get_network_status_internal() -> Dict:
+    """Internal: Get network status (interfaces, routes, mode)"""
+    try:
+        wifi_interface = await _detect_wifi_interface()
+        modem_interface = await _detect_modem_interface()
+        interfaces = await _get_interfaces()
+        routes = await _get_routes()
+        modem = await _get_modem_info(modem_interface)
+
+        primary_interface = None
+        mode = "unknown"
+
+        if routes:
+            primary_route = min(routes, key=lambda r: r.get("metric", 999))
+            primary_interface = primary_route.get("interface")
+
+            if primary_interface == modem_interface:
+                mode = "modem"
+            elif primary_interface == wifi_interface:
+                mode = "wifi"
+
+        return {
+            "wifi_interface": wifi_interface,
+            "modem_interface": modem_interface,
+            "primary_interface": primary_interface,
+            "mode": mode,
+            "interfaces": interfaces,
+            "routes": routes,
+            "modem": modem,
+        }
+    except Exception as e:
+        logger.error(f"Error in _get_network_status_internal: {e}")
+        return {
+            "wifi_interface": None,
+            "modem_interface": None,
+            "primary_interface": None,
+            "mode": "unknown",
+            "interfaces": [],
+            "routes": [],
+            "modem": {"detected": False},
+        }
+
+
+async def _get_modem_status_internal() -> Dict:
+    """Internal: Get modem HiLink status"""
+    try:
+        provider = _get_modem_provider()
+
+        # Gather all modem info in parallel
+        tasks = []
+        if hasattr(provider, "async_get_device_info"):
+            tasks.append(provider.async_get_device_info())
+        if hasattr(provider, "async_get_signal_info"):
+            tasks.append(provider.async_get_signal_info())
+        if hasattr(provider, "async_get_network_info"):
+            tasks.append(provider.async_get_network_info())
+        if hasattr(provider, "async_get_traffic_stats"):
+            tasks.append(provider.async_get_traffic_stats())
+
+        if not tasks:
+            return {"available": False, "error": "No async methods available"}
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        device_info = results[0] if len(results) > 0 and not isinstance(results[0], Exception) else None
+        signal_info = results[1] if len(results) > 1 and not isinstance(results[1], Exception) else None
+        network_info = results[2] if len(results) > 2 and not isinstance(results[2], Exception) else None
+        traffic_info = results[3] if len(results) > 3 and not isinstance(results[3], Exception) else None
+
+        available = any([device_info, signal_info, network_info, traffic_info])
+
+        response = {"available": available, "connected": available}
+
+        if device_info:
+            response["device"] = {
+                "device_name": getattr(device_info, "name", "Unknown"),
+                "imei": getattr(device_info, "imei", None),
+                "model": getattr(device_info, "model", None),
+            }
+
+        if signal_info:
+            response["signal"] = signal_info
+            signal_percent = signal_info.get("signal_percent", 0)
+            response["signal"]["signal_bars"] = min(5, max(0, int(signal_percent / 20))) if signal_percent else 0
+
+        if network_info:
+            dns_servers = getattr(network_info, "dns_servers", None) or []
+            signal_percent = signal_info.get("signal_percent", 0) if signal_info else 0
+            signal_icon = min(5, max(0, int(signal_percent / 20))) if signal_percent else 0
+
+            response["network"] = {
+                "network_type": str(network_info.network_type) if hasattr(network_info, "network_type") else None,
+                "signal_icon": signal_icon,
+                "roaming": getattr(network_info, "roaming", False),
+                "primary_dns": dns_servers[0] if len(dns_servers) > 0 else None,
+                "secondary_dns": dns_servers[1] if len(dns_servers) > 1 else None,
+            }
+
+        if traffic_info:
+            response["traffic"] = traffic_info
+
+        return response
+
+    except Exception as e:
+        logger.debug(f"Modem not available: {e}")
+        return {"available": False, "connected": False}
+
+
+async def _get_wifi_networks_internal() -> List[Dict]:
+    """Internal: Get WiFi networks list"""
+    try:
+        networks = await _scan_wifi_networks()
+        return networks
+    except Exception as e:
+        logger.debug(f"WiFi scan failed: {e}")
+        return []
+
+
+async def _get_flight_mode_status_internal() -> Dict:
+    """Internal: Get Flight Mode status"""
+    try:
+        optimizer = get_network_optimizer()
+        network_status = optimizer.get_status()
+
+        provider = _get_modem_provider()
+        modem_video_active = getattr(provider, "video_mode_active", False)
+
+        fully_active = network_status["active"] and modem_video_active
+
+        return {
+            "active": fully_active,
+            "network_optimizer_active": network_status["active"],
+            "modem_video_mode_active": modem_video_active,
+        }
+    except Exception as e:
+        logger.debug(f"Flight Mode status unavailable: {e}")
+        return {"active": False}
+
+
 @router.get("/interfaces")
 async def get_interfaces():
     """Get list of all network interface providers"""
@@ -391,10 +606,31 @@ async def get_interfaces():
 
 @router.get("/wifi/networks")
 async def get_wifi_networks():
-    """Scan and return available WiFi networks"""
+    """Scan and return available WiFi networks using WiFi provider"""
     try:
-        networks = await _scan_wifi_networks()
+        # Get WiFi provider
+        registry = get_provider_registry()
+        wifi_provider = registry.get_network_interface("wifi")
+
+        if not wifi_provider:
+            logger.warning("WiFi provider not available")
+            return {"success": True, "networks": []}
+
+        # Use provider's scan_networks method
+        loop = asyncio.get_event_loop()
+        networks = await loop.run_in_executor(None, wifi_provider.scan_networks)
+
+        # Add security info (stub for now - could be enhanced)
+        for network in networks:
+            if "security" not in network:
+                network["security"] = "WPA2"  # Default assumption
+            if "connected" not in network:
+                # Check if this network is currently connected
+                status = wifi_provider.get_status()
+                network["connected"] = network.get("ssid") == status.get("ssid")
+
         return {"success": True, "networks": networks}
+
     except Exception as e:
         logger.error(f"Error scanning WiFi networks: {e}")
         return {"success": False, "networks": [], "error": str(e)}
@@ -402,27 +638,55 @@ async def get_wifi_networks():
 
 @router.post("/wifi/connect")
 async def connect_wifi(request: WiFiConnectRequest):
-    """Connect to a WiFi network"""
-    registry = get_provider_registry()
-    wifi_provider = registry.get_network_interface("wifi")
+    """Connect to a WiFi network using NetworkManager"""
+    try:
+        # Get WiFi provider
+        registry = get_provider_registry()
+        wifi_provider = registry.get_network_interface("wifi")
 
-    if not wifi_provider:
-        raise HTTPException(status_code=503, detail="WiFi provider not available")
+        if not wifi_provider:
+            raise HTTPException(status_code=503, detail="WiFi provider not available")
 
-    # For now, return success - actual connection handled by NetworkManager
-    return {"success": True, "message": f"Connecting to {request.ssid}..."}
+        # Use provider's connect method
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, wifi_provider.connect, request.ssid, request.password)
+
+        if result.get("success"):
+            logger.info(f"Successfully connected to WiFi: {request.ssid}")
+            # Wait a moment for connection to stabilize
+            await asyncio.sleep(1)
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error connecting to WiFi {request.ssid}: {e}")
+        raise HTTPException(status_code=500, detail=f"Connection failed: {str(e)}")
 
 
 @router.post("/wifi/disconnect")
 async def disconnect_wifi():
     """Disconnect from current WiFi network"""
-    registry = get_provider_registry()
-    wifi_provider = registry.get_network_interface("wifi")
+    try:
+        # Get WiFi provider
+        registry = get_provider_registry()
+        wifi_provider = registry.get_network_interface("wifi")
 
-    if not wifi_provider:
-        raise HTTPException(status_code=503, detail="WiFi provider not available")
+        if not wifi_provider:
+            raise HTTPException(status_code=404, detail="WiFi provider not available")
 
-    return {"success": True, "message": "Disconnected from WiFi"}
+        # Use provider's disconnect method
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, wifi_provider.disconnect)
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error disconnecting WiFi: {e}")
+        raise HTTPException(status_code=500, detail=f"Disconnection failed: {str(e)}")
 
 
 @router.get("/wifi/saved")
@@ -632,162 +896,6 @@ async def auto_adjust_priority():
     4G modem always primary if available, WiFi as backup.
     """
     return {"success": True, "mode": "auto", "message": "Priority auto-adjusted"}
-
-
-@router.get("/hilink/status")
-async def get_hilink_status():
-    """Get full HiLink modem status (alias for /modem/status)"""
-    return await get_modem_status()
-
-
-@router.get("/hilink/device")
-async def get_hilink_device():
-    """Get HiLink modem device info (alias)"""
-    return await get_modem_device()
-
-
-@router.get("/hilink/signal")
-async def get_hilink_signal():
-    """Get HiLink signal info (alias)"""
-    return await get_modem_signal()
-
-
-@router.get("/hilink/network")
-async def get_hilink_network():
-    """Get HiLink network info (alias)"""
-    return await get_modem_network()
-
-
-@router.get("/hilink/traffic")
-async def get_hilink_traffic():
-    """Get HiLink traffic stats (alias)"""
-    return await get_modem_traffic()
-
-
-@router.get("/hilink/mode")
-async def get_hilink_mode():
-    """Get HiLink network mode (alias)"""
-    return await get_modem_mode()
-
-
-@router.post("/hilink/mode")
-async def set_hilink_mode(request: NetworkModeRequest):
-    """Set HiLink network mode (alias)"""
-    return await set_modem_mode(request)
-
-
-@router.post("/hilink/reboot")
-async def reboot_hilink():
-    """Reboot HiLink modem (alias)"""
-    return await reboot_modem()
-
-
-@router.get("/hilink/band")
-async def get_hilink_band():
-    """Get HiLink LTE band (alias)"""
-    return await get_current_band()
-
-
-@router.get("/hilink/band/presets")
-async def get_hilink_band_presets():
-    """Get HiLink band presets (alias)"""
-    return await get_band_presets()
-
-
-@router.post("/hilink/band")
-async def set_hilink_band(request: LTEBandRequest):
-    """Set HiLink LTE band (alias)"""
-    return await set_lte_band(request)
-
-
-@router.get("/hilink/video-quality")
-async def get_hilink_video_quality():
-    """Get HiLink video quality (alias)"""
-    return await get_video_quality()
-
-
-@router.get("/hilink/status/enhanced")
-async def get_hilink_enhanced_status():
-    """Get HiLink enhanced status (alias)"""
-    return await get_enhanced_status()
-
-
-@router.get("/hilink/apn")
-async def get_hilink_apn():
-    """Get HiLink APN settings (alias)"""
-    return await get_apn_settings()
-
-
-@router.post("/hilink/apn")
-async def set_hilink_apn(request: APNRequest):
-    """Set HiLink APN (alias)"""
-    return await set_apn(request)
-
-
-@router.post("/hilink/reconnect")
-async def reconnect_hilink():
-    """Reconnect HiLink network (alias)"""
-    return await reconnect_network()
-
-
-@router.post("/hilink/roaming")
-async def set_hilink_roaming(request: RoamingRequest):
-    """Set HiLink roaming (alias)"""
-    return await set_roaming(request)
-
-
-@router.get("/hilink/video-mode")
-async def get_hilink_video_mode():
-    """Get HiLink video mode (alias)"""
-    return await get_video_mode_status()
-
-
-@router.post("/hilink/video-mode/enable")
-async def enable_hilink_video_mode():
-    """Enable HiLink video mode (alias)"""
-    return await enable_video_mode()
-
-
-@router.post("/hilink/video-mode/disable")
-async def disable_hilink_video_mode():
-    """Disable HiLink video mode (alias)"""
-    return await disable_video_mode()
-
-
-@router.get("/hilink/flight-session")
-async def get_hilink_flight_session():
-    """Get HiLink flight session (alias)"""
-    return await get_flight_session()
-
-
-@router.post("/hilink/flight-session/start")
-async def start_hilink_flight_session():
-    """Start HiLink flight session (alias)"""
-    return await start_flight_session()
-
-
-@router.post("/hilink/flight-session/stop")
-async def stop_hilink_flight_session():
-    """Stop HiLink flight session (alias)"""
-    return await stop_flight_session()
-
-
-@router.post("/hilink/flight-session/sample")
-async def record_hilink_flight_sample():
-    """Record HiLink flight sample (alias)"""
-    return await record_flight_sample()
-
-
-@router.get("/hilink/latency")
-async def measure_hilink_latency():
-    """Measure HiLink latency (alias)"""
-    return await measure_latency()
-
-
-@router.post("/hilink/latency")
-async def measure_hilink_latency_custom(request: LatencyTestRequest):
-    """Measure HiLink custom latency (alias)"""
-    return await measure_latency_custom(request)
 
 
 # =====================
@@ -1424,3 +1532,629 @@ async def measure_latency_custom(request: LatencyTestRequest):
         if result:
             return result
     raise HTTPException(status_code=500, detail="Latency test failed")
+
+
+# =============================
+# Flight Mode - Complete Network Optimization
+# =============================
+
+
+@router.get("/flight-mode/status")
+async def get_flight_mode_status():
+    """
+    Get Flight Mode status
+
+    Flight Mode combines:
+    - Modem optimization (4G Only, urban bands)
+    - Network optimization (MTU, QoS, TCP tuning)
+
+    Returns:
+        Status of both modem video mode and network optimizer
+    """
+    try:
+        optimizer = get_network_optimizer()
+        network_status = optimizer.get_status()
+
+        # Get modem video mode status
+        provider = _get_modem_provider()
+        modem_video_active = getattr(provider, "video_mode_active", False)
+
+        # Flight Mode is fully active only if both are enabled
+        fully_active = network_status["active"] and modem_video_active
+
+        return {
+            "success": True,
+            "flight_mode_active": fully_active,
+            "network_optimizer": network_status,
+            "modem_video_mode": modem_video_active,
+            "optimizations": {
+                "modem": "4G Only + Urban Bands (B3+B7)" if modem_video_active else "Not active",
+                "network": network_status.get("config", {}) if network_status["active"] else "Not active",
+            },
+        }
+    except Exception as e:
+        logger.error(f"Error getting Flight Mode status: {e}")
+        return {"success": False, "error": str(e), "flight_mode_active": False}
+
+
+@router.post("/flight-mode/enable")
+async def enable_flight_mode():
+    """
+    Enable Flight Mode - Full optimization for FPV streaming
+
+    Activates:
+    1. Modem optimizations:
+       - Force 4G Only mode
+       - Configure urban bands (B3+B7) for lowest latency
+
+    2. Network optimizations:
+       - Set MTU to 1420 (optimal for LTE)
+       - Enable QoS with DSCP marking (EF class)
+       - Optimize TCP (BBR, increased buffers)
+       - Disable power saving
+
+    Returns:
+        Combined result of all optimizations
+    """
+    try:
+        results = {"modem": {"success": False}, "network": {"success": False}}
+        errors = []
+
+        # 1. Enable modem video mode
+        try:
+            provider = _get_modem_provider()
+            if hasattr(provider, "enable_video_mode"):
+                loop = asyncio.get_event_loop()
+                modem_result = await loop.run_in_executor(None, provider.enable_video_mode)
+                results["modem"] = modem_result
+                if not modem_result.get("success"):
+                    errors.append(f"Modem: {modem_result.get('message', 'Unknown error')}")
+        except Exception as e:
+            errors.append(f"Modem: {str(e)}")
+            logger.error(f"Error enabling modem video mode: {e}")
+
+        # 2. Enable network optimizer
+        try:
+            optimizer = get_network_optimizer()
+            loop = asyncio.get_event_loop()
+            network_result = await loop.run_in_executor(None, optimizer.enable_flight_mode)
+            results["network"] = network_result
+            if not network_result.get("success"):
+                errors.append(f"Network: {network_result.get('message', 'Unknown error')}")
+        except Exception as e:
+            errors.append(f"Network: {str(e)}")
+            logger.error(f"Error enabling network optimizer: {e}")
+
+        # Determine overall success
+        modem_success = results["modem"].get("success", False)
+        network_success = results["network"].get("success", False)
+
+        if modem_success and network_success:
+            message = "Flight Mode enabled: Full optimization active"
+            success = True
+        elif modem_success or network_success:
+            message = f"Flight Mode partially enabled. Issues: {', '.join(errors)}"
+            success = True  # Partial success
+        else:
+            message = f"Flight Mode failed: {', '.join(errors)}"
+            success = False
+
+        return {
+            "success": success,
+            "message": message,
+            "flight_mode_active": modem_success and network_success,
+            "details": results,
+            "errors": errors if errors else None,
+        }
+
+    except Exception as e:
+        logger.error(f"Error enabling Flight Mode: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to enable Flight Mode: {str(e)}")
+
+
+@router.post("/flight-mode/disable")
+async def disable_flight_mode():
+    """
+    Disable Flight Mode and restore original settings
+
+    Restores:
+    - Modem to auto mode and all bands
+    - Network settings (MTU, TCP, QoS)
+
+    Returns:
+        Combined result of restoration
+    """
+    try:
+        results = {"modem": {"success": False}, "network": {"success": False}}
+        errors = []
+
+        # 1. Disable modem video mode
+        try:
+            provider = _get_modem_provider()
+            if hasattr(provider, "disable_video_mode"):
+                loop = asyncio.get_event_loop()
+                modem_result = await loop.run_in_executor(None, provider.disable_video_mode)
+                results["modem"] = modem_result
+                if not modem_result.get("success"):
+                    errors.append(f"Modem: {modem_result.get('message', 'Unknown error')}")
+        except Exception as e:
+            errors.append(f"Modem: {str(e)}")
+            logger.error(f"Error disabling modem video mode: {e}")
+
+        # 2. Disable network optimizer
+        try:
+            optimizer = get_network_optimizer()
+            loop = asyncio.get_event_loop()
+            network_result = await loop.run_in_executor(None, optimizer.disable_flight_mode)
+            results["network"] = network_result
+            if not network_result.get("success"):
+                errors.append(f"Network: {network_result.get('message', 'Unknown error')}")
+        except Exception as e:
+            errors.append(f"Network: {str(e)}")
+            logger.error(f"Error disabling network optimizer: {e}")
+
+        # Determine overall success
+        modem_success = results["modem"].get("success", False)
+        network_success = results["network"].get("success", False)
+
+        if modem_success and network_success:
+            message = "Flight Mode disabled: Settings restored"
+            success = True
+        elif modem_success or network_success:
+            message = f"Flight Mode partially disabled. Issues: {', '.join(errors)}"
+            success = True
+        else:
+            message = f"Flight Mode disable failed: {', '.join(errors)}"
+            success = False
+
+        return {
+            "success": success,
+            "message": message,
+            "flight_mode_active": False,
+            "details": results,
+            "errors": errors if errors else None,
+        }
+
+    except Exception as e:
+        logger.error(f"Error disabling Flight Mode: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to disable Flight Mode: {str(e)}")
+
+
+@router.get("/flight-mode/metrics")
+async def get_flight_mode_metrics():
+    """
+    Get current network performance metrics
+
+    Returns current values for:
+    - TCP congestion control algorithm
+    - Buffer sizes
+    - MTU
+    - Active QoS rules
+    """
+    try:
+        optimizer = get_network_optimizer()
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, optimizer.get_network_metrics)
+        return result
+    except Exception as e:
+        logger.error(f"Error getting Flight Mode metrics: {e}")
+        return {"success": False, "error": str(e)}
+
+
+# =====================
+# Latency Monitoring Endpoints
+# =====================
+
+
+@router.post("/latency/start")
+async def start_latency_monitor():
+    """Start continuous latency monitoring"""
+    try:
+        await start_latency_monitoring()
+        return {"success": True, "message": "Latency monitoring started"}
+    except Exception as e:
+        logger.error(f"Error starting latency monitor: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/latency/stop")
+async def stop_latency_monitor():
+    """Stop continuous latency monitoring"""
+    try:
+        await stop_latency_monitoring()
+        return {"success": True, "message": "Latency monitoring stopped"}
+    except Exception as e:
+        logger.error(f"Error stopping latency monitor: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/latency/current")
+async def get_current_latency():
+    """
+    Get current latency statistics for all monitored targets
+
+    Returns average, min, max latency and packet loss for each target
+    """
+    try:
+        monitor = get_latency_monitor()
+        stats = await monitor.get_current_latency()
+
+        # Convert LatencyStats objects to dicts
+        stats_dict = {}
+        for target, stat in stats.items():
+            stats_dict[target] = {
+                "target": stat.target,
+                "interface": stat.interface,
+                "avg_latency_ms": round(stat.avg_latency, 2),
+                "min_latency_ms": round(stat.min_latency, 2),
+                "max_latency_ms": round(stat.max_latency, 2),
+                "packet_loss_percent": round(stat.packet_loss, 2),
+                "sample_count": stat.sample_count,
+                "last_update": stat.last_update,
+            }
+
+        return {"success": True, "latency": stats_dict, "timestamp": time.time()}
+
+    except Exception as e:
+        logger.error(f"Error getting current latency: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/latency/history")
+async def get_latency_history(target: Optional[str] = None, last_n: int = 30):
+    """
+    Get historical latency data
+
+    Args:
+        target: Specific target to query (None for all)
+        last_n: Number of recent samples to return
+    """
+    try:
+        monitor = get_latency_monitor()
+        history = monitor.get_history(target=target, last_n=last_n)
+
+        # Convert to serializable format
+        history_dict = {}
+        for t, results in history.items():
+            history_dict[t] = [
+                {
+                    "target": r.target,
+                    "latency_ms": r.latency_ms,
+                    "timestamp": r.timestamp,
+                    "success": r.success,
+                    "interface": r.interface,
+                }
+                for r in results
+            ]
+
+        return {"success": True, "history": history_dict, "sample_count": sum(len(v) for v in history_dict.values())}
+
+    except Exception as e:
+        logger.error(f"Error getting latency history: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/latency/interface/{interface}")
+async def get_interface_latency(interface: str):
+    """
+    Get latency statistics for a specific network interface
+
+    Args:
+        interface: Network interface name (e.g., wlan0, enx...)
+    """
+    try:
+        monitor = get_latency_monitor()
+        stat = await monitor.get_interface_latency(interface)
+
+        if not stat:
+            return {"success": True, "available": False, "message": "No latency data available for this interface"}
+
+        return {
+            "success": True,
+            "available": True,
+            "interface": interface,
+            "latency": {
+                "avg_ms": round(stat.avg_latency, 2),
+                "min_ms": round(stat.min_latency, 2),
+                "max_ms": round(stat.max_latency, 2),
+                "packet_loss_percent": round(stat.packet_loss, 2),
+                "sample_count": stat.sample_count,
+                "last_update": stat.last_update,
+            },
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting interface latency: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/latency/test/{interface}")
+async def test_interface_latency(interface: str, count: int = 3):
+    """
+    Perform one-time latency test for an interface
+
+    Args:
+        interface: Network interface to test
+        count: Number of pings per target (default: 3)
+    """
+    try:
+        monitor = get_latency_monitor()
+        stat = await monitor.test_interface_latency(interface, count)
+
+        return {
+            "success": True,
+            "interface": interface,
+            "test_results": {
+                "avg_ms": round(stat.avg_latency, 2),
+                "min_ms": round(stat.min_latency, 2),
+                "max_ms": round(stat.max_latency, 2),
+                "packet_loss_percent": round(stat.packet_loss, 2),
+                "samples": stat.sample_count,
+                "targets_tested": len(monitor.targets),
+            },
+        }
+
+    except Exception as e:
+        logger.error(f"Error testing interface latency: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/latency/history")
+async def clear_latency_history():
+    """Clear all latency history"""
+    try:
+        monitor = get_latency_monitor()
+        monitor.clear_history()
+        return {"success": True, "message": "Latency history cleared"}
+    except Exception as e:
+        logger.error(f"Error clearing latency history: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =====================
+# Auto-Failover Endpoints
+# =====================
+
+
+@router.post("/failover/start")
+async def start_failover(initial_mode: str = "modem"):
+    """
+    Start automatic network failover
+
+    Args:
+        initial_mode: Initial network mode ('wifi' or 'modem')
+    """
+    try:
+        # Parse initial mode
+        mode = NetworkMode.MODEM if initial_mode == "modem" else NetworkMode.WIFI
+
+        # Start latency monitoring if not already running
+        await start_latency_monitoring()
+
+        # Start auto-failover with switch callback
+        failover = get_auto_failover()
+
+        # Define switch callback
+        async def switch_network(target_mode: NetworkMode) -> bool:
+            try:
+                # Call priority endpoint to switch
+                request = PriorityModeRequest(mode=target_mode.value)
+                result = await set_priority_mode(request)
+                return result.get("success", False)
+            except Exception as e:
+                logger.error(f"Error in failover switch callback: {e}")
+                return False
+
+        # Set callback and start
+        failover.switch_callback = switch_network
+        await failover.start(initial_mode=mode)
+
+        return {"success": True, "message": "Auto-failover started", "initial_mode": initial_mode}
+
+    except Exception as e:
+        logger.error(f"Error starting auto-failover: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/failover/stop")
+async def stop_failover():
+    """Stop automatic network failover"""
+    try:
+        await stop_auto_failover()
+        return {"success": True, "message": "Auto-failover stopped"}
+    except Exception as e:
+        logger.error(f"Error stopping auto-failover: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/failover/status")
+async def get_failover_status():
+    """Get current auto-failover status and configuration"""
+    try:
+        failover = get_auto_failover()
+        state = await failover.get_state()
+
+        return {"success": True, **state}
+
+    except Exception as e:
+        logger.error(f"Error getting failover status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class FailoverConfigRequest(BaseModel):
+    latency_threshold_ms: Optional[float] = None
+    latency_check_window: Optional[int] = None
+    switch_cooldown_s: Optional[float] = None
+    restore_delay_s: Optional[float] = None
+    preferred_mode: Optional[str] = None
+
+
+@router.post("/failover/config")
+async def update_failover_config(config: FailoverConfigRequest):
+    """
+    Update auto-failover configuration
+
+    Args:
+        latency_threshold_ms: Switch if latency exceeds this (default: 200)
+        latency_check_window: Consecutive bad samples before switching (default: 15)
+        switch_cooldown_s: Minimum time between switches (default: 30)
+        restore_delay_s: Wait time before restoring preferred mode (default: 60)
+        preferred_mode: Preferred network mode ('wifi' or 'modem', default: 'modem')
+    """
+    try:
+        failover = get_auto_failover()
+
+        # Build update dict
+        updates = {}
+        if config.latency_threshold_ms is not None:
+            updates["latency_threshold_ms"] = config.latency_threshold_ms
+        if config.latency_check_window is not None:
+            updates["latency_check_window"] = config.latency_check_window
+        if config.switch_cooldown_s is not None:
+            updates["switch_cooldown_s"] = config.switch_cooldown_s
+        if config.restore_delay_s is not None:
+            updates["restore_delay_s"] = config.restore_delay_s
+        if config.preferred_mode is not None:
+            mode = NetworkMode.MODEM if config.preferred_mode == "modem" else NetworkMode.WIFI
+            updates["preferred_mode"] = mode
+
+        await failover.update_config(**updates)
+
+        return {"success": True, "message": "Failover configuration updated", "updated": updates}
+
+    except Exception as e:
+        logger.error(f"Error updating failover config: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/failover/force-switch")
+async def force_failover_switch(target_mode: str, reason: str = "Manual override"):
+    """
+    Force an immediate network switch
+
+    Args:
+        target_mode: Target mode ('wifi' or 'modem')
+        reason: Reason for switch (default: 'Manual override')
+    """
+    try:
+        # Parse target mode
+        mode = NetworkMode.MODEM if target_mode == "modem" else NetworkMode.WIFI
+
+        failover = get_auto_failover()
+        success = await failover.force_switch(mode, reason)
+
+        if success:
+            return {
+                "success": True,
+                "message": f"Switched to {target_mode}",
+                "target_mode": target_mode,
+                "reason": reason,
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to execute switch")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error forcing failover switch: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =====================
+# DNS Caching Endpoints
+# =====================
+
+
+@router.get("/dns/status")
+async def get_dns_cache_status():
+    """Get DNS cache status and statistics"""
+    try:
+        dns_cache = get_dns_cache()
+        status = await dns_cache.get_status()
+
+        return {"success": True, **status}
+
+    except Exception as e:
+        logger.error(f"Error getting DNS cache status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/dns/start")
+async def start_dns_cache():
+    """Start DNS caching service (dnsmasq)"""
+    try:
+        dns_cache = get_dns_cache()
+        success = await dns_cache.start()
+
+        if success:
+            return {"success": True, "message": "DNS caching started", "cache_size": dns_cache.config.cache_size}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to start DNS cache")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error starting DNS cache: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/dns/stop")
+async def stop_dns_cache():
+    """Stop DNS caching service"""
+    try:
+        dns_cache = get_dns_cache()
+        success = await dns_cache.stop()
+
+        if success:
+            return {"success": True, "message": "DNS caching stopped"}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to stop DNS cache")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error stopping DNS cache: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/dns/clear")
+async def clear_dns_cache():
+    """Clear DNS cache"""
+    try:
+        dns_cache = get_dns_cache()
+        success = await dns_cache.clear_cache()
+
+        if success:
+            return {"success": True, "message": "DNS cache cleared"}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to clear DNS cache")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error clearing DNS cache: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/dns/install")
+async def install_dns_cache():
+    """Install dnsmasq package"""
+    try:
+        dns_cache = get_dns_cache()
+
+        # Check if already installed
+        if await dns_cache.is_installed():
+            return {"success": True, "message": "dnsmasq already installed", "already_installed": True}
+
+        success = await dns_cache.install()
+
+        if success:
+            return {"success": True, "message": "dnsmasq installed successfully", "already_installed": False}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to install dnsmasq")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error installing DNS cache: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
