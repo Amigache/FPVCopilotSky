@@ -12,6 +12,8 @@ export const PeerSelector = ({
   placeholder = 'IP or hostname',
   disabled = false,
   label = null,
+  className = '',
+  hasError = false,
 }) => {
   const [peers, setPeers] = useState([])
   const [showDropdown, setShowDropdown] = useState(false)
@@ -41,17 +43,30 @@ export const PeerSelector = ({
     loadPeers()
   }, [loadPeers])
 
+  // Cleanup al desmontar componente
+  useEffect(() => {
+    return () => {
+      document.body.classList.remove('peer-selector-open')
+    }
+  }, [])
+
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setShowDropdown(false)
+        // Restaurar scroll cuando se cierre
+        document.body.classList.remove('peer-selector-open')
       }
     }
 
     if (showDropdown) {
       document.addEventListener('mousedown', handleClickOutside)
-      return () => document.removeEventListener('mousedown', handleClickOutside)
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside)
+        // Cleanup: restaurar si el componente se desmonta
+        document.body.classList.remove('peer-selector-open')
+      }
     }
   }, [showDropdown])
 
@@ -62,6 +77,8 @@ export const PeerSelector = ({
     const ip = addresses.find((addr) => !addr.includes(':')) || addresses[0] || ''
     onChange(dnsName || ip)
     setShowDropdown(false)
+    // Restaurar scroll cuando se cierre
+    document.body.classList.remove('peer-selector-open')
     inputRef.current?.focus()
   }
 
@@ -81,8 +98,28 @@ export const PeerSelector = ({
     }
     if (!showDropdown && dropdownRef.current) {
       const rect = dropdownRef.current.getBoundingClientRect()
-      const spaceBelow = window.innerHeight - rect.bottom
-      setDropUp(spaceBelow < 280)
+      const containerRect = dropdownRef.current.closest('.form-group')?.getBoundingClientRect()
+      const viewportHeight = window.innerHeight
+      const spaceBelow = viewportHeight - rect.bottom
+      const spaceAbove = rect.top
+
+      // Consider number of peers for better dropdown positioning
+      const estimatedDropdownHeight = Math.min(peers.length * 60 + 60, 320)
+
+      // Prefer dropping down, but if no space below and space above, drop up
+      // Also ensure it doesn't cause page scroll by checking available space
+      const shouldDropUp =
+        spaceBelow < estimatedDropdownHeight &&
+        spaceAbove > estimatedDropdownHeight &&
+        spaceAbove > spaceBelow
+
+      setDropUp(shouldDropUp)
+
+      // Solo prevenir scroll, no cambiar posicionamiento
+      document.body.classList.add('peer-selector-open')
+    } else if (showDropdown) {
+      // Restaurar scroll cuando se cierre
+      document.body.classList.remove('peer-selector-open')
     }
     setShowDropdown(!showDropdown)
   }
@@ -99,7 +136,7 @@ export const PeerSelector = ({
           onFocus={handleInputFocus}
           placeholder={placeholder}
           disabled={disabled}
-          className="peer-selector-input"
+          className={`peer-selector-input ${hasError ? 'input-error' : ''}`}
         />
         <button
           type="button"

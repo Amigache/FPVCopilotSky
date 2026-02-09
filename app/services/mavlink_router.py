@@ -169,9 +169,61 @@ class MAVLinkRouter:
 
             del self.outputs[output_id]
             self._save_config()
+            self._notify_status_change()  # Notify WebSocket
 
             print(f"🗑️ Removed output: {output_id}")
             return True, "Output removed"
+
+    def update_output(self, output_id: str, updated_data: dict) -> tuple[bool, str]:
+        """Update an existing output configuration."""
+        with self.lock:
+            if output_id not in self.outputs:
+                return False, f"Output {output_id} not found"
+
+            state = self.outputs[output_id]
+            was_running = state.running
+
+            # Stop output if running for safe update
+            if was_running:
+                self._stop_output_internal(state)
+                print(f"🔄 Stopping output {output_id} for update")
+
+            # Update configuration
+            if "type" in updated_data:
+                # Ensure type is properly converted to enum
+                type_value = updated_data["type"]
+                if isinstance(type_value, str):
+                    state.config.type = OutputType(type_value)
+                else:
+                    state.config.type = type_value
+            if "host" in updated_data:
+                state.config.host = updated_data["host"]
+            if "port" in updated_data:
+                state.config.port = updated_data["port"]
+            if "name" in updated_data:
+                state.config.name = updated_data["name"]
+            if "enabled" in updated_data:
+                state.config.enabled = updated_data["enabled"]
+            if "auto_start" in updated_data:
+                state.config.auto_start = updated_data["auto_start"]
+
+            self._save_config()
+
+            # Restart if it was running and still enabled
+            if was_running and state.config.enabled:
+                success, message = self.start_output(output_id)
+                if success:
+                    print(f"🔄 Restarted output {output_id} after update")
+                    self._notify_status_change()
+                    return True, "Output updated and restarted"
+                else:
+                    print(f"⚠️ Output {output_id} updated but failed to restart: {message}")
+                    self._notify_status_change()
+                    return True, f"Output updated but restart failed: {message}"
+
+            self._notify_status_change()
+            print(f"✅ Updated output: {output_id}")
+            return True, "Output updated"
 
     def start_output(self, output_id: str) -> tuple[bool, str]:
         """Start an output."""
@@ -187,13 +239,18 @@ class MAVLinkRouter:
                 output_type = self._get_type_value(state.config.type)
 
                 if output_type == "tcp_server":
-                    return self._start_tcp_server(state)
+                    success, message = self._start_tcp_server(state)
                 elif output_type == "tcp_client":
-                    return self._start_tcp_client(state)
+                    success, message = self._start_tcp_client(state)
                 elif output_type == "udp":
-                    return self._start_udp(state)
+                    success, message = self._start_udp(state)
                 else:
                     return False, f"Unknown output type: {output_type}"
+
+                if success:
+                    self._notify_status_change()  # Notify WebSocket
+
+                return success, message
             except Exception as e:
                 return False, str(e)
 
@@ -208,8 +265,44 @@ class MAVLinkRouter:
                 return False, "Output not running"
 
             self._stop_output_internal(state)
+            self._notify_status_change()  # Notify WebSocket
             print(f"🛑 Stopped output: {output_id}")
             return True, "Output stopped"
+
+    def restart_output(self, output_id: str) -> tuple[bool, str]:
+        """Restart an output (stop then start)."""
+        with self.lock:
+            if output_id not in self.outputs:
+                return False, f"Output {output_id} not found"
+
+            state = self.outputs[output_id]
+
+            # Stop the output if running
+            if state.running:
+                self._stop_output_internal(state)
+                print(f"🔄 Stopping output for restart: {output_id}")
+
+            # Start the output
+            try:
+                output_type = self._get_type_value(state.config.type)
+
+                if output_type == "tcp_server":
+                    success, message = self._start_tcp_server(state)
+                elif output_type == "tcp_client":
+                    success, message = self._start_tcp_client(state)
+                elif output_type == "udp":
+                    success, message = self._start_udp(state)
+                else:
+                    return False, f"Unknown output type: {output_type}"
+
+                if success:
+                    print(f"🔄 Restarted output: {output_id}")
+                    self._notify_status_change()  # Notify WebSocket
+
+                return success, message
+
+            except Exception as e:
+                return False, str(e)
 
     def _stop_output_internal(self, state: OutputState):
         """Internal method to stop an output."""
@@ -357,8 +450,19 @@ class MAVLinkRouter:
             print(f"🔗 TCP Client connected to {state.config.host}:{state.config.port} (ID: {state.config.id})")
             return True, "TCP Client connected"
 
+        except ConnectionRefusedError:
+            return (
+                False,
+                f"No hay servidor TCP en {state.config.host}:{state.config.port}. "
+                "Verifica que el destino esté disponible.",
+            )
+        except socket_module.timeout:
+            return (
+                False,
+                f"Timeout conectando a {state.config.host}:{state.config.port}. Verifica la conectividad de red.",
+            )
         except Exception as e:
-            return False, f"Failed to connect: {e}"
+            return False, f"Error de conexión: {e}"
 
     def _tcp_client_connection_reader(self, state: OutputState):
         """Read from TCP client connection and forward to serial."""
