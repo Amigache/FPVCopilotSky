@@ -77,6 +77,14 @@
   flex-wrap: wrap;
 }
 
+.connection-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 4px;
+}
+
 button {
   padding: 10px 16px;
   background: linear-gradient(135deg, #4b5dbd 0%, #3d2e63 100%);
@@ -89,6 +97,7 @@ button {
   letter-spacing: 0.3px;
   transition: all 0.2s;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  text-align: center;
 }
 
 button:hover:not(:disabled) {
@@ -298,34 +307,15 @@ button:disabled {
   gap: 16px;
 }
 
-.params-header-card {
+/* Actions Card in right column */
+.params-actions-card {
   padding: 16px;
 }
 
-.params-header-card .card-header-row {
-  margin-bottom: 0;
-}
-
-.vehicle-badge {
-  display: inline-block;
-  margin-left: 10px;
-  padding: 4px 10px;
-  background: linear-gradient(135deg, rgba(92, 107, 192, 0.3), rgba(57, 73, 171, 0.3));
-  border: 1px solid rgba(92, 107, 192, 0.5);
-  border-radius: 12px;
-  font-size: 0.8em;
-  color: #b8c4ff;
-}
-
-.waiting-vehicle {
-  color: #9aa6c3;
-  font-size: 0.9em;
-  margin-top: 10px;
-  padding: 15px;
-  background: rgba(52, 66, 122, 0.2);
-  border-radius: 4px;
-  text-align: center;
-  border: 1px dashed rgba(120, 138, 190, 0.3);
+.params-actions-card .actions-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 /* Two Column Layout */

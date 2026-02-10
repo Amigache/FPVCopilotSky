@@ -1,173 +1,31 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useWebSocket } from '../../../contexts/WebSocketContext'
 import { useToast } from '../../../contexts/ToastContext'
 import { useModal } from '../../../contexts/ModalContext'
 import { API_SYSTEM, API_MAVLINK, fetchWithTimeout } from '../../../services/api'
 import Toggle from '../../Toggle/Toggle'
+import {
+  AVAILABLE_BAUDRATES,
+  DEFAULT_BAUDRATE,
+  BASE_PARAMS,
+  VEHICLE_PARAMS,
+  STREAM_RATE_PARAMS,
+  RC_CALIBRATION_PARAMS,
+  detectVehicleType,
+  getParamNamesToLoad,
+  buildRecommendedParams,
+} from './flightControllerConstants'
 import './FlightControllerView.css'
-
-// Base parameters (common to all vehicles)
-const BASE_PARAMS = {
-  RC_PROTOCOLS: {
-    label: 'RC_PROTOCOLS',
-    description: 'rcProtocolsDesc',
-    recommended: 0,
-    options: [
-      { value: 0, label: '❌ Ninguno (Sin RC)' },
-      { value: 1, label: '📡 All (Todos)' },
-      { value: 2, label: '📻 PPM' },
-      { value: 4, label: '📶 IBUS' },
-      { value: 8, label: '📡 SBUS' },
-      { value: 16, label: '🎮 DSM' },
-      { value: 32, label: '📻 SUMD' },
-      { value: 64, label: '🔵 SRXL' },
-      { value: 128, label: '🔴 FPORT' },
-      { value: 256, label: '🟢 CRSF' },
-    ],
-  },
-  FS_GCS_ENABL: {
-    label: 'FS_GCS_ENABLE',
-    description: 'fsGcsDesc',
-    recommended: 1,
-    options: [
-      { value: 0, label: '❌ Deshabilitado' },
-      { value: 1, label: '✅ Habilitado' },
-      { value: 2, label: '✅ + RTL si no RC' },
-    ],
-  },
-}
-
-// Vehicle-specific parameters
-const VEHICLE_PARAMS = {
-  plane: {
-    title: '✈️ Parámetros Plane',
-    params: {
-      THR_FAILSAFE: {
-        label: 'THR_FAILSAFE',
-        description: 'thrFailsafeDesc',
-        recommended: 0,
-        options: [
-          { value: 0, label: '❌ Deshabilitado' },
-          { value: 1, label: '✅ Habilitado (RTL)' },
-          { value: 2, label: '⚠️ Continue (sin throttle)' },
-        ],
-      },
-    },
-  },
-  rover: {
-    title: '🚗 Parámetros Rover',
-    params: {
-      FS_THR_ENABLE: {
-        label: 'FS_THR_ENABLE',
-        description: 'fsThrEnableDesc',
-        recommended: 0,
-        options: [
-          { value: 0, label: '❌ Deshabilitado' },
-          { value: 1, label: '✅ Habilitado (RTL)' },
-          { value: 2, label: '⚠️ Continue (sin throttle)' },
-        ],
-      },
-    },
-  },
-  copter: {
-    title: '🚁 Parámetros Copter',
-    params: {
-      FS_THR_ENABLE: {
-        label: 'FS_THR_ENABLE',
-        description: 'fsThrEnableDesc',
-        recommended: 0,
-        options: [
-          { value: 0, label: '❌ Deshabilitado' },
-          { value: 1, label: '✅ Habilitado (Land)' },
-          { value: 2, label: '🏠 RTL' },
-          { value: 3, label: '⚠️ Land + SmartRTL' },
-        ],
-      },
-      ARMING_CHECK: {
-        label: 'ARMING_CHECK',
-        description: 'armingCheckDesc',
-        recommended: 65470,
-        type: 'number',
-      },
-    },
-    rcCalibration: true, // Show RC calibration section
-  },
-}
-
-// Stream Rate parameters (telemetry rates for 4G optimization)
-const STREAM_RATE_PARAMS = {
-  main: [
-    {
-      name: 'SR0_EXTRA1',
-      label: 'EXTRA1 (Actitud)',
-      description: 'Roll, Pitch, Yaw',
-      recommended: 4,
-      color: 'green',
-    },
-    {
-      name: 'SR0_POSITION',
-      label: 'POSITION (GPS)',
-      description: 'Lat, Lon, Alt',
-      recommended: 2,
-      color: 'blue',
-    },
-    {
-      name: 'SR0_EXTRA3',
-      label: 'EXTRA3 (Velocidad)',
-      description: 'Speed, Climb rate',
-      recommended: 2,
-      color: 'orange',
-    },
-    {
-      name: 'SR0_EXT_STAT',
-      label: 'EXT_STAT (Estado)',
-      description: 'Modo, armado, batería',
-      recommended: 2,
-      color: 'purple',
-    },
-  ],
-  advanced: [
-    { name: 'SR0_RAW_CTRL', label: 'RAW_CTRL', description: 'Servo/motor outputs', recommended: 1 },
-    { name: 'SR0_RC_CHAN', label: 'RC_CHAN', description: 'PWM inputs (no usado)', recommended: 1 },
-  ],
-}
-
-// RC Calibration parameters (for copter)
-const RC_CALIBRATION_PARAMS = [
-  { channel: 1, name: 'Roll', minKey: 'RC1_MIN', maxKey: 'RC1_MAX' },
-  { channel: 2, name: 'Pitch', minKey: 'RC2_MIN', maxKey: 'RC2_MAX' },
-  { channel: 3, name: 'Throttle', minKey: 'RC3_MIN', maxKey: 'RC3_MAX' },
-  { channel: 4, name: 'Yaw', minKey: 'RC4_MIN', maxKey: 'RC4_MAX' },
-]
-
-// Detect vehicle type from MAV_TYPE
-const detectVehicleType = (mavType) => {
-  if (!mavType) return null
-  const type = mavType.toUpperCase()
-  if (type.includes('FIXED') || type.includes('WING') || type.includes('PLANE')) return 'plane'
-  if (
-    type.includes('QUAD') ||
-    type.includes('HEXA') ||
-    type.includes('OCTO') ||
-    type.includes('ROTOR') ||
-    type.includes('COPTER') ||
-    type.includes('TRI')
-  )
-    return 'copter'
-  if (type.includes('ROVER') || type.includes('GROUND')) return 'rover'
-  return null
-}
 
 const FlightControllerView = () => {
   const { t } = useTranslation()
   const { messages } = useWebSocket()
   const { showToast } = useToast()
   const { showModal } = useModal()
-  const [serialPort, setSerialPort] = useState('/dev/ttyAML0')
-  const [baudrate, setBaudrate] = useState('115200')
+  const [serialPort, setSerialPort] = useState('')
+  const [baudrate, setBaudrate] = useState(DEFAULT_BAUDRATE)
   const [isConnected, setIsConnected] = useState(false)
-  const [_status, setStatus] = useState(t('views.flightController.disconnected'))
   const [loading, setLoading] = useState(false)
   const [availablePorts, setAvailablePorts] = useState([])
   const [loadingPorts, setLoadingPorts] = useState(true)
@@ -190,11 +48,6 @@ const FlightControllerView = () => {
     const mavlinkStatus = messages.mavlink_status
     if (mavlinkStatus) {
       setIsConnected(mavlinkStatus.connected)
-      setStatus(
-        mavlinkStatus.connected
-          ? t('views.flightController.connected')
-          : t('views.flightController.disconnected')
-      )
     }
 
     // Detect vehicle type from telemetry
@@ -205,69 +58,47 @@ const FlightControllerView = () => {
         setVehicleType(detected)
       }
     }
-  }, [messages.mavlink_status, messages.telemetry, t, vehicleType])
+  }, [messages.mavlink_status, messages.telemetry, vehicleType])
 
   // Auto-load parameters flag
   const [autoLoadTriggered, setAutoLoadTriggered] = useState(false)
 
-  const availableBaudrates = [
-    '9600',
-    '19200',
-    '38400',
-    '57600',
-    '115200',
-    '230400',
-    '460800',
-    '921600',
-  ]
-
-  // Fetch available ports
+  // Fetch available ports and load saved preferences on mount
   useEffect(() => {
     const fetchPorts = async () => {
       try {
         const response = await fetchWithTimeout(`${API_SYSTEM}/ports`)
         const data = await response.json()
-
-        if (data.ports && data.ports.length > 0) {
-          setAvailablePorts(data.ports)
-          // Set first port as default if current selection is not in list
-          if (!data.ports.find((p) => p.path === serialPort)) {
-            setSerialPort(data.ports[0].path)
-          }
-        } else {
-          // Fallback to default ports if API returns empty
-          setAvailablePorts([
-            { path: '/dev/ttyAML0', name: 'ttyAML0' },
-            { path: '/dev/ttyUSB0', name: 'ttyUSB0' },
-          ])
-        }
+        const ports = data.ports?.length > 0 ? data.ports : []
+        setAvailablePorts(ports)
       } catch (error) {
         console.error('Error fetching ports:', error)
-        // Fallback to default ports on error
-        setAvailablePorts([
-          { path: '/dev/ttyAML0', name: 'ttyAML0' },
-          { path: '/dev/ttyUSB0', name: 'ttyUSB0' },
-        ])
+        setAvailablePorts([])
       } finally {
         setLoadingPorts(false)
       }
     }
 
-    fetchPorts()
-
-    // Load serial preferences
     const loadSerialPreferences = async () => {
       try {
         const response = await fetchWithTimeout(`${API_MAVLINK}/preferences`)
         const data = await response.json()
-        if (data.success) {
-          setSerialPreferences(data.preferences || { auto_connect: false })
+        if (data.success && data.preferences) {
+          setSerialPreferences(data.preferences)
+          // Restore saved port and baudrate
+          if (data.preferences.port) {
+            setSerialPort(data.preferences.port)
+          }
+          if (data.preferences.baudrate) {
+            setBaudrate(String(data.preferences.baudrate))
+          }
         }
       } catch (error) {
         console.error('Error loading serial preferences:', error)
       }
     }
 
+    fetchPorts()
     loadSerialPreferences()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -326,16 +157,13 @@ const FlightControllerView = () => {
 
       if (response.ok && data.success) {
         setIsConnected(true)
-        setStatus(t('views.flightController.connected'))
         showToast(t('views.flightController.connectSuccess'), 'success')
       } else {
         const message = data.message || data.detail || 'Connection failed'
-        setStatus(message)
         showToast(`${t('views.flightController.connectError')}: ${message}`, 'error')
       }
     } catch (error) {
       console.error('Error connecting:', error)
-      setStatus('Error: ' + error.message)
       showToast(`${t('views.flightController.connectError')}: ${error.message}`, 'error')
     } finally {
       setLoading(false)
@@ -355,9 +183,8 @@ const FlightControllerView = () => {
 
       if (data.success || notConnected) {
         setIsConnected(false)
-        setStatus(t('views.flightController.disconnected'))
         showToast(t('views.flightController.disconnectSuccess'), 'success')
-        // Clear parameters when disconnected
+        // Clear all parameter state on disconnect
         setParams({})
         setParamsModified({})
         setVehicleType(null)
@@ -366,147 +193,97 @@ const FlightControllerView = () => {
       }
     } catch (error) {
       console.error('Error disconnecting:', error)
-      setStatus('Error: ' + error.message)
       showToast(`${t('views.flightController.disconnectError')}: ${error.message}`, 'error')
     } finally {
       setLoading(false)
     }
   }
 
-  // Build list of parameters to request based on vehicle type
-  const getParamsToLoad = () => {
-    const paramNames = []
-
-    // Base params
-    Object.keys(BASE_PARAMS).forEach((p) => paramNames.push(p))
-
-    // Vehicle-specific params
-    if (vehicleType && VEHICLE_PARAMS[vehicleType]) {
-      Object.keys(VEHICLE_PARAMS[vehicleType].params).forEach((p) => paramNames.push(p))
-
-      // RC calibration for copter
-      if (vehicleType === 'copter') {
-        RC_CALIBRATION_PARAMS.forEach((rc) => {
-          paramNames.push(rc.minKey)
-          paramNames.push(rc.maxKey)
-        })
-      }
-    }
-
-    // Stream rate params
-    STREAM_RATE_PARAMS.main.forEach((sr) => paramNames.push(sr.name))
-    STREAM_RATE_PARAMS.advanced.forEach((sr) => paramNames.push(sr.name))
-
-    return paramNames
-  }
-
   // Internal load function (with toasts for manual reload after apply recommended)
-  const loadParamsInternal = async (showToasts = false) => {
-    setLoadingParams(true)
-    showToast('🔄 ' + t('views.flightController.loadingParams'), 'info')
-    try {
-      const paramNames = getParamsToLoad()
-      const response = await fetchWithTimeout(
-        `${API_MAVLINK}/params/batch/get`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ params: paramNames }),
-        },
-        60000
-      )
+  const loadParamsInternal = useCallback(
+    async (showToasts = false) => {
+      setLoadingParams(true)
+      showToast('🔄 ' + t('views.flightController.loadingParams'), 'info')
+      try {
+        const paramNames = getParamNamesToLoad(vehicleType)
+        const response = await fetchWithTimeout(
+          `${API_MAVLINK}/params/batch/get`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ params: paramNames }),
+          },
+          60000
+        )
 
-      const data = await response.json()
+        const data = await response.json()
 
-      if (data.parameters) {
-        setParams(data.parameters)
-        setParamsModified({})
+        if (data.parameters) {
+          setParams(data.parameters)
+          setParamsModified({})
 
-        if (showToasts) {
-          const loadedCount = Object.keys(data.parameters).length
-          const errorCount = data.errors?.length || 0
+          if (showToasts) {
+            const loadedCount = Object.keys(data.parameters).length
+            const errorCount = data.errors?.length || 0
 
-          if (errorCount > 0) {
-            showToast(
-              `${t('views.flightController.paramsLoaded')} (${loadedCount}/${
-                loadedCount + errorCount
-              })`,
-              'warning'
-            )
-          } else {
-            showToast(t('views.flightController.paramsLoaded'), 'success')
+            if (errorCount > 0) {
+              showToast(
+                `${t('views.flightController.paramsLoaded')} (${loadedCount}/${
+                  loadedCount + errorCount
+                })`,
+                'warning'
+              )
+            } else {
+              showToast(t('views.flightController.paramsLoaded'), 'success')
+            }
           }
+        } else if (showToasts) {
+          showToast(t('views.flightController.paramsLoadError'), 'error')
         }
-      } else if (showToasts) {
-        showToast(t('views.flightController.paramsLoadError'), 'error')
+      } catch (error) {
+        console.error('Error loading params:', error)
+        if (showToasts) {
+          showToast(`${t('views.flightController.paramsLoadError')}: ${error.message}`, 'error')
+        }
+      } finally {
+        setLoadingParams(false)
       }
-    } catch (error) {
-      console.error('Error loading params:', error)
-      if (showToasts) {
-        showToast(`${t('views.flightController.paramsLoadError')}: ${error.message}`, 'error')
-      }
-    } finally {
-      setLoadingParams(false)
-    }
-  }
+    },
+    [vehicleType, showToast, t]
+  )
 
   // Auto-load parameters when connected and vehicle type is detected
   useEffect(() => {
-    // Skip if already triggered or currently loading
-    if (autoLoadTriggered || loadingParams) {
-      return
-    }
-
-    // Check conditions for auto-load: connected + vehicle type detected
+    if (autoLoadTriggered || loadingParams) return
     if (isConnected && vehicleType) {
       setAutoLoadTriggered(true)
-
-      // Call directly - no setTimeout needed
-      ;(async () => {
-        try {
-          const paramNames = getParamsToLoad()
-
-          setLoadingParams(true)
-          showToast('🔄 ' + t('views.flightController.loadingParams'), 'info')
-          const response = await fetchWithTimeout(
-            `${API_MAVLINK}/params/batch/get`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ params: paramNames }),
-            },
-            60000
-          )
-
-          const data = await response.json()
-
-          if (data.parameters) {
-            setParams(data.parameters)
-            setParamsModified({})
-            showToast('✅ ' + t('views.flightController.paramsLoaded'), 'success')
-          }
-        } catch (error) {
-          console.error('Auto-load failed:', error)
-          showToast(t('views.flightController.paramsLoadError'), 'error')
-        } finally {
-          setLoadingParams(false)
-        }
-      })()
+      loadParamsInternal(true)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isConnected, vehicleType])
 
-  // Reset auto-load when disconnected
+  // Reset auto-load and clear params when disconnected
   useEffect(() => {
     if (!isConnected) {
       setAutoLoadTriggered(false)
       setParams({})
+      setParamsModified({})
     }
   }, [isConnected])
 
   // Handle parameter change
   const handleParamChange = (paramName, value) => {
+    if (value === '' || value === undefined || value === null) {
+      // Remove from modified if cleared (revert to original)
+      setParamsModified((prev) => {
+        const next = { ...prev }
+        delete next[paramName]
+        return next
+      })
+      return
+    }
     const numValue = parseFloat(value)
+    if (Number.isNaN(numValue)) return
     setParamsModified((prev) => ({
       ...prev,
       [paramName]: numValue,
@@ -515,7 +292,15 @@ const FlightControllerView = () => {
 
   // Save modified parameters
   const saveModifiedParams = async () => {
-    if (Object.keys(paramsModified).length === 0) {
+    // Filter out any NaN or invalid values
+    const validParams = {}
+    for (const [key, val] of Object.entries(paramsModified)) {
+      if (typeof val === 'number' && !Number.isNaN(val)) {
+        validParams[key] = val
+      }
+    }
+
+    if (Object.keys(validParams).length === 0) {
       showToast(t('views.flightController.noChanges'), 'info')
       return
     }
@@ -527,27 +312,54 @@ const FlightControllerView = () => {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ params: paramsModified }),
+          body: JSON.stringify({ params: validParams }),
         },
         60000
       )
 
       const data = await response.json()
 
-      if (data.success) {
-        // Update local state with confirmed values
-        const newParams = { ...params }
+      // Process results: update successful params and track failures
+      const newParams = { ...params }
+      const successfulParams = []
+      const failedParams = []
+
+      if (data.results) {
         for (const [key, result] of Object.entries(data.results)) {
           if (result.success) {
             newParams[key] = result.value
+            successfulParams.push(key)
+          } else {
+            failedParams.push(key)
           }
         }
-        setParams(newParams)
-        setParamsModified({})
+      }
+
+      // Update state: remove successfully saved params from modified
+      setParams(newParams)
+      if (successfulParams.length > 0) {
+        setParamsModified((prev) => {
+          const next = { ...prev }
+          successfulParams.forEach((key) => delete next[key])
+          return next
+        })
+      }
+
+      // Show appropriate toast based on results
+      if (failedParams.length === 0) {
         showToast(t('views.flightController.paramsSaved'), 'success')
+      } else if (successfulParams.length > 0) {
+        showToast(
+          `${t('views.flightController.paramsSaved')} (${successfulParams.length}/${
+            Object.keys(validParams).length
+          }). ${t('views.flightController.paramsSaveError')}: ${failedParams.join(', ')}`,
+          'warning'
+        )
       } else {
         showToast(
-          `${t('views.flightController.paramsSaveError')}: ${data.errors?.join(', ')}`,
+          `${t('views.flightController.paramsSaveError')}: ${
+            data.errors?.join(', ') || failedParams.join(', ')
+          }`,
           'error'
         )
       }
@@ -568,36 +380,7 @@ const FlightControllerView = () => {
       confirmText: t('views.flightController.applyRecommended'),
       cancelText: t('common.cancel'),
       onConfirm: async () => {
-        // Build recommended params object
-        const recommendedParams = {}
-
-        // Base params
-        Object.entries(BASE_PARAMS).forEach(([name, config]) => {
-          recommendedParams[name] = config.recommended
-        })
-
-        // Vehicle-specific params
-        if (vehicleType && VEHICLE_PARAMS[vehicleType]) {
-          Object.entries(VEHICLE_PARAMS[vehicleType].params).forEach(([name, config]) => {
-            recommendedParams[name] = config.recommended
-          })
-
-          // RC calibration for copter
-          if (vehicleType === 'copter') {
-            RC_CALIBRATION_PARAMS.forEach((rc) => {
-              recommendedParams[rc.minKey] = 1101
-              recommendedParams[rc.maxKey] = 1901
-            })
-          }
-        }
-
-        // Stream rates
-        STREAM_RATE_PARAMS.main.forEach((sr) => {
-          recommendedParams[sr.name] = sr.recommended
-        })
-        STREAM_RATE_PARAMS.advanced.forEach((sr) => {
-          recommendedParams[sr.name] = sr.recommended
-        })
+        const recommendedParams = buildRecommendedParams(vehicleType)
 
         setSavingParams(true)
         try {
@@ -613,16 +396,37 @@ const FlightControllerView = () => {
 
           const data = await response.json()
 
-          if (data.success) {
+          // Count successes and failures
+          const successCount = data.results
+            ? Object.values(data.results).filter((r) => r.success).length
+            : 0
+          const totalCount = Object.keys(recommendedParams).length
+          const failedParams = data.results
+            ? Object.keys(data.results).filter((key) => !data.results[key].success)
+            : []
+
+          if (failedParams.length === 0) {
             showToast(t('views.flightController.recommendedApplied'), 'success')
-            // Reload parameters to show updated values
-            await loadParamsInternal(true)
+          } else if (successCount > 0) {
+            showToast(
+              `${t(
+                'views.flightController.recommendedApplied'
+              )} (${successCount}/${totalCount}). ${t(
+                'views.flightController.paramsSaveError'
+              )}: ${failedParams.join(', ')}`,
+              'warning'
+            )
           } else {
             showToast(
-              `${t('views.flightController.paramsSaveError')}: ${data.errors?.join(', ')}`,
+              `${t('views.flightController.paramsSaveError')}: ${
+                data.errors?.join(', ') || failedParams.join(', ')
+              }`,
               'error'
             )
           }
+
+          // Always reload params to show what was actually applied
+          await loadParamsInternal(true)
         } catch (error) {
           console.error('Error applying recommended config:', error)
           showToast(`${t('views.flightController.paramsSaveError')}: ${error.message}`, 'error')
@@ -640,6 +444,11 @@ const FlightControllerView = () => {
     }
     return params[paramName] ?? ''
   }
+
+  // Count only valid modified params for the save button
+  const validModifiedCount = Object.values(paramsModified).filter(
+    (v) => typeof v === 'number' && !Number.isNaN(v)
+  ).length
 
   // Check if inputs should be disabled (no connection OR no params loaded)
   const paramsLoaded = Object.keys(params).length > 0
@@ -689,7 +498,8 @@ const FlightControllerView = () => {
               {!hasValue && <option value="">--</option>}
               {config.options.map((opt) => (
                 <option key={opt.value} value={opt.value}>
-                  {opt.label} {opt.value === recommended ? '★' : ''}
+                  {opt.labelKey ? t(`views.flightController.${opt.labelKey}`) : opt.label}{' '}
+                  {opt.value === recommended ? '★' : ''}
                 </option>
               ))}
             </select>
@@ -746,18 +556,29 @@ const FlightControllerView = () => {
               onChange={(e) => setBaudrate(e.target.value)}
               disabled={isConnected || loading}
             >
-              {availableBaudrates.map((rate) => (
+              {AVAILABLE_BAUDRATES.map((rate) => (
                 <option key={rate} value={rate}>
-                  {rate} {rate === '115200' ? '(Recomendado)' : ''}
+                  {rate}{' '}
+                  {rate === DEFAULT_BAUDRATE ? t('views.flightController.baudrateRecommended') : ''}
                 </option>
               ))}
             </select>
           </div>
         </div>
 
-        <div className="button-group">
+        <div className="connection-actions">
+          <Toggle
+            checked={serialPreferences.auto_connect || false}
+            onChange={(e) => handleAutoConnectChange(e.target.checked)}
+            disabled={savingSerialPreferences}
+            label={t('views.flightController.autoConnect')}
+          />
           {!isConnected ? (
-            <button onClick={handleConnect} disabled={loading} className="btn-connect">
+            <button
+              onClick={handleConnect}
+              disabled={loading || !serialPort || loadingPorts}
+              className="btn-connect"
+            >
               🔗 {t('views.flightController.connect')}
             </button>
           ) : (
@@ -766,61 +587,10 @@ const FlightControllerView = () => {
             </button>
           )}
         </div>
-
-        <div className="form-group auto-start-toggle">
-          <Toggle
-            checked={serialPreferences.auto_connect || false}
-            onChange={(e) => handleAutoConnectChange(e.target.checked)}
-            disabled={savingSerialPreferences}
-            label={t('views.flightController.autoConnect')}
-          />
-        </div>
       </div>
 
-      {/* Parameters Configuration - always shown */}
+      {/* Parameters Configuration */}
       <div className="params-container">
-        {/* Header with buttons */}
-        <div className="card params-header-card">
-          <div className="card-header-row">
-            <div>
-              <h2>⚙️ {t('views.flightController.configTitle')}</h2>
-              {vehicleType ? (
-                <span className="vehicle-badge">
-                  {vehicleType === 'copter' ? '🚁' : vehicleType === 'plane' ? '✈️' : '🚗'}
-                  {vehicleType.toUpperCase()}
-                </span>
-              ) : isConnected ? (
-                <span className="vehicle-badge detecting">
-                  ⏳ {t('views.flightController.detectingVehicle')}
-                </span>
-              ) : (
-                <span className="vehicle-badge disconnected">
-                  ⚠ {t('views.flightController.notConnected')}
-                </span>
-              )}
-            </div>
-            <div className="header-buttons">
-              <button
-                onClick={applyRecommendedConfig}
-                disabled={!isConnected || savingParams || loadingParams || !paramsLoaded}
-                className="btn-primary"
-              >
-                🚀 {t('views.flightController.applyRecommended')}
-              </button>
-              {Object.keys(paramsModified).length > 0 && (
-                <button
-                  onClick={saveModifiedParams}
-                  disabled={savingParams}
-                  className="btn-success"
-                >
-                  {savingParams ? '⏳' : '💾'} {t('views.flightController.saveChanges')} (
-                  {Object.keys(paramsModified).length})
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-
         <div className="params-two-columns">
           {/* Left Column: Base + Vehicle-Specific */}
           <div className="params-column">
@@ -837,8 +607,8 @@ const FlightControllerView = () => {
             {/* Vehicle-Specific Parameters Card */}
             <div className="card">
               <h3>
-                {vehicleType
-                  ? VEHICLE_PARAMS[vehicleType]?.title
+                {vehicleType && VEHICLE_PARAMS[vehicleType]?.titleKey
+                  ? t(`views.flightController.${VEHICLE_PARAMS[vehicleType].titleKey}`)
                   : '🔧 ' + t('views.flightController.vehicleParams')}
               </h3>
               {vehicleType && VEHICLE_PARAMS[vehicleType] ? (
@@ -907,8 +677,32 @@ const FlightControllerView = () => {
             </div>
           </div>
 
-          {/* Right Column: Stream Rates */}
+          {/* Right Column: Actions + Stream Rates */}
           <div className="params-column">
+            {/* Actions Card */}
+            <div className="card params-actions-card">
+              <div className="actions-buttons">
+                <button
+                  onClick={applyRecommendedConfig}
+                  disabled={!isConnected || savingParams || loadingParams || !paramsLoaded}
+                  className="btn-primary"
+                >
+                  🚀 {t('views.flightController.applyRecommended')}
+                </button>
+                {validModifiedCount > 0 && (
+                  <button
+                    onClick={saveModifiedParams}
+                    disabled={savingParams}
+                    className="btn-success"
+                  >
+                    {savingParams ? '⏳' : '💾'} {t('views.flightController.saveChanges')} (
+                    {validModifiedCount})
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Stream Rates Card */}
             <div className="card">
               <h3>📡 {t('views.flightController.streamRates')}</h3>
               <p className="stream-rates-help">{t('views.flightController.streamRatesDesc')}</p>
@@ -927,8 +721,14 @@ const FlightControllerView = () => {
                       }`}
                     >
                       <div className="stream-rate-info">
-                        <div className="stream-rate-label">{sr.label}</div>
-                        <small>{sr.description}</small>
+                        <div className="stream-rate-label">
+                          {sr.labelKey ? t(`views.flightController.${sr.labelKey}`) : sr.label}
+                        </div>
+                        <small>
+                          {sr.descriptionKey
+                            ? t(`views.flightController.${sr.descriptionKey}`)
+                            : sr.description}
+                        </small>
                       </div>
                       <div className="stream-rate-input">
                         <input
@@ -977,8 +777,14 @@ const FlightControllerView = () => {
                     return (
                       <div key={sr.name} className="stream-rate-item advanced">
                         <div className="stream-rate-info">
-                          <div className="stream-rate-label">{sr.label}</div>
-                          <small>{sr.description}</small>
+                          <div className="stream-rate-label">
+                            {sr.labelKey ? t(`views.flightController.${sr.labelKey}`) : sr.label}
+                          </div>
+                          <small>
+                            {sr.descriptionKey
+                              ? t(`views.flightController.${sr.descriptionKey}`)
+                              : sr.description}
+                          </small>
                         </div>
                         <div className="stream-rate-input">
                           <input

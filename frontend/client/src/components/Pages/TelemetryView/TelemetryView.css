@@ -39,7 +39,6 @@
 .connection-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: var(--gap-md);
   margin-bottom: var(--gap-md);
 }
 
@@ -153,7 +152,9 @@
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: var(--gap-xs);
+  text-align: center;
 }
 
 .btn-primary {
@@ -297,6 +298,7 @@
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
+  text-align: center;
 }
 
 .btn-edit:hover:not(:disabled) {
@@ -315,6 +317,7 @@
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
+  text-align: center;
 }
 
 .btn-delete:hover {
