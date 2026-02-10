@@ -100,7 +100,6 @@ const FlightControllerView = () => {
 
     fetchPorts()
     loadSerialPreferences()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Save serial preferences
