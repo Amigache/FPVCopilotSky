@@ -2,34 +2,117 @@ import { useState, useRef, useCallback, useEffect, useImperativeHandle, forwardR
 import { useTranslation } from 'react-i18next'
 import api from '../../../services/api'
 
-const WebRTCViewerCard = forwardRef(({ status, webrtcStatus, onStatsUpdate }, ref) => {
+// Helper function to apply bandwidth constraint to SDP
+function applyBandwidthConstraint(sdp, maxBitrateKbps) {
+  if (!sdp || !maxBitrateKbps) return sdp
+  // Add bandwidth constraint after m=video line
+  return sdp.replace(/(m=video.*\r\n)/, `$1b=AS:${maxBitrateKbps}\r\n`)
+}
+
+const WebRTCViewerCard = forwardRef(({ onStatsUpdate }, ref) => {
   const { t } = useTranslation()
   const videoRef = useRef(null)
   const pcRef = useRef(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [connectionState, setConnectionState] = useState('disconnected')
-  const [peerId, setPeerId] = useState(null)
   const statsIntervalRef = useRef(null)
   const prevBytesRef = useRef(0)
   const prevTimestampRef = useRef(0)
   const containerRef = useRef(null)
   const peerIdRef = useRef(null)
 
-  // Expose connect/disconnect to parent
-  useImperativeHandle(ref, () => ({
-    connect: connectWebRTC,
-    disconnect: disconnectPeer,
-    connectionState,
-  }))
-
-  // Auto-connect when component mounts (stream already started)
-  useEffect(() => {
-    connectWebRTC()
-    return () => {
-      disconnectPeer()
-      if (statsIntervalRef.current) clearInterval(statsIntervalRef.current)
+  // Function definitions must come before hooks that use them
+  const stopStatsCollection = useCallback(() => {
+    if (statsIntervalRef.current) {
+      clearInterval(statsIntervalRef.current)
+      statsIntervalRef.current = null
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
+
+  const startStatsCollection = useCallback(
+    (pc, pId) => {
+      if (statsIntervalRef.current) clearInterval(statsIntervalRef.current)
+
+      statsIntervalRef.current = setInterval(async () => {
+        try {
+          const stats = await pc.getStats()
+          let inboundVideo = null
+          let candidatePair = null
+
+          stats.forEach((report) => {
+            if (report.type === 'inbound-rtp' && report.kind === 'video') {
+              inboundVideo = report
+            }
+            if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+              candidatePair = report
+            }
+          })
+
+          if (inboundVideo) {
+            const now = performance.now()
+            const bytes = inboundVideo.bytesReceived || 0
+            const elapsed = (now - (prevTimestampRef.current || now)) / 1000
+
+            const bitrate =
+              elapsed > 0 ? Math.round(((bytes - prevBytesRef.current) * 8) / elapsed / 1000) : 0
+
+            prevBytesRef.current = bytes
+            prevTimestampRef.current = now
+
+            const newStats = {
+              resolution: inboundVideo.frameWidth
+                ? `${inboundVideo.frameWidth}x${inboundVideo.frameHeight}`
+                : '-',
+              fps: inboundVideo.framesPerSecond || 0,
+              bitrate: Math.max(0, bitrate),
+              rtt: candidatePair ? Math.round((candidatePair.currentRoundTripTime || 0) * 1000) : 0,
+              packetsLost: inboundVideo.packetsLost || 0,
+              jitter: inboundVideo.jitter ? Math.round(inboundVideo.jitter * 1000) : 0,
+            }
+
+            if (onStatsUpdate) onStatsUpdate(newStats)
+
+            // Report stats to server
+            api
+              .post('/api/webrtc/stats', {
+                peer_id: pId,
+                stats: {
+                  rtt_ms: newStats.rtt,
+                  bitrate_kbps: newStats.bitrate,
+                  fps: newStats.fps,
+                  packets_lost: newStats.packetsLost,
+                  jitter_ms: newStats.jitter,
+                },
+              })
+              .catch(() => {})
+          }
+        } catch {
+          // Stats collection failed, ignore
+        }
+      }, 2000)
+    },
+    [onStatsUpdate]
+  )
+
+  const disconnectPeer = useCallback(() => {
+    stopStatsCollection()
+    if (pcRef.current) {
+      pcRef.current.close()
+      pcRef.current = null
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null
+    }
+    const currentPeerId = peerIdRef.current
+    if (currentPeerId) {
+      api.post('/api/webrtc/disconnect', { peer_id: currentPeerId }).catch(() => {})
+    }
+    setConnectionState('disconnected')
+    peerIdRef.current = null
+    if (onStatsUpdate) {
+      onStatsUpdate({ resolution: '-', fps: 0, bitrate: 0, rtt: 0, packetsLost: 0, jitter: 0 })
+    }
+  }, [onStatsUpdate, stopStatsCollection])
 
   const connectWebRTC = useCallback(async () => {
     try {
@@ -44,7 +127,6 @@ const WebRTCViewerCard = forwardRef(({ status, webrtcStatus, onStatsUpdate }, re
       }
 
       const newPeerId = sessionData.peer_id
-      setPeerId(newPeerId)
       peerIdRef.current = newPeerId
       const config = sessionData.config
 
@@ -136,100 +218,27 @@ const WebRTCViewerCard = forwardRef(({ status, webrtcStatus, onStatsUpdate }, re
       console.error('WebRTC connect error:', error)
       setConnectionState('failed')
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [startStatsCollection, stopStatsCollection])
 
-  const disconnectPeer = useCallback(() => {
-    stopStatsCollection()
-    if (pcRef.current) {
-      pcRef.current.close()
-      pcRef.current = null
-    }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null
-    }
-    const currentPeerId = peerIdRef.current
-    if (currentPeerId) {
-      api.post('/api/webrtc/disconnect', { peer_id: currentPeerId }).catch(() => {})
-    }
-    setConnectionState('disconnected')
-    setPeerId(null)
-    peerIdRef.current = null
-    if (onStatsUpdate) {
-      onStatsUpdate({ resolution: '-', fps: 0, bitrate: 0, rtt: 0, packetsLost: 0, jitter: 0 })
-    }
-  }, [onStatsUpdate]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const startStatsCollection = useCallback(
-    (pc, pId) => {
-      if (statsIntervalRef.current) clearInterval(statsIntervalRef.current)
-
-      statsIntervalRef.current = setInterval(async () => {
-        try {
-          const stats = await pc.getStats()
-          let inboundVideo = null
-          let candidatePair = null
-
-          stats.forEach((report) => {
-            if (report.type === 'inbound-rtp' && report.kind === 'video') {
-              inboundVideo = report
-            }
-            if (report.type === 'candidate-pair' && report.state === 'succeeded') {
-              candidatePair = report
-            }
-          })
-
-          if (inboundVideo) {
-            const now = performance.now()
-            const bytes = inboundVideo.bytesReceived || 0
-            const elapsed = (now - (prevTimestampRef.current || now)) / 1000
-
-            const bitrate =
-              elapsed > 0 ? Math.round(((bytes - prevBytesRef.current) * 8) / elapsed / 1000) : 0
-
-            prevBytesRef.current = bytes
-            prevTimestampRef.current = now
-
-            const newStats = {
-              resolution: inboundVideo.frameWidth
-                ? `${inboundVideo.frameWidth}x${inboundVideo.frameHeight}`
-                : '-',
-              fps: inboundVideo.framesPerSecond || 0,
-              bitrate: Math.max(0, bitrate),
-              rtt: candidatePair ? Math.round((candidatePair.currentRoundTripTime || 0) * 1000) : 0,
-              packetsLost: inboundVideo.packetsLost || 0,
-              jitter: inboundVideo.jitter ? Math.round(inboundVideo.jitter * 1000) : 0,
-            }
-
-            if (onStatsUpdate) onStatsUpdate(newStats)
-
-            // Report stats to server
-            api
-              .post('/api/webrtc/stats', {
-                peer_id: pId,
-                stats: {
-                  rtt_ms: newStats.rtt,
-                  bitrate_kbps: newStats.bitrate,
-                  fps: newStats.fps,
-                  packets_lost: newStats.packetsLost,
-                  jitter_ms: newStats.jitter,
-                },
-              })
-              .catch(() => {})
-          }
-        } catch {
-          // Stats collection failed, ignore
-        }
-      }, 2000)
-    },
-    [onStatsUpdate]
+  // Expose connect/disconnect to parent
+  useImperativeHandle(
+    ref,
+    () => ({
+      connect: connectWebRTC,
+      disconnect: disconnectPeer,
+      connectionState,
+    }),
+    [connectWebRTC, disconnectPeer, connectionState]
   )
 
-  const stopStatsCollection = useCallback(() => {
-    if (statsIntervalRef.current) {
-      clearInterval(statsIntervalRef.current)
-      statsIntervalRef.current = null
+  // Auto-connect when component mounts (stream already started)
+  useEffect(() => {
+    connectWebRTC() // eslint-disable-line react-hooks/set-state-in-effect
+    return () => {
+      disconnectPeer()
+      if (statsIntervalRef.current) clearInterval(statsIntervalRef.current)
     }
-  }, [])
+  }, [connectWebRTC, disconnectPeer])
 
   const toggleFullscreen = useCallback(() => {
     if (!containerRef.current) return
@@ -301,15 +310,5 @@ const WebRTCViewerCard = forwardRef(({ status, webrtcStatus, onStatsUpdate }, re
     </div>
   )
 })
-
-/**
- * Apply bandwidth constraint to SDP for 4G optimization.
- * Modifies the SDP to include b=AS: line for bandwidth limiting.
- */
-function applyBandwidthConstraint(sdp, maxBitrateKbps) {
-  if (!sdp || !maxBitrateKbps) return sdp
-  // Add bandwidth constraint after m=video line
-  return sdp.replace(/(m=video.*\r\n)/, `$1b=AS:${maxBitrateKbps}\r\n`)
-}
 
 export default WebRTCViewerCard

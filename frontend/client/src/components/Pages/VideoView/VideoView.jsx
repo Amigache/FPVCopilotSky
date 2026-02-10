@@ -13,7 +13,6 @@ import StreamControlCard from './StreamControlCard'
 import PipelineCard from './PipelineCard'
 import StatsCard from './StatsCard'
 import WebRTCViewerCard from './WebRTCViewerCard'
-import WebRTCLogCard from './WebRTCLogCard'
 
 const VideoView = () => {
   const { t } = useTranslation()

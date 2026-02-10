@@ -13,7 +13,7 @@ Tests for WebRTC signaling API endpoints including:
 """
 
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, AsyncMock, patch
 from fastapi.testclient import TestClient
 from app.main import app
 
@@ -28,7 +28,7 @@ def mock_webrtc_service():
     """Provide a mock WebRTC service for route testing"""
     mock = Mock()
 
-    # Status
+    # Status (sync)
     mock.get_status.return_value = {
         "active": True,
         "peers": [],
@@ -46,46 +46,51 @@ def mock_webrtc_service():
         "log": [],
     }
 
-    # Session creation
-    mock.create_offer.return_value = {
-        "success": True,
-        "peer_id": "abc123",
-        "config": {
-            "iceServers": [{"urls": "stun:stun.l.google.com:19302"}],
-            "sdpSemantics": "unified-plan",
-        },
-        "adaptive_config": {"target_bitrate": 1500},
-    }
+    # Session creation (async)
+    mock.create_peer_connection = AsyncMock(
+        return_value={
+            "success": True,
+            "peer_id": "abc123",
+            "config": {
+                "iceServers": [{"urls": "stun:stun.l.google.com:19302"}],
+                "sdpSemantics": "unified-plan",
+            },
+            "adaptive_config": {"target_bitrate": 1500},
+        }
+    )
 
-    # Offer/answer
-    mock.handle_offer.return_value = {
-        "success": True,
-        "peer_id": "abc123",
-        "type": "offer_received",
-    }
+    # Offer/answer (handle_offer is async, handle_answer is sync)
+    mock.handle_offer = AsyncMock(
+        return_value={
+            "success": True,
+            "peer_id": "abc123",
+            "sdp": "answer-sdp",
+            "type": "answer",
+        }
+    )
     mock.handle_answer.return_value = {"success": True, "peer_id": "abc123"}
 
-    # ICE
-    mock.add_ice_candidate.return_value = {"success": True}
+    # ICE (add_ice_candidate is async, get_ice_candidates is sync)
+    mock.add_ice_candidate = AsyncMock(return_value={"success": True})
     mock.get_ice_candidates.return_value = {"success": True, "candidates": []}
 
-    # Connection
+    # Connection (sync)
     mock.set_peer_connected.return_value = {"success": True}
     mock.disconnect_peer.return_value = {"success": True}
 
-    # Stats
+    # Stats (sync)
     mock.update_peer_stats.return_value = {"success": True}
 
-    # Logs
+    # Logs (sync)
     mock.get_logs.return_value = [{"timestamp": 1700000000.0, "level": "info", "message": "Service started"}]
 
-    # 4G config
+    # 4G config (sync)
     mock.get_4g_optimized_config.return_value = {
         "video": {"maxBitrate": 1500000},
         "ice": {"bundlePolicy": "max-bundle"},
     }
 
-    # Adaptive config
+    # Adaptive config (sync)
     mock.update_adaptive_config.return_value = {
         "success": True,
         "config": {"target_bitrate": 2000},
@@ -136,13 +141,15 @@ class TestWebRTCSessionEndpoint:
     def test_create_session_with_peer_id(self, client, mock_webrtc_service):
         response = client.post("/api/webrtc/session", json={"peer_id": "custom-id"})
         assert response.status_code == 200
-        mock_webrtc_service.create_offer.assert_called_with("custom-id")
+        mock_webrtc_service.create_peer_connection.assert_called_with("custom-id")
 
     def test_create_session_failure(self, client, mock_webrtc_service):
-        mock_webrtc_service.create_offer.return_value = {
-            "success": False,
-            "error": "Max peers reached",
-        }
+        mock_webrtc_service.create_peer_connection = AsyncMock(
+            return_value={
+                "success": False,
+                "error": "Max peers reached",
+            }
+        )
         response = client.post("/api/webrtc/session", json={})
         assert response.status_code == 400
 

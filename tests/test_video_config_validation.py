@@ -183,12 +183,12 @@ class TestStreamingConfigClamping:
 class TestStreamingConfigModeValidation:
     """Verify mode whitelist with fallback to 'udp'."""
 
-    @pytest.mark.parametrize("mode", ["udp", "multicast", "rtsp"])
+    @pytest.mark.parametrize("mode", ["udp", "multicast", "rtsp", "webrtc"])
     def test_valid_modes(self, mode):
         cfg = StreamingConfig(mode=mode)
         assert cfg.mode == mode
 
-    @pytest.mark.parametrize("bad_mode", ["hls", "TCP", "", "webrtc"])
+    @pytest.mark.parametrize("bad_mode", ["hls", "TCP", ""])
     def test_invalid_modes_fallback_to_udp(self, bad_mode):
         cfg = StreamingConfig(mode=bad_mode)
         assert cfg.mode == "udp"
