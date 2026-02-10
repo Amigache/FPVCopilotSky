@@ -197,9 +197,9 @@
       "recommended4G": "Recomendado 4G",
       "recommended4GValues": "Actitud 4Hz, GPS 2Hz, Velocidad 2Hz, Estado 2Hz",
       "rcProtocolsDesc": "Protocolo de entrada RC (usar 'Ninguno' para 4G sin mando físico)",
-      "fsGcsDesc": "Activa failsafe si pierde enlace GCS (recomendado)",
+      "fsGcsDesc": "Activa failsafe tras FS_LONG_TIMEOUT seg sin heartbeat MAVLink",
       "fsThrEnableDesc": "Deshabilitado = sin failsafe throttle (recomendado para 4G sin mando físico)",
-      "thrFailsafeDesc": "Deshabilitado = sin failsafe throttle (recomendado para 4G sin mando físico)",
+      "thrFailsafeDesc": "Activa failsafe en pérdida RC (throttle < THR_FS_VALUE o sin pulsos)",
       "armingCheckDesc": "Excluye verificación RC (bit 6), mantiene otras",
       "tooltipMatchesRecommended": "✓ Valor coincide con el recomendado",
       "tooltipDiffersFromRecommended": "⚠ Valor diferente al recomendado ({{recommended}})",
@@ -212,7 +212,55 @@
       "vehicleParams": "Parámetros del Vehículo",
       "autoConnect": "Conectar al Iniciar",
       "preferencesSaved": "Preferencias guardadas",
-      "preferencesError": "Error al guardar las preferencias"
+      "preferencesError": "Error al guardar las preferencias",
+      "baudrateRecommended": "(Recomendado)",
+      "rcProtocol": {
+        "none": "❌ Ninguno (Sin RC)",
+        "all": "📡 Todos",
+        "ppm": "📻 PPM",
+        "ibus": "📶 IBUS",
+        "sbus": "📡 SBUS",
+        "dsm": "🎮 DSM",
+        "sumd": "📻 SUMD",
+        "srxl": "🔵 SRXL",
+        "fport": "🔴 FPORT",
+        "crsf": "🟢 CRSF"
+      },
+      "fsGcs": {
+        "disabled": "❌ Deshabilitado",
+        "heartbeat": "✅ Heartbeat",
+        "heartbeatAndRemrssi": "✅ Heartbeat + REMRSSI",
+        "heartbeatAndAuto": "✅ Heartbeat (solo AUTO)"
+      },
+      "thrFs": {
+        "disabled": "❌ Deshabilitado",
+        "enabled": "✅ Habilitado",
+        "enabledNoFailsafe": "✅ Habilitado (Sin Acción Failsafe)",
+        "enabledRtl": "✅ Habilitado (RTL)",
+        "continue": "⚠️ Continue (sin throttle)",
+        "enabledLand": "✅ Habilitado (Land)",
+        "rtl": "🏠 RTL",
+        "landSmartRtl": "⚠️ Land + SmartRTL"
+      },
+      "vehicleTitle": {
+        "plane": "✈️ Parámetros Plane",
+        "rover": "🚗 Parámetros Rover",
+        "copter": "🚁 Parámetros Copter"
+      },
+      "streamRate": {
+        "extra1": "EXTRA1 (Actitud)",
+        "extra1Desc": "Roll, Pitch, Yaw",
+        "position": "POSITION (GPS)",
+        "positionDesc": "Lat, Lon, Alt",
+        "extra3": "EXTRA3 (Velocidad)",
+        "extra3Desc": "Velocidad, Climb rate",
+        "extStat": "EXT_STAT (Estado)",
+        "extStatDesc": "Modo, armado, batería",
+        "rawCtrl": "RAW_CTRL",
+        "rawCtrlDesc": "Servo/motor outputs",
+        "rcChan": "RC_CHAN",
+        "rcChanDesc": "PWM inputs (no usado)"
+      }
     },
     "system": {
       "title": "⚙️ Sistema",
