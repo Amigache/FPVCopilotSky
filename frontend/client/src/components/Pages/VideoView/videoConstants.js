@@ -99,3 +99,70 @@ export const isValidIpv4 = (ip) => {
   if (!m) return false
   return m.slice(1).every((o) => Number(o) <= 255)
 }
+
+/**
+ * Validate a domain name (RFC 1034/1035 compliant).
+ * Allows alphanumeric, hyphens, dots. No leading/trailing hyphen in labels.
+ * @param {string} domain
+ * @returns {boolean}
+ */
+export const isValidDomain = (domain) => {
+  if (!domain || domain.length > 253) return false
+  // Allow localhost
+  if (domain === 'localhost') return true
+  // Domain regex: labels separated by dots, each label 1-63 chars
+  const domainRegex =
+    /^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)*[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?$/
+  return domainRegex.test(domain)
+}
+
+/**
+ * Validate a host (either IPv4 or domain name).
+ * @param {string} host
+ * @returns {boolean}
+ */
+export const isValidHost = (host) => {
+  if (!host || host.trim() === '') return false
+  // If it looks like an IP (4 octets separated by dots), validate as IP only
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) {
+    return isValidIpv4(host)
+  }
+  // Otherwise validate as domain
+  return isValidDomain(host)
+}
+
+/**
+ * Validate a port number (1024-65535 for unprivileged).
+ * @param {number|string} port
+ * @returns {{ valid: boolean, error?: string }}
+ */
+export const validatePort = (port) => {
+  const num = typeof port === 'string' ? parseInt(port, 10) : port
+  if (Number.isNaN(num)) {
+    return { valid: false, error: 'views.video.validation.invalidPort' }
+  }
+  if (num < RANGES.PORT.MIN || num > RANGES.PORT.MAX) {
+    return { valid: false, error: 'views.video.validation.portOutOfRange' }
+  }
+  return { valid: true }
+}
+
+/**
+ * Validate RTSP URL format.
+ * @param {string} url
+ * @returns {{ valid: boolean, error?: string }}
+ */
+export const validateRtspUrl = (url) => {
+  if (!url || url.trim() === '') {
+    return { valid: false, error: 'views.video.validation.emptyUrl' }
+  }
+  if (!url.toLowerCase().startsWith('rtsp://')) {
+    return { valid: false, error: 'views.video.validation.mustStartWithRtsp' }
+  }
+  // Basic RTSP URL: rtsp://[user:pass@]host[:port]/path
+  const rtspRegex = /^rtsp:\/\/([^@\/]+@)?([^:\/]+)(:\d+)?(\/.*)?$/i
+  if (!rtspRegex.test(url)) {
+    return { valid: false, error: 'views.video.validation.invalidRtspFormat' }
+  }
+  return { valid: true }
+}

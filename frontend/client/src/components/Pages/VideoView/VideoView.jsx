@@ -12,6 +12,8 @@ import NetworkSettingsCard from './NetworkSettingsCard'
 import StreamControlCard from './StreamControlCard'
 import PipelineCard from './PipelineCard'
 import StatsCard from './StatsCard'
+import WebRTCViewerCard from './WebRTCViewerCard'
+import WebRTCLogCard from './WebRTCLogCard'
 
 const VideoView = () => {
   const { t } = useTranslation()
@@ -46,8 +48,12 @@ const VideoView = () => {
   const [copySuccess, setCopySuccess] = useState(false)
   const [hasChanges, setHasChanges] = useState(false)
   const [networkIp, setNetworkIp] = useState(null)
+  const [webrtcVideoStats, setWebrtcVideoStats] = useState(null)
+  const [webrtcKey, setWebrtcKey] = useState(0)
+  const [networkValidationErrors, setNetworkValidationErrors] = useState(false)
   const initialLoadDone = useRef(false)
   const liveUpdateTimer = useRef(null)
+  const webrtcViewerRef = useRef(null)
 
   // Cleanup debounce timer on unmount
   useEffect(() => {
@@ -73,6 +79,7 @@ const VideoView = () => {
 
   // ── WebSocket status ───────────────────────────────────────────────────────
   const status = messages.video_status || EMPTY_STATUS
+  const webrtcStatus = messages.webrtc_status || null
 
   // Sync remote config → local when no pending changes
   useEffect(() => {
@@ -89,6 +96,11 @@ const VideoView = () => {
     if (initialLoadDone.current) {
       setHasChanges(true)
     }
+  }, [])
+
+  // Handle validation state from NetworkSettingsCard
+  const handleNetworkValidation = useCallback((hasErrors) => {
+    setNetworkValidationErrors(hasErrors)
   }, [])
 
   // ── Data loading ───────────────────────────────────────────────────────────
@@ -203,6 +215,12 @@ const VideoView = () => {
       const data = await response.json()
       if (response.ok && data.success) {
         showToast(t('views.video.streamRestarted'), 'success')
+
+        // Force WebRTC component remount by changing key
+        // This ensures clean reconnection with fresh state
+        if (config.mode === 'webrtc') {
+          setWebrtcKey((prev) => prev + 1)
+        }
       } else {
         showToast(data.detail || data.message || t('views.video.errorRestarting'), 'error')
       }
@@ -239,21 +257,28 @@ const VideoView = () => {
           const restartData = await restartRes.json()
           if (restartRes.ok && restartData.success) {
             showToast(t('views.video.configAppliedAndRestarted'), 'success')
+            // Force WebRTC component remount after restart
+            if (config.mode === 'webrtc') {
+              setWebrtcKey((prev) => prev + 1)
+            }
           } else {
-            showToast(restartData.detail || t('views.video.configSavedRestartError'), 'warning')
+            const msg =
+              typeof restartData.detail === 'string' ? restartData.detail : restartData.message
+            showToast(msg || t('views.video.configSavedRestartError'), 'warning')
           }
         } else {
           showToast(t('views.video.configAppliedAndSaved'), 'success')
         }
       } else {
-        showToast(
-          videoData.detail ||
-            streamData.detail ||
-            videoData.message ||
-            streamData.message ||
-            t('views.video.errorApplying'),
-          'error'
-        )
+        const errMsg =
+          (typeof videoData.detail === 'string' && videoData.detail) ||
+          (typeof streamData.detail === 'string' && streamData.detail) ||
+          (Array.isArray(streamData.detail) && streamData.detail.map((e) => e.msg).join('; ')) ||
+          (Array.isArray(videoData.detail) && videoData.detail.map((e) => e.msg).join('; ')) ||
+          videoData.message ||
+          streamData.message ||
+          t('views.video.errorApplying')
+        showToast(errMsg, 'error')
       }
     } catch (error) {
       showToast(error.message || t('views.video.errorApplying'), 'error')
@@ -431,18 +456,22 @@ const VideoView = () => {
             availableResolutions={availableResolutions}
             availableFps={availableFps}
           />
-          <EncodingConfigCard
-            config={config}
-            streaming={status.streaming}
-            availableCodecs={availableCodecs}
-            updateConfig={updateConfig}
-            debouncedLiveUpdate={debouncedLiveUpdate}
-            liveUpdate={liveUpdate}
-          />
+          {config.mode !== 'webrtc' && (
+            <EncodingConfigCard
+              config={config}
+              streaming={status.streaming}
+              availableCodecs={availableCodecs}
+              updateConfig={updateConfig}
+              debouncedLiveUpdate={debouncedLiveUpdate}
+              liveUpdate={liveUpdate}
+            />
+          )}
           <NetworkSettingsCard
             config={config}
             streaming={status.streaming}
             updateConfig={updateConfig}
+            webrtcStatus={webrtcStatus}
+            onValidationChange={handleNetworkValidation}
           />
         </div>
 
@@ -455,15 +484,31 @@ const VideoView = () => {
             applyConfigAndStart={applyConfigAndStart}
             stopStream={stopStream}
             restartStream={restartStream}
+            config={config}
+            updateConfig={updateConfig}
+            hasValidationErrors={networkValidationErrors}
           />
-          {status.streaming && (
+          {/* WebRTC Viewer — shown when WebRTC mode is active and streaming */}
+          {config.mode === 'webrtc' && status.streaming && (
+            <WebRTCViewerCard
+              key={webrtcKey}
+              ref={webrtcViewerRef}
+              status={status}
+              webrtcStatus={webrtcStatus}
+              onStatsUpdate={setWebrtcVideoStats}
+            />
+          )}
+          {/* Pipeline Card — hidden for WebRTC */}
+          {status.streaming && config.mode !== 'webrtc' && (
             <PipelineCard
               pipelineString={pipelineString}
               onCopy={copyPipeline}
               copySuccess={copySuccess}
             />
           )}
-          {status.streaming && status.stats && <StatsCard status={status} />}
+          {status.streaming && status.stats && (
+            <StatsCard status={status} webrtcVideoStats={webrtcVideoStats} />
+          )}
         </div>
       </div>
     </div>

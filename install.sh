@@ -64,6 +64,21 @@ sudo apt-get install -y \
     pkg-config \
     v4l-utils
 
+# Install FFmpeg libraries for WebRTC (aiortc + av/PyAV)
+echo "🌐 Installing FFmpeg libraries for WebRTC support..."
+sudo apt-get install -y \
+    libavformat-dev \
+    libavcodec-dev \
+    libavdevice-dev \
+    libavutil-dev \
+    libswscale-dev \
+    libswresample-dev \
+    libavfilter-dev \
+    libopus-dev \
+    libvpx-dev \
+    libsrtp2-dev \
+    pkg-config
+
 # Install additional tools for video
 echo "🎥 Installing video tools..."
 sudo apt-get install -y ffmpeg v4l-utils || true

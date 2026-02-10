@@ -1,8 +1,9 @@
 import { useTranslation } from 'react-i18next'
 
-const StatsCard = ({ status }) => {
+const StatsCard = ({ status, webrtcVideoStats }) => {
   const { t } = useTranslation()
   const { stats, config } = status
+  const isWebRTC = config.mode === 'webrtc'
 
   return (
     <div className="card stats-card" data-testid="stats-card">
@@ -22,38 +23,74 @@ const StatsCard = ({ status }) => {
         </div>
         <div className="stat-item">
           <span className="stat-label">{t('views.video.fpsLabel')}</span>
-          <span className="stat-value">{stats.current_fps}</span>
+          <span className="stat-value">
+            {isWebRTC && webrtcVideoStats ? webrtcVideoStats.fps : stats.current_fps}
+          </span>
           <span className="stat-unit">/{config.framerate} fps</span>
         </div>
         <div className="stat-item">
           <span className="stat-label">{t('views.video.bitrateLabel')}</span>
-          <span className="stat-value">{stats.current_bitrate}</span>
+          <span className="stat-value">
+            {isWebRTC && webrtcVideoStats ? webrtcVideoStats.bitrate : stats.current_bitrate}
+          </span>
           <span className="stat-unit">kbps</span>
         </div>
       </div>
 
       {/* Secondary Stats Grid */}
       <div className="stats-grid-secondary">
-        <div className="stat-item-secondary">
-          <span className="stat-label">{t('views.video.framesSent')}</span>
-          <span className="stat-value-sm">{stats.frames_sent}</span>
-        </div>
-        <div className="stat-item-secondary">
-          <span className="stat-label">{t('views.video.dataSent')}</span>
-          <span className="stat-value-sm">{stats.bytes_sent_mb} MB</span>
-        </div>
-        <div className="stat-item-secondary">
-          <span className="stat-label">{t('views.video.errors')}</span>
-          <span className={`stat-value-sm ${stats.errors > 0 ? 'error-count' : ''}`}>
-            {stats.errors}
-          </span>
-        </div>
-        {/* RTSP Clients Counter — only in RTSP mode */}
-        {config.mode === 'rtsp' && status.rtsp_server?.running && (
-          <div className="stat-item-secondary">
-            <span className="stat-label">{t('views.video.rtspClients')}</span>
-            <span className="stat-value-sm">{status.rtsp_server.clients_connected || 0}</span>
-          </div>
+        {/* WebRTC-specific stats */}
+        {isWebRTC && webrtcVideoStats ? (
+          <>
+            <div className="stat-item-secondary">
+              <span className="stat-label">{t('views.video.webrtcResolution')}</span>
+              <span className="stat-value-sm">{webrtcVideoStats.resolution || '-'}</span>
+            </div>
+            <div className="stat-item-secondary">
+              <span className="stat-label">RTT</span>
+              <span className="stat-value-sm">{webrtcVideoStats.rtt} ms</span>
+            </div>
+            <div className="stat-item-secondary">
+              <span className="stat-label">{t('views.video.webrtcJitter')}</span>
+              <span className="stat-value-sm">{webrtcVideoStats.jitter} ms</span>
+            </div>
+            <div className="stat-item-secondary">
+              <span className="stat-label">{t('views.video.webrtcPacketsLost')}</span>
+              <span
+                className={`stat-value-sm ${webrtcVideoStats.packetsLost > 0 ? 'error-count' : ''}`}
+              >
+                {webrtcVideoStats.packetsLost}
+              </span>
+            </div>
+            <div className="stat-item-secondary">
+              <span className="stat-label">{t('views.video.webrtcPeers')}</span>
+              <span className="stat-value-sm">{status.webrtc?.peers_connected || 0}</span>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="stat-item-secondary">
+              <span className="stat-label">{t('views.video.framesSent')}</span>
+              <span className="stat-value-sm">{stats.frames_sent}</span>
+            </div>
+            <div className="stat-item-secondary">
+              <span className="stat-label">{t('views.video.dataSent')}</span>
+              <span className="stat-value-sm">{stats.bytes_sent_mb} MB</span>
+            </div>
+            <div className="stat-item-secondary">
+              <span className="stat-label">{t('views.video.errors')}</span>
+              <span className={`stat-value-sm ${stats.errors > 0 ? 'error-count' : ''}`}>
+                {stats.errors}
+              </span>
+            </div>
+            {/* RTSP Clients Counter — only in RTSP mode */}
+            {config.mode === 'rtsp' && status.rtsp_server?.running && (
+              <div className="stat-item-secondary">
+                <span className="stat-label">{t('views.video.rtspClients')}</span>
+                <span className="stat-value-sm">{status.rtsp_server.clients_connected || 0}</span>
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -86,6 +123,7 @@ const StatsCard = ({ status }) => {
           {config.mode === 'multicast' &&
             `Multicast ${config.multicast_group}:${config.multicast_port} (TTL ${config.multicast_ttl})`}
           {config.mode === 'rtsp' && `RTSP Server → ${config.rtsp_url}`}
+          {config.mode === 'webrtc' && `WebRTC (${status.webrtc?.peers_connected || 0} peers)`}
           {!config.mode && `UDP ${config.udp_host}:${config.udp_port}`}
         </span>
       </div>

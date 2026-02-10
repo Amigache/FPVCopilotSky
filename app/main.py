@@ -38,6 +38,7 @@ from services.websocket_manager import websocket_manager  # noqa: E402
 from services.preferences import get_preferences  # noqa: E402
 from services.serial_detector import get_detector  # noqa: E402
 from services.gstreamer_service import init_gstreamer_service  # noqa: E402, F401
+from services.webrtc_service import init_webrtc_service  # noqa: E402
 from services.video_stream_info import (  # noqa: E402
     init_video_stream_info_service,
     get_video_stream_info_service,
@@ -45,6 +46,7 @@ from services.video_stream_info import (  # noqa: E402
 from api.routes import mavlink, system  # noqa: E402
 from api.routes import router as router_routes  # noqa: E402
 from api.routes import video as video_routes  # noqa: E402
+from api.routes import webrtc as webrtc_routes  # noqa: E402
 from api.routes import network as network_routes  # noqa: E402
 from api.routes import vpn as vpn_routes  # noqa: E402
 from api.routes import modem as modem_routes  # noqa: E402
@@ -79,6 +81,7 @@ app.include_router(vpn_routes.router)
 app.include_router(modem_routes.router)
 app.include_router(status_routes.router)
 app.include_router(network_interface_routes.router)
+app.include_router(webrtc_routes.router)
 
 
 # Global WebSocket endpoint
@@ -606,8 +609,12 @@ async def startup_event():
         modem_provider.set_flight_logger(flight_logger)
         print(f"✅ Flight data logger configured: {flight_logger.log_directory}")
 
+    # Initialize WebRTC signaling service
+    webrtc_service = init_webrtc_service(websocket_manager, loop)
+    webrtc_routes.set_webrtc_service(webrtc_service)
+
     # Initialize video streaming service
-    video_service = init_gstreamer_service(websocket_manager, loop)
+    video_service = init_gstreamer_service(websocket_manager, loop, webrtc_service)
     video_routes.set_video_service(video_service)
 
     # Initialize video stream information service (for MAVLink VIDEO_STREAM_INFORMATION)

@@ -644,3 +644,283 @@
 }
 
 /* (unused .lock-notice, .alert, .alert-info, .alert-warning, .alert-success, .live-mode-badge removed) */
+
+/* ======================== */
+/* WebRTC Viewer Styles      */
+/* ======================== */
+
+.webrtc-viewer-card {
+  border-top: 2px solid rgba(79, 125, 255, 0.4);
+}
+
+.webrtc-viewer-header {
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.webrtc-viewer-header h2 {
+  margin: 0;
+}
+
+.webrtc-viewer-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.webrtc-state-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.webrtc-state-text {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.btn-sm {
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  min-width: auto;
+  flex: none;
+}
+
+.btn-fullscreen {
+  background: rgba(50, 55, 75, 0.6);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  font-size: 1rem;
+  padding: 2px 8px;
+}
+
+.btn-fullscreen:hover:not(:disabled) {
+  background: rgba(60, 65, 90, 0.8);
+  color: var(--color-text-primary);
+}
+
+.btn-fullscreen-bottom {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px;
+  background: var(--color-primary, #4f7dff);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.2s;
+}
+
+.btn-fullscreen-bottom:hover {
+  background: var(--color-primary-dark, #3a63d8);
+}
+
+/* Video Container */
+.webrtc-video-container {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.webrtc-video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.webrtc-video-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.webrtc-connecting {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+.webrtc-no-signal {
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+.webrtc-error {
+  color: var(--color-error-light);
+  font-size: 0.9rem;
+}
+
+/* Mini Stats Bar */
+.webrtc-mini-stats {
+  display: flex;
+  gap: 12px;
+  padding: 8px 12px;
+  margin-top: 8px;
+  background: rgba(30, 30, 42, 0.5);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  font-family: 'Monaco', 'Courier New', monospace;
+  flex-wrap: wrap;
+}
+
+.webrtc-stat-warn {
+  color: var(--color-error-light);
+}
+
+/* Fullscreen mode */
+.webrtc-viewer-card.fullscreen {
+  padding: 0;
+  background: #000;
+  border: none;
+  border-radius: 0;
+}
+
+.webrtc-viewer-card.fullscreen .webrtc-viewer-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  padding: 12px 16px;
+  background: rgba(0, 0, 0, 0.7);
+  margin-bottom: 0;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.webrtc-viewer-card.fullscreen:hover .webrtc-viewer-header {
+  opacity: 1;
+}
+
+.webrtc-viewer-card.fullscreen .webrtc-video-container {
+  aspect-ratio: auto;
+  height: 100vh;
+  border-radius: 0;
+}
+
+.webrtc-viewer-card.fullscreen .btn-fullscreen-bottom {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  margin: 0;
+  border-radius: 0;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.webrtc-viewer-card.fullscreen:hover .btn-fullscreen-bottom {
+  opacity: 1;
+}
+
+/* ======================== */
+/* WebRTC Log (inline)       */
+/* ======================== */
+
+.webrtc-log-inline {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border);
+}
+
+.webrtc-log-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+}
+
+.webrtc-log-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.webrtc-log-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: rgba(79, 125, 255, 0.2);
+  color: var(--color-accent);
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.webrtc-log-toggle {
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  transition: transform 0.2s;
+}
+
+.webrtc-log-body {
+  margin-top: 12px;
+}
+
+.webrtc-log-empty {
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  padding: 16px;
+}
+
+.webrtc-log-list {
+  max-height: 200px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.webrtc-log-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  background: rgba(30, 30, 42, 0.3);
+}
+
+.webrtc-log-time {
+  color: var(--color-text-secondary);
+  font-family: 'Monaco', 'Courier New', monospace;
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+.webrtc-log-icon {
+  font-size: 0.75rem;
+  flex-shrink: 0;
+}
+
+.webrtc-log-message {
+  font-size: 0.75rem;
+  word-break: break-word;
+}

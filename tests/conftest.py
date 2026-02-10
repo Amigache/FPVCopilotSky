@@ -441,11 +441,42 @@ def mock_api_services(monkeypatch):
 
     video_routes._video_service = mock_video_service
 
+    # Mock WebRTC service
+    mock_webrtc_service = Mock()
+    mock_webrtc_service.get_status.return_value = {
+        "active": False,
+        "peers": [],
+        "global_stats": {"total_peers": 0, "active_peers": 0},
+        "adaptive_config": {"target_bitrate": 1500},
+        "log": [],
+    }
+    mock_webrtc_service.create_offer.return_value = {
+        "success": True,
+        "peer_id": "mock-id",
+        "config": {},
+        "adaptive_config": {},
+    }
+    mock_webrtc_service.get_logs.return_value = []
+    mock_webrtc_service.get_4g_optimized_config.return_value = {"video": {}, "ice": {}}
+
+    import app.api.routes.webrtc as webrtc_routes
+
+    # Also set on the module main.py uses (via sys.path manipulation)
+    try:
+        import api.routes.webrtc as webrtc_routes_alt
+
+        webrtc_routes_alt._webrtc_service = mock_webrtc_service
+    except ImportError:
+        pass
+
+    webrtc_routes._webrtc_service = mock_webrtc_service
+
     return {
         "preferences": mock_prefs,
         "mavlink": mock_mavlink,
         "video_config": mock_video_config,
         "video_service": mock_video_service,
+        "webrtc_service": mock_webrtc_service,
     }
 
 

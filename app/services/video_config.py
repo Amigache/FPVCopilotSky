@@ -158,7 +158,7 @@ class VideoConfig:
 class StreamingConfig:
     """Network streaming configuration with multiple modes"""
 
-    # Streaming mode: 'udp', 'rtsp', 'multicast'
+    # Streaming mode: 'udp', 'rtsp', 'multicast', 'webrtc'
     mode: str = "udp"
 
     # Mode 1: Direct UDP (unicast) - Current default
@@ -184,7 +184,7 @@ class StreamingConfig:
 
     def __post_init__(self):
         """Clamp and validate all values to safe ranges."""
-        if self.mode not in ("udp", "multicast", "rtsp"):
+        if self.mode not in ("udp", "multicast", "rtsp", "webrtc"):
             self.mode = "udp"
         self.udp_port = max(1024, min(65535, int(self.udp_port)))
         self.multicast_port = max(1024, min(65535, int(self.multicast_port)))

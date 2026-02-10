@@ -67,7 +67,6 @@
 
 .form-group input:disabled,
 .form-group select:disabled {
-  opacity: 0.5;
   cursor: not-allowed;
 }
 

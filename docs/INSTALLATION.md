@@ -56,8 +56,10 @@ bash install.sh
 
 Este script instala y configura automáticamente (~15 minutos):
 
-- **Python 3** + entorno virtual con PyMAVLink, FastAPI, huawei-lte-api
+- **Python 3** + entorno virtual con PyMAVLink, FastAPI, huawei-lte-api, aiortc
 - **GStreamer** completo (plugins good, bad, ugly, libav)
+- **FFmpeg libraries** (libavcodec, libavformat, libavutil) para WebRTC (aiortc + PyAV)
+- **WebRTC support**: aiortc 1.5+, PyAV 10.0+, libsrtp2, libopus
 - **Node.js 20** + dependencias del frontend
 - **NetworkManager** + ModemManager
 - **Tailscale** (VPN)
