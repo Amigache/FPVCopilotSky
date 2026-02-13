@@ -318,8 +318,12 @@ const ModemView = () => {
       <div className="modem-sections">
         {/* === CARD 1: INFO - Información del Dispositivo === */}
         <div className="card info-card">
-          <div className="card-header-with-badge">
-            <h2>📡 {t('modem.information')}</h2>
+          <h2>📡 {t('modem.information')}</h2>
+          <div className="operator-main-info">
+            <span className="operator-name">{network.operator || t('modem.unknown')}</span>
+            <span className="tech-badge">
+              {network.network_type_ex || network.network_type || '-'}
+            </span>
             <span
               className={`connection-badge ${
                 network.connection_status === 'Connected' ? 'connected' : 'disconnected'
@@ -330,58 +334,40 @@ const ModemView = () => {
                 : `○ ${t('modem.disconnected')}`}
             </span>
           </div>
-          <div className="info-columns">
-            {/* Left Column: Operator/Network */}
-            <div className="info-column">
-              <div className="operator-main-info">
-                <span className="operator-name">{network.operator || t('modem.unknown')}</span>
-                <span className="tech-badge">
-                  {network.network_type_ex || network.network_type || '-'}
-                </span>
-              </div>
-              <div className="info-grid">
-                <div className="info-item">
-                  <span className="info-label">MCC-MNC</span>
-                  <span className="info-value mono">{network.operator_code || '-'}</span>
-                </div>
-                <div className="info-item">
-                  <span className="info-label">DNS</span>
-                  <span className="info-value mono small">{network.primary_dns || '-'}</span>
-                </div>
-                <div className="info-item">
-                  <span className="info-label">{t('modem.roaming')}</span>
-                  <span className={`info-value ${network.roaming ? 'warning' : ''}`}>
-                    {network.roaming ? `⚠️ ${t('modem.roamingActive')}` : t('modem.roamingNo')}
-                  </span>
-                </div>
-                <div className="info-item">
-                  <span className="info-label">{t('modem.signal')}</span>
-                  <span className="info-value">{'📶'.repeat(network.signal_icon || 0)}</span>
-                </div>
-              </div>
+          <div className="info-grid">
+            <div className="info-item">
+              <span className="info-label">MCC-MNC</span>
+              <span className="info-value mono">{network.operator_code || '-'}</span>
             </div>
-
-            {/* Right Column: Device */}
-            <div className="info-column">
-              <div className="device-spacer"></div>
-              <div className="info-grid">
-                <div className="info-item">
-                  <span className="info-label">{t('modem.model')}</span>
-                  <span className="info-value">{device.device_name || '-'}</span>
-                </div>
-                <div className="info-item">
-                  <span className="info-label">IMEI</span>
-                  <span className="info-value mono small">{device.imei || '-'}</span>
-                </div>
-                <div className="info-item">
-                  <span className="info-label">{t('modem.hardware')}</span>
-                  <span className="info-value">{device.hardware_version || '-'}</span>
-                </div>
-                <div className="info-item">
-                  <span className="info-label">{t('modem.firmware')}</span>
-                  <span className="info-value">{device.software_version || '-'}</span>
-                </div>
-              </div>
+            <div className="info-item">
+              <span className="info-label">DNS</span>
+              <span className="info-value mono small">{network.primary_dns || '-'}</span>
+            </div>
+            <div className="info-item">
+              <span className="info-label">{t('modem.roaming')}</span>
+              <span className={`info-value ${network.roaming ? 'warning' : ''}`}>
+                {network.roaming ? `⚠️ ${t('modem.roamingActive')}` : t('modem.roamingNo')}
+              </span>
+            </div>
+            <div className="info-item">
+              <span className="info-label">{t('modem.signal')}</span>
+              <span className="info-value">{'📶'.repeat(network.signal_icon || 0)}</span>
+            </div>
+            <div className="info-item">
+              <span className="info-label">{t('modem.model')}</span>
+              <span className="info-value">{device.device_name || '-'}</span>
+            </div>
+            <div className="info-item">
+              <span className="info-label">IMEI</span>
+              <span className="info-value mono small">{device.imei || '-'}</span>
+            </div>
+            <div className="info-item">
+              <span className="info-label">{t('modem.hardware')}</span>
+              <span className="info-value">{device.hardware_version || '-'}</span>
+            </div>
+            <div className="info-item">
+              <span className="info-label">{t('modem.firmware')}</span>
+              <span className="info-value">{device.software_version || '-'}</span>
             </div>
           </div>
         </div>

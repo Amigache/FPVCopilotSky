@@ -122,15 +122,15 @@
 .card-header-with-badge {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1rem;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid rgba(102, 102, 102, 0.2);
+  align-items: flex-start;
+  margin-bottom: 1.5rem;
+  padding-bottom: 0;
 }
 
 .card-header-with-badge h2 {
   margin: 0;
   flex: 1;
+  padding-right: 1rem;
 }
 
 /* === CARD 1: INFO === */
@@ -141,7 +141,7 @@
 .info-columns {
   display: flex;
   flex-direction: row;
-  gap: 20px;
+  gap: 40px;
 }
 
 .info-column {
@@ -157,14 +157,8 @@
 }
 
 @media (max-width: 600px) {
-  .info-columns {
-    flex-direction: column;
-  }
-  .info-column + .info-column {
-    border-left: none;
-    padding-left: 0;
-    border-top: 1px solid rgba(102, 102, 102, 0.2);
-    padding-top: 12px;
+  .info-grid {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 
@@ -202,14 +196,6 @@
   display: none;
 }
 
-.connection-badge {
-  font-size: 0.75rem;
-  padding: 4px 10px;
-  border-radius: 10px;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
 .connection-badge.connected {
   background: rgba(76, 175, 80, 0.2);
   color: #4caf50;
@@ -225,14 +211,22 @@
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
-  margin-bottom: 12px;
-  min-height: 40px;
+  margin-bottom: 16px;
+  margin-top: 16px;
+  min-height: 32px;
 }
 
 .device-spacer {
-  min-height: 40px;
-  display: flex;
-  align-items: center;
+  display: none;
+}
+
+.connection-badge {
+  font-size: 0.75rem;
+  padding: 6px 12px;
+  border-radius: 10px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 .operator-name {
@@ -255,7 +249,7 @@
 
 .info-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 10px;
 }
 
@@ -306,6 +300,7 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 12px;
+  margin-top: 16px;
 }
 
 .kpi-section {
@@ -530,6 +525,7 @@
 .config-sections {
   display: flex;
   flex-direction: column;
+  margin-top: 16px;
   gap: 16px;
 }
 
