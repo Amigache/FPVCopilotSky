@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+import Toggle from '../../Toggle/Toggle'
+import { PeerSelector } from '../../PeerSelector/PeerSelector'
 import {
   RANGES,
   VIDEO_DEFAULTS,
@@ -97,14 +99,13 @@ const NetworkSettingsCard = ({
       {config.mode === 'udp' && (
         <div className="form-row">
           <div className={`form-group ${streaming ? 'field-disabled' : ''}`}>
-            <label>{t('views.video.destination')}</label>
-            <input
-              type="text"
+            <PeerSelector
+              label={t('views.video.destination')}
               value={config.udp_host || ''}
-              onChange={(e) => updateConfig((prev) => ({ ...prev, udp_host: e.target.value }))}
+              onChange={(value) => updateConfig((prev) => ({ ...prev, udp_host: value }))}
               placeholder="192.168.1.100"
               disabled={streaming}
-              className={!udpHostValidation.valid ? 'input-error' : ''}
+              hasError={!udpHostValidation.valid}
             />
             {!udpHostValidation.valid && (
               <small className="field-error">{t(udpHostValidation.error)}</small>
@@ -198,6 +199,16 @@ const NetworkSettingsCard = ({
           </div>
         </>
       )}
+
+      {/* Auto-start Toggle */}
+      <div className={`form-group ${streaming ? 'field-disabled' : ''}`}>
+        <Toggle
+          label={t('views.video.autoStart')}
+          checked={config.auto_start || false}
+          onChange={(e) => updateConfig((prev) => ({ ...prev, auto_start: e.target.checked }))}
+          disabled={streaming}
+        />
+      </div>
 
       {/* RTSP Server Settings */}
       {config.mode === 'rtsp' && (

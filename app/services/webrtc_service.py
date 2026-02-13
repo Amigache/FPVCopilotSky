@@ -647,6 +647,9 @@ class WebRTCService:
         return {"success": True}
 
     def disconnect_peer(self, peer_id: str) -> Dict[str, Any]:
+        with self._lock:
+            if peer_id not in self.peers:
+                return {"success": False, "error": "Peer not found"}
         self._disconnect_peer_async(peer_id)
         self._broadcast_status()
         return {"success": True}

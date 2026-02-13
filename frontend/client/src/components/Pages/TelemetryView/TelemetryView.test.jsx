@@ -24,7 +24,12 @@ vi.mock('../../../contexts/WebSocketContext', () => ({
 // Mock API (include api for PeerSelector)
 vi.mock('../../../services/api', () => ({
   API_MAVLINK_ROUTER: '/api/mavlink-router',
-  fetchWithTimeout: vi.fn(),
+  fetchWithTimeout: vi.fn(() =>
+    Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve([]),
+    })
+  ),
   api: { getVPNPeers: vi.fn().mockResolvedValue({ peers: [] }) },
 }))
 

@@ -80,41 +80,45 @@ class TestWebRTCPeerManagement:
         assert result["peer_id"] == "test-peer-1"
         assert "test-peer-1" in service.peers
 
-    def test_handle_offer(self):
+    @pytest.mark.asyncio
+    async def test_handle_offer(self):
         """Test handling SDP offer from client"""
         from app.services.webrtc_service import WebRTCService
 
         service = WebRTCService()
         service.create_offer(peer_id="p1")
 
-        result = service.handle_offer("p1", "v=0\r\nm=video...")
+        result = await service.handle_offer("p1", "v=0\r\nm=video...")
         assert result["success"] is True
         assert service.peers["p1"].remote_sdp == "v=0\r\nm=video..."
         assert service.peers["p1"].state == "have_remote_offer"
 
-    def test_handle_offer_unknown_peer(self):
+    @pytest.mark.asyncio
+    async def test_handle_offer_unknown_peer(self):
         """Test handling offer for non-existent peer"""
         from app.services.webrtc_service import WebRTCService
 
         service = WebRTCService()
-        result = service.handle_offer("unknown", "sdp")
+        result = await service.handle_offer("unknown", "sdp")
         assert result["success"] is False
         assert "not found" in result["error"]
 
-    def test_handle_answer(self):
+    @pytest.mark.asyncio
+    async def test_handle_answer(self):
         """Test handling SDP answer from client"""
         from app.services.webrtc_service import WebRTCService
 
         service = WebRTCService()
         service.create_offer(peer_id="p1")
-        service.handle_offer("p1", "offer-sdp")
+        await service.handle_offer("p1", "offer-sdp")
 
-        result = service.handle_answer("p1", "answer-sdp")
+        result = await service.handle_answer("p1", "answer-sdp")
         assert result["success"] is True
         assert service.peers["p1"].local_sdp == "answer-sdp"
         assert service.peers["p1"].state == "connecting"
 
-    def test_add_ice_candidate(self):
+    @pytest.mark.asyncio
+    async def test_add_ice_candidate(self):
         """Test adding ICE candidate"""
         from app.services.webrtc_service import WebRTCService
 
@@ -122,7 +126,7 @@ class TestWebRTCPeerManagement:
         service.create_offer(peer_id="p1")
 
         candidate = {"candidate": "candidate:1 1 udp ...", "sdpMid": "0"}
-        result = service.add_ice_candidate("p1", candidate)
+        result = await service.add_ice_candidate("p1", candidate)
         assert result["success"] is True
         assert len(service.peers["p1"].ice_candidates_remote) == 1
 
