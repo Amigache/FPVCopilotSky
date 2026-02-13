@@ -242,11 +242,15 @@ const WebRTCViewerCard = forwardRef(
       }
     }, [disconnectPeer])
 
-    // Auto-connect when component mounts (stream is already running)
+    // Auto-connect when component mounts if stream is active
     useEffect(() => {
-      if (connectionState === 'disconnected' && !pcRef.current) {
-        connectWebRTC()
-      }
+      // Small delay to allow component to fully render before attempting connection
+      const timer = setTimeout(() => {
+        if (connectionState === 'disconnected' && !pcRef.current) {
+          connectWebRTC()
+        }
+      }, 500)
+      return () => clearTimeout(timer)
       // Only run on mount
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
