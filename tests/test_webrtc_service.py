@@ -58,9 +58,13 @@ def mock_aiortc():
             with patch("app.services.webrtc_service.RTCSessionDescription", mock_rts):
                 # Mock MediaStreamTrack
                 with patch("app.services.webrtc_service.MediaStreamTrack", MagicMock()):
-                    # Mock av (PyAV)
-                    with patch("app.services.webrtc_service.VideoFrame", MagicMock()):
-                        with patch("app.services.webrtc_service.np", MagicMock()):
+                    # Mock av (PyAV) - use create=True since these may not be imported
+                    with patch(
+                        "app.services.webrtc_service.VideoFrame",
+                        MagicMock(),
+                        create=True,
+                    ):
+                        with patch("app.services.webrtc_service.np", MagicMock(), create=True):
                             yield
 
 
