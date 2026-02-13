@@ -120,6 +120,7 @@ jobs:
         uses: codecov/codecov-action@v4
         if: success()
         with:
+          token: ${{ secrets.CODECOV_TOKEN }}
           file: ./coverage.xml
           flags: backend
           name: backend-coverage
@@ -151,14 +152,15 @@ jobs:
         working-directory: frontend/client
         run: npm ci
 
-      - name: Run unit tests
+      - name: Run unit tests with coverage
         working-directory: frontend/client
-        run: npx vitest run --reporter=verbose
+        run: npx vitest run --reporter=verbose --coverage
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         if: always()
         with:
+          token: ${{ secrets.CODECOV_TOKEN }}
           files: ./frontend/client/coverage/coverage-final.json
           flags: frontend
           name: frontend-coverage

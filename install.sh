@@ -271,23 +271,25 @@ fi
 # Configure sudo permissions for WiFi management
 echo "🔐 Configuring WiFi sudo permissions..."
 WIFI_SUDOERS_FILE="/etc/sudoers.d/fpvcopilot-wifi"
-if [ ! -f "$WIFI_SUDOERS_FILE" ]; then
-    sudo tee "$WIFI_SUDOERS_FILE" > /dev/null << EOF
-# FPV Copilot Sky - WiFi management permissions
+# Always recreate to ensure all permissions are up-to-date
+sudo tee "$WIFI_SUDOERS_FILE" > /dev/null << EOF
+# FPV Copilot Sky - WiFi and network priority management permissions
 $USER ALL=(ALL) NOPASSWD: /usr/sbin/iw dev * scan
 $USER ALL=(ALL) NOPASSWD: /usr/sbin/iw dev * scan *
 $USER ALL=(ALL) NOPASSWD: /usr/bin/nmcli device wifi connect *
 $USER ALL=(ALL) NOPASSWD: /usr/bin/nmcli device wifi disconnect
 $USER ALL=(ALL) NOPASSWD: /usr/bin/nmcli connection up *
 $USER ALL=(ALL) NOPASSWD: /usr/bin/nmcli connection down *
+$USER ALL=(ALL) NOPASSWD: /usr/bin/nmcli connection modify *
 $USER ALL=(ALL) NOPASSWD: /usr/bin/nmcli dev wifi rescan
 $USER ALL=(ALL) NOPASSWD: /usr/bin/nmcli dev set * managed *
+$USER ALL=(ALL) NOPASSWD: /usr/sbin/ip route add *
+$USER ALL=(ALL) NOPASSWD: /usr/sbin/ip route del *
+$USER ALL=(ALL) NOPASSWD: /usr/sbin/ip route change *
+$USER ALL=(ALL) NOPASSWD: /usr/sbin/ip route replace *
 EOF
-    sudo chmod 440 "$WIFI_SUDOERS_FILE"
-    echo "  ✓ WiFi sudo permissions configured"
-else
-    echo "  ✓ WiFi sudo permissions already configured"
-fi
+sudo chmod 440 "$WIFI_SUDOERS_FILE"
+echo "  ✓ WiFi and network priority sudo permissions configured"
 
 # Configure sudo permissions for system management
 echo "🔐 Configuring system management sudo permissions..."

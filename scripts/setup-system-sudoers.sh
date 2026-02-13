@@ -5,8 +5,8 @@
 SUDOERS_FILE="/etc/sudoers.d/fpvcopilot-system"
 FPVCOPILOT_USER="fpvcopilotsky"
 
-# Get actual user if run with sudo, otherwise use fpvcopilotsky
-CURRENT_USER="${SUDO_USER:-$FPVCOPILOT_USER}"
+# Always use fpvcopilotsky user (not root even when run with sudo)
+CURRENT_USER="$FPVCOPILOT_USER"
 
 echo "Setting up system management sudo permissions for user: $CURRENT_USER"
 

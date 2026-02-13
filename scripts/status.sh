@@ -291,6 +291,36 @@ else
     echo -e "    ${BLUE}ℹ️${NC}  VPN functionality may require password prompts"
 fi
 
+# Check network priority sudo permissions
+echo -e "${BLUE}─${NC} Network priority management:"
+if [ -f "/etc/sudoers.d/fpvcopilot-wifi" ]; then
+    # Check nmcli connection modify
+    if sudo grep -q "nmcli connection modify" /etc/sudoers.d/fpvcopilot-wifi 2>/dev/null; then
+        echo -e "${GREEN}✓${NC} nmcli connection modify permission configured"
+    else
+        echo -e "${RED}❌${NC} nmcli connection modify permission MISSING"
+        echo -e "    ${BLUE}ℹ️${NC}  Network priority switching will fail. Re-run: bash install.sh"
+    fi
+    # Check ip route
+    if sudo grep -q "ip route" /etc/sudoers.d/fpvcopilot-wifi 2>/dev/null; then
+        echo -e "${GREEN}✓${NC} ip route management permission configured"
+    else
+        echo -e "${RED}❌${NC} ip route management permission MISSING"
+        echo -e "    ${BLUE}ℹ️${NC}  Network priority switching will fail. Re-run: bash install.sh"
+    fi
+    # Functional test
+    if sudo -n nmcli connection show --active > /dev/null 2>&1; then
+        echo -e "${GREEN}✓${NC} nmcli commands work without password"
+    else
+        echo -e "${YELLOW}⚠️${NC}  nmcli commands may require password"
+    fi
+    if sudo -n ip route show > /dev/null 2>&1; then
+        echo -e "${GREEN}✓${NC} ip route commands work without password"
+    else
+        echo -e "${YELLOW}⚠️${NC}  ip route commands may require password"
+    fi
+fi
+
 # Check system management sudo permissions
 if [ -f "/etc/sudoers.d/fpvcopilot-system" ]; then
     echo -e "${GREEN}✓${NC} System management sudoers file exists"
