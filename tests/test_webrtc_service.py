@@ -14,7 +14,55 @@ Tests for the WebRTC signaling service including:
 
 import pytest
 import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, AsyncMock
+
+
+# ── Global fixture to mock aiortc for testing ──────────────────────────────
+
+
+@pytest.fixture(autouse=True)
+def mock_aiortc():
+    """
+    Mock aiortc availability and classes for all tests.
+    This allows tests to run without requiring aiortc to be installed.
+    """
+    with patch("app.services.webrtc_service.AIORTC_AVAILABLE", True):
+        # Create a mock RTCPeerConnection class
+        mock_pc_class = MagicMock()
+
+        # Create instance-level mock
+        mock_pc_instance = MagicMock()
+        mock_pc_class.return_value = mock_pc_instance
+
+        # Mock RTCPeerConnection methods
+        mock_pc_instance.connectionState = "new"
+        mock_pc_instance.addTrack = MagicMock()
+        mock_pc_instance.addTransceiver = MagicMock()
+        mock_pc_instance.getSenders = MagicMock(return_value=[])
+        mock_pc_instance.setRemoteDescription = AsyncMock(return_value=None)
+        mock_pc_instance.createAnswer = AsyncMock(return_value=MagicMock(sdp="answer-sdp"))
+        mock_pc_instance.setLocalDescription = AsyncMock(return_value=None)
+        mock_pc_instance.addIceCandidate = AsyncMock(return_value=None)
+        mock_pc_instance.close = AsyncMock(return_value=None)
+        mock_pc_instance.on = MagicMock()
+
+        # Mock localDescription property
+        local_desc = MagicMock()
+        local_desc.sdp = "local-answer-sdp"
+        mock_pc_instance.localDescription = local_desc
+
+        with patch("app.services.webrtc_service.RTCPeerConnection", mock_pc_class):
+            # Mock RTCSessionDescription
+            mock_rts = MagicMock()
+            mock_rts.side_effect = lambda sdp, type: MagicMock(sdp=sdp, type=type)
+
+            with patch("app.services.webrtc_service.RTCSessionDescription", mock_rts):
+                # Mock MediaStreamTrack
+                with patch("app.services.webrtc_service.MediaStreamTrack", MagicMock()):
+                    # Mock av (PyAV)
+                    with patch("app.services.webrtc_service.VideoFrame", MagicMock()):
+                        with patch("app.services.webrtc_service.np", MagicMock()):
+                            yield
 
 
 class TestWebRTCServiceInit:
@@ -91,7 +139,7 @@ class TestWebRTCPeerManagement:
         result = await service.handle_offer("p1", "v=0\r\nm=video...")
         assert result["success"] is True
         assert service.peers["p1"].remote_sdp == "v=0\r\nm=video..."
-        assert service.peers["p1"].state == "have_remote_offer"
+        assert service.peers["p1"].state == "connecting"
 
     @pytest.mark.asyncio
     async def test_handle_offer_unknown_peer(self):
@@ -112,10 +160,10 @@ class TestWebRTCPeerManagement:
         service.create_offer(peer_id="p1")
         await service.handle_offer("p1", "offer-sdp")
 
-        result = await service.handle_answer("p1", "answer-sdp")
+        # Note: handle_answer is a stub in server-creates-answer flow
+        result = service.handle_answer("p1", "answer-sdp")
         assert result["success"] is True
-        assert service.peers["p1"].local_sdp == "answer-sdp"
-        assert service.peers["p1"].state == "connecting"
+        assert result["peer_id"] == "p1"
 
     @pytest.mark.asyncio
     async def test_add_ice_candidate(self):
