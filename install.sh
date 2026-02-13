@@ -91,7 +91,11 @@ sudo apt-get install -y \
     hostapd \
     wireless-tools \
     usb-modeswitch \
-    usb-modeswitch-data
+    usb-modeswitch-data \
+    iproute2 \
+    ethtool \
+    curl \
+    net-tools
 
 # Enable and start network services
 echo "🔧 Configuring network services..."
@@ -276,17 +280,30 @@ sudo tee "$WIFI_SUDOERS_FILE" > /dev/null << EOF
 # FPV Copilot Sky - WiFi and network priority management permissions
 $USER ALL=(ALL) NOPASSWD: /usr/sbin/iw dev * scan
 $USER ALL=(ALL) NOPASSWD: /usr/sbin/iw dev * scan *
+$USER ALL=(ALL) NOPASSWD: /usr/sbin/iw dev * link
 $USER ALL=(ALL) NOPASSWD: /usr/bin/nmcli device wifi connect *
 $USER ALL=(ALL) NOPASSWD: /usr/bin/nmcli device wifi disconnect
+$USER ALL=(ALL) NOPASSWD: /usr/bin/nmcli device wifi rescan
+$USER ALL=(ALL) NOPASSWD: /usr/bin/nmcli dev wifi rescan
 $USER ALL=(ALL) NOPASSWD: /usr/bin/nmcli connection up *
 $USER ALL=(ALL) NOPASSWD: /usr/bin/nmcli connection down *
 $USER ALL=(ALL) NOPASSWD: /usr/bin/nmcli connection modify *
+$USER ALL=(ALL) NOPASSWD: /usr/bin/nmcli connection show
+$USER ALL=(ALL) NOPASSWD: /usr/bin/nmcli connection show *
 $USER ALL=(ALL) NOPASSWD: /usr/bin/nmcli dev wifi rescan
 $USER ALL=(ALL) NOPASSWD: /usr/bin/nmcli dev set * managed *
 $USER ALL=(ALL) NOPASSWD: /usr/sbin/ip route add *
 $USER ALL=(ALL) NOPASSWD: /usr/sbin/ip route del *
 $USER ALL=(ALL) NOPASSWD: /usr/sbin/ip route change *
 $USER ALL=(ALL) NOPASSWD: /usr/sbin/ip route replace *
+$USER ALL=(ALL) NOPASSWD: /usr/sbin/ip route show
+$USER ALL=(ALL) NOPASSWD: /usr/sbin/ip route show *
+$USER ALL=(ALL) NOPASSWD: /usr/sbin/ip link set *
+$USER ALL=(ALL) NOPASSWD: /usr/sbin/ip link show
+$USER ALL=(ALL) NOPASSWD: /usr/sbin/ip link show *
+$USER ALL=(ALL) NOPASSWD: /usr/sbin/ip addr show
+$USER ALL=(ALL) NOPASSWD: /usr/sbin/ip -o addr show
+$USER ALL=(ALL) NOPASSWD: /usr/sbin/ip -o -4 addr show
 EOF
 sudo chmod 440 "$WIFI_SUDOERS_FILE"
 echo "  ✓ WiFi and network priority sudo permissions configured"

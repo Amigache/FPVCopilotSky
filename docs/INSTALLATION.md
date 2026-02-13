@@ -56,18 +56,71 @@ bash install.sh
 
 Este script instala y configura automáticamente (~15 minutos):
 
-- **Python 3** + entorno virtual con PyMAVLink, FastAPI, huawei-lte-api, aiortc
-- **GStreamer** completo (plugins good, bad, ugly, libav)
-- **FFmpeg libraries** (libavcodec, libavformat, libavutil) para WebRTC (aiortc + PyAV)
-- **WebRTC support**: aiortc 1.5+, PyAV 10.0+, libsrtp2, libopus
-- **Node.js 20** + dependencias del frontend
-- **NetworkManager** + ModemManager
-- **Tailscale** (VPN)
-- **Permisos de serial**: grupos `dialout`/`video`, reglas udev
-- **USB modem**: `usb_modeswitch` para modems Huawei en modo almacenamiento
-- **Sysctl**: TCP BBR, buffers UDP optimizados, IPv6 deshabilitado, swappiness bajo
+#### Dependencias del Sistema (APT)
+
+**Esenciales**:
+
+- Python 3, pip, venv, dev tools
+- pkg-config, curl, net-tools, iproute2
+
+**GStreamer** (video streaming):
+
+- `gstreamer1.0-tools` - Herramientas CLI
+- `gstreamer1.0-plugins-{base,good,bad,ugly,libav}` - Plugins
+- `gir1.2-gstreamer-1.0`, `python3-gi` - Bindings Python
+- Plugins críticos: `jpegenc`, `x264enc`, `v4l2src`, `rtpjpegpay`, `rtph264pay`
+
+**FFmpeg & WebRTC**:
+
+- `libavcodec-dev`, `libavformat-dev`, `libavutil-dev` - Codecs
+- `libswscale-dev`, `libswresample-dev`, `libavfilter-dev` - Procesamiento
+- `libsrtp2-dev` - RTP seguro (WebRTC)
+- `libopus-dev` - Codec de audio
+- `libvpx-dev` - VP8/VP9 video
+- `ffmpeg`, `v4l-utils` - Herramientas
+
+**Red & Conectividad**:
+
+- `network-manager`, `modemmanager` - Gestión de red
+- `hostapd`, `wireless-tools` - WiFi
+- `usb-modeswitch` - Modems USB
+- `ethtool` - Configuración de interfaces
+
+**Web Server**: `nginx`
+
+**Node.js 20**: Para compilar frontend
+
+#### Permisos y Configuración
+
+**Grupos de usuario**:
+
+```bash
+# El script agrega el usuario a estos grupos automáticamente
+dialout  # Acceso a puertos serie (MAVLink)
+video    # Acceso a cámaras
+```
+
+**Permisos sudo sin contraseña** (`/etc/sudoers.d/`):
+
+- **fpvcopilot-wifi**: WiFi, red, routing (nmcli, ip route, iw)
+- **fpvcopilot-system**: Servicios, logs, sysctl, ethtool, dnsmasq
+- **tailscale**: VPN management (up, down, status)
+
+**Optimizaciones del sistema** (`/etc/sysctl.d/99-fpv-streaming.conf`):
+
+- TCP BBR congestion control
+- Buffers TCP/UDP optimizados (134 MB)
+- Network backlog aumentado
+- IPv6 deshabilitado
+- swappiness=10
+
+**Puertos serie**:
+
+- Reglas udev para `/dev/ttyAML*`
+- `serial-getty@ttyAML0` deshabilitado (evita conflictos con MAVLink)
 
 > **Nota**: El entorno virtual se crea con `--system-site-packages` para acceder a GStreamer (PyGObject).
+> Requiere **reiniciar sesión** después de la instalación para que los grupos dialout/video tomen efecto.
 
 ### 2.3 Configurar producción
 
@@ -95,7 +148,36 @@ Compila el frontend React, instala la configuración de nginx/systemd, y arranca
 
 ## 3. Verificación
 
-### 3.1 Script de estado
+### 3.1 Pre-flight check exhaustivo
+
+```bash
+bash scripts/preflight-check.sh
+```
+
+Verifica **todas** las dependencias, permisos y configuraciones antes de volar:
+
+- ✅ Dependencias del sistema (Python, GStreamer, FFmpeg, herramientas de red)
+- ✅ Plugins GStreamer críticos
+- ✅ Bibliotecas WebRTC (libsrtp2, libopus, libvpx)
+- ✅ Python venv y paquetes críticos (fastapi, pymavlink, aiortc, av)
+- ✅ Grupos de usuario (dialout, video)
+- ✅ Permisos sudo sin contraseña
+- ✅ Archivos sudoers configurados
+- ✅ Configuración de red (NetworkManager, wlan0)
+- ✅ Puertos serie y serial-getty
+- ✅ Dispositivos de video
+- ✅ Frontend build
+- ✅ Servicios systemd
+- ✅ Optimizaciones del sistema
+
+Salida:
+
+```
+✅ ALL CHECKS PASSED
+System is ready for flight! 🚀
+```
+
+### 3.2 Script de estado
 
 ```bash
 bash scripts/status.sh
@@ -103,7 +185,7 @@ bash scripts/status.sh
 
 Muestra: estado del servicio, puertos, dependencias, USB, red, modem, VPN, conectividad.
 
-### 3.2 Verificación manual
+### 3.3 Verificación manual
 
 ```bash
 # Servicio activo
@@ -117,7 +199,7 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost/
 # Debe devolver 200
 ```
 
-### 3.3 Acceder a la WebUI
+### 3.4 Acceder a la WebUI
 
 Abre en el navegador:
 

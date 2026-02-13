@@ -28,10 +28,71 @@ pyserial>=3.5
 python-multipart>=0.0.6
 pydantic>=2.5.0
 huawei-lte-api>=1.9.0
+PyGObject>=3.42.0
 
 # WebRTC support
 aiortc>=1.5.0        # Python WebRTC implementation
 av>=10.0.0           # PyAV - Python bindings for FFmpeg
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+pytest-mock>=3.12.0
+httpx>=0.25.0
+psutil>=5.9.0
+```
+
+**Paquetes críticos**:
+
+- `fastapi` - Framework web backend
+- `pymavlink` - Comunicación MAVLink con drones
+- `pyserial` - Comunicación serie (UART)
+- `PyGObject` - Bindings Python para GStreamer
+- `aiortc` - Implementación WebRTC para Python
+- `av` (PyAV) - Bindings Python para FFmpeg (procesamiento multimedia)
+- `huawei-lte-api` - API para modems Huawei HiLink
+
+**Dependencias del sistema requeridas**:
+
+- `libavcodec-dev`, `libavformat-dev`, `libavutil-dev` - Para PyAV
+- `libsrtp2-dev`, `libopus-dev`, `libvpx-dev` - Para aiortc
+- `gstreamer1.0-*`, `gir1.2-gstreamer-1.0` - Para PyGObject
+
+### Dependencias Frontend (`package.json`)
+
+```json
+{
+  "dependencies": {
+    "framer-motion": "^12.33.0",
+    "i18next": "^25.8.1",
+    "i18next-browser-languagedetector": "^8.2.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-i18next": "^16.5.4"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.1.1",
+    "vite": "^7.2.4",
+    "eslint": "^9.39.1",
+    "prettier": "^3.1.0",
+    "vitest": "^1.0.0"
+  }
+}
+```
+
+**Frameworks**:
+
+- React 18.3+ con hooks
+- Vite 7.x como bundler (HMR ultrarrápido)
+- i18next para internacionalización (ES/EN)
+
+**Compilación**:
+
+```bash
+cd frontend/client
+npm install
+npm run build  # output: dist/
 ```
 
 ---
