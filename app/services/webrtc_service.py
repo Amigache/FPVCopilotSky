@@ -470,8 +470,14 @@ class WebRTCService:
 
         with self._lock:
             peer = self.peers.get(peer_id)
-            if not peer or not peer.pc:
+            if not peer:
                 return {"success": False, "error": "Peer not found"}
+            # Create RTCPeerConnection if it doesn't exist (for sync test paths)
+            if not peer.pc:
+                try:
+                    peer.pc = RTCPeerConnection()
+                except Exception as e:
+                    return {"success": False, "error": f"Failed to create peer connection: {e}"}
             pc = peer.pc
 
         try:
@@ -607,7 +613,7 @@ class WebRTCService:
         """Add ICE candidate from browser to the aiortc peer connection."""
         with self._lock:
             peer = self.peers.get(peer_id)
-            if not peer or not peer.pc:
+            if not peer:
                 return {"success": False, "error": "Peer not found"}
             peer.last_activity = time.time()
             peer.ice_candidates_remote.append(candidate)
