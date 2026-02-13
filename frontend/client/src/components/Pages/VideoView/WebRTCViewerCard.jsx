@@ -242,6 +242,15 @@ const WebRTCViewerCard = forwardRef(
       }
     }, [disconnectPeer])
 
+    // Auto-connect when component mounts (stream is already running)
+    useEffect(() => {
+      if (connectionState === 'disconnected' && !pcRef.current) {
+        connectWebRTC()
+      }
+      // Only run on mount
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+
     const toggleFullscreen = useCallback(() => {
       if (!containerRef.current) return
 

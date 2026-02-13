@@ -78,14 +78,21 @@ echo -e "\n${BLUE}🚀 Starting service...${NC}"
 sudo systemctl enable fpvcopilot-sky.service
 sudo systemctl restart fpvcopilot-sky.service
 
-# Wait for service to fully start (backend takes ~6s to init due to serial port scanning)
-sleep 8
-
-# Step 5: Health check
+# Wait for service to fully start (backend takes ~6-15s to init due to serial port scanning)
 echo -e "\n${BLUE}🏥 Health check...${NC}"
 
-# Check backend (use 127.0.0.1 to avoid IPv6 resolution issues with localhost)
-if curl -s --connect-timeout 5 http://127.0.0.1:8000/api/status/health > /dev/null 2>&1; then
+HEALTH_OK=false
+for i in $(seq 1 6); do
+    sleep 5
+    if curl -s --connect-timeout 3 http://127.0.0.1:8000/api/status/health > /dev/null 2>&1; then
+        HEALTH_OK=true
+        break
+    fi
+    echo -e "   Waiting for backend... (${i}/6)"
+done
+
+# Step 5: Health check results
+if $HEALTH_OK; then
     echo -e "${GREEN}✅${NC} Backend API is responding"
 else
     echo -e "${RED}❌${NC} Backend API is NOT responding"
