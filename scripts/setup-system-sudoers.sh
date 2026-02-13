@@ -29,10 +29,33 @@ $CURRENT_USER ALL=(ALL) NOPASSWD: /usr/sbin/ip route add *
 $CURRENT_USER ALL=(ALL) NOPASSWD: /usr/sbin/ip route del *
 $CURRENT_USER ALL=(ALL) NOPASSWD: /usr/sbin/ip route change *
 $CURRENT_USER ALL=(ALL) NOPASSWD: /usr/sbin/ip route replace *
+$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/sbin/ip link set *
+$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/sbin/ip -o addr show
+$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/sbin/ip -o -4 addr show
+$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/sbin/ip addr show
 
 # Allow $CURRENT_USER to scan WiFi networks without password
 $CURRENT_USER ALL=(ALL) NOPASSWD: /usr/sbin/iw dev * scan
 $CURRENT_USER ALL=(ALL) NOPASSWD: /usr/sbin/iw dev * link
+
+# Allow $CURRENT_USER to manage system network parameters (sysctl)
+$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/sbin/sysctl -w *
+
+# Allow $CURRENT_USER to manage network interfaces (ethtool)
+$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/sbin/ethtool -s *
+
+# Allow $CURRENT_USER to manage DNS cache (dnsmasq)
+$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/bin/apt-get update
+$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/bin/apt-get install -y dnsmasq
+$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p *
+$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start dnsmasq
+$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop dnsmasq
+$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl status dnsmasq
+$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart dnsmasq
+$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl enable dnsmasq
+$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/bin/killall -USR1 dnsmasq
+$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/bin/killall -HUP dnsmasq
+$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/bin/tee *
 EOF
 
 # Set proper permissions

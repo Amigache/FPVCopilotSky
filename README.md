@@ -107,6 +107,7 @@ Abre `http://<IP-DE-TU-SBC>` en el navegador. Listo.
 
 ```bash
 bash scripts/status.sh                   # Estado completo del sistema
+bash scripts/preflight-check.sh          # Verificación exhaustiva pre-vuelo
 sudo journalctl -u fpvcopilot-sky -f     # Logs en tiempo real
 sudo systemctl restart fpvcopilot-sky    # Reiniciar servicio
 bash scripts/deploy.sh                   # Recompilar y desplegar
@@ -117,12 +118,13 @@ bash scripts/dev.sh                      # Modo desarrollo con hot-reload
 
 Toda la documentación extendida está en la **[Wiki del proyecto](docs/INDEX.md)**:
 
-| Documento                                        | Descripción                                               |
-| ------------------------------------------------ | --------------------------------------------------------- |
-| [📑 Índice](docs/INDEX.md)                       | Punto de entrada a toda la wiki                           |
-| [📥 Guía de Instalación](docs/INSTALLATION.md)   | Requisitos, instalación paso a paso, verificación         |
-| [📖 Guía de Usuario](docs/USER_GUIDE.md)         | Uso de cada pestaña, configuración, solución de problemas |
-| [🛠️ Guía de Desarrollo](docs/DEVELOPER_GUIDE.md) | Arquitectura, stack, cómo contribuir y extender           |
+| Documento                                      | Descripción                                       |
+| ---------------------------------------------- | ------------------------------------------------- |
+| [📑 Índice](docs/INDEX.md)                     | Punto de entrada a toda la wiki                   |
+| [📥 Guía de Instalación](docs/INSTALLATION.md) | Requisitos, instalación paso a paso, verificación |
+
+| [�📖 Guía de Usuario](docs/USER_GUIDE.md) | Uso de cada pestaña, configuración, solución de problemas |
+| [🛠️ Guía de Desarrollo](docs/DEVELOPER_GUIDE.md) | Arquitectura, stack, cómo contribuir y extender |
 
 ## 🏗️ Tecnologías
 

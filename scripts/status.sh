@@ -128,6 +128,27 @@ else
     echo -e "${YELLOW}⚠️${NC}  libsrtp2 NOT found (apt install libsrtp2-dev) - required for WebRTC"
 fi
 
+if pkg-config --exists opus 2>/dev/null; then
+    OPUS_VER=$(pkg-config --modversion opus 2>/dev/null)
+    echo -e "${GREEN}✓${NC} libopus installed (${OPUS_VER})"
+else
+    echo -e "${YELLOW}⚠️${NC}  libopus NOT found (apt install libopus-dev) - needed for audio"
+fi
+
+if pkg-config --exists vpx 2>/dev/null; then
+    VPX_VER=$(pkg-config --modversion vpx 2>/dev/null)
+    echo -e "${GREEN}✓${NC} libvpx installed (${VPX_VER})"
+else
+    echo -e "${YELLOW}⚠️${NC}  libvpx NOT found (apt install libvpx-dev) - needed for VP8/VP9"
+fi
+
+# Check v4l-utils
+if command -v v4l2-ctl &> /dev/null; then
+    echo -e "${GREEN}✓${NC} v4l2-ctl (video device control) available"
+else
+    echo -e "${RED}❌${NC} v4l2-ctl NOT found (apt install v4l-utils)"
+fi
+
 # Video streaming status via API
 if [ $BACKEND_RUNNING -eq 0 ]; then
     VIDEO_STATUS=$(curl -s --max-time 3 http://localhost:8000/api/video/status 2>/dev/null)
@@ -143,17 +164,52 @@ fi
 
 
 
-echo -e "\n${BLUE}📁 Files & Directories${NC}"
-if [ -d "/opt/FPVCopilotSky/frontend/client/dist" ] && [ "$(ls -A /opt/FPVCopilotSky/frontend/client/dist 2>/dev/null)" ]; then
-    echo -e "${GREEN}✅${NC} Frontend build exists"
+echo -e "\n${BLUE}💻 Python Environment${NC}"
+if [ -f "/opt/FPVCopilotSky/venv/bin/python3" ]; then
+    VENV_PYTHON="/opt/FPVCopilotSky/venv/bin/python3"
+    PYTHON_VER=$($VENV_PYTHON --version 2>&1)
+    echo -e "${GREEN}✓${NC} Python venv exists: $PYTHON_VER"
+
+    # Check critical Python packages
+    MISSING_PACKAGES=""
+
+    if ! $VENV_PYTHON -c "import fastapi" 2>/dev/null; then
+        MISSING_PACKAGES="${MISSING_PACKAGES}fastapi "
+    fi
+    if ! $VENV_PYTHON -c "import pymavlink" 2>/dev/null; then
+        MISSING_PACKAGES="${MISSING_PACKAGES}pymavlink "
+    fi
+    if ! $VENV_PYTHON -c "import serial" 2>/dev/null; then
+        MISSING_PACKAGES="${MISSING_PACKAGES}pyserial "
+    fi
+    if ! $VENV_PYTHON -c "import gi" 2>/dev/null; then
+        MISSING_PACKAGES="${MISSING_PACKAGES}PyGObject "
+    fi
+
+    if [ -z "$MISSING_PACKAGES" ]; then
+        echo -e "${GREEN}✓${NC} All critical Python packages installed"
+    else
+        echo -e "${RED}❌${NC} Missing Python packages: $MISSING_PACKAGES"
+        echo -e "    ${BLUE}ℹ️${NC}  Fix: source venv/bin/activate && pip install -r requirements.txt"
+    fi
 else
-    echo -e "${YELLOW}⚠️${NC}  Frontend build NOT found (run: npm run build)"
+    echo -e "${RED}❌${NC} Python venv NOT found at /opt/FPVCopilotSky/venv"
+    echo -e "    ${BLUE}ℹ️${NC}  Run: bash install.sh"
 fi
 
-if [ -f "/opt/FPVCopilotSky/venv/bin/python3" ]; then
-    echo -e "${GREEN}✅${NC} Python virtual environment exists"
+echo -e "\n${BLUE}📁 Frontend Build${NC}"
+if [ -d "/opt/FPVCopilotSky/frontend/client/dist" ] && [ "$(ls -A /opt/FPVCopilotSky/frontend/client/dist 2>/dev/null)" ]; then
+    echo -e "${GREEN}✓${NC} Frontend build exists"
+    # Check if Node.js is available for rebuilding
+    if command -v node &> /dev/null; then
+        NODE_VER=$(node --version)
+        echo -e "${GREEN}✓${NC} Node.js installed: $NODE_VER"
+    else
+        echo -e "${YELLOW}⚠️${NC}  Node.js not found (needed for frontend rebuild)"
+    fi
 else
-    echo -e "${RED}❌${NC} Python virtual environment NOT found"
+    echo -e "${YELLOW}⚠️${NC}  Frontend build NOT found"
+    echo -e "    ${BLUE}ℹ️${NC}  Fix: cd frontend/client && npm install && npm run build"
 fi
 
 echo -e "\n${BLUE}🔧 Network Tools${NC}"
@@ -192,6 +248,62 @@ if command -v usb_modeswitch &> /dev/null; then
     echo -e "${GREEN}✓${NC} usb_modeswitch (USB modem mode switching) available"
 else
     echo -e "${RED}❌${NC} usb_modeswitch NOT found"
+fi
+
+if command -v ethtool &> /dev/null; then
+    echo -e "${GREEN}✓${NC} ethtool (network interface tuning) available"
+else
+    echo -e "${YELLOW}⚠️${NC}  ethtool NOT found (install: apt-get install ethtool)"
+fi
+
+if command -v pkg-config &> /dev/null; then
+    echo -e "${GREEN}✓${NC} pkg-config available"
+else
+    echo -e "${RED}❌${NC} pkg-config NOT found (needed for build)"
+fi
+
+if command -v curl &> /dev/null; then
+    echo -e "${GREEN}✓${NC} curl available"
+else
+    echo -e "${RED}❌${NC} curl NOT found (install: apt-get install curl)"
+fi
+
+echo -e "\n${BLUE}👥 User Groups & Permissions${NC}"
+# Check if user is in required groups
+if groups $USER | grep -q "\bdialout\b"; then
+    echo -e "${GREEN}✓${NC} User in 'dialout' group (serial port access)"
+else
+    echo -e "${RED}❌${NC} User NOT in 'dialout' group"
+    echo -e "    ${BLUE}ℹ️${NC}  MAVLink serial communication will fail"
+    echo -e "    ${BLUE}ℹ️${NC}  Fix: sudo usermod -a -G dialout $USER && reboot"
+fi
+
+if groups $USER | grep -q "\bvideo\b"; then
+    echo -e "${GREEN}✓${NC} User in 'video' group (camera/video device access)"
+else
+    echo -e "${RED}❌${NC} User NOT in 'video' group"
+    echo -e "    ${BLUE}ℹ️${NC}  Video streaming may fail"
+    echo -e "    ${BLUE}ℹ️${NC}  Fix: sudo usermod -a -G video $USER && reboot"
+fi
+
+# Check serial port permissions
+if ls /dev/ttyAML* > /dev/null 2>&1; then
+    SERIAL_PERMS=$(stat -c "%a %G" /dev/ttyAML0 2>/dev/null || echo "unknown")
+    if [[ "$SERIAL_PERMS" =~ "dialout" ]]; then
+        echo -e "${GREEN}✓${NC} Serial port /dev/ttyAML0 group: dialout"
+    else
+        echo -e "${YELLOW}⚠️${NC}  Serial port /dev/ttyAML0 group: $SERIAL_PERMS (should be dialout)"
+    fi
+fi
+
+# Check if serial-getty is masked (prevents MAVLink conflicts)
+if systemctl is-masked serial-getty@ttyAML0.service &>/dev/null; then
+    echo -e "${GREEN}✓${NC} serial-getty@ttyAML0 is masked (no conflict with MAVLink)"
+elif systemctl is-active serial-getty@ttyAML0.service &>/dev/null; then
+    echo -e "${RED}❌${NC} serial-getty@ttyAML0 is ACTIVE - will conflict with MAVLink!"
+    echo -e "    ${BLUE}ℹ️${NC}  Fix: sudo systemctl stop serial-getty@ttyAML0 && sudo systemctl mask serial-getty@ttyAML0"
+else
+    echo -e "${GREEN}✓${NC} serial-getty@ttyAML0 is disabled"
 fi
 
 echo -e "\n${BLUE}📡 WiFi Configuration${NC}"
@@ -308,6 +420,13 @@ if [ -f "/etc/sudoers.d/fpvcopilot-wifi" ]; then
         echo -e "${RED}❌${NC} ip route management permission MISSING"
         echo -e "    ${BLUE}ℹ️${NC}  Network priority switching will fail. Re-run: bash install.sh"
     fi
+    # Check ip link
+    if sudo grep -q "ip link" /etc/sudoers.d/fpvcopilot-wifi 2>/dev/null; then
+        echo -e "${GREEN}✓${NC} ip link management permission configured"
+    else
+        echo -e "${RED}❌${NC} ip link management permission MISSING"
+        echo -e "    ${BLUE}ℹ️${NC}  Network interface management will fail. Re-run: bash install.sh"
+    fi
     # Functional test
     if sudo -n nmcli connection show --active > /dev/null 2>&1; then
         echo -e "${GREEN}✓${NC} nmcli commands work without password"
@@ -318,6 +437,11 @@ if [ -f "/etc/sudoers.d/fpvcopilot-wifi" ]; then
         echo -e "${GREEN}✓${NC} ip route commands work without password"
     else
         echo -e "${YELLOW}⚠️${NC}  ip route commands may require password"
+    fi
+    if sudo -n ip link show > /dev/null 2>&1; then
+        echo -e "${GREEN}✓${NC} ip link commands work without password"
+    else
+        echo -e "${YELLOW}⚠️${NC}  ip link commands may require password"
     fi
 fi
 
@@ -341,6 +465,20 @@ if [ -f "/etc/sudoers.d/fpvcopilot-system" ]; then
         echo -e "${GREEN}✓${NC} journalctl commands work without password"
     else
         echo -e "${YELLOW}⚠️${NC}  journalctl commands may require password"
+    fi
+
+    # Check sysctl permissions
+    if sudo grep -q "sysctl -w" /etc/sudoers.d/fpvcopilot-system 2>/dev/null; then
+        echo -e "${GREEN}✓${NC} sysctl (network tuning) permission configured"
+    else
+        echo -e "${YELLOW}⚠️${NC}  sysctl permission missing (flight mode optimization unavailable)"
+    fi
+
+    # Check ethtool permissions
+    if sudo grep -q "ethtool" /etc/sudoers.d/fpvcopilot-system 2>/dev/null; then
+        echo -e "${GREEN}✓${NC} ethtool (interface tuning) permission configured"
+    else
+        echo -e "${YELLOW}⚠️${NC}  ethtool permission missing (interface optimization unavailable)"
     fi
 else
     echo -e "${RED}❌${NC} System management sudoers file missing"
