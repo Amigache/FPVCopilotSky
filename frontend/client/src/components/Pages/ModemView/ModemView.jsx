@@ -316,24 +316,23 @@ const ModemView = () => {
       </div>
 
       <div className="modem-sections">
-        {/* === CARD 1: INFO - Operador & Dispositivo === */}
+        {/* === CARD 1: INFO - Información del Dispositivo === */}
         <div className="card info-card">
-          <h2>📡 {t('modem.information')}</h2>
+          <div className="card-header-with-badge">
+            <h2>📡 {t('modem.information')}</h2>
+            <span
+              className={`connection-badge ${
+                network.connection_status === 'Connected' ? 'connected' : 'disconnected'
+              }`}
+            >
+              {network.connection_status === 'Connected'
+                ? `● ${t('network.connected')}`
+                : `○ ${t('modem.disconnected')}`}
+            </span>
+          </div>
           <div className="info-columns">
-            {/* Left Column: Operator */}
+            {/* Left Column: Operator/Network */}
             <div className="info-column">
-              <div className="section-header">
-                <span className="section-title">{t('modem.operatorSection')}</span>
-                <span
-                  className={`connection-badge ${
-                    network.connection_status === 'Connected' ? 'connected' : 'disconnected'
-                  }`}
-                >
-                  {network.connection_status === 'Connected'
-                    ? `● ${t('network.connected')}`
-                    : `○ ${t('modem.disconnected')}`}
-                </span>
-              </div>
               <div className="operator-main-info">
                 <span className="operator-name">{network.operator || t('modem.unknown')}</span>
                 <span className="tech-badge">
@@ -364,9 +363,7 @@ const ModemView = () => {
 
             {/* Right Column: Device */}
             <div className="info-column">
-              <div className="section-header">
-                <span className="section-title">{t('modem.deviceSection')}</span>
-              </div>
+              <div className="device-spacer"></div>
               <div className="info-grid">
                 <div className="info-item">
                   <span className="info-label">{t('modem.model')}</span>
