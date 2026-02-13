@@ -12,6 +12,7 @@ const Toggle = ({ checked, onChange, disabled = false, label = '', className = '
         onChange={onChange}
         disabled={disabled}
         className="toggle-input"
+        data-testid="toggle-input"
       />
       <span className="toggle-switch"></span>
       {label && <span className="toggle-text">{label}</span>}

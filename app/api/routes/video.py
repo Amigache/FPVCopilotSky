@@ -56,7 +56,7 @@ class StreamingConfigRequest(BaseModel):
     """Streaming configuration request with validated ranges"""
 
     # Streaming mode
-    mode: Optional[Literal["udp", "multicast", "rtsp"]] = None
+    mode: Optional[Literal["udp", "multicast", "rtsp", "webrtc"]] = None
 
     # UDP unicast (mode='udp')
     udp_host: Optional[str] = None
@@ -101,6 +101,8 @@ class StreamingConfigRequest(BaseModel):
     @field_validator("rtsp_url")
     @classmethod
     def validate_rtsp_url(cls, v):
+        if v is not None and v == "":
+            return None
         if v is not None and not v.startswith("rtsp://"):
             raise ValueError("RTSP URL must start with rtsp://")
         return v

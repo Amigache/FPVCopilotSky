@@ -40,9 +40,10 @@ class GStreamerService:
     - Low-latency optimizations
     """
 
-    def __init__(self, websocket_manager=None, event_loop=None):
+    def __init__(self, websocket_manager=None, event_loop=None, webrtc_service=None):
         self.websocket_manager = websocket_manager
         self.event_loop = event_loop
+        self.webrtc_service = webrtc_service
 
         # Configuration
         self.video_config = VideoConfig()
@@ -67,6 +68,9 @@ class GStreamerService:
         self._rtsp_stats_running: bool = False
         self._rtsp_monitor_thread: Optional[threading.Thread] = None
         self._rtsp_monitor_running: bool = False
+
+        # WebRTC integration
+        self.webrtc_adapter = None
 
         # Statistics - counters for real-time metrics
         self.stats = {
@@ -158,6 +162,10 @@ class GStreamerService:
         except Exception as e:
             print(f"   (Board info unavailable: {e})")
 
+        # WebRTC mode uses its own lightweight pipeline (camera → jpegenc → appsink)
+        if self.streaming_config.mode == "webrtc":
+            return self._build_webrtc_pipeline()
+
         codec_id = self.video_config.codec.lower()
 
         # Adapt codec based on board capabilities
@@ -165,6 +173,254 @@ class GStreamerService:
 
         # Build pipeline using provider
         return self._build_pipeline_from_provider(codec_id)
+
+    # ── WebRTC Pipeline ────────────────────────────────────────────────────
+
+    def _build_webrtc_pipeline(self) -> bool:
+        """
+        Build a pipeline for WebRTC mode with H264 encoding.
+
+        Pipeline: source → [jpegdec if MJPEG] → videoconvert → x264enc (ultrafast/zerolatency) → h264parse → appsink
+
+        H264 NALUs are pulled from the appsink and fed into the aiortc
+        H264PassthroughEncoder for WebRTC transport without re-encoding.
+        """
+        try:
+            from app.providers.registry import get_provider_registry
+
+            registry = get_provider_registry()
+            pipeline = Gst.Pipeline.new("fpv-webrtc-pipeline")
+
+            # ── Find video source provider ──
+            source_provider = None
+            for source_type in registry.list_video_source_providers():
+                sp = registry.get_video_source(source_type)
+                if sp and sp.is_available():
+                    sources = sp.discover_sources()
+                    for src in sources:
+                        if src["device"] == self.video_config.device:
+                            source_provider = sp
+                            break
+                    if source_provider:
+                        break
+
+            if not source_provider:
+                source_provider = registry.get_video_source("v4l2")
+
+            if not source_provider:
+                self.last_error = "No video source provider available"
+                return False
+
+            self.current_source_provider = source_provider.display_name
+
+            config = {
+                "width": self.video_config.width,
+                "height": self.video_config.height,
+                "framerate": self.video_config.framerate,
+                "bitrate": self.video_config.h264_bitrate,
+                "quality": self.video_config.quality,
+            }
+
+            source_config = source_provider.build_source_element(self.video_config.device, config)
+            if not source_config["success"]:
+                self.last_error = source_config.get("error", "Failed to build source")
+                return False
+
+            # ── Create source element ──
+            src_cfg = source_config["source_element"]
+            source = Gst.ElementFactory.make(src_cfg["element"], src_cfg["name"])
+            if not source:
+                self.last_error = f"Failed to create {src_cfg['element']}"
+                return False
+            for prop, val in src_cfg["properties"].items():
+                source.set_property(prop, val)
+            pipeline.add(source)
+            elements = [source]
+
+            # ── Caps filter (from source provider) ──
+            if source_config.get("caps_filter"):
+                caps_elem = Gst.ElementFactory.make("capsfilter", "caps_filter")
+                caps_elem.set_property("caps", Gst.Caps.from_string(source_config["caps_filter"]))
+                pipeline.add(caps_elem)
+                elements.append(caps_elem)
+
+            # ── Post-source elements (e.g. videoconvert from source provider) ──
+            for elem_cfg in source_config.get("post_elements", []):
+                element = Gst.ElementFactory.make(elem_cfg["element"], elem_cfg["name"])
+                if not element:
+                    self.last_error = f"Failed to create {elem_cfg['element']}"
+                    return False
+                for prop, val in elem_cfg.get("properties", {}).items():
+                    element.set_property(prop, val)
+                pipeline.add(element)
+                elements.append(element)
+
+            # ── Determine if source is MJPEG — need to decode first ──
+            output_format = source_config.get("output_format", "")
+            caps_filter_str = source_config.get("caps_filter", "")
+            source_is_jpeg = "image/jpeg" in output_format or "image/jpeg" in caps_filter_str
+
+            if source_is_jpeg:
+                # MJPEG source → decode JPEG to raw video
+                print("   → Source outputs MJPEG, adding jpegdec")
+                jpegdec = Gst.ElementFactory.make("jpegdec", "webrtc_jpegdec")
+                if not jpegdec:
+                    self.last_error = "jpegdec GStreamer plugin not available"
+                    return False
+                pipeline.add(jpegdec)
+                elements.append(jpegdec)
+
+            # ── videoconvert → ensure correct pixel format for encoder ──
+            videoconvert = Gst.ElementFactory.make("videoconvert", "webrtc_convert")
+            pipeline.add(videoconvert)
+            elements.append(videoconvert)
+
+            # ── H264 encoder selection: try x264enc first, then openh264enc ──
+            bitrate_kbps = self.video_config.h264_bitrate or 1500
+            encoder_name = None
+
+            x264enc = Gst.ElementFactory.make("x264enc", "webrtc_h264enc")
+            if x264enc:
+                encoder_name = "x264enc"
+                x264enc.set_property("tune", 0x00000004)  # zerolatency
+                x264enc.set_property("speed-preset", 1)  # ultrafast
+                x264enc.set_property("bitrate", bitrate_kbps)
+                x264enc.set_property("key-int-max", self.video_config.framerate * 2)  # keyframe every 2s
+                x264enc.set_property("byte-stream", True)
+                pipeline.add(x264enc)
+                elements.append(x264enc)
+                print(f"   → Using x264enc (ultrafast/zerolatency) @ {bitrate_kbps} kbps")
+            else:
+                openh264enc = Gst.ElementFactory.make("openh264enc", "webrtc_h264enc")
+                if openh264enc:
+                    encoder_name = "openh264enc"
+                    openh264enc.set_property("bitrate", bitrate_kbps * 1000)
+                    openh264enc.set_property("complexity", 0)  # low complexity
+                    pipeline.add(openh264enc)
+                    elements.append(openh264enc)
+                    print(f"   → Using openh264enc @ {bitrate_kbps} kbps")
+                else:
+                    self.last_error = "No H264 encoder available (need x264enc or openh264enc)"
+                    return False
+
+            self.current_encoder_provider = f"WebRTC (H264 {encoder_name}→aiortc)"
+
+            # ── h264parse → normalize NAL format ──
+            h264parse = Gst.ElementFactory.make("h264parse", "webrtc_h264parse")
+            if h264parse:
+                h264parse.set_property("config-interval", -1)  # send SPS/PPS with every keyframe
+                pipeline.add(h264parse)
+                elements.append(h264parse)
+
+            # ── Appsink — outputs H264 byte-stream ──
+            appsink = Gst.ElementFactory.make("appsink", "webrtc_appsink")
+            if not appsink:
+                self.last_error = "appsink GStreamer plugin not available"
+                return False
+
+            appsink.set_property("emit-signals", True)
+            appsink.set_property("sync", False)
+            appsink.set_property("max-buffers", 3)
+            appsink.set_property("drop", True)
+            appsink.set_property(
+                "caps",
+                Gst.Caps.from_string("video/x-h264,stream-format=byte-stream,alignment=au"),
+            )
+            pipeline.add(appsink)
+            elements.append(appsink)
+
+            # ── Link all elements ──
+            for i in range(len(elements) - 1):
+                if not elements[i].link(elements[i + 1]):
+                    src_name = elements[i].get_name()
+                    dst_name = elements[i + 1].get_name()
+                    self.last_error = f"Failed to link {src_name} → {dst_name}"
+                    print(f"❌ {self.last_error}")
+                    return False
+
+            # ── Connect appsink signal ──
+            appsink.connect("new-sample", self._on_webrtc_appsink_sample)
+
+            # ── GStreamer bus ──
+            bus = pipeline.get_bus()
+            bus.add_signal_watch()
+            bus.connect("message", self._on_bus_message)
+
+            self.pipeline = pipeline
+            decode_step = "jpegdec → " if source_is_jpeg else ""
+            print(
+                f"✅ WebRTC H264 pipeline built: {src_cfg['element']} → {decode_step}"
+                f"videoconvert → {encoder_name} → h264parse → appsink "
+                f"({config['width']}x{config['height']}@{config['framerate']}fps @ {bitrate_kbps}kbps)"
+            )
+            return True
+
+        except Exception as e:
+            self.last_error = f"WebRTC pipeline error: {e}"
+            print(f"❌ {self.last_error}")
+            import traceback
+
+            traceback.print_exc()
+            return False
+
+    def force_keyframe(self):
+        """Force the GStreamer H264 encoder to produce an IDR keyframe.
+        Called when a new WebRTC peer connects so it gets SPS/PPS/IDR."""
+        if not self.pipeline or not GSTREAMER_AVAILABLE:
+            return False
+        try:
+            encoder = self.pipeline.get_by_name("webrtc_h264enc")
+            if encoder:
+                # Send force-keyunit event on the encoder's srcpad (upstream event
+                # must be sent on a downstream-facing pad to travel into the encoder)
+                result = Gst.Structure.new_from_string("GstForceKeyUnit, all-headers=(boolean)true")
+                structure = result[0] if isinstance(result, tuple) else result
+                event = Gst.Event.new_custom(Gst.EventType.CUSTOM_UPSTREAM, structure)
+                srcpad = encoder.get_static_pad("src")
+                success = srcpad.send_event(event)
+                print(f"🔑 Force keyframe requested → {success}")
+                return success
+        except Exception as e:
+            print(f"⚠️ Force keyframe failed: {e}")
+        return False
+
+    def _on_webrtc_appsink_sample(self, appsink):
+        """
+        Called by GStreamer whenever a new H264 access unit is ready.
+        Extracts the H264 bytes and pushes them to the WebRTC service
+        (which feeds the aiortc H264PassthroughEncoder for RTP packetization).
+        """
+        try:
+            sample = appsink.emit("pull-sample")
+            if not sample:
+                return Gst.FlowReturn.OK
+
+            buf = sample.get_buffer()
+            if not buf:
+                return Gst.FlowReturn.OK
+
+            success, map_info = buf.map(Gst.MapFlags.READ)
+            if not success:
+                return Gst.FlowReturn.OK
+
+            try:
+                h264_data = bytes(map_info.data)
+
+                # Feed to WebRTC service → aiortc H264 passthrough
+                if self.webrtc_service:
+                    self.webrtc_service.push_video_frame(h264_data)
+
+                # Update stats
+                with self.stats_lock:
+                    self.stats["frames_sent"] = self.stats.get("frames_sent", 0) + 1
+                    self.stats["bytes_sent"] = self.stats.get("bytes_sent", 0) + len(h264_data)
+            finally:
+                buf.unmap(map_info)
+
+        except Exception as e:
+            print(f"⚠️ WebRTC appsink error: {e}")
+
+        return Gst.FlowReturn.OK
 
     def _adapt_codec_to_board(self, codec_id: str) -> str:
         """
@@ -233,7 +489,7 @@ class GStreamerService:
             print(f"⚠️ Board adaptation error: {e}, using requested codec")
             return codec_id
 
-    def _build_pipeline_from_provider(self, codec_id: str) -> bool:
+    def _build_pipeline_from_provider(self, codec_id: str) -> bool:  # noqa: C901
         """
         Build pipeline using video encoder provider.
         Returns True if successful, False otherwise.
@@ -411,6 +667,10 @@ class GStreamerService:
                     print(f"❌ Failed to link {src_name} → {dst_name}")
                     return False
 
+            # WebRTC mode: add tee + appsink branch for JPEG frames to aiortc
+            if self.streaming_config.mode == "webrtc" and self.webrtc_service:
+                self._attach_webrtc_appsink(pipeline, elements_list)
+
             # Setup bus for messages
             bus = pipeline.get_bus()
             bus.add_signal_watch()
@@ -463,6 +723,17 @@ class GStreamerService:
                 group = self.streaming_config.multicast_group
                 mport = self.streaming_config.multicast_port
                 print(f"   → UDP multicast to {group}:{mport}")
+                return sink
+
+            elif mode == "webrtc":
+                # Mode 4: WebRTC — pipeline sinks to fakesink;
+                # actual video is sent via aiortc from the appsink branch
+                sink = Gst.ElementFactory.make("fakesink", "sink")
+                if not sink:
+                    return None
+                sink.set_property("sync", False)
+                sink.set_property("async", False)
+                print("   → WebRTC mode (fakesink + appsink for aiortc)")
                 return sink
 
             else:
@@ -693,8 +964,18 @@ class GStreamerService:
         if self.streaming_config.mode == "rtsp":
             return self._start_rtsp_server()
 
-        # Validate streaming configuration for UDP/multicast modes
-        if not self.streaming_config.udp_host:
+        # Activate WebRTC service if in webrtc mode
+        if self.streaming_config.mode == "webrtc" and self.webrtc_service:
+            try:
+                self.webrtc_service.activate()
+                # Give WebRTC service a back-reference for keyframe requests
+                self.webrtc_service._gstreamer_service = self
+                print("\u2705 WebRTC service activated")
+            except Exception as e:
+                print(f"\u26a0\ufe0f WebRTC activation error: {e}")
+
+        # Validate streaming configuration for UDP/multicast modes (skip for webrtc)
+        if self.streaming_config.mode not in ("webrtc",) and not self.streaming_config.udp_host:
             return {
                 "success": False,
                 "message": "No destination IP configured for streaming",
@@ -840,6 +1121,22 @@ class GStreamerService:
             return {"success": False, "message": "Not streaming"}
 
         print("🛑 Stopping video stream...")
+
+        # Stop WebRTC adapter if active
+        if self.webrtc_adapter:
+            try:
+                self.webrtc_adapter.detach()
+                self.webrtc_adapter = None
+                print("✅ WebRTC adapter stopped")
+            except Exception as e:
+                print(f"⚠️ Error stopping WebRTC adapter: {e}")
+
+        # Deactivate WebRTC service if active
+        if self.webrtc_service and self.webrtc_service.is_active:
+            try:
+                self.webrtc_service.deactivate()
+            except Exception as e:
+                print(f"⚠️ Error deactivating WebRTC service: {e}")
 
         if self.pipeline:
             self.pipeline.set_state(Gst.State.NULL)
@@ -1094,6 +1391,14 @@ class GStreamerService:
                     else 0
                 ),
             },
+            "webrtc": {
+                "available": self.webrtc_service is not None,
+                "adapter_active": self.webrtc_adapter is not None,
+                "service_active": (self.webrtc_service.is_active if self.webrtc_service else False),
+                "peers_connected": (
+                    self.webrtc_service.global_stats.get("active_peers", 0) if self.webrtc_service else 0
+                ),
+            },
         }
 
     def _format_uptime(self, seconds: int) -> str:
@@ -1331,8 +1636,8 @@ def get_gstreamer_service() -> Optional[GStreamerService]:
     return _gstreamer_service
 
 
-def init_gstreamer_service(websocket_manager=None, event_loop=None) -> GStreamerService:
+def init_gstreamer_service(websocket_manager=None, event_loop=None, webrtc_service=None) -> GStreamerService:
     """Initialize the global GStreamer service"""
     global _gstreamer_service
-    _gstreamer_service = GStreamerService(websocket_manager, event_loop)
+    _gstreamer_service = GStreamerService(websocket_manager, event_loop, webrtc_service)
     return _gstreamer_service

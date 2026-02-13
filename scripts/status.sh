@@ -84,6 +84,50 @@ if command -v gst-inspect-1.0 > /dev/null 2>&1; then
 else
     echo -e "${RED}❌${NC} GStreamer NOT installed"
 fi
+
+# WebRTC dependencies
+echo -e "\n${BLUE}🌐 WebRTC Support${NC}"
+# Check Python packages (aiortc, av)
+if [ -f "/opt/FPVCopilotSky/venv/bin/python3" ]; then
+    VENV_PYTHON="/opt/FPVCopilotSky/venv/bin/python3"
+
+    if $VENV_PYTHON -c "import aiortc" 2>/dev/null; then
+        AIORTC_VERSION=$($VENV_PYTHON -c "import aiortc; print(aiortc.__version__)" 2>/dev/null)
+        echo -e "${GREEN}✅${NC} aiortc installed (${AIORTC_VERSION:-unknown})"
+    else
+        echo -e "${RED}❌${NC} aiortc NOT installed (pip install aiortc>=1.5.0)"
+    fi
+
+    if $VENV_PYTHON -c "import av" 2>/dev/null; then
+        AV_VERSION=$($VENV_PYTHON -c "import av; print(av.__version__)" 2>/dev/null)
+        echo -e "${GREEN}✅${NC} PyAV (av) installed (${AV_VERSION:-unknown})"
+    else
+        echo -e "${RED}❌${NC} PyAV (av) NOT installed (pip install av>=10.0.0)"
+    fi
+fi
+
+# Check FFmpeg libraries
+if pkg-config --exists libavcodec 2>/dev/null; then
+    AVCODEC_VER=$(pkg-config --modversion libavcodec 2>/dev/null)
+    echo -e "${GREEN}✅${NC} libavcodec installed (${AVCODEC_VER})"
+else
+    echo -e "${RED}❌${NC} libavcodec NOT found (apt install libavcodec-dev)"
+fi
+
+if pkg-config --exists libavformat 2>/dev/null; then
+    AVFORMAT_VER=$(pkg-config --modversion libavformat 2>/dev/null)
+    echo -e "${GREEN}✅${NC} libavformat installed (${AVFORMAT_VER})"
+else
+    echo -e "${RED}❌${NC} libavformat NOT found (apt install libavformat-dev)"
+fi
+
+if pkg-config --exists libsrtp2 2>/dev/null; then
+    SRTP_VER=$(pkg-config --modversion libsrtp2 2>/dev/null)
+    echo -e "${GREEN}✅${NC} libsrtp2 installed (${SRTP_VER})"
+else
+    echo -e "${YELLOW}⚠️${NC}  libsrtp2 NOT found (apt install libsrtp2-dev) - required for WebRTC"
+fi
+
 # Video streaming status via API
 if [ $BACKEND_RUNNING -eq 0 ]; then
     VIDEO_STATUS=$(curl -s --max-time 3 http://localhost:8000/api/video/status 2>/dev/null)

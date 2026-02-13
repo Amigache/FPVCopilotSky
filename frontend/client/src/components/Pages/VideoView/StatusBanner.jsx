@@ -20,6 +20,7 @@ const StatusBanner = ({ status, config }) => {
           {config.mode === 'udp' && `${config.udp_host}:${config.udp_port}`}
           {config.mode === 'multicast' && `📡 ${config.multicast_group}:${config.multicast_port}`}
           {config.mode === 'rtsp' && `📡 RTSP Server`}
+          {config.mode === 'webrtc' && `🔗 WebRTC`}
         </div>
       )}
       {status.last_error && <div className="status-error">❌ {status.last_error}</div>}

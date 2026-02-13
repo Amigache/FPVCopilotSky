@@ -3,7 +3,8 @@
     "mavlink_not_initialized": "MAVLink service not initialized",
     "video_not_initialized": "Video service not initialized",
     "router_not_initialized": "Router service not initialized",
-    "gstreamer_not_available": "GStreamer not available"
+    "gstreamer_not_available": "GStreamer not available",
+    "webrtc_not_initialized": "WebRTC service not initialized"
   },
   "mavlink": {
     "already_connected": "Already connected",

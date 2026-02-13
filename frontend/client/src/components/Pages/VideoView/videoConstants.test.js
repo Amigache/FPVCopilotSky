@@ -9,6 +9,10 @@ import {
   safeInt,
   isValidMulticastIp,
   isValidIpv4,
+  isValidDomain,
+  isValidHost,
+  validatePort,
+  validateRtspUrl,
   VIDEO_DEFAULTS,
   BITRATE_OPTIONS,
   GOP_OPTIONS,
@@ -182,5 +186,105 @@ describe('EMPTY_STATUS', () => {
   it('has streaming: false and available: false', () => {
     expect(EMPTY_STATUS.streaming).toBe(false)
     expect(EMPTY_STATUS.available).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// isValidDomain
+// ---------------------------------------------------------------------------
+describe('isValidDomain', () => {
+  it('accepts valid domain names', () => {
+    expect(isValidDomain('example.com')).toBe(true)
+    expect(isValidDomain('sub.example.com')).toBe(true)
+    expect(isValidDomain('localhost')).toBe(true)
+    expect(isValidDomain('my-server.local')).toBe(true)
+    expect(isValidDomain('test123.example.org')).toBe(true)
+  })
+
+  it('rejects invalid domains', () => {
+    expect(isValidDomain('')).toBe(false)
+    expect(isValidDomain('-example.com')).toBe(false)
+    expect(isValidDomain('example-.com')).toBe(false)
+    expect(isValidDomain('.example.com')).toBe(false)
+    expect(isValidDomain('example..com')).toBe(false)
+    expect(isValidDomain('a'.repeat(254))).toBe(false) // too long
+  })
+})
+
+// ---------------------------------------------------------------------------
+// isValidHost
+// ---------------------------------------------------------------------------
+describe('isValidHost', () => {
+  it('accepts valid IPv4 addresses', () => {
+    expect(isValidHost('192.168.1.1')).toBe(true)
+    expect(isValidHost('10.0.0.1')).toBe(true)
+  })
+
+  it('accepts valid domain names', () => {
+    expect(isValidHost('example.com')).toBe(true)
+    expect(isValidHost('localhost')).toBe(true)
+  })
+
+  it('rejects invalid inputs', () => {
+    expect(isValidHost('')).toBe(false)
+    expect(isValidHost('999.999.999.999')).toBe(false)
+    expect(isValidHost('-invalid')).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// validatePort
+// ---------------------------------------------------------------------------
+describe('validatePort', () => {
+  it('accepts valid ports in range', () => {
+    expect(validatePort(1024)).toEqual({ valid: true })
+    expect(validatePort(5000)).toEqual({ valid: true })
+    expect(validatePort(65535)).toEqual({ valid: true })
+    expect(validatePort('8080')).toEqual({ valid: true })
+  })
+
+  it('rejects ports out of range', () => {
+    const result1 = validatePort(1023)
+    expect(result1.valid).toBe(false)
+    expect(result1.error).toBe('views.video.validation.portOutOfRange')
+
+    const result2 = validatePort(65536)
+    expect(result2.valid).toBe(false)
+    expect(result2.error).toBe('views.video.validation.portOutOfRange')
+  })
+
+  it('rejects invalid port values', () => {
+    const result = validatePort('abc')
+    expect(result.valid).toBe(false)
+    expect(result.error).toBe('views.video.validation.invalidPort')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// validateRtspUrl
+// ---------------------------------------------------------------------------
+describe('validateRtspUrl', () => {
+  it('accepts valid RTSP URLs', () => {
+    expect(validateRtspUrl('rtsp://192.168.1.1:8554/fpv')).toEqual({ valid: true })
+    expect(validateRtspUrl('rtsp://example.com/stream')).toEqual({ valid: true })
+    expect(validateRtspUrl('rtsp://user:pass@server.local:554/path')).toEqual({ valid: true })
+  })
+
+  it('rejects empty URLs', () => {
+    const result = validateRtspUrl('')
+    expect(result.valid).toBe(false)
+    expect(result.error).toBe('views.video.validation.emptyUrl')
+  })
+
+  it('rejects URLs not starting with rtsp://', () => {
+    const result = validateRtspUrl('http://example.com')
+    expect(result.valid).toBe(false)
+    expect(result.error).toBe('views.video.validation.mustStartWithRtsp')
+  })
+
+  it('rejects malformed RTSP URLs', () => {
+    const result = validateRtspUrl('rtsp://')
+    expect(result.valid).toBe(false)
+    expect(result.error).toBe('views.video.validation.invalidRtspFormat')
   })
 })

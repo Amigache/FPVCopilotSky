@@ -94,11 +94,12 @@ La barra de estado superior muestra en todo momento:
 
 ### Modos de emisión (streaming)
 
-| Modo            | Descripción                                        | Caso de uso                                |
-| --------------- | -------------------------------------------------- | ------------------------------------------ |
-| **UDP Unicast** | Envío directo a una IP:puerto                      | FPV punto a punto, mínima latencia         |
-| **Multicast**   | Envío a un grupo multicast (224.x.x.x – 239.x.x.x) | Múltiples receptores en la misma red       |
-| **RTSP**        | Servidor RTSP embebido                             | Clientes a demanda, compatible con VLC/OBS |
+| Modo            | Descripción                                        | Caso de uso                                       |
+| --------------- | -------------------------------------------------- | ------------------------------------------------- |
+| **UDP Unicast** | Envío directo a una IP:puerto                      | FPV punto a punto, mínima latencia                |
+| **Multicast**   | Envío a un grupo multicast (224.x.x.x – 239.x.x.x) | Múltiples receptores en la misma red              |
+| **RTSP**        | Servidor RTSP embebido                             | Clientes a demanda, compatible con VLC/OBS        |
+| **WebRTC**      | Video en navegador con adaptación de bitrate       | Visualización remota 4G/LTE, sin software externo |
 
 #### UDP Unicast
 
@@ -115,6 +116,41 @@ La barra de estado superior muestra en todo momento:
 
 - **URL RTSP**: se genera automáticamente con la IP de la placa (ej. `rtsp://192.168.1.145:8554/stream`)
 - **Transporte**: TCP (fiable) o UDP (menor latencia)
+
+#### WebRTC
+
+**WebRTC** es el modo más avanzado, diseñado para **streaming en tiempo real sobre conexiones 4G/LTE** con bitrate adaptativo:
+
+- **Visor integrado en navegador**: No necesitas VLC, Mission Planner ni ningún software adicional
+- **Conexión peer-to-peer**: El navegador establece una conexión directa usando WebRTC (aiortc en el backend)
+- **H.264 hardware-accelerated**: GStreamer codifica H.264 → appsink → aiortc RTP sin re-encodificación
+- **Bitrate adaptativo**: El sistema ajusta automáticamente el bitrate según las condiciones de red (ideal para 4G)
+- **ICE/STUN**: Negociación automática de conexión (compatible con NAT traversal)
+
+**Cómo usar WebRTC:**
+
+1. Selecciona modo **WebRTC** en la configuración de video
+2. Inicia el stream
+3. Haz clic en **▶️ Conectar** en el visor WebRTC (aparece automáticamente en la interfaz)
+4. El video se mostrará directamente en el navegador sin latencia adicional
+
+**Ventajas:**
+
+- ✅ Sin instalación de software en el cliente
+- ✅ Funciona en cualquier dispositivo (PC, tablet, móvil)
+- ✅ Adaptación automática de calidad según ancho de banda
+- ✅ Estadísticas de conexión en tiempo real (jitter, paquetes perdidos, resolución)
+- ✅ Optimizado para 4G con bitrate dinámico
+
+**Limitaciones:**
+
+- Solo H.264 (no soporta MJPEG en este modo)
+- Requiere navegador moderno (Chrome, Firefox, Safari, Edge)
+- Mayor uso de CPU que modos UDP/RTSP simples (debido a la negociación WebRTC)
+
+**Botón de reinicio:**
+
+El visor incluye un botón **🔄 Reiniciar** que permite reiniciar la conexión WebRTC sin detener el stream completo del backend, útil si pierdes la conexión temporalmente.
 
 ### Controles de stream
 

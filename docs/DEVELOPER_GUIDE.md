@@ -28,6 +28,10 @@ pyserial>=3.5
 python-multipart>=0.0.6
 pydantic>=2.5.0
 huawei-lte-api>=1.9.0
+
+# WebRTC support
+aiortc>=1.5.0        # Python WebRTC implementation
+av>=10.0.0           # PyAV - Python bindings for FFmpeg
 ```
 
 ---
@@ -1115,6 +1119,332 @@ def init_provider_registry():
 3. **Implementar** métodos abstractos
 4. **Registrar** en `app/main.py` (init_provider_registry)
 5. **Auto-detectado** en API `/api/video/cameras` y `/api/video/codecs`
+
+---
+
+### 6.3.1 WebRTC: Arquitectura e Implementación
+
+**WebRTC** es un modo de streaming avanzado que permite **video en tiempo real en el navegador** sin software adicional, con **bitrate adaptativo** optimizado para conexiones 4G/LTE.
+
+#### Stack Tecnológico WebRTC
+
+| Componente             | Tecnología                      | Propósito                                                      |
+| ---------------------- | ------------------------------- | -------------------------------------------------------------- |
+| **Backend WebRTC**     | aiortc 1.5+                     | Implementación Python de WebRTC (RTCPeerConnection, ICE, DTLS) |
+| **Codificación H.264** | GStreamer (x264enc/openh264enc) | Codificación hardware-accelerated sin re-encoding              |
+| **RTP Packetization**  | H264PassthroughEncoder (custom) | Empaquetado de NAL units en RTP sin re-encodificación          |
+| **Bindings FFmpeg**    | PyAV (av) 10.0+                 | Manejo de frames de video (usado por aiortc)                   |
+| **Frontend**           | WebRTC API nativa del navegador | RTCPeerConnection, MediaStream, ICE negotiation                |
+
+#### Arquitectura del Pipeline WebRTC
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│                          GStreamer Pipeline                               │
+│                                                                           │
+│  v4l2src → [jpegdec]? → videoconvert → x264enc/openh264enc → h264parse  │
+│                                                     │                     │
+│                                                     ↓                     │
+│                                                  appsink                  │
+│                                                     │                     │
+└─────────────────────────────────────────────────────┼────────────────────┘
+                                                      │
+                                           H264 byte-stream
+                                                      │
+                                                      ↓
+┌──────────────────────────────────────────────────────────────────────────┐
+│                       WebRTC Service (aiortc)                             │
+│                                                                           │
+│  H264PassthroughEncoder → RTP Packetization → SRTP → DTLS → ICE         │
+│                                                                           │
+│  RTCPeerConnection (per browser client)                                  │
+│    - Offer/Answer SDP exchange via REST API                              │
+│    - ICE candidate trickle                                               │
+│    - Connection stats (jitter, packets lost, bitrate)                    │
+└──────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      │ UDP (RTP/RTCP)
+                                      ↓
+                               Browser (WebRTC)
+```
+
+#### Pipeline GStreamer para WebRTC
+
+El modo WebRTC usa un pipeline **ligero** separado del pipeline principal:
+
+```python
+# app/services/gstreamer_service.py
+def _build_webrtc_pipeline(self) -> bool:
+    """
+    Pipeline: source → [jpegdec if MJPEG] → videoconvert →
+              x264enc/openh264enc (ultrafast/zerolatency) →
+              h264parse → appsink
+
+    Los NAL units H.264 se extraen del appsink y se envían a
+    aiortc sin re-encodificación.
+    """
+
+    # Configuración de encoder para baja latencia
+    x264enc.set_property("tune", 0x00000004)     # zerolatency
+    x264enc.set_property("speed-preset", 1)      # ultrafast
+    x264enc.set_property("bitrate", 1500)        # kbps
+    x264enc.set_property("key-int-max", fps * 2) # keyframe cada 2s
+
+    # h264parse normaliza formato NAL
+    h264parse.set_property("config-interval", -1)  # SPS/PPS con cada keyframe
+
+    # appsink emite señal con cada frame
+    appsink.connect("new-sample", self._on_webrtc_appsink_sample)
+```
+
+**Callback appsink:**
+
+```python
+def _on_webrtc_appsink_sample(self, appsink):
+    """
+    GStreamer llama a esta función con cada Access Unit H.264.
+    Extrae los bytes y los envía al WebRTC service.
+    """
+    sample = appsink.emit("pull-sample")
+    buf = sample.get_buffer()
+    success, map_info = buf.map(Gst.MapFlags.READ)
+
+    h264_data = bytes(map_info.data)  # Byte-stream H.264
+
+    # Enviar a aiortc (sin re-encoding)
+    if self.webrtc_service:
+        self.webrtc_service.push_video_frame(h264_data)
+```
+
+#### WebRTC Service: H264PassthroughEncoder
+
+El **H264PassthroughEncoder** es un encoder personalizado que **no re-codifica** el H.264 ya codificado por GStreamer, solo lo empaqueta en RTP:
+
+```python
+# app/services/webrtc_service.py
+class H264PassthroughEncoder:
+    """
+    Reemplazo drop-in del H264Encoder de aiortc.
+
+    En lugar de encodificar con libavcodec, recibe H.264 pre-encodificado
+    por GStreamer y lo empaqueta en RTP (FU-A para fragmentación).
+    """
+
+    def __init__(self, h264_queue: queue.Queue, framerate: int = 30):
+        self._h264_queue = h264_queue
+        self._framerate = framerate
+
+    @staticmethod
+    def _split_bitstream(buf: bytes):
+        """Divide H.264 byte-stream en NAL units individuales."""
+        # Busca patrones 0x000001 start codes
+        # Yield cada NAL unit
+
+    @staticmethod
+    def _packetize_fu_a(data: bytes) -> list:
+        """
+        Fragmenta NAL units grandes en paquetes FU-A (RFC 6184).
+
+        Cada paquete RTP tiene max 1200 bytes de payload.
+        NAL units > 1200 bytes se fragmentan.
+        """
+        # Crear FU-A header con start/end bits
+        # Retornar lista de payloads RTP
+```
+
+#### Flujo de conexión WebRTC
+
+**1. Cliente solicita conexión:**
+
+```javascript
+// Frontend (React)
+const response = await api.post("/api/webrtc/offer", {
+  sdp: localDescription.sdp,
+  type: localDescription.type,
+});
+
+const remoteDescription = response.data.sdp;
+await peerConnection.setRemoteDescription(remoteDescription);
+```
+
+**2. Backend crea RTCPeerConnection:**
+
+```python
+# app/api/routes/webrtc.py
+@router.post("/offer")
+async def handle_offer(request: WebRTCOfferRequest):
+    service = get_webrtc_service()
+
+    # Crear peer connection para este cliente
+    peer_id = str(uuid.uuid4())
+    peer = service.create_peer(peer_id)
+
+    # Configurar SDP remoto (del navegador)
+    await peer.pc.setRemoteDescription(
+        RTCSessionDescription(sdp=request.sdp, type=request.type)
+    )
+
+    # Crear answer SDP
+    answer = await peer.pc.createAnswer()
+    await peer.pc.setLocalDescription(answer)
+
+    # Forzar keyframe en GStreamer para que el nuevo peer reciba SPS/PPS/IDR
+    if service._gstreamer_service:
+        service._gstreamer_service.force_keyframe()
+
+    return {
+        "sdp": peer.pc.localDescription.sdp,
+        "type": peer.pc.localDescription.type,
+        "peer_id": peer_id
+    }
+```
+
+**3. Force Keyframe en nuevo peer:**
+
+```python
+# app/services/gstreamer_service.py
+def force_keyframe(self):
+    """
+    Fuerza al encoder H.264 a producir un keyframe IDR.
+    Llamado cuando un nuevo peer WebRTC se conecta para que reciba SPS/PPS/IDR.
+    """
+    encoder = self.pipeline.get_by_name("webrtc_h264enc")
+
+    # Enviar evento GstForceKeyUnit
+    structure = Gst.Structure.new_from_string(
+        "GstForceKeyUnit, all-headers=(boolean)true"
+    )
+    event = Gst.Event.new_custom(Gst.EventType.CUSTOM_UPSTREAM, structure)
+    srcpad = encoder.get_static_pad("src")
+    success = srcpad.send_event(event)
+```
+
+#### API REST WebRTC
+
+| Método | Endpoint               | Descripción                                       |
+| ------ | ---------------------- | ------------------------------------------------- |
+| POST   | `/api/webrtc/offer`    | Crea peer connection, negocia SDP, retorna answer |
+| POST   | `/api/webrtc/ice`      | Recibe ICE candidates del cliente                 |
+| DELETE | `/api/webrtc/peer/:id` | Desconecta peer específico                        |
+| GET    | `/api/webrtc/status`   | Estado del servicio (peers activos, stats)        |
+
+#### Dependencias del Sistema
+
+**Paquetes Debian/Ubuntu necesarios:**
+
+```bash
+# FFmpeg libraries (para PyAV)
+sudo apt-get install -y \
+    libavformat-dev \
+    libavcodec-dev \
+    libavdevice-dev \
+    libavutil-dev \
+    libswscale-dev \
+    libswresample-dev \
+    libavfilter-dev \
+    libopus-dev \
+    libvpx-dev \
+    libsrtp2-dev \
+    pkg-config
+```
+
+**Paquetes Python:**
+
+```bash
+pip install aiortc>=1.5.0 av>=10.0.0
+```
+
+#### Frontend: WebRTCViewerCard
+
+El componente React gestiona la conexión WebRTC del lado del cliente:
+
+```jsx
+// frontend/client/src/components/Pages/VideoView/video/WebRTCViewerCard.jsx
+const WebRTCViewerCard = ({ key }) => {
+  const [peerConnection, setPeerConnection] = useState(null);
+  const [connectionState, setConnectionState] = useState("disconnected");
+
+  const connect = async () => {
+    // Crear RTCPeerConnection
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    });
+
+    // Listener de tracks (video)
+    pc.ontrack = (event) => {
+      videoRef.current.srcObject = event.streams[0];
+    };
+
+    // Crear offer
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+
+    // Enviar offer al backend
+    const response = await api.post("/api/webrtc/offer", {
+      sdp: offer.sdp,
+      type: offer.type,
+    });
+
+    // Configurar answer
+    await pc.setRemoteDescription({
+      sdp: response.data.sdp,
+      type: response.data.type,
+    });
+
+    setPeerConnection(pc);
+  };
+
+  return (
+    <div className="card">
+      <video ref={videoRef} autoPlay playsInline />
+      <button onClick={connect}>▶️ Conectar</button>
+    </div>
+  );
+};
+```
+
+**Reinicio de conexión sin detener stream:**
+
+El prop `key` permite forzar el remount del componente (desconectar + reconectar) sin detener el pipeline GStreamer del backend:
+
+```jsx
+// VideoView.jsx
+const [webrtcKey, setWebrtcKey] = useState(0);
+
+const restartStream = async () => {
+  await api.post("/api/video/restart");
+  setWebrtcKey((prev) => prev + 1); // Fuerza remount de WebRTCViewerCard
+};
+
+return <WebRTCViewerCard key={webrtcKey} />;
+```
+
+#### Optimizaciones para 4G/LTE
+
+1. **Bitrate adaptativo**: aiortc ajusta automáticamente el bitrate según feedback RTCP
+2. **Keyframe forzado**: Cada nuevo peer recibe SPS/PPS/IDR inmediatamente
+3. **Ultrafast preset**: x264enc usa preset 1 (ultrafast) y tune zerolatency
+4. **No re-encoding**: H.264 pre-codificado por GStreamer → passthrough → RTP
+5. **Max buffers**: Appsink con max-buffers=3, drop=true para mínima latencia
+
+#### Troubleshooting
+
+**"Failed to create offer":**
+
+- Verificar que aiortc y av estén instalados: `pip list | grep -E "aiortc|av"`
+- Verificar FFmpeg libraries: `pkg-config --modversion libavcodec`
+
+**"No video en navegador":**
+
+- Comprobar que GStreamer envía frames: logs con "WebRTC appsink: pulled H264 frame"
+- Forzar keyframe manualmente: `force_keyframe()` debe retornar True
+- Verificar SDP: debe contener `a=rtpmap:96 H264/90000` (no VP8)
+
+**"Connection failed / ICE timeout":**
+
+- Verificar firewall: UDP ports necesarios para RTP
+- STUN server alcanzable: `stun:stun.l.google.com:19302`
+- Si detrás de CGNAT: considerar usar TURN server
 
 ---
 

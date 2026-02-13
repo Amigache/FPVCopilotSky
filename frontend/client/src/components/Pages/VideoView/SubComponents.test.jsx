@@ -246,11 +246,11 @@ describe('NetworkSettingsCard', () => {
     updateConfig: vi.fn(),
   }
 
-  it('renders mode selector with 3 options', () => {
+  it('renders mode selector with 4 options (including webrtc)', () => {
     render(<NetworkSettingsCard {...baseProps} />)
     const modeSelect = screen.getAllByRole('combobox')[0]
     expect(modeSelect).toBeInTheDocument()
-    expect(modeSelect.options.length).toBe(3)
+    expect(modeSelect.options.length).toBe(4)
   })
 
   it('shows UDP fields when mode is udp', () => {

@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import Toggle from '../../Toggle/Toggle'
 
 const StreamControlCard = ({
   streaming,
@@ -7,6 +8,9 @@ const StreamControlCard = ({
   applyConfigAndStart,
   stopStream,
   restartStream,
+  config,
+  updateConfig,
+  hasValidationErrors,
 }) => {
   const { t } = useTranslation()
 
@@ -18,14 +22,16 @@ const StreamControlCard = ({
           <button
             className="btn btn-apply"
             onClick={applySettings}
-            disabled={actionLoading !== null}
+            disabled={actionLoading !== null || hasValidationErrors}
+            title={hasValidationErrors ? t('views.video.validationErrorsPresent') : ''}
           >
             {actionLoading === 'apply' ? '⏳' : t('views.video.apply')}
           </button>
           <button
             className="btn btn-start"
             onClick={applyConfigAndStart}
-            disabled={actionLoading !== null}
+            disabled={actionLoading !== null || hasValidationErrors}
+            title={hasValidationErrors ? t('views.video.validationErrorsPresent') : ''}
           >
             {actionLoading === 'start' ? '⏳' : t('views.video.start')}
           </button>
@@ -44,6 +50,16 @@ const StreamControlCard = ({
           </button>
         </div>
       )}
+
+      {/* Auto-start toggle */}
+      <div className={`form-group auto-start-toggle ${streaming ? 'field-disabled' : ''}`}>
+        <Toggle
+          checked={config?.auto_start || false}
+          onChange={(e) => updateConfig((prev) => ({ ...prev, auto_start: e.target.checked }))}
+          disabled={streaming}
+          label={t('views.video.autoStart')}
+        />
+      </div>
     </div>
   )
 }
