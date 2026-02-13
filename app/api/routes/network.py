@@ -125,7 +125,9 @@ async def _get_interfaces() -> List[Dict]:
                         gateway = parts[i + 1]
 
                 if iface:
-                    if iface not in routes_by_iface or (metric and metric < routes_by_iface[iface].get("metric", 999)):
+                    if iface not in routes_by_iface or (
+                        metric is not None and metric < routes_by_iface[iface].get("metric", 0)
+                    ):
                         routes_by_iface[iface] = {"metric": metric, "gateway": gateway}
 
     # Get interface details
@@ -271,7 +273,7 @@ async def _scan_wifi_networks() -> List[Dict]:
 
 
 async def _get_routes() -> List[Dict]:
-    """Get routing table"""
+    """Get routing table - parses default routes with gateway, interface, metric"""
     routes = []
     stdout, _, returncode = await _run_command(["ip", "route", "show"])
 
@@ -287,7 +289,14 @@ async def _get_routes() -> List[Dict]:
                     elif part == "dev" and i + 1 < len(parts):
                         route["interface"] = parts[i + 1]
                     elif part == "metric" and i + 1 < len(parts):
-                        route["metric"] = int(parts[i + 1])
+                        try:
+                            route["metric"] = int(parts[i + 1])
+                        except ValueError:
+                            pass
+
+                # Routes without explicit metric have implicit metric 0
+                if "metric" not in route:
+                    route["metric"] = 0
 
                 if "interface" in route:
                     routes.append(route)
@@ -353,7 +362,7 @@ async def get_network_status():
 
         if routes:
             # Primary is the route with lowest metric
-            primary_route = min(routes, key=lambda r: r.get("metric", 999))
+            primary_route = min(routes, key=lambda r: r.get("metric", 0))
             primary_interface = primary_route.get("interface")
 
             if primary_interface == modem_interface:
@@ -470,7 +479,7 @@ async def _get_network_status_internal() -> Dict:
         mode = "unknown"
 
         if routes:
-            primary_route = min(routes, key=lambda r: r.get("metric", 999))
+            primary_route = min(routes, key=lambda r: r.get("metric", 0))
             primary_interface = primary_route.get("interface")
 
             if primary_interface == modem_interface:
@@ -712,7 +721,10 @@ async def get_routes():
 @router.post("/priority")
 async def set_priority_mode(request: PriorityModeRequest):
     """
-    Set network priority mode by adjusting route metrics
+    Set network priority mode by adjusting route metrics.
+
+    Uses nmcli for NetworkManager-managed interfaces (WiFi) and
+    ip route for non-NM interfaces (USB modem).
 
     Args:
         mode: 'wifi' (WiFi primary), 'modem' (4G primary), or 'auto' (4G preferred)
@@ -721,6 +733,18 @@ async def set_priority_mode(request: PriorityModeRequest):
         raise HTTPException(status_code=400, detail="Mode must be 'wifi', 'modem', or 'auto'")
 
     try:
+        # Auto mode: prefer modem if available, else WiFi
+        if request.mode == "auto":
+            modem_interface = await _detect_modem_interface()
+            if modem_interface:
+                return await set_priority_mode(PriorityModeRequest(mode="modem"))
+            else:
+                wifi_interface = await _detect_wifi_interface()
+                if wifi_interface:
+                    return await set_priority_mode(PriorityModeRequest(mode="wifi"))
+                else:
+                    raise HTTPException(status_code=503, detail="No interfaces available")
+
         # Detect interfaces
         wifi_interface = await _detect_wifi_interface()
         modem_interface = await _detect_modem_interface()
@@ -728,158 +752,105 @@ async def set_priority_mode(request: PriorityModeRequest):
         if not wifi_interface and not modem_interface:
             raise HTTPException(status_code=503, detail="No network interfaces detected")
 
-        # Get current routes
+        if request.mode == "wifi" and not wifi_interface:
+            raise HTTPException(status_code=503, detail="WiFi interface not detected")
+        if request.mode == "modem" and not modem_interface:
+            raise HTTPException(status_code=503, detail="Modem interface not detected")
+
+        errors = []
+
+        # --- WiFi metric (NM-managed) ---
+        if wifi_interface:
+            wifi_metric = 100 if request.mode == "wifi" else 600
+            wifi_conn = await _get_nm_connection_name(wifi_interface)
+            if wifi_conn:
+                # Set metric via nmcli (persistent)
+                _, stderr, rc = await _run_command(
+                    [
+                        "sudo",
+                        "nmcli",
+                        "connection",
+                        "modify",
+                        wifi_conn,
+                        "ipv4.route-metric",
+                        str(wifi_metric),
+                    ]
+                )
+                if rc != 0:
+                    errors.append(f"WiFi metric modify failed: {stderr}")
+                    logger.error(f"nmcli modify failed for {wifi_conn}: {stderr}")
+                else:
+                    # Reactivate connection to apply new metric
+                    _, stderr, rc = await _run_command(["sudo", "nmcli", "connection", "up", wifi_conn])
+                    if rc != 0:
+                        errors.append(f"WiFi connection reactivate failed: {stderr}")
+                        logger.error(f"nmcli connection up failed for {wifi_conn}: {stderr}")
+                    else:
+                        logger.info(f"WiFi {wifi_conn} metric set to {wifi_metric}")
+            else:
+                logger.warning(f"No NM connection found for {wifi_interface}, " "trying ip route fallback")
+                await _set_route_metric_fallback(wifi_interface, wifi_metric, errors)
+
+        # --- Modem metric (not NM-managed, use ip route) ---
+        if modem_interface:
+            modem_metric = 100 if request.mode == "modem" else 600
+            modem_conn = await _get_nm_connection_name(modem_interface)
+            if modem_conn:
+                # Modem is NM-managed, use nmcli
+                _, stderr, rc = await _run_command(
+                    [
+                        "sudo",
+                        "nmcli",
+                        "connection",
+                        "modify",
+                        modem_conn,
+                        "ipv4.route-metric",
+                        str(modem_metric),
+                    ]
+                )
+                if rc != 0:
+                    errors.append(f"Modem metric modify failed: {stderr}")
+                else:
+                    _, stderr, rc = await _run_command(["sudo", "nmcli", "connection", "up", modem_conn])
+                    if rc != 0:
+                        errors.append(f"Modem connection reactivate failed: {stderr}")
+                    else:
+                        logger.info(f"Modem {modem_conn} metric set to {modem_metric}")
+            else:
+                # Modem is not NM-managed, use ip route directly
+                await _set_route_metric_fallback(modem_interface, modem_metric, errors)
+
+        # Wait for routes to settle
+        await asyncio.sleep(1.0)
+
+        # Verify the switch actually worked
         routes = await _get_routes()
+        primary_route = min(routes, key=lambda r: r.get("metric", 0)) if routes else None
+        actual_primary = primary_route.get("interface") if primary_route else None
 
-        if request.mode == "wifi":
-            # Set WiFi as primary (lower metric)
-            if wifi_interface:
-                # First, get current routes for both interfaces
-                wifi_routes = [r for r in routes if r.get("interface") == wifi_interface]
-                modem_routes = [r for r in routes if r.get("interface") == modem_interface]
+        expected_primary = wifi_interface if request.mode == "wifi" else modem_interface
+        verified = actual_primary == expected_primary
 
-                # Delete existing default routes
-                for route in wifi_routes + modem_routes:
-                    gateway = route.get("gateway")
-                    interface = route.get("interface")
-                    if gateway and interface:
-                        cmd = [
-                            "sudo",
-                            "ip",
-                            "route",
-                            "del",
-                            "default",
-                            "via",
-                            gateway,
-                            "dev",
-                            interface,
-                        ]
-                        await _run_command(cmd)
+        if errors:
+            logger.warning(f"Priority mode {request.mode} set with errors: {errors}")
+        if not verified:
+            logger.warning(f"Priority verification failed: expected {expected_primary}, " f"got {actual_primary}")
 
-                # Re-add routes with new metrics (lower = higher priority)
-                # WiFi as primary (metric 100)
-                if wifi_routes:
-                    gateway = wifi_routes[0].get("gateway")
-                    if gateway:
-                        cmd = [
-                            "sudo",
-                            "ip",
-                            "route",
-                            "add",
-                            "default",
-                            "via",
-                            gateway,
-                            "dev",
-                            wifi_interface,
-                            "metric",
-                            "100",
-                        ]
-                        await _run_command(cmd)
+        logger.info(f"Network priority set to {request.mode} " f"(verified={verified}, primary={actual_primary})")
 
-                # Modem as backup (metric 200)
-                if modem_interface and modem_routes:
-                    gateway = modem_routes[0].get("gateway")
-                    if gateway:
-                        cmd = [
-                            "sudo",
-                            "ip",
-                            "route",
-                            "add",
-                            "default",
-                            "via",
-                            gateway,
-                            "dev",
-                            modem_interface,
-                            "metric",
-                            "200",
-                        ]
-                        await _run_command(cmd)
-            else:
-                raise HTTPException(status_code=503, detail="WiFi interface not detected")
+        # Invalidate dashboard cache
+        _dashboard_cache["data"] = None
+        _dashboard_cache["timestamp"] = 0
 
-        elif request.mode == "modem":
-            # Set Modem as primary (lower metric)
-            if modem_interface:
-                # Get current routes for both interfaces
-                wifi_routes = [r for r in routes if r.get("interface") == wifi_interface]
-                modem_routes = [r for r in routes if r.get("interface") == modem_interface]
-
-                # Delete existing default routes
-                for route in wifi_routes + modem_routes:
-                    gateway = route.get("gateway")
-                    interface = route.get("interface")
-                    if gateway and interface:
-                        cmd = [
-                            "sudo",
-                            "ip",
-                            "route",
-                            "del",
-                            "default",
-                            "via",
-                            gateway,
-                            "dev",
-                            interface,
-                        ]
-                        await _run_command(cmd)
-
-                # Re-add routes with new metrics
-                # Modem as primary (metric 100)
-                if modem_routes:
-                    gateway = modem_routes[0].get("gateway")
-                    if gateway:
-                        cmd = [
-                            "sudo",
-                            "ip",
-                            "route",
-                            "add",
-                            "default",
-                            "via",
-                            gateway,
-                            "dev",
-                            modem_interface,
-                            "metric",
-                            "100",
-                        ]
-                        await _run_command(cmd)
-
-                # WiFi as backup (metric 200)
-                if wifi_interface and wifi_routes:
-                    gateway = wifi_routes[0].get("gateway")
-                    if gateway:
-                        cmd = [
-                            "sudo",
-                            "ip",
-                            "route",
-                            "add",
-                            "default",
-                            "via",
-                            gateway,
-                            "dev",
-                            wifi_interface,
-                            "metric",
-                            "200",
-                        ]
-                        await _run_command(cmd)
-            else:
-                raise HTTPException(status_code=503, detail="Modem interface not detected")
-
-        elif request.mode == "auto":
-            # Auto mode: 4G preferred if available
-            if modem_interface:
-                return await set_priority_mode(PriorityModeRequest(mode="modem"))
-            elif wifi_interface:
-                return await set_priority_mode(PriorityModeRequest(mode="wifi"))
-            else:
-                raise HTTPException(status_code=503, detail="No interfaces available")
-
-        # Wait a bit for routes to settle
-        await asyncio.sleep(0.5)
-
-        logger.info(f"Network priority set to {request.mode}")
         return {
-            "success": True,
+            "success": len(errors) == 0,
             "mode": request.mode,
-            "message": f"Priority set to {request.mode}",
+            "verified": verified,
+            "actual_primary": actual_primary,
+            "message": (
+                f"Priority set to {request.mode}" if not errors else f"Priority set with warnings: {'; '.join(errors)}"
+            ),
+            "errors": errors if errors else None,
         }
 
     except HTTPException:
@@ -887,6 +858,88 @@ async def set_priority_mode(request: PriorityModeRequest):
     except Exception as e:
         logger.error(f"Error setting network priority: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to set priority: {str(e)}")
+
+
+async def _get_nm_connection_name(interface: str) -> Optional[str]:
+    """Get the NetworkManager connection name for an interface"""
+    stdout, _, rc = await _run_command(["nmcli", "-t", "-f", "DEVICE,NAME", "connection", "show", "--active"])
+    if rc == 0:
+        for line in stdout.split("\n"):
+            parts = line.split(":", 1)
+            if len(parts) == 2 and parts[0] == interface:
+                return parts[1]
+    return None
+
+
+async def _set_route_metric_fallback(interface: str, metric: int, errors: list):
+    """Fallback: set route metric using ip route for non-NM interfaces"""
+    # Find current default route for this interface
+    routes = await _get_routes()
+    iface_routes = [r for r in routes if r.get("interface") == interface]
+
+    gateway = None
+    if iface_routes:
+        gateway = iface_routes[0].get("gateway")
+
+    if not gateway:
+        # Try to discover gateway from interface's subnet
+        gateway = await _discover_gateway(interface)
+
+    if not gateway:
+        errors.append(f"No gateway found for {interface}")
+        logger.error(f"Cannot set metric for {interface}: no gateway found")
+        return
+
+    # Delete existing default routes for this interface
+    for route in iface_routes:
+        gw = route.get("gateway")
+        if gw:
+            del_cmd = [
+                "sudo",
+                "ip",
+                "route",
+                "del",
+                "default",
+                "via",
+                gw,
+                "dev",
+                interface,
+            ]
+            _, stderr, rc = await _run_command(del_cmd)
+            if rc != 0:
+                logger.warning(f"Failed to delete route for {interface}: {stderr}")
+
+    # Add new route with desired metric
+    add_cmd = [
+        "sudo",
+        "ip",
+        "route",
+        "add",
+        "default",
+        "via",
+        gateway,
+        "dev",
+        interface,
+        "metric",
+        str(metric),
+    ]
+    _, stderr, rc = await _run_command(add_cmd)
+    if rc != 0:
+        errors.append(f"Failed to add route for {interface}: {stderr}")
+        logger.error(f"ip route add failed for {interface}: {stderr}")
+    else:
+        logger.info(f"Route metric for {interface} set to {metric}")
+
+
+async def _discover_gateway(interface: str) -> Optional[str]:
+    """Discover default gateway for an interface from its IP subnet"""
+    stdout, _, rc = await _run_command(["ip", "-o", "addr", "show", interface])
+    if rc == 0:
+        match = re.search(r"inet\s+(\d+\.\d+\.\d+)\.\d+", stdout)
+        if match:
+            # Assume gateway is .1 on the subnet
+            return f"{match.group(1)}.1"
+    return None
 
 
 @router.post("/priority/auto-adjust")
@@ -1625,6 +1678,22 @@ async def enable_flight_mode():
             errors.append(f"Network: {str(e)}")
             logger.error(f"Error enabling network optimizer: {e}")
 
+        # 3. Set modem as primary network when flight mode is enabled
+        try:
+            modem_interface = await _detect_modem_interface()
+            if modem_interface:
+                priority_result = await set_priority_mode(PriorityModeRequest(mode="modem"))
+                results["priority"] = priority_result
+                if not priority_result.get("success"):
+                    errors.append(f"Priority: {priority_result.get('message', 'Unknown error')}")
+                else:
+                    logger.info("Flight Mode: modem set as primary network")
+            else:
+                logger.warning("Flight Mode: modem not detected, skipping priority switch")
+        except Exception as e:
+            errors.append(f"Priority: {str(e)}")
+            logger.error(f"Error setting modem priority in flight mode: {e}")
+
         # Determine overall success
         modem_success = results["modem"].get("success", False)
         network_success = results["network"].get("success", False)
@@ -1692,6 +1761,17 @@ async def disable_flight_mode():
         except Exception as e:
             errors.append(f"Network: {str(e)}")
             logger.error(f"Error disabling network optimizer: {e}")
+
+        # 3. Restore WiFi as primary (undo flight mode priority)
+        try:
+            wifi_interface = await _detect_wifi_interface()
+            if wifi_interface:
+                priority_result = await set_priority_mode(PriorityModeRequest(mode="auto"))
+                results["priority"] = priority_result
+                logger.info("Flight Mode disabled: network priority restored")
+        except Exception as e:
+            errors.append(f"Priority restore: {str(e)}")
+            logger.error(f"Error restoring priority after flight mode: {e}")
 
         # Determine overall success
         modem_success = results["modem"].get("success", False)
