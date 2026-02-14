@@ -60,16 +60,10 @@ class MAVLinkBridge:
         self.source_system_id: int = 1  # Same as autopilot (part of same vehicle)
         self.source_component_id: int = 191  # MAV_COMP_ID_ONBOARD_COMPUTER
 
-        # MAVLink sender for heartbeats/video (same system as FC for camera identity)
+        # MAVLink sender for heartbeats/video/params (same system as FC)
         self.mav_sender = mavlink2.MAVLink(None)
         self.mav_sender.srcSystem = self.source_system_id
         self.mav_sender.srcComponent = self.source_component_id
-
-        # Separate sender for GCS-like operations (params, commands)
-        # Uses sysid=255 (standard GCS ID) so ArduPilot treats it as a GCS link
-        self.gcs_sender = mavlink2.MAVLink(None)
-        self.gcs_sender.srcSystem = 255
-        self.gcs_sender.srcComponent = 0  # MAV_COMP_ID_ALL
 
         # Target system (from heartbeat)
         self.target_system: int = 0
@@ -439,18 +433,9 @@ class MAVLinkBridge:
                     custom_mode=0,
                     system_status=4,  # MAV_STATE_ACTIVE
                 )
-                # GCS heartbeat (SysID=255) to establish GCS link for param operations
-                gcs_hb = self.gcs_sender.heartbeat_encode(
-                    type=6,  # MAV_TYPE_GCS
-                    autopilot=8,  # MAV_AUTOPILOT_INVALID
-                    base_mode=0,
-                    custom_mode=0,
-                    system_status=4,  # MAV_STATE_ACTIVE
-                )
 
-                # Send both heartbeats via serial AND router
+                # Send heartbeat via serial AND router
                 packed_camera = camera_hb.pack(self.mav_sender)
-                packed_gcs = gcs_hb.pack(self.gcs_sender)
 
                 try:
                     acquired = self.serial_lock.acquire(timeout=0.1)
@@ -458,17 +443,15 @@ class MAVLinkBridge:
                         try:
                             if self.serial_port and self.serial_port.is_open:
                                 self.serial_port.write(packed_camera)
-                                self.serial_port.write(packed_gcs)
-                                # Also broadcast to router so UDP clients receive them
+                                # Also broadcast to router so UDP clients receive it
                                 if self.router:
                                     self.router.forward_to_outputs(packed_camera)
-                                    self.router.forward_to_outputs(packed_gcs)
                                     # Debug log (first heartbeat of each session)
                                     if not hasattr(self, "_heartbeat_logged"):
                                         print(
-                                            f"💓 Sending HEARTBEATs: Camera(SysID={self.mav_sender.srcSystem}, "
-                                            f"CompID={self.mav_sender.srcComponent}), "
-                                            f"GCS(SysID={self.gcs_sender.srcSystem})"
+                                            f"💓 Sending HEARTBEAT: Onboard Computer "
+                                            f"(SysID={self.mav_sender.srcSystem}, "
+                                            f"CompID={self.mav_sender.srcComponent})"
                                         )
                                         self._heartbeat_logged = True
                         finally:
@@ -767,7 +750,7 @@ class MAVLinkBridge:
             # Encode param name as bytes (16 chars max, null-padded)
             param_id = param_name.encode("utf-8")[:16].ljust(16, b"\x00")
 
-            msg = self.gcs_sender.param_request_read_encode(
+            msg = self.mav_sender.param_request_read_encode(
                 target_system=self.target_system,
                 target_component=self.target_component,
                 param_id=param_id,
@@ -776,7 +759,7 @@ class MAVLinkBridge:
 
             # Send message
             with self.serial_lock:
-                packed = msg.pack(self.gcs_sender)
+                packed = msg.pack(self.mav_sender)
                 self.serial_port.write(packed)
             if event.wait(timeout):
                 with self._param_lock:
@@ -836,7 +819,7 @@ class MAVLinkBridge:
             param_id = param_name.encode("utf-8")[:16].ljust(16, b"\x00")
 
             # Build PARAM_SET message
-            msg = self.gcs_sender.param_set_encode(
+            msg = self.mav_sender.param_set_encode(
                 target_system=self.target_system,
                 target_component=self.target_component,
                 param_id=param_id,
@@ -846,7 +829,7 @@ class MAVLinkBridge:
 
             # Send message
             with self.serial_lock:
-                self.serial_port.write(msg.pack(self.gcs_sender))
+                self.serial_port.write(msg.pack(self.mav_sender))
 
             # Wait for PARAM_VALUE response (confirmation)
             if event.wait(timeout):
