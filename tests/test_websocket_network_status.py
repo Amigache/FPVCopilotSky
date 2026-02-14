@@ -6,9 +6,15 @@ client connects, not just on periodic broadcasts.
 """
 
 import pytest
+import sys
+import os
 from unittest.mock import patch, Mock, AsyncMock
 from fastapi import WebSocket
-from app.services.websocket_manager import websocket_manager
+
+# Add app directory to path to match main.py's import structure
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), "app"))
+
+from app.services.websocket_manager import websocket_manager  # noqa: E402
 
 
 class TestWebSocketInitialNetworkStatus:
@@ -17,7 +23,7 @@ class TestWebSocketInitialNetworkStatus:
     @pytest.mark.asyncio
     @patch("app.main.mavlink_service")
     @patch("app.main.video_service")
-    @patch("app.api.routes.network.get_network_status")
+    @patch("api.routes.network.get_network_status")
     async def test_network_status_sent_on_connect(self, mock_get_network_status, mock_video, mock_mavlink):
         """Test that network_status is broadcast when client connects"""
         from app.main import websocket_endpoint
@@ -28,11 +34,14 @@ class TestWebSocketInitialNetworkStatus:
         mock_video.get_status.return_value = {"streaming": False}
 
         # Mock network status with known data
-        mock_get_network_status.return_value = {
-            "success": True,
-            "mode": "wifi",
-            "wifi_interface": "wlan0",
-        }
+        async def mock_network_status():
+            return {
+                "success": True,
+                "mode": "wifi",
+                "wifi_interface": "wlan0",
+            }
+
+        mock_get_network_status.return_value = mock_network_status()
 
         # Mock WebSocket
         mock_websocket = AsyncMock(spec=WebSocket)
@@ -41,11 +50,9 @@ class TestWebSocketInitialNetworkStatus:
 
         # Track broadcast calls
         broadcast_calls = []
-        original_broadcast = websocket_manager.broadcast
 
         async def track_broadcast(msg_type, data):
             broadcast_calls.append((msg_type, data))
-            await original_broadcast(msg_type, data)
 
         with patch.object(websocket_manager, "broadcast", side_effect=track_broadcast):
             try:
@@ -63,7 +70,7 @@ class TestWebSocketInitialNetworkStatus:
 
     @pytest.mark.asyncio
     @patch("app.main.mavlink_service")
-    @patch("app.api.routes.network.get_network_status")
+    @patch("api.routes.network.get_network_status")
     async def test_network_status_sent_before_periodic_broadcast(self, mock_get_network_status, mock_mavlink):
         """Test that initial network_status is sent immediately, not after 5 seconds"""
         from app.main import websocket_endpoint
@@ -72,10 +79,13 @@ class TestWebSocketInitialNetworkStatus:
         mock_mavlink.get_status.return_value = {"connected": False}
         mock_mavlink.get_telemetry.return_value = {"connected": False}
 
-        mock_get_network_status.return_value = {
-            "success": True,
-            "mode": "modem",
-        }
+        async def mock_network_status():
+            return {
+                "success": True,
+                "mode": "modem",
+            }
+
+        mock_get_network_status.return_value = mock_network_status()
 
         mock_websocket = AsyncMock(spec=WebSocket)
         mock_websocket.accept = AsyncMock()
@@ -100,7 +110,7 @@ class TestWebSocketInitialNetworkStatus:
 
     @pytest.mark.asyncio
     @patch("app.main.mavlink_service")
-    @patch("app.api.routes.network.get_network_status")
+    @patch("api.routes.network.get_network_status")
     async def test_network_status_handles_errors_gracefully(self, mock_get_network_status, mock_mavlink):
         """Test that errors in network_status don't prevent connection"""
         from app.main import websocket_endpoint
@@ -109,7 +119,10 @@ class TestWebSocketInitialNetworkStatus:
         mock_mavlink.get_telemetry.return_value = {"connected": False}
 
         # Mock network status to raise exception
-        mock_get_network_status.side_effect = Exception("Network error")
+        async def mock_error():
+            raise Exception("Network error")
+
+        mock_get_network_status.side_effect = mock_error
 
         mock_websocket = AsyncMock(spec=WebSocket)
         mock_websocket.accept = AsyncMock()
@@ -125,7 +138,7 @@ class TestWebSocketInitialNetworkStatus:
     @pytest.mark.asyncio
     @patch("app.main.mavlink_service")
     @patch("app.main.video_service")
-    @patch("app.api.routes.network.get_network_status")
+    @patch("api.routes.network.get_network_status")
     async def test_initial_broadcasts_include_all_status_types(self, mock_get_network_status, mock_video, mock_mavlink):
         """Test that initial connection broadcasts all status types"""
         from app.main import websocket_endpoint
@@ -133,7 +146,11 @@ class TestWebSocketInitialNetworkStatus:
         mock_mavlink.get_status.return_value = {"connected": True}
         mock_mavlink.get_telemetry.return_value = {"connected": True}
         mock_video.get_status.return_value = {"streaming": True}
-        mock_get_network_status.return_value = {"success": True, "mode": "wifi"}
+
+        async def mock_network_status():
+            return {"success": True, "mode": "wifi"}
+
+        mock_get_network_status.return_value = mock_network_status()
 
         mock_websocket = AsyncMock(spec=WebSocket)
         mock_websocket.accept = AsyncMock()
@@ -162,7 +179,7 @@ class TestWebSocketNetworkStatusCaching:
 
     @pytest.mark.asyncio
     @patch("app.main.mavlink_service")
-    @patch("app.api.routes.network.get_network_status")
+    @patch("api.routes.network.get_network_status")
     async def test_multiple_connections_benefit_from_cache(self, mock_get_network_status, mock_mavlink):
         """Test that multiple WebSocket connections use cached network_status"""
         from app.main import websocket_endpoint
@@ -173,7 +190,7 @@ class TestWebSocketNetworkStatusCaching:
         # Track how many times get_network_status is actually called
         call_count = 0
 
-        def count_calls():
+        async def count_calls():
             nonlocal call_count
             call_count += 1
             return {"success": True, "mode": "wifi"}

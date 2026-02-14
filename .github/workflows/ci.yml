@@ -152,6 +152,9 @@ jobs:
         working-directory: frontend/client
         run: npm ci
 
+      - name: Increase Node.js heap size
+        run: echo "NODE_OPTIONS=--max-old-space-size=4096" >> $GITHUB_ENV
+
       - name: Run unit tests with coverage
         working-directory: frontend/client
         run: npx vitest run --reporter=verbose --coverage

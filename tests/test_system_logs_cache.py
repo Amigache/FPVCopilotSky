@@ -221,36 +221,34 @@ class TestLogsCachePerformance:
 class TestLogsRoutesUsingCache:
     """Integration tests for logs endpoints using cache"""
 
-    def test_backend_logs_endpoint_uses_cache(self):
+    @patch("app.api.routes.system.SystemService.get_backend_logs")
+    def test_backend_logs_endpoint_uses_cache(self, mock_get_logs):
         """Test that /api/system/logs/backend uses cached service"""
         from fastapi.testclient import TestClient
         from app.main import app
 
         client = TestClient(app)
+        mock_get_logs.return_value = "Cached backend logs"
 
-        with patch.object(SystemService, "get_backend_logs") as mock_get_logs:
-            mock_get_logs.return_value = "Cached backend logs"
+        response = client.get("/api/system/logs/backend?lines=100")
 
-            response = client.get("/api/system/logs/backend?lines=100")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        mock_get_logs.assert_called_once()
 
-            if response.status_code == 200:
-                data = response.json()
-                assert data["success"] is True
-                mock_get_logs.assert_called_once()
-
-    def test_frontend_logs_endpoint_uses_cache(self):
+    @patch("app.api.routes.system.SystemService.get_frontend_logs")
+    def test_frontend_logs_endpoint_uses_cache(self, mock_get_logs):
         """Test that /api/system/logs/frontend uses cached service"""
         from fastapi.testclient import TestClient
         from app.main import app
 
         client = TestClient(app)
+        mock_get_logs.return_value = "Cached frontend logs"
 
-        with patch.object(SystemService, "get_frontend_logs") as mock_get_logs:
-            mock_get_logs.return_value = "Cached frontend logs"
+        response = client.get("/api/system/logs/frontend?lines=100")
 
-            response = client.get("/api/system/logs/frontend?lines=100")
-
-            if response.status_code == 200:
-                data = response.json()
-                assert data["success"] is True
-                mock_get_logs.assert_called_once()
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        mock_get_logs.assert_called_once()

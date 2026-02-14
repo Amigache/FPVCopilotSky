@@ -169,10 +169,11 @@ describe('LogsModal Component - Optimized Behavior', () => {
     const mockOnClose = vi.fn()
 
     // Mock clipboard API
-    Object.assign(navigator, {
-      clipboard: {
+    Object.defineProperty(navigator, 'clipboard', {
+      value: {
         writeText: vi.fn(),
       },
+      writable: true,
     })
 
     render(<LogsModal show={true} onClose={mockOnClose} type="backend" onRefresh={mockOnRefresh} />)
