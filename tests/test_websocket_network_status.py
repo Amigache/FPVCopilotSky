@@ -41,7 +41,7 @@ class TestWebSocketInitialNetworkStatus:
                 "wifi_interface": "wlan0",
             }
 
-        mock_get_network_status.return_value = mock_network_status()
+        mock_get_network_status.side_effect = mock_network_status
 
         # Mock WebSocket
         mock_websocket = AsyncMock(spec=WebSocket)
@@ -85,7 +85,7 @@ class TestWebSocketInitialNetworkStatus:
                 "mode": "modem",
             }
 
-        mock_get_network_status.return_value = mock_network_status()
+        mock_get_network_status.side_effect = mock_network_status
 
         mock_websocket = AsyncMock(spec=WebSocket)
         mock_websocket.accept = AsyncMock()
@@ -150,7 +150,7 @@ class TestWebSocketInitialNetworkStatus:
         async def mock_network_status():
             return {"success": True, "mode": "wifi"}
 
-        mock_get_network_status.return_value = mock_network_status()
+        mock_get_network_status.side_effect = mock_network_status
 
         mock_websocket = AsyncMock(spec=WebSocket)
         mock_websocket.accept = AsyncMock()
