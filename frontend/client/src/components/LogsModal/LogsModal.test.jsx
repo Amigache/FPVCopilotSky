@@ -67,15 +67,21 @@ describe('LogsModal Component - Optimized Behavior', () => {
       expect(mockOnRefresh).toHaveBeenCalledTimes(1)
     })
 
+    // Wait for throttle timeout (500ms)
+    await new Promise((resolve) => setTimeout(resolve, 600))
+
     // Change type
     rerender(
       <LogsModal show={true} onClose={mockOnClose} type="frontend" onRefresh={mockOnRefresh} />
     )
 
     // Should reload with new type
-    await waitFor(() => {
-      expect(mockOnRefresh).toHaveBeenCalledTimes(2)
-    })
+    await waitFor(
+      () => {
+        expect(mockOnRefresh).toHaveBeenCalledTimes(2)
+      },
+      { timeout: 2000 }
+    )
   })
 
   it('shows spinner only on initial load', async () => {
@@ -113,14 +119,20 @@ describe('LogsModal Component - Optimized Behavior', () => {
       expect(content).toBeTruthy()
     })
 
+    // Wait for throttle timeout (500ms)
+    await new Promise((resolve) => setTimeout(resolve, 600))
+
     // Click refresh button
     const refreshButton = screen.getByTitle(/refresh/i) || screen.getByText('🔄')
     fireEvent.click(refreshButton)
 
     // Content should update without showing spinner
-    await waitFor(() => {
-      expect(mockOnRefresh).toHaveBeenCalledTimes(2)
-    })
+    await waitFor(
+      () => {
+        expect(mockOnRefresh).toHaveBeenCalledTimes(2)
+      },
+      { timeout: 2000 }
+    )
 
     // Spinner should NOT appear
     const spinner = document.querySelector('.logs-spinner')
