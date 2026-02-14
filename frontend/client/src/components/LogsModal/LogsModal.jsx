@@ -6,35 +6,50 @@ const LogsModal = ({ show, onClose, type, onRefresh }) => {
   const { t } = useTranslation()
   const [logs, setLogs] = useState('')
   const [loading, setLoading] = useState(false)
+  const [initialLoad, setInitialLoad] = useState(true)
   const logsRef = useRef(null)
 
   // Throttle para evitar refresco excesivo
   const lastRefresh = useRef(0)
+  const loadedType = useRef(null)
 
-  const loadLogs = useCallback(async () => {
-    setLoading(true)
-    try {
-      const result = await onRefresh()
-      setLogs(result || t('status.logs.noLogs'))
-    } catch (_error) {
-      setLogs(t('status.logs.errorLoading'))
-    } finally {
-      setLoading(false)
-    }
-  }, [onRefresh, t])
-
-  useEffect(() => {
-    if (show) {
+  const loadLogs = useCallback(
+    async (showSpinner = false) => {
       const now = Date.now()
-      if (now - lastRefresh.current > 500) {
-        loadLogs()
-        lastRefresh.current = now
+      if (now - lastRefresh.current < 500) {
+        return // Throttle: prevent excessive refresh
       }
+      lastRefresh.current = now
+
+      if (showSpinner) {
+        setLoading(true)
+      }
+      try {
+        const result = await onRefresh()
+        setLogs(result || t('status.logs.noLogs'))
+        setInitialLoad(false)
+      } catch (_error) {
+        setLogs(t('status.logs.errorLoading'))
+        setInitialLoad(false)
+      } finally {
+        if (showSpinner) {
+          setLoading(false)
+        }
+      }
+    },
+    [onRefresh, t]
+  )
+
+  // Load logs only when modal opens or type changes
+  useEffect(() => {
+    if (show && (initialLoad || loadedType.current !== type)) {
+      loadedType.current = type
+      loadLogs(true)
     }
-  }, [show, type, loadLogs])
+  }, [show, type, initialLoad, loadLogs])
 
   const handleRefresh = () => {
-    loadLogs()
+    loadLogs(false) // Don't show spinner on manual refresh, just update content
   }
 
   // Copiar logs al portapapeles con fallback

@@ -8,16 +8,19 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.js'],
+    testTimeout: 10000,
+    hookTimeout: 10000,
+    teardownTimeout: 10000,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html', 'lcov'],
       exclude: ['node_modules/', 'src/test/', '**/*.config.js', '**/dist/**'],
     },
     // Reduce memory usage for embedded systems
-    pool: 'forks',
+    pool: 'threads',
     poolOptions: {
-      forks: {
-        singleFork: true,
+      threads: {
+        singleThread: true,
       },
     },
     maxConcurrency: 1,
