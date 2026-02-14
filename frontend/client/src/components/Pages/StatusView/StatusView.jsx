@@ -1,5 +1,5 @@
 import './StatusView.css'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useToast } from '../../../contexts/ToastContext'
 import { useModal } from '../../../contexts/ModalContext'
@@ -348,7 +348,7 @@ const StatusView = () => {
     setShowLogsModal(false)
   }
 
-  const fetchLogs = async () => {
+  const fetchLogs = useCallback(async () => {
     try {
       const data =
         logsType === 'backend' ? await api.getBackendLogs(200) : await api.getFrontendLogs(200)
@@ -362,7 +362,7 @@ const StatusView = () => {
       console.error('Error loading logs:', error)
       return t('status.logs.loadError')
     }
-  }
+  }, [logsType, t])
 
   const StatusBadge = ({ status }) => {
     const statusClass = `status-indicator status-${status}`

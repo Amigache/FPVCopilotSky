@@ -19,6 +19,12 @@ class SystemService:
     _last_cpu_times = None
     _last_cpu_check = 0
 
+    # Cache for logs to prevent excessive system calls
+    _logs_cache = {
+        "backend": {"content": None, "timestamp": 0, "ttl": 2},  # 2 seconds TTL
+        "frontend": {"content": None, "timestamp": 0, "ttl": 2},  # 2 seconds TTL
+    }
+
     @staticmethod
     def get_memory_info() -> Dict[str, Any]:
         """
@@ -457,7 +463,7 @@ class SystemService:
     @staticmethod
     def get_backend_logs(lines: int = 100) -> str:
         """
-        Get backend service logs from journalctl
+        Get backend service logs from journalctl with caching
 
         Args:
             lines: Number of log lines to retrieve
@@ -465,25 +471,41 @@ class SystemService:
         Returns:
             Log content as string
         """
+        # Check cache
+        cache = SystemService._logs_cache["backend"]
+        current_time = time.time()
+
+        if cache["content"] is not None and (current_time - cache["timestamp"]) < cache["ttl"]:
+            return cache["content"]
+
+        # Cache miss or expired - fetch fresh logs
         try:
             result = subprocess.run(
                 ["journalctl", "-u", "fpvcopilot-sky", "-n", str(lines), "--no-pager"],
                 capture_output=True,
                 text=True,
-                timeout=5,
+                timeout=3,  # Reduced timeout from 5 to 3 seconds
             )
 
             if result.returncode == 0:
-                return result.stdout
+                logs = result.stdout
             else:
-                return f"Error fetching logs: {result.stderr}"
+                logs = f"Error fetching logs: {result.stderr}"
+
+            # Update cache
+            cache["content"] = logs
+            cache["timestamp"] = current_time
+
+            return logs
+        except subprocess.TimeoutExpired:
+            return "Error: Log fetching timed out"
         except Exception as e:
             return f"Error fetching logs: {str(e)}"
 
     @staticmethod
     def get_frontend_logs(lines: int = 100) -> str:
         """
-        Get frontend logs (nginx access and error logs)
+        Get frontend logs (nginx access and error logs) with caching
 
         Args:
             lines: Number of log lines to retrieve
@@ -491,6 +513,14 @@ class SystemService:
         Returns:
             Log content as string
         """
+        # Check cache
+        cache = SystemService._logs_cache["frontend"]
+        current_time = time.time()
+
+        if cache["content"] is not None and (current_time - cache["timestamp"]) < cache["ttl"]:
+            return cache["content"]
+
+        # Cache miss or expired - fetch fresh logs
         try:
             # Try to get nginx error logs
             nginx_error = ""
@@ -502,7 +532,7 @@ class SystemService:
                     ["tail", "-n", str(lines // 2), "/var/log/nginx/error.log"],
                     capture_output=True,
                     text=True,
-                    timeout=3,
+                    timeout=2,  # Reduced timeout from 3 to 2 seconds
                 )
                 if result.returncode == 0:
                     nginx_error = "=== Nginx Error Log ===\\n" + result.stdout
@@ -513,12 +543,20 @@ class SystemService:
                     ["tail", "-n", str(lines // 2), "/var/log/nginx/access.log"],
                     capture_output=True,
                     text=True,
-                    timeout=3,
+                    timeout=2,  # Reduced timeout from 3 to 2 seconds
                 )
                 if result.returncode == 0:
                     nginx_access = "\\n=== Nginx Access Log ===\\n" + result.stdout
 
             combined = nginx_error + nginx_access
-            return combined if combined else "No frontend logs available"
+            logs = combined if combined else "No frontend logs available"
+
+            # Update cache
+            cache["content"] = logs
+            cache["timestamp"] = current_time
+
+            return logs
+        except subprocess.TimeoutExpired:
+            return "Error: Log fetching timed out"
         except Exception as e:
             return f"Error fetching frontend logs: {str(e)}"

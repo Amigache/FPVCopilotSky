@@ -101,6 +101,15 @@ async def websocket_endpoint(websocket: WebSocket):
         if video_service:
             await websocket_manager.broadcast("video_status", video_service.get_status())
 
+        # Send initial network status
+        try:
+            from api.routes.network import get_network_status
+
+            network_status = await get_network_status()
+            await websocket_manager.broadcast("network_status", network_status)
+        except Exception as e:
+            logger.debug(f"Initial network status error: {e}")
+
         # Send initial VPN status (from provider registry)
         try:
             from services.preferences import get_preferences

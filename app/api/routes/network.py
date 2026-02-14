@@ -343,9 +343,22 @@ async def _get_modem_info(modem_interface: Optional[str]) -> Dict:
     return info
 
 
+# Network status cache
+_network_status_cache = {"data": None, "timestamp": 0, "ttl": 2}  # Cache for 2 seconds
+
+
 @router.get("/status")
 async def get_network_status():
-    """Get overall network status including interfaces, routes, and modem info"""
+    """Get overall network status including interfaces, routes, and modem info with caching"""
+    current_time = time.time()
+
+    # Check cache
+    if _network_status_cache["data"] is not None:
+        cache_age = current_time - _network_status_cache["timestamp"]
+        if cache_age < _network_status_cache["ttl"]:
+            return _network_status_cache["data"]
+
+    # Cache miss or expired - fetch fresh data
     try:
         # Detect interfaces
         wifi_interface = await _detect_wifi_interface()
@@ -370,7 +383,7 @@ async def get_network_status():
             elif primary_interface == wifi_interface:
                 mode = "wifi"
 
-        return {
+        result = {
             "success": True,
             "wifi_interface": wifi_interface,
             "modem_interface": modem_interface,
@@ -380,9 +393,15 @@ async def get_network_status():
             "routes": routes,
             "modem": modem,
         }
+
+        # Update cache
+        _network_status_cache["data"] = result
+        _network_status_cache["timestamp"] = current_time
+
+        return result
     except Exception as e:
         logger.error(f"Error getting network status: {e}")
-        return {
+        error_result = {
             "success": False,
             "error": str(e),
             "wifi_interface": None,
@@ -393,6 +412,9 @@ async def get_network_status():
             "routes": [],
             "modem": {"detected": False},
         }
+
+        # Don't cache errors, but return them
+        return error_result
 
 
 # =============================
