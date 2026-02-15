@@ -72,7 +72,7 @@ vi.mock('../../../services/api', () => ({
   },
 }))
 
-describe.skip('StatusView Component', () => {
+describe('StatusView Component', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
