@@ -2,14 +2,12 @@ import './ExperimentalView.css'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useToast } from '../../../contexts/ToastContext'
-import { useWebSocket } from '../../../contexts/WebSocketContext'
 import Toggle from '../../Toggle/Toggle'
 import api from '../../../services/api'
 
 const ExperimentalView = () => {
   const { t } = useTranslation()
   const { showToast } = useToast()
-  const { messages } = useWebSocket()
 
   const [opencvEnabled, setOpencvEnabled] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -53,6 +51,17 @@ const ExperimentalView = () => {
       setLoading(false)
     }
   }
+
+  // Load configuration on mount and cleanup on unmount
+  useEffect(() => {
+    loadConfig()
+
+    return () => {
+      if (applyTimeoutRef.current) {
+        clearTimeout(applyTimeoutRef.current)
+      }
+    }
+  }, [])
 
   // Restart video stream to apply changes
   const restartVideoStream = useCallback(async () => {

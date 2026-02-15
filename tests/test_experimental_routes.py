@@ -112,3 +112,71 @@ class TestExperimentalServiceFunctions:
 
         experimental.set_opencv_service(None)
         assert experimental._opencv_service is None
+
+
+class TestExperimentalServiceUnavailable:
+    """Test behavior when OpenCV service is unavailable"""
+
+    def test_get_config_service_unavailable(self):
+        """Test get_config returns 503 when service unavailable"""
+        from app.api.routes import experimental
+        from app.main import app
+
+        # Ensure service is None
+        experimental.set_opencv_service(None)
+        client = TestClient(app)
+
+        response = client.get("/api/experimental/config")
+
+        assert response.status_code == 503
+        data = response.json()
+        assert data["success"] is False
+        assert "not initialized" in data["message"]
+
+    def test_toggle_service_unavailable(self):
+        """Test toggle returns 503 when service unavailable"""
+        from app.api.routes import experimental
+        from app.main import app
+
+        # Ensure service is None
+        experimental.set_opencv_service(None)
+        client = TestClient(app)
+
+        response = client.post("/api/experimental/toggle", json={"enabled": True})
+
+        assert response.status_code == 503
+        data = response.json()
+        assert data["success"] is False
+
+    def test_update_config_service_unavailable(self):
+        """Test update_config returns 503 when service unavailable"""
+        from app.api.routes import experimental
+        from app.main import app
+
+        # Ensure service is None
+        experimental.set_opencv_service(None)
+        client = TestClient(app)
+
+        response = client.post("/api/experimental/config", json={"filter": "edges"})
+
+        assert response.status_code == 503
+        data = response.json()
+        assert data["success"] is False
+
+    def test_get_status_service_unavailable(self):
+        """Test get_status returns 200 with success=False when service unavailable"""
+        from app.api.routes import experimental
+        from app.main import app
+
+        # Ensure service is None
+        experimental.set_opencv_service(None)
+        client = TestClient(app)
+
+        response = client.get("/api/experimental/status")
+
+        # get_status returns 200 even when unavailable
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is False
+        assert "not initialized" in data["message"]
+        assert data["opencv_available"] is False

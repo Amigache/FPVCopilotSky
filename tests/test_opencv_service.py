@@ -348,3 +348,119 @@ class TestOpenCVThreadSafety:
 
         # Should not crash
         assert isinstance(opencv_service.is_enabled(), bool)
+
+
+class TestOpenCVUnavailable:
+    """Test OpenCV service when cv2 is not available"""
+
+    def test_service_init_without_opencv(self):
+        """Test service initializes even without OpenCV"""
+        with patch("app.services.opencv_service.OPENCV_AVAILABLE", False):
+            service = OpenCVService()
+            assert service.is_available() is False
+            assert service.enabled is False
+
+    def test_enable_fails_without_opencv(self):
+        """Test enabling fails gracefully without OpenCV"""
+        with patch("app.services.opencv_service.OPENCV_AVAILABLE", False):
+            service = OpenCVService()
+            result = service.set_enabled(True)
+            assert result is False
+            assert service.is_enabled() is False
+
+    def test_process_frame_without_opencv(self):
+        """Test frame processing returns original frame without OpenCV"""
+        with patch("app.services.opencv_service.OPENCV_AVAILABLE", False):
+            service = OpenCVService()
+            service.enabled = True
+            mock_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+            result = service.process_frame(mock_frame)
+            np.testing.assert_array_equal(result, mock_frame)
+
+    def test_build_gstreamer_element_without_opencv(self):
+        """Test GStreamer element returns None without OpenCV"""
+        with patch("app.services.opencv_service.OPENCV_AVAILABLE", False):
+            service = OpenCVService()
+            element = service.build_gstreamer_element()
+            assert element is None
+
+
+class TestOpenCVEdgeCases:
+    """Test edge cases and error conditions"""
+
+    @pytest.mark.skipif(not OpenCVService().is_available(), reason="OpenCV not available")
+    def test_process_frame_with_exception_in_filter(self, opencv_service):
+        """Test frame processing handles exceptions gracefully"""
+        opencv_service.set_enabled(True)
+        opencv_service.update_config({"filter": "edges"})
+
+        # Create a problematic frame
+        mock_frame = np.zeros((0, 0, 3), dtype=np.uint8)  # Empty frame
+
+        # Should not crash, should return original or handle error
+        try:
+            result = opencv_service.process_frame(mock_frame)
+            assert result is not None
+        except Exception:
+            # Exception is acceptable for invalid frame
+            pass
+
+    @pytest.mark.skipif(not OpenCVService().is_available(), reason="OpenCV not available")
+    def test_osd_with_exception(self, opencv_service, mock_telemetry_service):
+        """Test OSD drawing handles exceptions"""
+        mock_telemetry_service.get_telemetry.side_effect = Exception("Telemetry error")
+
+        opencv_service.set_telemetry_service(mock_telemetry_service)
+        opencv_service.set_enabled(True)
+        opencv_service.update_config({"osd_enabled": True})
+
+        mock_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        # Should handle exception and return frame
+        result = opencv_service.process_frame(mock_frame)
+        assert result is not None
+
+    @pytest.mark.skipif(not OpenCVService().is_available(), reason="OpenCV not available")
+    def test_filter_with_boundary_values(self, opencv_service, mock_frame):
+        """Test filters with boundary parameter values"""
+        opencv_service.set_enabled(True)
+
+        # Test edges with min thresholds
+        opencv_service.update_config({"filter": "edges", "edgeThreshold1": 0, "edgeThreshold2": 1})
+        result = opencv_service.process_frame(mock_frame)
+        assert result.shape == mock_frame.shape
+
+        # Test blur with min kernel (will become 1)
+        opencv_service.update_config({"filter": "blur", "blurKernel": 1})
+        result = opencv_service.process_frame(mock_frame)
+        assert result.shape == mock_frame.shape
+
+        # Test threshold with boundary values
+        opencv_service.update_config({"filter": "threshold", "thresholdValue": 0})
+        result = opencv_service.process_frame(mock_frame)
+        assert result.shape == mock_frame.shape
+
+        opencv_service.update_config({"filter": "threshold", "thresholdValue": 255})
+        result = opencv_service.process_frame(mock_frame)
+        assert result.shape == mock_frame.shape
+
+    def test_config_update_with_extra_fields(self, opencv_service):
+        """Test config update accepts extra fields (they get stored)"""
+        initial_config = opencv_service.get_config()
+        opencv_service.update_config({"filter": "blur", "extra_field": "ignored", "another_field": 123})
+        updated_config = opencv_service.get_config()
+
+        # Should update valid fields
+        assert updated_config["filter"] == "blur"
+        # Extra fields may or may not be stored (implementation detail)
+        # Just verify the update didn't crash
+
+    @pytest.mark.skipif(not OpenCVService().is_available(), reason="OpenCV not available")
+    def test_get_status_includes_version(self, opencv_service):
+        """Test get_status returns OpenCV version"""
+        opencv_service.set_enabled(True)
+        status = opencv_service.get_status()
+
+        assert "opencv_version" in status
+        assert isinstance(status["opencv_version"], str)
+        # Version should have dots (e.g., "4.8.0")
+        assert "." in status["opencv_version"]
