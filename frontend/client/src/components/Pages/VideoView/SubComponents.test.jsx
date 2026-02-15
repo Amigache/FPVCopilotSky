@@ -316,11 +316,6 @@ describe('NetworkSettingsCard', () => {
     expect(errorInput).toBeInTheDocument()
   })
 
-  it('renders auto-start toggle', () => {
-    render(<NetworkSettingsCard {...baseProps} />)
-    expect(screen.getByTestId('toggle-input')).toBeInTheDocument()
-  })
-
   it('disables fields when streaming', () => {
     render(<NetworkSettingsCard {...baseProps} streaming={true} />)
     const selects = screen.getAllByRole('combobox')
@@ -380,6 +375,19 @@ describe('StreamControlCard', () => {
     render(<StreamControlCard streaming={false} actionLoading="apply" {...handlers} />)
     const buttons = screen.getAllByRole('button')
     buttons.forEach((b) => expect(b).toBeDisabled())
+  })
+
+  it('renders auto-start toggle', () => {
+    render(
+      <StreamControlCard
+        streaming={false}
+        actionLoading={null}
+        config={{ auto_start: false }}
+        updateConfig={vi.fn()}
+        {...handlers}
+      />
+    )
+    expect(screen.getByTestId('toggle-input')).toBeInTheDocument()
   })
 })
 

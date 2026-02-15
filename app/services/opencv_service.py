@@ -29,11 +29,18 @@ class OpenCVService:
     Can be integrated into GStreamer pipeline or as standalone processor.
     """
 
+    # OSD update rate limit (Hz) - reduces CPU load significantly
+    OSD_UPDATE_RATE_HZ = 10
+    OSD_UPDATE_INTERVAL = 1.0 / OSD_UPDATE_RATE_HZ
+
     def __init__(self):
         self.enabled = False
         self._opencv_available = OPENCV_AVAILABLE
         if not OPENCV_AVAILABLE:
             logger.warning("OpenCV (cv2) not installed - video processing disabled")
+        else:
+            # Enable SIMD/NEON optimizations for ARM platforms
+            self._configure_opencv_optimizations()
         self.config = {
             "filter": "none",
             "osd_enabled": False,
@@ -44,7 +51,49 @@ class OpenCVService:
         }
         self._lock = threading.Lock()
         self._telemetry_service = None
+        # Track last OSD state for frame skipping optimization
+        self._last_osd_hash: int = 0
+
+        # OSD caching system to reduce CPU load
+        self._osd_cache: Optional[np.ndarray] = None  # Cached overlay image (BGRA)
+        self._osd_cache_size: tuple = (0, 0)  # (height, width) of cached overlay
+        self._osd_last_update: float = 0.0  # Timestamp of last OSD update
+        self._osd_cached_values: dict = {}  # Cached telemetry values for comparison
+
         logger.info("OpenCV Service initialized")
+
+    def _configure_opencv_optimizations(self):
+        """Configure OpenCV for optimal performance on ARM/x86 platforms."""
+        try:
+            # Enable optimized code paths (NEON on ARM, SSE/AVX on x86)
+            cv2.setUseOptimized(True)
+            optimized = cv2.useOptimized()
+
+            # Set thread count based on available cores (leave 1 for main pipeline)
+            import os
+
+            cpu_count = os.cpu_count() or 4
+            optimal_threads = max(2, min(cpu_count - 1, 4))
+            cv2.setNumThreads(optimal_threads)
+            actual_threads = cv2.getNumThreads()
+
+            # Log optimization status
+            build_info = cv2.getBuildInformation()
+            has_neon = "NEON" in build_info
+            has_opencl = "OpenCL" in build_info and cv2.ocl.haveOpenCL()
+
+            logger.info(
+                f"OpenCV optimizations: optimized={optimized}, "
+                f"threads={actual_threads}, NEON={has_neon}, OpenCL={has_opencl}"
+            )
+
+            # Enable OpenCL if available (GPU acceleration)
+            if has_opencl:
+                cv2.ocl.setUseOpenCL(True)
+                logger.info("OpenCL GPU acceleration enabled")
+
+        except Exception as e:
+            logger.warning(f"Failed to configure OpenCV optimizations: {e}")
 
     def is_available(self) -> bool:
         """Check if OpenCV is actually available (cv2 installed)"""
@@ -82,8 +131,167 @@ class OpenCVService:
         self._telemetry_service = telemetry_service
         logger.info("Telemetry service linked to OpenCV")
 
+    def has_osd_changed(self) -> bool:
+        """
+        Check if OSD data has changed since last frame.
+        Used for intelligent frame skipping during congestion.
+
+        Returns True if:
+        - OSD is enabled AND telemetry values have changed significantly
+        - First frame after enabling OSD
+
+        Returns False if:
+        - OSD is disabled
+        - Telemetry values are unchanged
+        """
+        if not self._telemetry_service:
+            return False
+
+        with self._lock:
+            if not self.config.get("osd_enabled", False):
+                return False
+
+        try:
+            telemetry = self._telemetry_service.get_telemetry()
+
+            # Create a hash of relevant OSD values
+            speed = telemetry.get("speed", {})
+            attitude = telemetry.get("attitude", {})
+
+            # Round values to reduce sensitivity (avoid triggering on noise)
+            climb_rate = round(speed.get("climb_rate", 0.0), 1)
+            yaw = round(attitude.get("yaw", 0.0), 2)
+
+            current_hash = hash((climb_rate, yaw))
+
+            if current_hash != self._last_osd_hash:
+                self._last_osd_hash = current_hash
+                return True
+            return False
+
+        except Exception:
+            return False
+
+    def _should_update_osd(self, climb_rate: float, yaw_deg: float, frame_h: int, frame_w: int) -> bool:
+        """Check if OSD overlay needs to be regenerated.
+
+        Returns True if:
+        - Cache is empty or wrong size
+        - Enough time has passed since last update (throttling)
+        - Telemetry values have changed significantly
+        """
+        import time
+
+        now = time.monotonic()
+
+        # Check if cache exists and matches frame size
+        if self._osd_cache is None or self._osd_cache_size != (frame_h, frame_w):
+            return True
+
+        # Throttle updates to OSD_UPDATE_RATE_HZ
+        if now - self._osd_last_update < self.OSD_UPDATE_INTERVAL:
+            return False
+
+        # Check if values changed significantly
+        cached = self._osd_cached_values
+        if not cached:
+            return True
+
+        # Only update if values changed enough (reduce noise sensitivity)
+        climb_changed = abs(cached.get("climb_rate", 0) - climb_rate) > 0.05
+        yaw_changed = abs(cached.get("yaw_deg", 0) - yaw_deg) > 0.5
+
+        return climb_changed or yaw_changed
+
+    def _render_osd_overlay(self, frame_h: int, frame_w: int, climb_rate: float, yaw_deg: float) -> np.ndarray:
+        """Render OSD text onto a transparent overlay image (BGRA).
+
+        This is called only when OSD needs to update, not every frame.
+        """
+        import time
+
+        # Create transparent overlay (BGRA with alpha channel)
+        overlay = np.zeros((frame_h, frame_w, 4), dtype=np.uint8)
+
+        # Font settings - use LINE_8 instead of LINE_AA for better performance
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = 0.6
+        font_thickness = 2
+        text_color_bgra = (255, 255, 255, 255)  # White, opaque
+        shadow_color_bgra = (0, 0, 0, 200)  # Black shadow, semi-transparent
+        shadow_offset = 2
+
+        # Position for text
+        x = 10
+        y = 30
+        line_spacing = 30
+
+        # Prepare text lines
+        lines = [f"Vel. Ascenso: {climb_rate:+.1f} m/s", f"Yaw: {yaw_deg:.0f}\u00b0"]
+
+        # Draw each line with shadow
+        for i, line in enumerate(lines):
+            y_pos = y + (i * line_spacing)
+
+            # Draw shadow first (LINE_8 is faster than LINE_AA)
+            cv2.putText(
+                overlay,
+                line,
+                (x + shadow_offset, y_pos + shadow_offset),
+                font,
+                font_scale,
+                shadow_color_bgra,
+                font_thickness + 1,
+                cv2.LINE_8,
+            )
+
+            # Draw text on top
+            cv2.putText(overlay, line, (x, y_pos), font, font_scale, text_color_bgra, font_thickness, cv2.LINE_8)
+
+        # Update cache metadata
+        self._osd_last_update = time.monotonic()
+        self._osd_cached_values = {"climb_rate": climb_rate, "yaw_deg": yaw_deg}
+        self._osd_cache_size = (frame_h, frame_w)
+
+        return overlay
+
+    def _blend_osd_fast(self, frame: np.ndarray, overlay: np.ndarray) -> np.ndarray:
+        """Fast alpha blending of OSD overlay onto frame.
+
+        Uses NumPy vectorized operations instead of per-pixel blending.
+        Only blends non-zero pixels from the overlay.
+        """
+        # Get alpha channel and create mask of non-transparent pixels
+        alpha = overlay[:, :, 3]
+        mask = alpha > 0
+
+        if not np.any(mask):
+            return frame
+
+        # Make frame writable if needed
+        if not frame.flags.writeable:
+            frame = frame.copy()
+
+        # Extract BGR from overlay
+        overlay_bgr = overlay[:, :, :3]
+
+        # Blend only where alpha > 0 (vectorized)
+        # Simple blend: frame[mask] = overlay_bgr[mask] works for opaque overlay
+        # For semi-transparent: weighted blend
+        alpha_f = alpha[mask].astype(np.float32) / 255.0
+        alpha_f = alpha_f[:, np.newaxis]  # Shape for broadcasting
+
+        frame[mask] = (
+            alpha_f * overlay_bgr[mask].astype(np.float32) + (1.0 - alpha_f) * frame[mask].astype(np.float32)
+        ).astype(np.uint8)
+
+        return frame
+
     def _draw_osd(self, frame: np.ndarray, osd_enabled: bool) -> np.ndarray:
-        """Draw OSD (On-Screen Display) with telemetry data
+        """Draw OSD (On-Screen Display) with telemetry data.
+
+        Uses cached overlay for performance - only regenerates when telemetry changes.
+        Updates at most OSD_UPDATE_RATE_HZ times per second.
 
         Args:
             frame: Input frame
@@ -98,13 +306,7 @@ class OpenCVService:
             return frame
 
         try:
-            # Make sure frame is writable
-            if not frame.flags.writeable:
-                frame = frame.copy()
-
-            # Ensure frame is C-contiguous (required for cv2.putText)
-            if not frame.flags["C_CONTIGUOUS"]:
-                frame = np.ascontiguousarray(frame)
+            frame_h, frame_w = frame.shape[:2]
 
             # Get telemetry data
             telemetry = self._telemetry_service.get_telemetry()
@@ -117,40 +319,13 @@ class OpenCVService:
             attitude = telemetry.get("attitude", {})
             yaw_deg = math.degrees(attitude.get("yaw", 0.0))
 
-            # Font settings
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            font_scale = 0.6
-            font_thickness = 2
-            text_color = (255, 255, 255)  # White
-            shadow_color = (0, 0, 0)  # Black shadow
-            shadow_offset = 2
+            # Check if we need to regenerate the OSD overlay
+            if self._should_update_osd(climb_rate, yaw_deg, frame_h, frame_w):
+                self._osd_cache = self._render_osd_overlay(frame_h, frame_w, climb_rate, yaw_deg)
 
-            # Position for text (top-left corner with padding)
-            x = 10
-            y = 30
-            line_spacing = 30
-
-            # Prepare text lines
-            lines = [f"Vel. Ascenso: {climb_rate:+.1f} m/s", f"Yaw: {yaw_deg:.0f}\u00b0"]
-
-            # Draw each line with shadow for better visibility
-            for i, line in enumerate(lines):
-                y_pos = y + (i * line_spacing)
-
-                # Draw shadow
-                cv2.putText(
-                    frame,
-                    line,
-                    (x + shadow_offset, y_pos + shadow_offset),
-                    font,
-                    font_scale,
-                    shadow_color,
-                    font_thickness + 1,
-                    cv2.LINE_AA,
-                )
-
-                # Draw text
-                cv2.putText(frame, line, (x, y_pos), font, font_scale, text_color, font_thickness, cv2.LINE_AA)
+            # Fast blend cached overlay onto frame
+            if self._osd_cache is not None:
+                frame = self._blend_osd_fast(frame, self._osd_cache)
 
         except Exception as e:
             logger.error(f"Error drawing OSD: {e}", exc_info=True)

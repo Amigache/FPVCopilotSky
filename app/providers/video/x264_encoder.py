@@ -10,6 +10,24 @@ from ..base.video_encoder_provider import VideoEncoderProvider
 
 logger = logging.getLogger(__name__)
 
+# Cache HW decoder availability (checked once at import)
+_v4l2jpegdec_available: bool | None = None
+
+
+def _check_v4l2jpegdec() -> bool:
+    """Check if v4l2jpegdec (hardware JPEG decoder) is available."""
+    global _v4l2jpegdec_available
+    if _v4l2jpegdec_available is not None:
+        return _v4l2jpegdec_available
+    try:
+        result = subprocess.run(["gst-inspect-1.0", "v4l2jpegdec"], capture_output=True, timeout=2)
+        _v4l2jpegdec_available = result.returncode == 0
+        if _v4l2jpegdec_available:
+            logger.info("Hardware JPEG decoder (v4l2jpegdec) available")
+    except Exception:
+        _v4l2jpegdec_available = False
+    return _v4l2jpegdec_available
+
 
 class X264Encoder(VideoEncoderProvider):
     """x264 H.264 encoder (software, high quality)"""
@@ -23,6 +41,7 @@ class X264Encoder(VideoEncoderProvider):
         self.gst_encoder_element = "x264enc"
         self.rtp_payload_type = 96
         self.priority = 60  # Medium-high priority
+        self._hw_jpegdec_available = _check_v4l2jpegdec()
 
     def is_available(self) -> bool:
         """Check if x264enc is available in GStreamer"""
@@ -41,6 +60,7 @@ class X264Encoder(VideoEncoderProvider):
             "codec_family": self.codec_family,
             "encoder_type": self.encoder_type,
             "available": self.is_available(),
+            "hw_jpegdec_available": self._hw_jpegdec_available,
             "supported_resolutions": [
                 (640, 480),
                 (960, 720),
@@ -62,16 +82,33 @@ class X264Encoder(VideoEncoderProvider):
     def build_pipeline_elements(self, config: Dict) -> Dict:
         """
         Build x264 H.264 pipeline elements.
-        Pipeline: camera(MJPEG) → jpegdec → videoconvert → x264enc → h264parse → rtph264pay
+
+        When OpenCV is disabled and v4l2jpegdec is available:
+            camera(MJPEG) → v4l2jpegdec(HW) → videoconvert → x264enc
+            (Saves ~5-10ms latency by using hardware JPEG decode)
+
+        When OpenCV is enabled or HW decoder not available:
+            camera(MJPEG) → jpegdec(SW) → videoconvert → x264enc
         """
         try:
             width = config.get("width", 960)
             height = config.get("height", 720)
             framerate = config.get("framerate", 30)
             bitrate = config.get("bitrate", 2000)
+            opencv_enabled = config.get("opencv_enabled", False)
+
+            # Use hardware JPEG decoder when available and OpenCV is OFF
+            # (OpenCV needs BGR format which requires videoconvert anyway)
+            use_hw_jpegdec = self._hw_jpegdec_available and not opencv_enabled
+
+            if use_hw_jpegdec:
+                logger.info("Using v4l2jpegdec (HW) for JPEG decoding")
+                decoder_element = "v4l2jpegdec"
+            else:
+                decoder_element = "jpegdec"
 
             elements = [
-                {"name": "decoder", "element": "jpegdec", "properties": {}},
+                {"name": "decoder", "element": decoder_element, "properties": {}},
                 {"name": "videoconvert", "element": "videoconvert", "properties": {}},
                 {"name": "videoscale", "element": "videoscale", "properties": {}},
                 {
