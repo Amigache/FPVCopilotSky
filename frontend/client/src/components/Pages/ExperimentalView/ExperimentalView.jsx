@@ -37,28 +37,6 @@ const ExperimentalView = () => {
   ]
 
   // Load current configuration
-  useEffect(() => {
-    loadConfig()
-
-    // Cleanup timeout on unmount
-    return () => {
-      if (applyTimeoutRef.current) {
-        clearTimeout(applyTimeoutRef.current)
-      }
-    }
-  }, [])
-
-  // Update from WebSocket
-  useEffect(() => {
-    if (messages.experimental) {
-      const data = messages.experimental
-      setOpencvEnabled(data.opencv_enabled || false)
-      if (data.config) {
-        setConfig((prev) => ({ ...prev, ...data.config }))
-      }
-    }
-  }, [messages.experimental])
-
   const loadConfig = async () => {
     try {
       const response = await api.get('/api/experimental/config')

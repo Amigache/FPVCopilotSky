@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import Toggle from '../../Toggle/Toggle'
 import { PeerSelector } from '../../PeerSelector/PeerSelector'
 import {
   RANGES,
