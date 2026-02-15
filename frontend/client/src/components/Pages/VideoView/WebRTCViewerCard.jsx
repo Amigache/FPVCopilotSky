@@ -302,7 +302,10 @@ const WebRTCViewerCard = forwardRef(
           <div className="webrtc-video-overlay">
             {connectionState === 'disconnected' && (
               <div className="webrtc-status-message">
-                <span className="status-text">{t('views.video.webrtcNoSignal')}</span>
+                <span className="status-text">{t('views.video.webrtcState.disconnected')}</span>
+                <button className="btn btn-primary" onClick={connectWebRTC}>
+                  {t('views.video.webrtcConnect')}
+                </button>
               </div>
             )}
             {connectionState === 'connecting' && (

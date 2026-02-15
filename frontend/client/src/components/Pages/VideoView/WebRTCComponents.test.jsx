@@ -202,7 +202,7 @@ describe('WebRTCViewerCard', () => {
 
   it('shows no-signal overlay when disconnected', () => {
     render(<WebRTCViewerCard status={baseStatus} webrtcStatus={baseWebrtcStatus} />)
-    expect(screen.getByText('views.video.webrtcNoSignal')).toBeInTheDocument()
+    expect(screen.getByText('views.video.webrtcState.disconnected')).toBeInTheDocument()
   })
 
   it('shows fullscreen button', () => {
