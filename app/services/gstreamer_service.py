@@ -111,6 +111,24 @@ class GStreamerService:
             "current_bitrate": 0,
         }
 
+        # Encoder-specific statistics (populated via pad probes)
+        self.encoder_stats = {
+            "frames_encoded": 0,
+            "frames_dropped_pre_encoder": 0,
+            "frames_dropped_post_encoder": 0,
+            "total_encode_time_ms": 0,
+            "avg_encode_time_ms": 0.0,
+            "max_encode_time_ms": 0.0,
+            "last_frame_size_bytes": 0,
+            "keyframes_sent": 0,
+            "pframes_sent": 0,
+            "avg_frame_size_bytes": 0,
+        }
+
+        # Timestamps for encode time calculation
+        self._encode_start_time: float = 0
+        self._encoder_probe_ids: list = []
+
         # Thread lock for stats
         import threading as th
 
@@ -281,17 +299,51 @@ class GStreamerService:
 
             buf.unmap(map_info)
 
-            # Try to put in queue (non-blocking)
+            # Intelligent frame skipping: prioritize frames with OSD changes
             if self._opencv_queue:
                 try:
+                    # Check if this frame has important OSD updates
+                    has_osd_update = False
+                    if self._opencv_service:
+                        has_osd_update = self._opencv_service.has_osd_changed()
+
                     self._opencv_queue.put_nowait(
-                        {"frame": frame, "pts": buf.pts, "duration": buf.duration, "timestamp": time.time()}
+                        {
+                            "frame": frame,
+                            "pts": buf.pts,
+                            "duration": buf.duration,
+                            "timestamp": time.time(),
+                            "priority": 1 if has_osd_update else 0,
+                        }
                     )
-                    print(f"✅ Frame queued (queue size: {self._opencv_queue.qsize()})")
                 except queue.Full:
-                    self._opencv_frames_dropped += 1
-                    print(f"⚠️ Queue full, frame dropped (total dropped: {self._opencv_frames_dropped})")
-                    pass
+                    # Queue full - apply intelligent frame skipping
+                    # If this frame has OSD updates, try to make room by dropping older low-priority frames
+                    if self._opencv_service and self._opencv_service.has_osd_changed():
+                        # Try to drop a low-priority frame to make room
+                        try:
+                            old_frame = self._opencv_queue.get_nowait()
+                            if old_frame.get("priority", 0) == 0:
+                                # Dropped low-priority frame, queue this high-priority one
+                                self._opencv_queue.put_nowait(
+                                    {
+                                        "frame": frame,
+                                        "pts": buf.pts,
+                                        "duration": buf.duration,
+                                        "timestamp": time.time(),
+                                        "priority": 1,
+                                    }
+                                )
+                                self._opencv_frames_dropped += 1
+                            else:
+                                # Both are high priority, put the old one back and drop this one
+                                self._opencv_queue.put_nowait(old_frame)
+                                self._opencv_frames_dropped += 1
+                        except queue.Empty:
+                            self._opencv_frames_dropped += 1
+                    else:
+                        # Low priority frame and queue full - just drop it
+                        self._opencv_frames_dropped += 1
 
             return Gst.FlowReturn.OK
 
@@ -661,6 +713,8 @@ class GStreamerService:
                 x264enc.set_property("byte-stream", True)
                 pipeline.add(x264enc)
                 elements.append(x264enc)
+                # Install encoder stats probes
+                self._install_encoder_probes(x264enc)
                 print(f"   → Using x264enc (ultrafast/zerolatency) @ {bitrate_kbps} kbps")
             else:
                 openh264enc = Gst.ElementFactory.make("openh264enc", "webrtc_h264enc")
@@ -670,6 +724,8 @@ class GStreamerService:
                     openh264enc.set_property("complexity", 0)  # low complexity
                     pipeline.add(openh264enc)
                     elements.append(openh264enc)
+                    # Install encoder stats probes
+                    self._install_encoder_probes(openh264enc)
                     print(f"   → Using openh264enc @ {bitrate_kbps} kbps")
                 else:
                     self.last_error = "No H264 encoder available (need x264enc or openh264enc)"
@@ -766,6 +822,116 @@ class GStreamerService:
         except Exception as e:
             print(f"⚠️ Force keyframe failed: {e}")
         return False
+
+    def _install_encoder_probes(self, encoder_element):
+        """
+        Install GStreamer pad probes on encoder to collect performance metrics.
+        Measures: encode time, frame counts, dropped frames.
+        """
+        if not encoder_element or not GSTREAMER_AVAILABLE:
+            return
+
+        try:
+            # Probe on encoder sink pad (frame entering encoder)
+            sinkpad = encoder_element.get_static_pad("sink")
+            if sinkpad:
+                probe_id = sinkpad.add_probe(Gst.PadProbeType.BUFFER, self._encoder_sinkpad_probe, None)
+                self._encoder_probe_ids.append((sinkpad, probe_id))
+
+            # Probe on encoder src pad (frame leaving encoder)
+            srcpad = encoder_element.get_static_pad("src")
+            if srcpad:
+                probe_id = srcpad.add_probe(Gst.PadProbeType.BUFFER, self._encoder_srcpad_probe, None)
+                self._encoder_probe_ids.append((srcpad, probe_id))
+
+            logger.info(f"Encoder probes installed on {encoder_element.get_name()}")
+        except Exception as e:
+            logger.warning(f"Failed to install encoder probes: {e}")
+
+    def _encoder_sinkpad_probe(self, pad, info, user_data):
+        """Probe callback for encoder sink pad - records frame entry time."""
+        self._encode_start_time = time.time()
+        return Gst.PadProbeReturn.OK
+
+    def _encoder_srcpad_probe(self, pad, info, user_data):
+        """
+        Probe callback for encoder src pad - calculates encode time and frame stats.
+        Also detects keyframes vs P-frames from H264 NAL type.
+        """
+        try:
+            buf = info.get_buffer()
+            if not buf:
+                return Gst.PadProbeReturn.OK
+
+            # Calculate encode time
+            encode_time_ms = 0
+            if self._encode_start_time > 0:
+                encode_time_ms = (time.time() - self._encode_start_time) * 1000
+                self._encode_start_time = 0
+
+            # Get frame size
+            frame_size = buf.get_size()
+
+            # Detect frame type (keyframe vs P-frame) from buffer
+            is_keyframe = False
+            success, map_info = buf.map(Gst.MapFlags.READ)
+            if success:
+                # Check NAL type in H264 bitstream
+                data = bytes(map_info.data[:16]) if map_info.size >= 16 else bytes(map_info.data)
+                buf.unmap(map_info)
+
+                # Look for IDR NAL unit (type 5)
+                for i in range(len(data) - 4):
+                    if data[i : i + 3] == b"\x00\x00\x01":
+                        nal_type = data[i + 3] & 0x1F
+                        if nal_type == 5:
+                            is_keyframe = True
+                            break
+                    elif data[i : i + 4] == b"\x00\x00\x00\x01":
+                        nal_type = data[i + 4] & 0x1F
+                        if nal_type == 5:
+                            is_keyframe = True
+                            break
+
+            # Update encoder stats (thread-safe)
+            with self.stats_lock:
+                stats = self.encoder_stats
+                stats["frames_encoded"] += 1
+                stats["last_frame_size_bytes"] = frame_size
+
+                if encode_time_ms > 0:
+                    stats["total_encode_time_ms"] += encode_time_ms
+                    stats["avg_encode_time_ms"] = stats["total_encode_time_ms"] / stats["frames_encoded"]
+                    if encode_time_ms > stats["max_encode_time_ms"]:
+                        stats["max_encode_time_ms"] = encode_time_ms
+
+                if is_keyframe:
+                    stats["keyframes_sent"] += 1
+                else:
+                    stats["pframes_sent"] += 1
+
+                # Calculate average frame size
+                total_frames = stats["keyframes_sent"] + stats["pframes_sent"]
+                if total_frames > 0:
+                    # Use exponential moving average for frame size
+                    alpha = 0.1
+                    stats["avg_frame_size_bytes"] = int(
+                        alpha * frame_size + (1 - alpha) * stats["avg_frame_size_bytes"]
+                    )
+
+        except Exception as e:
+            logger.debug(f"Encoder probe error: {e}")
+
+        return Gst.PadProbeReturn.OK
+
+    def _remove_encoder_probes(self):
+        """Remove all installed encoder probes."""
+        for pad, probe_id in self._encoder_probe_ids:
+            try:
+                pad.remove_probe(probe_id)
+            except Exception:
+                pass
+        self._encoder_probe_ids.clear()
 
     def _on_webrtc_appsink_sample(self, appsink):
         """
@@ -900,6 +1066,7 @@ class GStreamerService:
                 "bitrate": self.video_config.h264_bitrate,
                 "quality": self.video_config.quality,
                 "gop_size": self.video_config.gop_size,
+                "opencv_enabled": self._is_opencv_enabled(),  # For HW decoder optimization
             }
 
             # Validate config
@@ -1065,6 +1232,7 @@ class GStreamerService:
             # ══════════════════════════════════════════════════════════════
 
             # Add encoder elements
+            encoder_element = None
             for elem_config in pipeline_config["elements"]:
                 # Skip decoder if OpenCV is enabled and we already decoded MJPEG
                 if opencv_enabled and elem_config["name"] == "decoder" and is_jpeg_source:
@@ -1088,6 +1256,14 @@ class GStreamerService:
 
                 pipeline.add(element)
                 elements_list.append(element)
+
+                # Track encoder element for stats probes
+                if elem_config["name"] == "encoder":
+                    encoder_element = element
+
+            # Install encoder stats probes
+            if encoder_element:
+                self._install_encoder_probes(encoder_element)
 
             # Add RTP payloader
             rtppay = Gst.ElementFactory.make(pipeline_config["rtp_payloader"], "rtppay")
@@ -1479,6 +1655,20 @@ class GStreamerService:
             self.stats["current_fps"] = 0
             self.stats["current_bitrate"] = 0
 
+            # Reset encoder stats
+            self.encoder_stats = {
+                "frames_encoded": 0,
+                "frames_dropped_pre_encoder": 0,
+                "frames_dropped_post_encoder": 0,
+                "total_encode_time_ms": 0,
+                "avg_encode_time_ms": 0.0,
+                "max_encode_time_ms": 0.0,
+                "last_frame_size_bytes": 0,
+                "keyframes_sent": 0,
+                "pframes_sent": 0,
+                "avg_frame_size_bytes": 0,
+            }
+
         ret = self.pipeline.set_state(Gst.State.PLAYING)
 
         if ret == Gst.StateChangeReturn.FAILURE:
@@ -1612,6 +1802,9 @@ class GStreamerService:
 
         # Stop OpenCV processing thread if running
         self._stop_opencv_processing_thread()
+
+        # Remove encoder stats probes before stopping pipeline
+        self._remove_encoder_probes()
 
         if self.pipeline:
             self.pipeline.set_state(Gst.State.NULL)
@@ -1874,6 +2067,7 @@ class GStreamerService:
                     self.webrtc_service.global_stats.get("active_peers", 0) if self.webrtc_service else 0
                 ),
             },
+            "encoder_stats": self.encoder_stats.copy(),
         }
 
     def _format_uptime(self, seconds: int) -> str:

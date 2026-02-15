@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { PeerSelector } from '../../PeerSelector/PeerSelector'
-import Toggle from '../../Toggle/Toggle'
 import {
   RANGES,
   VIDEO_DEFAULTS,
@@ -93,16 +92,6 @@ const NetworkSettingsCard = ({
           {config.mode === 'rtsp' && t('views.video.modeRtspDesc')}
           {config.mode === 'webrtc' && t('views.video.modeWebrtcDesc')}
         </small>
-      </div>
-
-      {/* Auto-start Toggle */}
-      <div className={`form-group ${streaming ? 'field-disabled' : ''}`}>
-        <Toggle
-          checked={config.auto_start || false}
-          onChange={(e) => updateConfig((prev) => ({ ...prev, auto_start: e.target.checked }))}
-          disabled={streaming}
-          label={t('views.video.autoStart')}
-        />
       </div>
 
       {/* UDP Unicast Settings */}

@@ -334,7 +334,13 @@ class WebRTCService:
             "avg_rtt_ms": 0,
             "avg_bitrate_kbps": 0,
             "adaptation_events": 0,
+            "packet_loss_percent": 0.0,
+            "current_gop_interval": 2,
         }
+
+        # Dynamic GOP adaptation state
+        self._last_keyframe_time: float = 0
+        self._adaptive_gop_interval: float = 2.0  # seconds between keyframes
 
         if AIORTC_AVAILABLE:
             print("✅ WebRTC service initialized (aiortc available)")
@@ -358,19 +364,59 @@ class WebRTCService:
         Push H264 encoded data from GStreamer into the shared queue.
         Called from GStreamer thread — must be thread-safe.
         The H264PassthroughEncoder reads from this queue.
+
+        Implements intelligent frame skipping:
+        - IDR frames (NAL type 5) are always prioritized
+        - P/B frames may be dropped during congestion
         """
         if not hasattr(self, "_h264_queue") or self._h264_queue is None:
             return
         try:
-            # Drop oldest if full
-            while self._h264_queue.full():
-                try:
-                    self._h264_queue.get_nowait()
-                except thread_queue.Empty:
-                    break
+            # Check if this is an IDR frame (keyframe) - NAL type 5
+            is_idr = self._is_idr_frame(h264_data)
+
+            if self._h264_queue.full():
+                if is_idr:
+                    # IDR frame: always make room by dropping oldest
+                    try:
+                        self._h264_queue.get_nowait()
+                    except thread_queue.Empty:
+                        pass
+                else:
+                    # P/B frame during congestion: drop it
+                    return
+
             self._h264_queue.put_nowait(h264_data)
         except (thread_queue.Full, Exception):
             pass
+
+    @staticmethod
+    def _is_idr_frame(h264_data: bytes) -> bool:
+        """
+        Check if H264 access unit contains an IDR frame.
+        IDR NAL unit type = 5 (masked from byte after start code).
+        Also considers SPS (7) and PPS (8) as high priority.
+        """
+        if not h264_data or len(h264_data) < 5:
+            return False
+
+        # Find NAL start codes and check types
+        i = 0
+        while i < len(h264_data) - 4:
+            # Look for start code (0x000001 or 0x00000001)
+            if h264_data[i : i + 3] == b"\x00\x00\x01":
+                nal_type = h264_data[i + 3] & 0x1F
+                if nal_type in (5, 7, 8):  # IDR, SPS, PPS
+                    return True
+                i += 4
+            elif h264_data[i : i + 4] == b"\x00\x00\x00\x01":
+                nal_type = h264_data[i + 4] & 0x1F
+                if nal_type in (5, 7, 8):  # IDR, SPS, PPS
+                    return True
+                i += 5
+            else:
+                i += 1
+        return False
 
     # ── Lifecycle ────────────────────────────────────────────────────────────
 
@@ -797,10 +843,12 @@ class WebRTCService:
             return
         total_rtt = sum(p.stats.get("rtt_ms", 0) for p in connected if p.stats)
         total_br = sum(p.stats.get("bitrate_kbps", 0) for p in connected if p.stats)
+        total_loss = sum(p.stats.get("packet_loss_percent", 0) for p in connected if p.stats)
         count = len([p for p in connected if p.stats])
         if count > 0:
             self.global_stats["avg_rtt_ms"] = round(total_rtt / count, 1)
             self.global_stats["avg_bitrate_kbps"] = round(total_br / count)
+            self.global_stats["packet_loss_percent"] = round(total_loss / count, 2)
             self.global_stats["active_peers"] = len(connected)
 
     def _add_log(self, level, message):
@@ -817,11 +865,65 @@ class WebRTCService:
         def _monitor():
             while not self._stats_stop.is_set():
                 self._cleanup_stale_peers()
+                self._recalculate_global_stats()
+                self._adapt_gop_dynamically()
                 self._broadcast_status()
                 self._stats_stop.wait(2.0)
 
         self._stats_thread = threading.Thread(target=_monitor, daemon=True, name="WebRTCStats")
         self._stats_thread.start()
+
+    def _adapt_gop_dynamically(self):
+        """
+        Dynamically adjust GOP (keyframe interval) based on network conditions.
+
+        Strategy:
+        - High RTT (>200ms) or packet loss (>5%): Shorter GOP (more frequent keyframes)
+        - Medium conditions: Normal GOP
+        - Stable conditions: Longer GOP (better compression)
+        """
+        if not self.adaptive_config.get("adaptation_enabled", True):
+            return
+
+        rtt_ms = self.global_stats.get("avg_rtt_ms", 0)
+        packet_loss = self.global_stats.get("packet_loss_percent", 0.0)
+
+        # Determine optimal GOP interval
+        if rtt_ms > 300 or packet_loss > 10:
+            # Very bad conditions: keyframe every 0.5s
+            target_gop = 0.5
+        elif rtt_ms > 200 or packet_loss > 5:
+            # Bad conditions: keyframe every 1s
+            target_gop = 1.0
+        elif rtt_ms > 100 or packet_loss > 2:
+            # Medium conditions: keyframe every 2s
+            target_gop = 2.0
+        else:
+            # Good conditions: keyframe every 3s (better compression)
+            target_gop = 3.0
+
+        # Smooth transition (don't change too abruptly)
+        old_gop = self._adaptive_gop_interval
+        self._adaptive_gop_interval = 0.7 * old_gop + 0.3 * target_gop
+
+        # Update stats
+        self.global_stats["current_gop_interval"] = round(self._adaptive_gop_interval, 2)
+
+        # Force keyframe if interval has elapsed
+        now = time.time()
+        if now - self._last_keyframe_time >= self._adaptive_gop_interval:
+            if self._gstreamer_service and self.global_stats.get("active_peers", 0) > 0:
+                self._gstreamer_service.force_keyframe()
+                self._last_keyframe_time = now
+
+                # Log significant changes
+                if abs(old_gop - target_gop) > 0.5:
+                    self._add_log(
+                        "info",
+                        f"GOP adapted: {old_gop:.1f}s → {target_gop:.1f}s "
+                        f"(RTT={rtt_ms}ms, loss={packet_loss:.1f}%)",
+                    )
+                    self.global_stats["adaptation_events"] += 1
 
     def _stop_stats_monitor(self):
         self._stats_stop.set()
