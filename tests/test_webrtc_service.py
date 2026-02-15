@@ -472,3 +472,229 @@ class TestStreamingConfigWebRTC:
 
         config = StreamingConfig(mode="invalid")
         assert config.mode == "udp"
+
+
+class TestH264PassthroughEncoder:
+    """Test H264 Passthrough Encoder"""
+
+    def test_encoder_initialization(self):
+        """Test H264PassthroughEncoder initialization"""
+        from app.services.webrtc_service import H264PassthroughEncoder
+        import queue
+
+        h264_queue = queue.Queue()
+        encoder = H264PassthroughEncoder(h264_queue, framerate=30)
+
+        assert encoder._h264_queue is h264_queue
+        assert encoder._framerate == 30
+        assert encoder._frame_count == 0
+        assert encoder.buffer_data == b""
+        assert encoder.buffer_pts is None
+
+    def test_split_bitstream_single_nal(self):
+        """Test splitting H264 bitstream with single NAL unit"""
+        from app.services.webrtc_service import H264PassthroughEncoder
+
+        # Create a simple H264 bitstream with one NAL
+        bitstream = b"\x00\x00\x01\x67\x42\x00\x1e\x8c"
+        nals = list(H264PassthroughEncoder._split_bitstream(bitstream))
+
+        assert len(nals) == 1
+        assert nals[0] == b"\x67\x42\x00\x1e\x8c"
+
+    def test_split_bitstream_multiple_nals(self):
+        """Test splitting H264 bitstream with multiple NAL units"""
+        from app.services.webrtc_service import H264PassthroughEncoder
+
+        # Create bitstream with two NALs
+        bitstream = b"\x00\x00\x01\x67\x42\x00\x1e\x00\x00\x01\x68\xce\x3c\x80"
+        nals = list(H264PassthroughEncoder._split_bitstream(bitstream))
+
+        assert len(nals) == 2
+        assert nals[0] == b"\x67\x42\x00\x1e"
+        assert nals[1] == b"\x68\xce\x3c\x80"
+
+    def test_split_bitstream_with_extra_zero(self):
+        """Test splitting bitstream with extra zero byte"""
+        from app.services.webrtc_service import H264PassthroughEncoder
+
+        # Bitstream with 0x00000001 start code
+        bitstream = b"\x00\x00\x00\x01\x67\x42\x00\x00\x01\x68"
+        nals = list(H264PassthroughEncoder._split_bitstream(bitstream))
+
+        assert len(nals) >= 1
+
+    def test_packetize_fu_a_large_nal(self):
+        """Test FU-A fragmentation of large NAL unit"""
+        from app.services.webrtc_service import H264PassthroughEncoder
+
+        # Create a large NAL that needs fragmentation (> 1200 bytes)
+        large_nal = b"\x65" + b"\x00" * 1500
+        packets = H264PassthroughEncoder._packetize_fu_a(large_nal)
+
+        assert len(packets) > 1
+        assert all(len(p) <= 1200 for p in packets)
+
+    def test_packetize_fu_a_header_structure(self):
+        """Test FU-A packet header structure"""
+        from app.services.webrtc_service import H264PassthroughEncoder
+
+        large_nal = b"\x65" + b"\x00" * 1500
+        packets = H264PassthroughEncoder._packetize_fu_a(large_nal)
+
+        # First packet should have START bit set (0x80)
+        assert packets[0][1] & 0x80 == 0x80
+
+        # Middle packets should not have START or END bits
+        if len(packets) > 2:
+            assert packets[1][1] & 0x80 == 0
+            assert packets[1][1] & 0x40 == 0
+
+        # Last packet should have END bit set (0x40)
+        assert packets[-1][1] & 0x40 == 0x40
+
+    def test_packetize_small_nal(self):
+        """Test packetizing small NAL units"""
+        from app.services.webrtc_service import H264PassthroughEncoder
+
+        small_nal = b"\x67\x42\x00\x1e"
+        nals = [small_nal]
+        packets = H264PassthroughEncoder._packetize(nals)
+
+        assert len(packets) >= 1
+
+    def test_encode_with_empty_queue(self):
+        """Test encoding when queue is empty"""
+        from app.services.webrtc_service import H264PassthroughEncoder
+        import queue
+
+        h264_queue = queue.Queue()
+        encoder = H264PassthroughEncoder(h264_queue, framerate=30)
+
+        frame = MagicMock()
+        frame.pts = 1000
+        frame.time_base = MagicMock()
+
+        packets, timestamp = encoder.encode(frame)
+
+        assert packets == []
+        assert timestamp == 1000
+
+    def test_encode_with_h264_data(self):
+        """Test encoding with H264 data in queue"""
+        from app.services.webrtc_service import H264PassthroughEncoder
+        import queue
+
+        h264_queue = queue.Queue()
+        h264_data = b"\x00\x00\x01\x67\x42\x00\x1e"
+        h264_queue.put(h264_data)
+
+        encoder = H264PassthroughEncoder(h264_queue, framerate=30)
+
+        frame = MagicMock()
+        frame.pts = 2000
+        frame.time_base = MagicMock()
+
+        packets, timestamp = encoder.encode(frame)
+
+        assert isinstance(packets, list)
+        assert timestamp > 0
+
+    def test_encode_increments_frame_count(self):
+        """Test that encode increments frame count"""
+        from app.services.webrtc_service import H264PassthroughEncoder
+        import queue
+
+        h264_queue = queue.Queue()
+        encoder = H264PassthroughEncoder(h264_queue, framerate=30)
+
+        frame = MagicMock()
+        frame.pts = 1000
+
+        initial_count = encoder._frame_count
+        encoder.encode(frame)
+
+        assert encoder._frame_count == initial_count + 1
+
+
+class TestWebRTCAdditionalFeatures:
+    """Test additional WebRTC service features"""
+
+    def test_get_optimization_config(self):
+        """Test getting 4G optimization configuration"""
+        from app.services.webrtc_service import WebRTCService
+
+        service = WebRTCService()
+        config = service.get_4g_optimized_config()
+
+        # Check that config is returned
+        assert config is not None
+        assert isinstance(config, dict)
+
+    def test_set_optimization_config(self):
+        """Test 4G optimization configuration exists"""
+        from app.services.webrtc_service import WebRTCService
+
+        service = WebRTCService()
+        config = service.get_4g_optimized_config()
+
+        # Just verify the method exists and returns data
+        assert config is not None
+
+    def test_peer_connection_state_tracking(self):
+        """Test tracking peer connection state"""
+        from app.services.webrtc_service import WebRTCService
+
+        service = WebRTCService()
+        service.activate()
+        peer_id = "test_peer"
+
+        service.create_offer(peer_id=peer_id)
+
+        assert peer_id in service.peers
+        peer = service.peers[peer_id]
+        assert hasattr(peer, "state")
+
+    def test_get_stats_with_no_peers(self):
+        """Test getting stats when there are no peers"""
+        from app.services.webrtc_service import WebRTCService
+
+        service = WebRTCService()
+        stats = service.get_status()
+
+        # Check that status is returned
+        assert stats is not None
+        assert isinstance(stats, dict)
+
+    def test_get_stats_with_peers(self):
+        """Test getting stats with active peers"""
+        from app.services.webrtc_service import WebRTCService
+
+        service = WebRTCService()
+        service.activate()
+        service.create_offer(peer_id="p1")
+
+        stats = service.get_status()
+
+        # Verify status returned
+        assert stats is not None
+        assert "peers" in stats
+
+    def test_cleanup_stale_peers(self):
+        """Test cleanup of stale peer connections"""
+        from app.services.webrtc_service import WebRTCService
+        import time
+
+        service = WebRTCService()
+        service.activate()
+        service.create_offer(peer_id="stale_peer")
+
+        # Simulate stale connection (modify last_activity)
+        if "stale_peer" in service.peers:
+            service.peers["stale_peer"].last_activity = time.time() - 3700  # > 1 hour
+
+        # Trigger cleanup
+        service._cleanup_stale_peers()
+
+        # Peer should be removed
+        assert "stale_peer" not in service.peers

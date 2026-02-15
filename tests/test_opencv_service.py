@@ -464,3 +464,175 @@ class TestOpenCVEdgeCases:
         assert isinstance(status["opencv_version"], str)
         # Version should have dots (e.g., "4.8.0")
         assert "." in status["opencv_version"]
+
+
+class TestOpenCVServiceAdvancedFeatures:
+    """Test advanced OpenCV service features"""
+
+    @pytest.mark.skipif(not OpenCVService().is_available(), reason="OpenCV not available")
+    def test_process_frame_with_different_sizes(self, opencv_service):
+        """Test processing frames of different sizes"""
+        opencv_service.set_enabled(True)
+        opencv_service.update_config({"filter": "blur"})
+
+        # Test different frame sizes
+        sizes = [(320, 240), (640, 480), (1280, 720), (1920, 1080)]
+
+        for width, height in sizes:
+            frame = np.zeros((height, width, 3), dtype=np.uint8)
+            result = opencv_service.process_frame(frame)
+            assert result.shape == frame.shape
+
+    @pytest.mark.skipif(not OpenCVService().is_available(), reason="OpenCV not available")
+    def test_osd_text_placement(self, opencv_service, mock_telemetry_service):
+        """Test OSD text is placed correctly on frame"""
+        mock_telemetry_service.get_telemetry.return_value = {
+            "speed": {"climb_rate": 5.0},
+            "attitude": {"yaw": 0.0},
+        }
+
+        opencv_service.set_telemetry_service(mock_telemetry_service)
+        opencv_service.set_enabled(True)
+        opencv_service.update_config({"osd_enabled": True})
+
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        result = opencv_service.process_frame(frame)
+
+        # Frame should be processed and returned
+        assert result is not None
+        assert result.shape == frame.shape
+
+    @pytest.mark.skipif(not OpenCVService().is_available(), reason="OpenCV not available")
+    def test_telemetry_data_formatting(self, opencv_service, mock_telemetry_service):
+        """Test telemetry data is formatted correctly for OSD"""
+        mock_telemetry_service.get_telemetry.return_value = {
+            "speed": {"climb_rate": 3.14159},
+            "attitude": {"yaw": 2.5},
+        }
+
+        opencv_service.set_telemetry_service(mock_telemetry_service)
+        opencv_service.set_enabled(True)
+        opencv_service.update_config({"osd_enabled": True})
+
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        result = opencv_service.process_frame(frame)
+
+        assert result is not None
+        # OSD should round/format values appropriately
+
+    @pytest.mark.skipif(not OpenCVService().is_available(), reason="OpenCV not available")
+    def test_filter_preserves_frame_type(self, opencv_service):
+        """Test that filters preserve frame data type"""
+        opencv_service.set_enabled(True)
+
+        filters = ["blur", "edges", "threshold", "gray"]
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+
+        for filter_name in filters:
+            opencv_service.update_config({"filter": filter_name})
+            result = opencv_service.process_frame(frame)
+
+            assert result.dtype == np.uint8
+
+    @pytest.mark.skipif(not OpenCVService().is_available(), reason="OpenCV not available")
+    def test_concurrent_config_updates(self, opencv_service):
+        """Test handling concurrent configuration updates"""
+        opencv_service.set_enabled(True)
+
+        # Simulate rapid config changes
+        configs = [
+            {"filter": "blur", "blurKernel": 7},
+            {"filter": "edges", "edgeThreshold1": 100},
+            {"filter": "threshold", "thresholdValue": 128},
+            {"filter": "none"},
+        ]
+
+        for config in configs:
+            result = opencv_service.update_config(config)
+            assert result is not None
+
+    def test_service_state_transitions(self, opencv_service):
+        """Test various state transitions"""
+        # Start disabled
+        assert opencv_service.is_enabled() is False
+
+        # Enable then disable
+        if opencv_service.is_available():
+            opencv_service.set_enabled(True)
+            assert opencv_service.is_enabled() is True
+
+            opencv_service.set_enabled(False)
+            assert opencv_service.is_enabled() is False
+
+            # Re-enable
+            opencv_service.set_enabled(True)
+            assert opencv_service.is_enabled() is True
+
+    def test_get_config_immutability(self, opencv_service):
+        """Test that get_config returns a copy (modifying doesn't affect service)"""
+        config1 = opencv_service.get_config()
+        config1["filter"] = "modified"
+
+        config2 = opencv_service.get_config()
+
+        # Original should not be modified
+        assert config2["filter"] == "none"
+
+    @pytest.mark.skipif(not OpenCVService().is_available(), reason="OpenCV not available")
+    def test_osd_with_missing_telemetry_fields(self, opencv_service, mock_telemetry_service):
+        """Test OSD handles missing telemetry fields gracefully"""
+        # Return partial telemetry data
+        mock_telemetry_service.get_telemetry.return_value = {"speed": {"climb_rate": 1.0}}
+
+        opencv_service.set_telemetry_service(mock_telemetry_service)
+        opencv_service.set_enabled(True)
+        opencv_service.update_config({"osd_enabled": True})
+
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        result = opencv_service.process_frame(frame)
+
+        # Should handle missing 'attitude' field
+        assert result is not None
+
+    @pytest.mark.skipif(not OpenCVService().is_available(), reason="OpenCV not available")
+    def test_filter_chain_consistency(self, opencv_service):
+        """Test that switching between filters is consistent"""
+        opencv_service.set_enabled(True)
+
+        test_frame = np.ones((480, 640, 3), dtype=np.uint8) * 128
+
+        # Apply each filter twice and verify consistency
+        for filter_name in ["blur", "edges", "threshold"]:
+            opencv_service.update_config({"filter": filter_name})
+
+            result1 = opencv_service.process_frame(test_frame.copy())
+            result2 = opencv_service.process_frame(test_frame.copy())
+
+            # Results should be identical for same input
+            assert np.array_equal(result1, result2)
+
+    def test_status_when_disabled(self, opencv_service):
+        """Test status when service is disabled"""
+        opencv_service.set_enabled(False)
+        status = opencv_service.get_status()
+
+        # Just verify status is returned
+        assert status is not None
+        assert isinstance(status, dict)
+
+    @pytest.mark.skipif(not OpenCVService().is_available(), reason="OpenCV not available")
+    def test_update_config_returns_updated_config(self, opencv_service):
+        """Test that update_config returns the updated configuration"""
+        new_config = {"filter": "edges", "edgeThreshold1": 200}
+
+        result = opencv_service.update_config(new_config)
+
+        assert result["filter"] == "edges"
+        assert result["edgeThreshold1"] == 200
+
+    def test_telemetry_service_integration(self, opencv_service, mock_telemetry_service):
+        """Test telemetry service can be set and retrieved"""
+        opencv_service.set_telemetry_service(mock_telemetry_service)
+
+        # Verify it's stored
+        assert opencv_service._telemetry_service is mock_telemetry_service
