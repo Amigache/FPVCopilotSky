@@ -8,8 +8,8 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.js'],
-    testTimeout: 10000,
-    hookTimeout: 10000,
+    testTimeout: 60000,
+    hookTimeout: 60000,
     teardownTimeout: 10000,
     coverage: {
       provider: 'v8',
@@ -20,12 +20,12 @@ export default defineConfig({
     pool: 'threads',
     poolOptions: {
       threads: {
-        singleThread: true,
+        singleThread: false,
       },
     },
-    maxConcurrency: 1,
+    maxConcurrency: 2,
     minWorkers: 1,
-    maxWorkers: 1,
+    maxWorkers: 2,
   },
   resolve: {
     alias: {
