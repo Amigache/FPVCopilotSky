@@ -24,6 +24,10 @@ const StatusView = () => {
   const [autoStartOnArm, setAutoStartOnArm] = useState(false)
   const [savingPrefs, setSavingPrefs] = useState(false)
 
+  // Extras/Experimental state
+  const [experimentalTabEnabled, setExperimentalTabEnabled] = useState(true)
+  const [savingExtras, setSavingExtras] = useState(false)
+
   // Track previous armed state for edge detection
   const [prevArmed, setPrevArmed] = useState(false)
 
@@ -179,6 +183,9 @@ const StatusView = () => {
         if (data.flight_session) {
           setAutoStartOnArm(data.flight_session.auto_start_on_arm || false)
         }
+        if (data.extras) {
+          setExperimentalTabEnabled(data.extras.experimental_tab_enabled !== false)
+        }
       }
     } catch (error) {
       console.error('Error loading flight preferences:', error)
@@ -214,6 +221,54 @@ const StatusView = () => {
       showToast(error.message, 'error')
     }
     setSavingPrefs(false)
+  }
+
+  const handleToggleExperimentalTab = async (enabled) => {
+    setSavingExtras(true)
+    setExperimentalTabEnabled(enabled)
+
+    try {
+      // If disabling, first reset experimental settings
+      if (!enabled) {
+        // Reset OpenCV to disabled
+        await api.post('/api/experimental/toggle', { enabled: false })
+
+        // Reset OpenCV config to defaults
+        await api.post('/api/experimental/config', {
+          filter: 'none',
+          osd_enabled: false,
+          edgeThreshold1: 100,
+          edgeThreshold2: 200,
+          blurKernel: 15,
+          thresholdValue: 127,
+        })
+      }
+
+      // Save experimental tab preference
+      const response = await api.post('/api/system/preferences', {
+        extras: {
+          experimental_tab_enabled: enabled,
+        },
+      })
+
+      if (response.ok) {
+        showToast(
+          enabled
+            ? t('status.extras.experimentalEnabled')
+            : t('status.extras.experimentalDisabled'),
+          'success'
+        )
+        // Notify App.jsx to update tab visibility reactively
+        window.dispatchEvent(new CustomEvent('experimentalTabToggled', { detail: { enabled } }))
+      } else {
+        setExperimentalTabEnabled(!enabled)
+        showToast(t('common.saveFailed', 'Failed to save preferences'), 'error')
+      }
+    } catch (error) {
+      setExperimentalTabEnabled(!enabled)
+      showToast(error.message, 'error')
+    }
+    setSavingExtras(false)
   }
 
   const handleStartFlightSession = async () => {
@@ -488,11 +543,11 @@ const StatusView = () => {
           <div className="info-section">
             <h3 className="subsection-title">{t('status.backend.version')}</h3>
             <InfoRow
-              label="WebUI Version"
+              label={t('status.frontend.webuiVersion')}
               value={
                 frontend?.frontend_version?.status === 'ok'
                   ? `v${frontend?.frontend_version?.version}`
-                  : 'unknown'
+                  : t('common.unknown')
               }
               status={frontend?.frontend_version?.status}
             />
@@ -501,7 +556,7 @@ const StatusView = () => {
               value={
                 frontend?.node_version?.status === 'ok'
                   ? `v${frontend?.node_version?.version}`
-                  : frontend?.node_version?.version || 'unknown'
+                  : frontend?.node_version?.version || t('common.unknown')
               }
               status={frontend?.node_version?.status}
             />
@@ -513,8 +568,8 @@ const StatusView = () => {
               label={t('status.frontend.npmDeps')}
               value={
                 frontend?.npm_deps?.status === 'ok'
-                  ? 'Installed'
-                  : frontend?.npm_deps?.message || 'Checking...'
+                  ? t('common.installed')
+                  : frontend?.npm_deps?.message || t('common.checking')
               }
               status={frontend?.npm_deps?.status}
             />
@@ -542,21 +597,29 @@ const StatusView = () => {
           <div className="info-section">
             <h3 className="subsection-title">{t('status.permissions.username')}</h3>
             <div className="info-row">
-              <span className="info-label">User:</span>
-              <span className="info-value">{permissions?.permissions?.username || 'N/A'}</span>
+              <span className="info-label">{t('status.permissions.username')}:</span>
+              <span className="info-value">
+                {permissions?.permissions?.username || t('common.notAvailable')}
+              </span>
             </div>
             <div className="info-row">
-              <span className="info-label">UID:</span>
-              <span className="info-value">{permissions?.permissions?.uid || 'N/A'}</span>
+              <span className="info-label">{t('status.permissions.uid')}:</span>
+              <span className="info-value">
+                {permissions?.permissions?.uid || t('common.notAvailable')}
+              </span>
             </div>
             <div className="info-row">
-              <span className="info-label">GID:</span>
-              <span className="info-value">{permissions?.permissions?.gid || 'N/A'}</span>
+              <span className="info-label">{t('status.permissions.gid')}:</span>
+              <span className="info-value">
+                {permissions?.permissions?.gid || t('common.notAvailable')}
+              </span>
             </div>
             <div className="info-row">
               <span className="info-label">{t('status.permissions.isRoot')}:</span>
               <span className="info-value">
-                {permissions?.permissions?.is_root ? '✅ Yes' : '❌ No'}
+                {permissions?.permissions?.is_root
+                  ? `✅ ${t('common.yes')}`
+                  : `❌ ${t('common.no')}`}
               </span>
             </div>
           </div>
@@ -590,7 +653,7 @@ const StatusView = () => {
 
           {permissions?.permissions?.sudoers && permissions.permissions.sudoers.length > 0 && (
             <div className="info-section">
-              <h3 className="subsection-title">Sudo Permissions</h3>
+              <h3 className="subsection-title">{t('status.permissions.sudoPermissions')}</h3>
               <div className="sudoers-list">
                 {permissions.permissions.sudoers.map((item, idx) => (
                   <div key={idx} className="sudoers-item">
@@ -656,6 +719,28 @@ const StatusView = () => {
                 </div>
               )
             )}
+          </div>
+        </div>
+
+        {/* Extras */}
+        <div className="card">
+          <h2>⚙️ {t('status.sections.extras')}</h2>
+
+          <div className="info-section">
+            <p className="extras-info">{t('status.extras.description')}</p>
+
+            {/* Experimental tab toggle */}
+            <div className="preference-item">
+              <Toggle
+                checked={experimentalTabEnabled}
+                onChange={(e) => handleToggleExperimentalTab(e.target.checked)}
+                disabled={savingExtras}
+                label={t('status.extras.experimentalTabLabel')}
+              />
+              <p className="preference-description">
+                {t('status.extras.experimentalTabDescription')}
+              </p>
+            </div>
           </div>
         </div>
 

@@ -43,6 +43,7 @@ from services.video_stream_info import (  # noqa: E402
     init_video_stream_info_service,
     get_video_stream_info_service,
 )
+from services.opencv_service import init_opencv_service  # noqa: E402
 from api.routes import mavlink, system  # noqa: E402
 from api.routes import router as router_routes  # noqa: E402
 from api.routes import video as video_routes  # noqa: E402
@@ -52,6 +53,7 @@ from api.routes import vpn as vpn_routes  # noqa: E402
 from api.routes import modem as modem_routes  # noqa: E402
 from api.routes import status as status_routes  # noqa: E402
 from api.routes import network_interface as network_interface_routes  # noqa: E402
+from api.routes import experimental as experimental_routes  # noqa: E402
 
 app = FastAPI(title="FPV Copilot Sky", version="1.0.0")
 
@@ -82,6 +84,7 @@ app.include_router(modem_routes.router)
 app.include_router(status_routes.router)
 app.include_router(network_interface_routes.router)
 app.include_router(webrtc_routes.router)
+app.include_router(experimental_routes.router)
 
 
 # Global WebSocket endpoint
@@ -370,6 +373,18 @@ async def periodic_stats_broadcast():
                 except Exception as e:
                     logger.debug(f"Modem broadcast error: {e}")
 
+            # OpenCV status every 10 seconds
+            if counter % 10 == 0:
+                try:
+                    from services.opencv_service import get_opencv_service
+
+                    opencv_service = get_opencv_service()
+                    if opencv_service:
+                        status = opencv_service.get_status()
+                        await websocket_manager.broadcast("experimental", status)
+                except Exception as e:
+                    logger.debug(f"OpenCV status broadcast error: {e}")
+
         except Exception as e:
             logger.error(f"Error in periodic broadcast: {e}")
             pass
@@ -629,6 +644,15 @@ async def startup_event():
     # Initialize video stream information service (for MAVLink VIDEO_STREAM_INFORMATION)
     video_stream_info_service = init_video_stream_info_service(mavlink_service, video_service)
     video_stream_info_service.start()
+
+    # Initialize OpenCV service for experimental video processing
+    opencv_service = init_opencv_service()
+    experimental_routes.set_opencv_service(opencv_service)
+    # Connect OpenCV service to video streaming
+    video_service.set_opencv_service(opencv_service)
+    # Connect OpenCV service to telemetry for OSD
+    opencv_service.set_telemetry_service(mavlink_service)
+    print("✅ OpenCV service initialized and connected to video stream and telemetry")
 
     # Auto-connect to VPN not needed - handled by VPN provider/routes on demand
 

@@ -286,12 +286,6 @@ const WebRTCViewerCard = forwardRef(
       >
         <div className="webrtc-viewer-header">
           <h2>{t('views.video.webrtcViewer')}</h2>
-          <div className="webrtc-state">
-            {connectionState === 'disconnected' && t('views.video.webrtcState.disconnected')}
-            {connectionState === 'connecting' && t('views.video.webrtcState.connecting')}
-            {connectionState === 'connected' && t('views.video.webrtcState.connected')}
-            {connectionState === 'failed' && t('views.video.webrtcState.failed')}
-          </div>
         </div>
 
         {/* Video Player */}
@@ -304,27 +298,31 @@ const WebRTCViewerCard = forwardRef(
             className="webrtc-video"
             data-testid="webrtc-video"
           />
-          {connectionState !== 'connected' && (
-            <div className="webrtc-video-overlay">
-              {connectionState === 'disconnected' && (
-                <div className="webrtc-no-signal">
-                  <span>{t('views.video.webrtcNoSignal')}</span>
-                  <button className="btn btn-primary" onClick={connectWebRTC}>
-                    {t('views.video.webrtcConnect')}
-                  </button>
-                </div>
-              )}
-              {connectionState === 'connecting' && (
-                <div className="webrtc-connecting">
-                  <div className="spinner-small" />
-                  <span>{t('views.video.webrtcConnecting')}</span>
-                </div>
-              )}
-              {connectionState === 'failed' && (
-                <span className="webrtc-error">{t('views.video.webrtcFailed')}</span>
-              )}
-            </div>
-          )}
+          {/* Connection status overlay */}
+          <div className="webrtc-video-overlay">
+            {connectionState === 'disconnected' && (
+              <div className="webrtc-status-message">
+                <span className="status-text">{t('views.video.webrtcState.disconnected')}</span>
+                <button className="btn btn-primary" onClick={connectWebRTC}>
+                  {t('views.video.webrtcConnect')}
+                </button>
+              </div>
+            )}
+            {connectionState === 'connecting' && (
+              <div className="webrtc-status-message">
+                <div className="spinner-small" />
+                <span className="status-text">{t('views.video.webrtcState.connecting')}</span>
+              </div>
+            )}
+            {connectionState === 'failed' && (
+              <div className="webrtc-status-message">
+                <span className="status-text error">{t('views.video.webrtcFailed')}</span>
+                <button className="btn btn-primary" onClick={connectWebRTC}>
+                  {t('views.video.webrtcRetry')}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Fullscreen button — full width at bottom */}

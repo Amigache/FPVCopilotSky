@@ -5,10 +5,24 @@ Optimized for ultra-low latency FPV streaming
 Uses provider-based architecture for codec-agnostic encoding
 """
 
+import logging
 import os
 import threading
 import asyncio
+import queue
+import time
 from typing import Optional, Dict, Any
+
+logger = logging.getLogger(__name__)
+
+# Try to import numpy (required for OpenCV frame processing)
+try:
+    import numpy as np
+
+    NUMPY_AVAILABLE = True
+except ImportError:
+    NUMPY_AVAILABLE = False
+    np = None
 
 # Check if GStreamer is available
 try:
@@ -23,12 +37,12 @@ except (ImportError, ValueError):
     Gst = None
     GLib = None
 
-from .video_config import (
+from .video_config import (  # noqa: E402
     VideoConfig,
     StreamingConfig,
     auto_detect_camera,
 )
-from .rtsp_server import RTSPServer
+from .rtsp_server import RTSPServer  # noqa: E402
 
 
 class GStreamerService:
@@ -69,6 +83,18 @@ class GStreamerService:
         self._rtsp_monitor_thread: Optional[threading.Thread] = None
         self._rtsp_monitor_running: bool = False
 
+        # OpenCV service for video processing
+        self._opencv_service = None
+        self._opencv_thread = None
+        self._opencv_running = False
+        self._opencv_queue = None
+        self._opencv_appsrc = None
+        self._opencv_frames_processed = 0
+        self._opencv_frames_dropped = 0
+
+        # WebRTC-OpenCV integration
+        self._webrtc_opencv_appsink_idx = -1
+
         # WebRTC integration
         self.webrtc_adapter = None
 
@@ -98,9 +124,305 @@ class GStreamerService:
         # Initialize GStreamer if available
         if GSTREAMER_AVAILABLE:
             Gst.init(None)
-            print("✅ GStreamer initialized")
-        else:
-            print("⚠️ GStreamer not available - video streaming disabled")
+
+    def set_opencv_service(self, opencv_service):
+        """Set OpenCV service for video processing"""
+        self._opencv_service = opencv_service
+        # If RTSP server already exists, connect it
+        if self.rtsp_server:
+            self.rtsp_server.set_opencv_service(opencv_service)
+        print("✅ OpenCV service connected to video stream service")
+
+    def _is_opencv_enabled(self) -> bool:
+        """Check if OpenCV processing is enabled and configured (filter or OSD)"""
+        if not self._opencv_service:
+            return False
+        if not self._opencv_service.is_available():
+            # OpenCV not installed - silently return False
+            return False
+        if not self._opencv_service.is_enabled():
+            return False
+        config = self._opencv_service.get_config()
+        filter_type = config.get("filter", "none")
+        osd_enabled = config.get("osd_enabled", False)
+        return filter_type != "none" or osd_enabled
+
+    def _create_opencv_processing_elements(self, pipeline, width, height, framerate):
+        """Create appsink and appsrc elements for OpenCV processing"""
+        try:
+            # Create appsink to capture frames
+            appsink = Gst.ElementFactory.make("appsink", "opencv_sink")
+            appsink.set_property("emit-signals", True)
+            appsink.set_property("max-buffers", 2)  # Keep queue small
+            appsink.set_property("drop", True)  # Drop old frames if processing is slow
+            appsink.set_property("sync", False)  # Don't sync to clock
+
+            # Set explicit BGR caps for OpenCV processing
+            caps_str = f"video/x-raw,format=BGR,width={width},height={height},framerate={framerate}/1"
+            caps = Gst.Caps.from_string(caps_str)
+            appsink.set_property("caps", caps)
+
+            print(f"   📥 OpenCV appsink configured: {width}x{height}@{framerate}fps, BGR format")
+
+            # Connect callback
+            appsink.connect("new-sample", self._on_opencv_new_sample)
+
+            # Create appsrc to push processed frames
+            appsrc = Gst.ElementFactory.make("appsrc", "opencv_src")
+            appsrc.set_property("format", Gst.Format.TIME)
+            appsrc.set_property("is-live", True)
+            appsrc.set_property("do-timestamp", True)  # TRUE for live sources
+            # Set explicit BGR caps for proper negotiation
+            caps_bgr_str = f"video/x-raw,format=BGR,width={width},height={height},framerate={framerate}/1"
+            caps_bgr = Gst.Caps.from_string(caps_bgr_str)
+            appsrc.set_property("caps", caps_bgr)
+            appsrc.set_property("stream-type", 0)  # GST_APP_STREAM_TYPE_STREAM
+            appsrc.set_property("max-bytes", 0)  # No limit
+            appsrc.set_property("block", False)  # Non-blocking
+            # CRITICAL: Set latency to -1 (unlimited) so it doesn't block preroll
+            appsrc.set_property("min-latency", -1)
+            appsrc.set_property("max-latency", -1)
+
+            print("   📤 OpenCV appsrc configured with explicit BGR caps")
+
+            pipeline.add(appsink)
+            pipeline.add(appsrc)
+
+            self._opencv_appsrc = appsrc
+
+            return appsink, appsrc
+
+        except Exception as e:
+            print(f"❌ Failed to create OpenCV elements: {e}")
+            import traceback
+
+            traceback.print_exc()
+            return None, None
+
+    def _push_initial_frame_to_appsrc(self, width, height):
+        """Push an initial black frame to appsrc to unblock pipeline preroll.
+
+        GStreamer requires appsrc to have at least one buffer available during
+        the PAUSED state (preroll phase) before it can transition to PLAYING.
+        Without this, the pipeline deadlocks waiting for appsrc data.
+        """
+        if not self._opencv_appsrc or not NUMPY_AVAILABLE:
+            return
+
+        try:
+            # Create black BGR frame
+            black_frame = np.zeros((height, width, 3), dtype=np.uint8)
+            frame_bytes = black_frame.tobytes()
+
+            # Create GStreamer buffer
+            buf = Gst.Buffer.new_allocate(None, len(frame_bytes), None)
+            buf.fill(0, frame_bytes)
+            buf.pts = 0
+            buf.duration = Gst.CLOCK_TIME_NONE
+
+            # Push buffer to appsrc via push-buffer signal
+            self._opencv_appsrc.emit("push-buffer", buf)
+
+        except Exception as e:
+            logger.warning(f"Failed to push initial frame: {e}")
+
+    def _on_opencv_new_sample(self, appsink):
+        """Callback when new frame is available from appsink"""
+        if not NUMPY_AVAILABLE:
+            return Gst.FlowReturn.OK
+
+        try:
+            sample = appsink.emit("pull-sample")
+            if not sample:
+                print("❌ No sample from appsink")
+                return Gst.FlowReturn.ERROR
+
+            buf = sample.get_buffer()
+            caps = sample.get_caps()
+
+            if not buf or not caps:
+                print("❌ Invalid buffer or caps")
+                return Gst.FlowReturn.ERROR
+
+            # Extract frame data
+            success, map_info = buf.map(Gst.MapFlags.READ)
+            if not success:
+                print("❌ Failed to map buffer")
+                return Gst.FlowReturn.ERROR
+
+            # Get dimensions from caps
+            struct = caps.get_structure(0)
+            width = struct.get_value("width")
+            height = struct.get_value("height")
+
+            # Get format info to handle different pixel formats
+            format_str = struct.get_value("format")
+
+            # Determine number of channels based on format
+            channels = 3
+            if format_str in ["RGBA", "BGRA"]:
+                channels = 4
+            elif format_str in ["RGB", "BGR"]:
+                channels = 3
+            elif format_str in ["GRAY8"]:
+                channels = 1
+
+            # Verify buffer size matches expected
+            expected_size = height * width * channels
+            actual_size = map_info.size
+            if actual_size != expected_size:
+                print(f"⚠️ Buffer size mismatch: expected {expected_size}, got {actual_size}")
+
+            # Convert to numpy array with correct dimensions
+            frame_data = np.ndarray(shape=(height, width, channels), dtype=np.uint8, buffer=map_info.data)
+
+            # Copy frame data and ensure C-contiguous (important for OpenCV!)
+            frame = np.ascontiguousarray(frame_data)
+
+            buf.unmap(map_info)
+
+            # Try to put in queue (non-blocking)
+            if self._opencv_queue:
+                try:
+                    self._opencv_queue.put_nowait(
+                        {"frame": frame, "pts": buf.pts, "duration": buf.duration, "timestamp": time.time()}
+                    )
+                    print(f"✅ Frame queued (queue size: {self._opencv_queue.qsize()})")
+                except queue.Full:
+                    self._opencv_frames_dropped += 1
+                    print(f"⚠️ Queue full, frame dropped (total dropped: {self._opencv_frames_dropped})")
+                    pass
+
+            return Gst.FlowReturn.OK
+
+        except Exception as e:
+            print(f"❌ Error in OpenCV callback: {e}")
+            import traceback
+
+            traceback.print_exc()
+            return Gst.FlowReturn.ERROR
+
+    def _opencv_processing_loop(self):
+        """Thread loop that processes frames with OpenCV"""
+        print("🎨 OpenCV processing thread started")
+        frame_count = 0
+
+        while self._opencv_running:
+            try:
+                # Get frame from queue with timeout
+                frame_data = self._opencv_queue.get(timeout=0.5)
+
+                frame = frame_data["frame"]
+                pts = frame_data["pts"]
+                duration = frame_data["duration"]
+
+                # Validate frame
+                if frame is None or not isinstance(frame, np.ndarray):
+                    continue
+
+                # Process with OpenCV
+                try:
+                    processed_frame = self._opencv_service.process_frame(frame)
+                except Exception as e:
+                    print(f"❌ Frame {frame_count}: Processing failed: {e}")
+                    import traceback
+
+                    traceback.print_exc()
+                    continue
+
+                # Validate processed frame
+                if processed_frame is None or not isinstance(processed_frame, np.ndarray):
+                    print(f"❌ Frame {frame_count}: Invalid frame after processing")
+                    continue
+
+                print(f"   Frame {frame_count}: Output valid, shape={processed_frame.shape}")
+
+                # Ensure frame is C-contiguous before converting to bytes
+                if not processed_frame.flags["C_CONTIGUOUS"]:
+                    print(f"   Frame {frame_count}: Making contiguous")
+                    processed_frame = np.ascontiguousarray(processed_frame)
+
+                self._opencv_frames_processed += 1
+
+                # Convert back to bytes
+                try:
+                    frame_bytes = processed_frame.tobytes()
+                    print(f"   Frame {frame_count}: Converted to bytes, size={len(frame_bytes)}")
+                except Exception as e:
+                    print(f"❌ Frame {frame_count}: Failed to convert to bytes: {e}")
+                    continue
+
+                # Create GStreamer buffer
+                buf = Gst.Buffer.new_allocate(None, len(frame_bytes), None)
+                if buf is None:
+                    print(f"❌ Frame {frame_count}: Failed to create GStreamer buffer")
+                    continue
+
+                buf.fill(0, frame_bytes)
+                buf.pts = pts
+                buf.duration = duration
+
+                print(f"   Frame {frame_count}: GStreamer buffer created, size={buf.get_size()}")
+
+                # Push to appsrc
+                if self._opencv_appsrc:
+                    try:
+                        ret = self._opencv_appsrc.emit("push-buffer", buf)
+                        if ret == Gst.FlowReturn.OK:
+                            print(f"   Frame {frame_count}: ✅ Pushed to appsrc")
+                        else:
+                            print(f"❌ Frame {frame_count}: Failed to push buffer, return code: {ret}")
+                    except Exception as e:
+                        print(f"❌ Frame {frame_count}: Exception pushing buffer: {e}")
+                else:
+                    print(f"❌ Frame {frame_count}: appsrc is None")
+
+                frame_count += 1
+
+            except queue.Empty:
+                continue
+            except Exception as e:
+                print(f"❌ Error in OpenCV processing loop: {e}")
+                import traceback
+
+                traceback.print_exc()
+                time.sleep(0.01)  # Brief pause on error
+
+        print(f"🎨 OpenCV processing thread stopped (processed {frame_count} frames)")
+
+    def _start_opencv_processing_thread(self):
+        """Start the OpenCV processing thread"""
+        if self._opencv_running:
+            return
+
+        self._opencv_queue = queue.Queue(maxsize=2)  # Small queue to minimize latency
+        self._opencv_running = True
+        self._opencv_frames_processed = 0
+        self._opencv_frames_dropped = 0
+
+        self._opencv_thread = threading.Thread(target=self._opencv_processing_loop, daemon=True)
+        self._opencv_thread.start()
+
+        print("✅ OpenCV processing thread started")
+
+    def _stop_opencv_processing_thread(self):
+        """Stop the OpenCV processing thread"""
+        if not self._opencv_running:
+            return
+
+        self._opencv_running = False
+
+        if self._opencv_thread and self._opencv_thread.is_alive():
+            self._opencv_thread.join(timeout=2)
+
+        if self._opencv_frames_processed > 0:
+            processed = self._opencv_frames_processed
+            dropped = self._opencv_frames_dropped
+            print(f"📊 OpenCV stats: {processed} frames processed, {dropped} dropped")
+
+        self._opencv_thread = None
+        self._opencv_queue = None
+        self._opencv_appsrc = None
 
     def is_available(self) -> bool:
         """Check if GStreamer is available"""
@@ -184,6 +506,12 @@ class GStreamerService:
 
         H264 NALUs are pulled from the appsink and fed into the aiortc
         H264PassthroughEncoder for WebRTC transport without re-encoding.
+
+        NOTE: OpenCV processing is NOT supported in WebRTC mode because:
+        - WebRTC pipeline sends H.264-encoded data to appsink
+        - OpenCV can only process raw video frames, not H.264 streams
+        - OSD would need to be applied before encoding, breaking WebRTC H.264 passthrough
+        - For OSD/filtering, use UDP Unicast or Multicast modes instead
         """
         try:
             from app.providers.registry import get_provider_registry
@@ -275,6 +603,50 @@ class GStreamerService:
             pipeline.add(videoconvert)
             elements.append(videoconvert)
 
+            # ── OpenCV processing layer (BEFORE encoder - works for all streaming modes) ──
+            opencv_appsink = None
+            opencv_appsrc = None
+            opencv_appsink_idx = -1
+            if self._is_opencv_enabled():
+                print("   → OpenCV processing ENABLED")
+                w = self.video_config.width
+                h = self.video_config.height
+                fps = self.video_config.framerate
+
+                opencv_appsink, opencv_appsrc = self._create_opencv_processing_elements(pipeline, w, h, fps)
+
+                if opencv_appsink and opencv_appsrc:
+                    # Add capsfilter to force BGR conversion BEFORE appsink
+                    capsfilter_bgr = Gst.ElementFactory.make("capsfilter", "opencv_capsfilter")
+                    if capsfilter_bgr:
+                        cap_str = f"video/x-raw,format=BGR,width={w},height={h},framerate={fps}/1"
+                        caps = Gst.Caps.from_string(cap_str)
+                        capsfilter_bgr.set_property("caps", caps)
+                        pipeline.add(capsfilter_bgr)
+                        elements.append(capsfilter_bgr)
+                        print("   🔧 BGR capsfilter inserted before appsink")
+
+                    # Mark position for special linking AFTER adding capsfilter
+                    # opencv_appsink_idx points to the appsink element that receives data
+                    opencv_appsink_idx = len(elements)
+                    elements.append(opencv_appsink)
+                    elements.append(opencv_appsrc)
+
+                    # Add videoconvert after appsrc to ensure encoder gets the right format
+                    videoconv_post = Gst.ElementFactory.make("videoconvert", "webrtc_opencv_post_conv")
+                    if videoconv_post:
+                        pipeline.add(videoconv_post)
+                        elements.append(videoconv_post)
+
+                    # Start OpenCV processing thread
+                    self._start_opencv_processing_thread()
+                else:
+                    print("   ⚠️  OpenCV elements creation failed, continuing without processing")
+                    opencv_appsink = None
+                    opencv_appsrc = None
+            else:
+                print("   → OpenCV processing DISABLED")
+
             # ── H264 encoder selection: try x264enc first, then openh264enc ──
             bitrate_kbps = self.video_config.h264_bitrate or 1500
             encoder_name = None
@@ -330,12 +702,18 @@ class GStreamerService:
             elements.append(appsink)
 
             # ── Link all elements ──
+            # Special handling for OpenCV: the appsink ↔ appsrc connection uses callbacks
+            # So we skip linking appsink → appsrc, but link everything else normally
             for i in range(len(elements) - 1):
+                # Skip ONLY the appsink → appsrc link when OpenCV is enabled
+                if opencv_appsink_idx >= 0 and i == opencv_appsink_idx:
+                    continue
+
+                src_name = elements[i].get_name()
+                dst_name = elements[i + 1].get_name()
                 if not elements[i].link(elements[i + 1]):
-                    src_name = elements[i].get_name()
-                    dst_name = elements[i + 1].get_name()
                     self.last_error = f"Failed to link {src_name} → {dst_name}"
-                    print(f"❌ {self.last_error}")
+                    logger.error(self.last_error)
                     return False
 
             # ── Connect appsink signal ──
@@ -347,6 +725,11 @@ class GStreamerService:
             bus.connect("message", self._on_bus_message)
 
             self.pipeline = pipeline
+
+            # Push initial frame to appsrc BEFORE starting pipeline (if OpenCV enabled)
+            if opencv_appsrc is not None:
+                self._push_initial_frame_to_appsrc(config["width"], config["height"])
+
             decode_step = "jpegdec → " if source_is_jpeg else ""
             print(
                 f"✅ WebRTC H264 pipeline built: {src_cfg['element']} → {decode_step}"
@@ -618,7 +1001,75 @@ class GStreamerService:
                 pipeline.add(element)
                 elements_list.append(element)
 
+            # ══════════════════════════════════════════════════════════════
+            # OPENCV PROCESSING INJECTION POINT
+            # ══════════════════════════════════════════════════════════════
+            opencv_appsink_idx = -1
+            opencv_enabled = self._is_opencv_enabled()
+
+            # Check if source outputs MJPEG (image/jpeg) - need to decode before OpenCV
+            caps_filter_str = source_config_result.get("caps_filter", "")
+            output_format = source_config_result.get("output_format", "")
+            is_jpeg_source = "image/jpeg" in caps_filter_str or "image/jpeg" in output_format
+
+            if opencv_enabled:
+                print("🎨 OpenCV processing enabled - inserting into pipeline")
+
+                if is_jpeg_source:
+                    print("   → Detected MJPEG source, adding jpegdec + videoconvert")
+                    # Add jpegdec to decode MJPEG
+                    jpegdec = Gst.ElementFactory.make("jpegdec", "opencv_jpegdec")
+                    if jpegdec:
+                        pipeline.add(jpegdec)
+                        elements_list.append(jpegdec)
+
+                    # Add videoconvert to ensure BGR format for OpenCV
+                    videoconv = Gst.ElementFactory.make("videoconvert", "opencv_videoconv")
+                    if videoconv:
+                        pipeline.add(videoconv)
+                        elements_list.append(videoconv)
+
+                # Create OpenCV processing elements
+                appsink, appsrc = self._create_opencv_processing_elements(
+                    pipeline, config["width"], config["height"], config["framerate"]
+                )
+
+                if appsink and appsrc:
+                    # Add capsfilter to force BGR conversion BEFORE appsink
+                    capsfilter_bgr = Gst.ElementFactory.make("capsfilter", "opencv_capsfilter_udp")
+                    if capsfilter_bgr:
+                        w, h, fps = config["width"], config["height"], config["framerate"]
+                        cap_str = f"video/x-raw,format=BGR,width={w},height={h},framerate={fps}/1"
+                        caps = Gst.Caps.from_string(cap_str)
+                        capsfilter_bgr.set_property("caps", caps)
+                        pipeline.add(capsfilter_bgr)
+                        elements_list.append(capsfilter_bgr)
+                        print("   🔧 BGR capsfilter inserted before appsink")
+
+                    # Mark position for special linking AFTER adding capsfilter
+                    opencv_appsink_idx = len(elements_list)
+                    elements_list.append(appsink)
+                    elements_list.append(appsrc)
+
+                    # Add videoconvert after appsrc to ensure encoder gets the right format
+                    videoconv_post = Gst.ElementFactory.make("videoconvert", "videoconv_opencv_post")
+                    pipeline.add(videoconv_post)
+                    elements_list.append(videoconv_post)
+
+                    # Start OpenCV processing thread
+                    self._start_opencv_processing_thread()
+                else:
+                    print("⚠️ Failed to create OpenCV elements, continuing without processing")
+                    opencv_enabled = False
+                    opencv_appsink_idx = -1
+            # ══════════════════════════════════════════════════════════════
+
+            # Add encoder elements
             for elem_config in pipeline_config["elements"]:
+                # Skip decoder if OpenCV is enabled and we already decoded MJPEG
+                if opencv_enabled and elem_config["name"] == "decoder" and is_jpeg_source:
+                    continue
+
                 element = Gst.ElementFactory.make(elem_config["element"], elem_config["name"])
                 if not element:
                     print(f"❌ Failed to create element: {elem_config['element']}")
@@ -660,11 +1111,19 @@ class GStreamerService:
             elements_list.append(sink)
 
             # Link all elements in order
+            # Special handling for OpenCV: don't link appsink → appsrc
+            # (they communicate via callbacks)
+            opencv_skip_start = opencv_appsink_idx if opencv_appsink_idx >= 0 else -1
+
             for i in range(len(elements_list) - 1):
+                # Skip ONLY the appsink → appsrc link (they communicate via callbacks)
+                if opencv_skip_start >= 0 and i == opencv_skip_start:
+                    continue
+
+                src_name = elements_list[i].get_name()
+                dst_name = elements_list[i + 1].get_name()
                 if not elements_list[i].link(elements_list[i + 1]):
-                    src_name = elements_list[i].get_name()
-                    dst_name = elements_list[i + 1].get_name()
-                    print(f"❌ Failed to link {src_name} → {dst_name}")
+                    logger.error(f"Failed to link {src_name} → {dst_name}")
                     return False
 
             # WebRTC mode: add tee + appsink branch for JPEG frames to aiortc
@@ -874,6 +1333,9 @@ class GStreamerService:
             print(f"❌ GStreamer Error: {err}")
             if debug:
                 print(f"   Debug: {debug}")
+            # Print element that caused the error
+            if message.src:
+                print(f"   Element: {message.src.get_name()}")
             self._broadcast_status()
             # Auto-stop to clean up pipeline state
             try:
@@ -886,10 +1348,15 @@ class GStreamerService:
             print(f"⚠️ GStreamer Warning: {warn}")
             if debug:
                 print(f"   Debug: {debug}")
+            if message.src:
+                print(f"   Element: {message.src.get_name()}")
 
         elif t == Gst.MessageType.EOS:
             print("📹 End of stream")
             self.stop()
+
+        elif t == Gst.MessageType.ASYNC_DONE:
+            pass  # Pipeline preroll complete
 
         elif t == Gst.MessageType.STATE_CHANGED:
             if message.src == self.pipeline:
@@ -913,12 +1380,11 @@ class GStreamerService:
                 try:
                     with open(governor_path, "w") as f:
                         f.write("performance")
-                    print("⚡ CPU governor set to PERFORMANCE mode")
                 except PermissionError:
                     # Don't block on sudo - just skip this optimization
-                    print("ℹ️ CPU governor optimization skipped (no root access)")
-        except Exception as e:
-            print(f"ℹ️ CPU governor optimization skipped: {e}")
+                    pass
+        except Exception:
+            pass  # CPU optimization skipped
 
     def _restore_cpu_mode(self):
         """Restore CPU to power-saving mode"""
@@ -1019,11 +1485,14 @@ class GStreamerService:
             self.last_error = "Failed to start pipeline"
             return {"success": False, "message": self.last_error}
 
+        # Wait for pipeline to reach PLAYING state and check for errors
+        state_change = self.pipeline.get_state(timeout=2 * Gst.SECOND)
+        if state_change[0] == Gst.StateChangeReturn.FAILURE:
+            self.last_error = "Pipeline state change failed"
+            logger.error(self.last_error)
+            return {"success": False, "message": self.last_error}
+
         self.is_streaming = True
-        print(
-            f"🎥 Video streaming started: {self.video_config.codec.upper()} → "
-            f"{self.streaming_config.udp_host}:{self.streaming_config.udp_port}"
-        )
 
         self._start_stats_broadcast()
 
@@ -1046,6 +1515,9 @@ class GStreamerService:
         # Create RTSP server if not exists
         if not self.rtsp_server:
             self.rtsp_server = RTSPServer(port=8554, mount_point="/fpv")
+            # Connect OpenCV service if available
+            if self._opencv_service:
+                self.rtsp_server.set_opencv_service(self._opencv_service)
 
         # Start server with video configuration
         try:
@@ -1137,6 +1609,9 @@ class GStreamerService:
                 self.webrtc_service.deactivate()
             except Exception as e:
                 print(f"⚠️ Error deactivating WebRTC service: {e}")
+
+        # Stop OpenCV processing thread if running
+        self._stop_opencv_processing_thread()
 
         if self.pipeline:
             self.pipeline.set_state(Gst.State.NULL)
