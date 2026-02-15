@@ -200,16 +200,6 @@ const NetworkSettingsCard = ({
         </>
       )}
 
-      {/* Auto-start Toggle */}
-      <div className={`form-group ${streaming ? 'field-disabled' : ''}`}>
-        <Toggle
-          label={t('views.video.autoStart')}
-          checked={config.auto_start || false}
-          onChange={(e) => updateConfig((prev) => ({ ...prev, auto_start: e.target.checked }))}
-          disabled={streaming}
-        />
-      </div>
-
       {/* RTSP Server Settings */}
       {config.mode === 'rtsp' && (
         <>

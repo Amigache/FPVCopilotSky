@@ -745,9 +745,45 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.6);
 }
 
+/* Status messages centered in video */
+.webrtc-status-message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 24px 32px;
+  background: rgba(0, 0, 0, 0.85);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.webrtc-status-message .status-text {
+  color: var(--color-text-secondary);
+  font-size: 1.1rem;
+  font-weight: 500;
+}
+
+.webrtc-status-message .status-text.error {
+  color: var(--color-error-light);
+}
+
+/* Connected badge (small, top-right corner) */
+.webrtc-status-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  padding: 6px 12px;
+  background: rgba(76, 175, 80, 0.9);
+  color: white;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+/* Legacy classes for backward compatibility */
 .webrtc-connecting {
   display: flex;
   flex-direction: column;

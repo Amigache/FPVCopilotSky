@@ -8,6 +8,7 @@ import ModemView from '../Pages/ModemView'
 import VPNView from '../Pages/VPNView'
 import SystemView from '../Pages/SystemView'
 import StatusView from '../Pages/StatusView'
+import ExperimentalView from '../Pages/ExperimentalView'
 
 const Content = ({ activeTab }) => {
   return (
@@ -21,6 +22,7 @@ const Content = ({ activeTab }) => {
       {activeTab === 'flightController' && <FlightControllerView />}
       {activeTab === 'system' && <SystemView />}
       {activeTab === 'status' && <StatusView />}
+      {activeTab === 'experimental' && <ExperimentalView />}
     </div>
   )
 }

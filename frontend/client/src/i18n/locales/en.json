@@ -22,7 +22,8 @@
     "vpn": "🔒 VPN",
     "flightController": "🎮 Flight Controller",
     "system": "⚙️ System",
-    "status": "📋 Status"
+    "status": "📋 Status",
+    "experimental": "🧪 Experimental"
   },
   "dashboard": {
     "attitude": "✈️ Attitude",
@@ -132,7 +133,8 @@
       "webrtcDisconnect": "⏹️ Disconnect",
       "webrtcFullscreen": "Toggle fullscreen",
       "webrtcConnecting": "Connecting...",
-      "webrtcNoSignal": "No signal — press Connect",
+      "webrtcNoSignal": "No Signal",
+      "webrtcRetry": "Retry",
       "webrtcFailed": "Connection failed",
       "webrtcLog": "📋 WebRTC Log",
       "webrtcLogEmpty": "No events yet",
@@ -574,7 +576,13 @@
     "close": "Close",
     "copy": "Copy",
     "loading": "Loading...",
-    "loadingContent": "Loading content..."
+    "loadingContent": "Loading content...",
+    "yes": "Yes",
+    "no": "No",
+    "notAvailable": "N/A",
+    "unknown": "Unknown",
+    "installed": "Installed",
+    "checking": "Checking..."
   },
   "status": {
     "badge": {
@@ -592,6 +600,7 @@
       "permissions": "Permissions",
       "preferences": "Preferences",
       "flightSession": "Flight Session",
+      "extras": "Extras",
       "systemControl": "System Control",
       "logs": "System Logs",
       "comingSoon": "Coming Soon"
@@ -614,7 +623,8 @@
     "frontend": {
       "dependencies": "Dependencies",
       "npmDeps": "NPM Dependencies",
-      "nodeVersion": "Node Version"
+      "nodeVersion": "Node Version",
+      "webuiVersion": "WebUI Version"
     },
     "permissions": {
       "username": "Username",
@@ -624,7 +634,8 @@
       "groups": "User Groups",
       "filePermissions": "File Permissions",
       "canRead": "Can read",
-      "canWrite": "Can write to"
+      "canWrite": "Can write to",
+      "sudoPermissions": "Sudo Permissions"
     },
     "preferences": {
       "description": "Reset all preferences (serial connection, router, video, etc.) to default values. An automatic backup will be created.",
@@ -647,6 +658,13 @@
       "confirmStopMessage": "Do you want to stop the current flight session?",
       "autoStartLabel": "Auto-start on arm",
       "autoStartDescription": "Session will automatically start when vehicle is armed and stop when disarmed."
+    },
+    "extras": {
+      "description": "Additional settings and experimental features.",
+      "experimentalTabLabel": "Enable Experimental tab",
+      "experimentalTabDescription": "Shows the Experimental tab in the menu. Disabling will reset all experimental settings.",
+      "experimentalDisabled": "Experimental tab disabled and settings reset",
+      "experimentalEnabled": "Experimental tab enabled"
     },
     "restart": {
       "description": "Restart backend (API) or frontend (Nginx) services.",
@@ -681,6 +699,57 @@
       "loadError": "Error loading logs",
       "errorLoading": "Error loading logs. Please try again.",
       "noLogs": "No logs available."
+    }
+  },
+  "experimental": {
+    "title": "Experimental",
+    "description": "Experimental features for real-time video stream processing with OpenCV.",
+    "opencv": {
+      "title": "OpenCV - Video Processing",
+      "description": "Apply computer vision filters to the video stream in real-time. Processing is done on the backend before sending the video.",
+      "active": "OpenCV Active",
+      "inactive": "OpenCV Inactive",
+      "warning": "⚠️ Enabling OpenCV will increase CPU usage and may affect video latency.",
+      "developmentWarning": "Feature in Development",
+      "developmentNote": "Full integration with the video pipeline requires GStreamer appsink/appsrc elements. Configuration is saved but frame-by-frame processing is not yet implemented. Follow development in docs/OPENCV_EXPERIMENTAL.md",
+      "osdEnabled": "Enable OSD",
+      "osdDescription": "Display telemetry on video",
+      "selectFilter": "Video Filter",
+      "apply": "Apply Configuration",
+      "applying": "Applying...",
+      "edgeThreshold1": "Canny Threshold 1",
+      "edgeThreshold2": "Canny Threshold 2",
+      "blurKernel": "Blur Kernel Size",
+      "thresholdValue": "Threshold Value",
+      "filters": {
+        "none": "No Filter (Original)",
+        "edges": "Edge Detection (Canny)",
+        "blur": "Gaussian Blur",
+        "grayscale": "Grayscale",
+        "threshold": "Binary Threshold",
+        "contours": "Contour Detection"
+      }
+    },
+    "info": {
+      "title": "Information",
+      "description": "OpenCV processing is applied to the video stream on the backend.",
+      "howItWorks": "Filters are applied to each video frame before encoding and transmission. This allows receiving ground-side video already processed with the selected computer vision techniques."
+    },
+    "future": {
+      "title": "Upcoming Features",
+      "objectDetection": "Object detection and tracking",
+      "mlIntegration": "Machine Learning model integration",
+      "videoAnalysis": "Advanced real-time video analysis",
+      "featureTracking": "Visual feature tracking"
+    },
+    "error": {
+      "toggle": "Error toggling OpenCV",
+      "applying": "Error applying configuration"
+    },
+    "success": {
+      "enabled": "OpenCV enabled successfully",
+      "disabled": "OpenCV disabled successfully",
+      "configApplied": "Configuration applied successfully"
     }
   }
 }

@@ -11,6 +11,14 @@ from gi.repository import GstRtspServer, GLib  # noqa: E402
 import threading  # noqa: E402
 import logging  # noqa: E402
 
+try:
+    import numpy as np  # noqa: E402
+
+    NUMPY_AVAILABLE = True
+except ImportError:
+    NUMPY_AVAILABLE = False
+    np = None  # noqa: E402
+
 logger = logging.getLogger(__name__)
 
 
@@ -35,12 +43,19 @@ class RTSPServer:
         self.thread = None
         self.running = False
         self._encoder_display_name = None  # Track which encoder was used
+        self._opencv_service = None  # OpenCV service for video processing
 
         # Statistics tracking
         self.stats = {"frames_sent": 0, "bytes_sent": 0, "clients_connected": 0}
         self.stats_lock = threading.Lock()
 
         print(f"📡 Initializing RTSP Server on port {port}, mount point: {mount_point}")
+
+    def set_opencv_service(self, opencv_service):
+        """Set OpenCV service for video processing"""
+        self._opencv_service = opencv_service
+        if opencv_service:
+            logger.info("OpenCV service linked to RTSP server")
 
     def create_pipeline_string(
         self, device="/dev/video0", codec="h264", width=960, height=720, framerate=30, bitrate=2000, quality=85
@@ -73,11 +88,28 @@ class RTSPServer:
         # --- Source via provider registry ---
         source_str = self._build_source_string(device, config)
 
+        # --- Check if OpenCV processing is enabled ---
+        opencv_element = ""
+        if self._opencv_service and self._opencv_service.is_enabled():
+            filter_type = self._opencv_service.get_config().get("filter", "none")
+            if filter_type != "none":
+                logger.info(f"OpenCV processing enabled with filter: {filter_type}")
+                # NOTE: This is a placeholder. Full OpenCV integration requires
+                # appsink/appsrc elements with frame processing callbacks.
+                # For now, we mark the pipeline with identity for future implementation.
+                opencv_element = "identity name=opencv_marker ! "
+                print(f"⚠️  OpenCV filter '{filter_type}' configured but frame processing not yet implemented")
+                print("   Full GStreamer integration with appsink/appsrc is required")
+
         # --- Encoder via provider registry ---
         encoder_str, payloader_str = self._build_encoder_string(codec, config)
 
         pipeline = (
-            f"{source_str} ! " f"{encoder_str} ! " f"identity name=stats_counter silent=true ! " f"{payloader_str}"
+            f"{source_str} ! "
+            f"{opencv_element}"
+            f"{encoder_str} ! "
+            f"identity name=stats_counter silent=true ! "
+            f"{payloader_str}"
         )
         return pipeline
 
