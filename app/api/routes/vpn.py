@@ -8,8 +8,8 @@ import asyncio
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
-from providers import get_provider_registry
-from services.preferences import get_preferences
+from app.providers import get_provider_registry
+from app.services.preferences import get_preferences
 from app.i18n import get_language_from_request, translate
 
 router = APIRouter(prefix="/api/vpn", tags=["vpn"])
@@ -103,15 +103,15 @@ async def get_status(request: Request, provider: Optional[str] = None):
         status = vpn_provider.get_status()
         return status
     except HTTPException as e:
-        # If no VPN provider configured, return a neutral status instead of 400
-        if e.status_code == 400 and translate("vpn.no_provider_configured", lang) in str(e.detail):
+        # If no VPN provider configured or not available, return a neutral status
+        if e.status_code in [400, 503]:
             return {
                 "success": False,
                 "installed": False,
                 "connected": False,
                 "authenticated": False,
                 "provider": None,
-                "message": translate("vpn.no_provider_configured", lang),
+                "message": str(e.detail),
             }
         raise
     except Exception as e:
@@ -135,8 +135,8 @@ async def get_peers(request: Request, provider: Optional[str] = None):
         peers = vpn_provider.get_peers()
         return {"success": True, "peers": peers, "count": len(peers)}
     except HTTPException as e:
-        # If no VPN provider configured, return empty list instead of error
-        if e.status_code == 400 and translate("vpn.no_provider_configured", lang) in str(e.detail):
+        # If no VPN provider configured or not available, return empty list
+        if e.status_code in [400, 503]:
             return {"success": True, "peers": [], "count": 0}
         raise
     except Exception as e:

@@ -846,3 +846,246 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* =============================================
+   Network Quality Bridge Card (Self-healing)
+   ============================================= */
+
+.network-bridge-card {
+  border: 1px solid rgba(79, 125, 255, 0.25);
+  background: linear-gradient(135deg, rgba(20, 20, 35, 0.7), rgba(15, 15, 30, 0.7));
+}
+
+.btn-bridge-toggle {
+  padding: 5px 14px;
+  border-radius: 5px;
+  font-weight: 600;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  background: rgba(50, 55, 75, 0.6);
+  border: 1px solid rgba(102, 102, 102, 0.3);
+  color: #9aa6c3;
+}
+
+.btn-bridge-toggle:hover:not(:disabled) {
+  background: rgba(60, 65, 90, 0.8);
+}
+
+.btn-bridge-toggle.active {
+  background: rgba(76, 175, 80, 0.2);
+  border-color: rgba(76, 175, 80, 0.5);
+  color: #81c784;
+}
+
+.btn-bridge-toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Bridge Content */
+.bridge-content {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Score Ring */
+.bridge-score-section {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.score-ring {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: conic-gradient(var(--score-color) var(--score-pct), rgba(40, 40, 60, 0.5) 0);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.score-ring::before {
+  content: '';
+  position: absolute;
+  width: 115px;
+  height: 115px;
+  border-radius: 50%;
+  background: rgba(15, 15, 30, 0.95);
+}
+
+.score-value {
+  font-size: 1.3rem;
+  font-weight: 700;
+  position: relative;
+  z-index: 1;
+  line-height: 1;
+}
+
+.score-label {
+  font-size: 0.6rem;
+  color: #9aa6c3;
+  position: relative;
+  z-index: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.score-trend {
+  font-size: 0.85rem;
+  color: #d5ddff;
+}
+
+/* Metrics Grid */
+.bridge-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.bridge-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+  background: rgba(45, 45, 63, 0.35);
+  border-radius: 5px;
+}
+
+.bridge-metric .metric-label {
+  font-size: 0.7rem;
+  color: #9aa6c3;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.bridge-metric .metric-value {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.metric-bar {
+  height: 3px;
+  background: rgba(60, 60, 80, 0.5);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 2px;
+}
+
+.metric-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.5s ease;
+}
+
+/* Recommended Settings */
+.bridge-recommended {
+  display: flex;
+  gap: 12px;
+  padding: 8px 12px;
+  background: rgba(79, 125, 255, 0.1);
+  border: 1px solid rgba(79, 125, 255, 0.2);
+  border-radius: 5px;
+  font-size: 0.8rem;
+  color: #b0bcff;
+  flex-wrap: wrap;
+}
+
+.rec-item {
+  white-space: nowrap;
+}
+
+/* Cell Info */
+.bridge-cell-info {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 0.75rem;
+  color: #9aa6c3;
+  padding: 6px 10px;
+  background: rgba(45, 45, 63, 0.25);
+  border-radius: 4px;
+}
+
+/* Events */
+.bridge-events {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.events-title {
+  font-size: 0.75rem;
+  color: #9aa6c3;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 2px;
+}
+
+.bridge-event-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  padding: 4px 8px;
+  background: rgba(45, 45, 63, 0.25);
+  border-radius: 3px;
+  color: #d5ddff;
+}
+
+.event-icon {
+  flex-shrink: 0;
+}
+
+.event-name {
+  text-transform: capitalize;
+  flex: 1;
+}
+
+.event-actions {
+  color: #81c784;
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+.event-time {
+  color: #9aa6c3;
+  font-size: 0.7rem;
+  flex-shrink: 0;
+}
+
+/* Bridge Inactive */
+.bridge-inactive {
+  text-align: center;
+  padding: 20px 10px;
+  color: #9aa6c3;
+}
+
+.bridge-inactive-icon {
+  font-size: 2rem;
+  opacity: 0.5;
+  margin-bottom: 8px;
+}
+
+.bridge-inactive-hint {
+  font-size: 0.8rem;
+  margin-top: 6px;
+  opacity: 0.7;
+}
+
+@media (max-width: 768px) {
+  .bridge-metrics {
+    grid-template-columns: 1fr;
+  }
+  .bridge-recommended {
+    flex-direction: column;
+    gap: 4px;
+  }
+}

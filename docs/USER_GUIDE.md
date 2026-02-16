@@ -88,9 +88,36 @@ La barra de estado superior muestra en todo momento:
 - **Codec**: seleccionado automáticamente entre los disponibles en el sistema (H.264 hardware, H.264 software, MJPEG…)
 - **Calidad MJPEG**: slider de calidad (1-100) — visible solo con codec MJPEG
 - **Bitrate H.264**: selector de bitrate — visible solo con codecs H.264
+  - **Modo AUTO**: bitrate ajustado automáticamente por el Network Event Bridge según calidad de red
+  - **Modo manual**: seleccionas el bitrate fijo desde un dropdown (solo cuando auto-ajuste está desactivado)
 - **GOP Size**: intervalo de keyframes — visible solo con codecs H.264
 
 > 💡 **Ajuste en vivo**: calidad, bitrate, GOP size y framerate se pueden modificar **mientras se emite** sin reiniciar el stream (etiqueta `LIVE`).
+
+#### Auto-ajuste de bitrate (modo AUTO)
+
+El modo AUTO de bitrate funciona en conjunto con el **Network Event Bridge** (ver pestaña Red). Cuando está activado:
+
+1. El sistema monitoriza **SINR**, **jitter** y **latencia** cada 2 segundos
+2. Calcula un **Quality Score** (0-100) basado en métricas celulares
+3. Ajusta el bitrate del video automáticamente:
+   - 🟢 **SINR alto + baja latencia** → aumenta bitrate gradualmente para mejor calidad
+   - 🟡 **Condiciones regulares** → mantiene bitrate estable
+   - 🔴 **SINR bajo o alta latencia** → reduce bitrate para prevenir buffering
+4. Muestra el bitrate objetivo en la UI marcado como "AUTO"
+
+**Activar/desactivar el auto-ajuste:**
+
+- Ve a **Estado** → **Preferencias** → **Auto-ajuste de Bitrate**
+- Toggle ON/OFF según prefieras control automático o manual
+- Con auto-ajuste desactivado, el selector de bitrate aparece como dropdown tradicional
+
+**Ventajas del modo AUTO:**
+
+- ✅ Streaming estable sin congelaciones en 4G variable
+- ✅ Máxima calidad automática cuando la señal es buena
+- ✅ Adaptación predictiva antes de perder paquetes
+- ✅ Óptimo para vuelo FPV (no puedes ajustar sliders manualmente mientras vuelas)
 
 ### Modos de emisión (streaming)
 
@@ -290,7 +317,7 @@ curl -X POST http://IP_PLACA:8000/api/network/latency/stop
 
 ### Auto-Failover (avanzado)
 
-Sistema automático de cambio entre WiFi ↔ 4G basado en latencia para garantizar continuidad del stream.
+Sistema automático de cambio entre WiFi ↔ 4G basado en latencia y predicción para garantizar continuidad del stream.
 
 **Funcionamiento**:
 
@@ -298,6 +325,7 @@ Sistema automático de cambio entre WiFi ↔ 4G basado en latencia para garantiz
 2. Si latencia > 200ms durante 30 segundos consecutivos → switch automático a interfaz alternativa
 3. Hysteresis de 30 segundos evita cambios rápidos (flapping)
 4. Restaura automáticamente al modo preferido (4G) cuando la latencia mejora
+5. **Failover predictivo**: Cuando el Network Event Bridge está activo, analiza la tendencia SINR y jitter para **anticipar degradación antes de que ocurra** (ajusta dinámicamente el threshold y la ventana de decisión)
 
 **Configuración** (valores por defecto):
 
@@ -349,6 +377,133 @@ curl http://IP_PLACA:8000/api/network/dns/status
 ```
 
 **Beneficio**: Reduce latencia de DNS lookups de ~50ms a ~2ms (95% mejora).
+
+### Network Quality Bridge (Red Auto-adaptativa) 🧠
+
+El **Network Quality Bridge** es el sistema de monitoreo inteligente que conecta las métricas de red (señal celular, latencia, jitter) con el pipeline de video para auto-curación del streaming.
+
+**Panel en la WebUI**: Aparece como tarjeta "Network Quality Bridge" en la pestaña Red.
+
+#### Activar / Desactivar
+
+Pulsa el botón **Activar Bridge** / **Desactivar Bridge** en la tarjeta. Cuando está activo:
+
+- Monitorea señal celular, latencia y jitter cada segundo
+- Calcula un **Quality Score** compuesto (0–100)
+- Actúa automáticamente sobre el video (ajuste de bitrate, keyframes, etc.)
+
+#### Quality Score (Puntuación de Calidad)
+
+El anillo central muestra la puntuación compuesta con código de color:
+
+| Rango  | Color       | Estado    | Acción automática                  |
+| ------ | ----------- | --------- | ---------------------------------- |
+| 80–100 | 🟢 Verde    | Excelente | Bitrate alto, calidad máxima       |
+| 60–79  | 🟡 Amarillo | Bueno     | Bitrate moderado                   |
+| 40–59  | 🟠 Naranja  | Regular   | Reduce bitrate, ajusta GOP         |
+| 0–39   | 🔴 Rojo     | Pobre     | Bitrate mínimo, keyframes forzados |
+
+**Composición de la puntuación**:
+
+- **SINR** (35%): Relación señal/ruido del modem
+- **Jitter** (30%): Variación de latencia (ms)
+- **RSRQ** (15%): Calidad de referencia (dB)
+- **Packet Loss** (20%): Pérdida de paquetes de control
+
+#### Métricas en tiempo real
+
+La tarjeta muestra 4 métricas con barras de progreso coloreadas:
+
+- **SINR**: Señal/ruido en dB (bueno > 10 dB)
+- **RTT**: Latencia round-trip en ms (bueno < 80 ms)
+- **Jitter**: Variación de latencia en ms (bueno < 20 ms)
+- **Packet Loss**: Paquetes perdidos en % (bueno < 2%)
+
+#### Ajustes recomendados
+
+Cuando el bridge está activo, muestra los ajustes de video que recomienda según la calidad actual:
+
+- **Bitrate** sugerido (ej. 3000 kbps)
+- **GOP Size** sugerido (ej. 15)
+- **Resolución** sugerida (ej. 854×480)
+
+#### Información de celda
+
+Muestra los datos de la celda 4G actual:
+
+- **Cell ID** y **PCI** (Physical Cell Identity)
+- **Banda LTE** activa (B3, B7, B20…)
+- **EARFCN** (canal frecuencia)
+
+#### Eventos recientes
+
+Línea de tiempo de los últimos eventos del bridge (cambio de celda, degradación de señal, ajuste de bitrate, etc.). Cada evento muestra tipo, timestamp y detalles.
+
+**Acceso por API** (avanzado):
+
+```bash
+# Iniciar bridge
+curl -X POST http://IP_PLACA:8000/api/network/bridge/start
+
+# Ver estado completo (score, métricas, eventos)
+curl http://IP_PLACA:8000/api/network/bridge/status
+
+# Solo quality score
+curl http://IP_PLACA:8000/api/network/bridge/quality-score
+
+# Últimos eventos
+curl http://IP_PLACA:8000/api/network/bridge/events
+
+# Detener
+curl -X POST http://IP_PLACA:8000/api/network/bridge/stop
+```
+
+### CAKE Bufferbloat Control ⚡
+
+CAKE (Common Applications Kept Enhanced) es un algoritmo de control de colas que **reduce drásticamente el bufferbloat** en enlaces 4G, mejorando la latencia del video hasta un 40%.
+
+**Activación**: Se configura automáticamente con Flight Mode cuando `enable_cake: true`.
+
+**Qué hace**:
+
+- Limita las colas de transmisión/recepción eliminando paquetes encolados en exceso
+- Aplica AQM (Active Queue Management) para minimizar la latencia bajo carga
+- Configurado con ancho de banda up/down optimizado para 4G (10/30 Mbps por defecto)
+
+**Verificar**:
+
+```bash
+# Ver si CAKE está activo
+tc qdisc show | grep cake
+
+# Estado detallado del sistema
+bash scripts/status.sh   # Busca la sección "Network Quality & Self-Healing"
+```
+
+### MPTCP (Multi-Path TCP) 🔗
+
+MPTCP permite usar **WiFi y 4G simultáneamente** para redundancia y mayor ancho de banda combinado.
+
+**Requisitos**: Kernel 5.6+ con soporte MPTCP (verificado automáticamente en la instalación).
+
+**Estado y control**:
+
+```bash
+# Ver estado MPTCP
+curl http://IP_PLACA:8000/api/network/mptcp/status
+
+# Habilitar MPTCP
+curl -X POST http://IP_PLACA:8000/api/network/mptcp/enable
+
+# Deshabilitar MPTCP
+curl -X POST http://IP_PLACA:8000/api/network/mptcp/disable
+```
+
+**Beneficios**:
+
+- Si una ruta cae, el tráfico continúa por la otra sin desconexión
+- Combina ancho de banda WiFi + 4G
+- Especialmente útil en vuelos BVLOS con conectividad intermitente
 
 ---
 
