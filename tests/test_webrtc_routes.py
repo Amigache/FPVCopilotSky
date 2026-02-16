@@ -17,10 +17,8 @@ from unittest.mock import Mock, AsyncMock, patch
 from fastapi.testclient import TestClient
 from app.main import app
 
-# Import the same module object that main.py uses (via sys.path manipulation)
-# main.py does: from api.routes import webrtc as webrtc_routes
-# which registers as 'api.routes.webrtc' in sys.modules
-import api.routes.webrtc as webrtc_routes
+# Import the routes module that main.py uses
+import app.api.routes.webrtc as webrtc_routes
 
 
 @pytest.fixture

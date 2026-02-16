@@ -265,14 +265,17 @@ class TestVPNPreferences:
 class TestVPNProviderResolution:
     """Tests for provider resolution edge cases"""
 
-    def test_unknown_provider_returns_503(self, client):
-        """Should return 503 for unavailable provider"""
-        with patch("api.routes.vpn.get_provider_registry") as mock_registry_fn:
+    def test_unknown_provider_returns_neutral_status(self, client):
+        """Should return 200 with neutral status for unavailable provider"""
+        with patch("app.api.routes.vpn.get_provider_registry") as mock_registry_fn:
             mock_reg = Mock()
             mock_reg.get_vpn_provider.return_value = None
             mock_registry_fn.return_value = mock_reg
             response = client.get("/api/vpn/status?provider=wireguard")
-            assert response.status_code == 503
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is False
+            assert data["installed"] is False
 
 
 # --- Fixtures ---
@@ -297,7 +300,7 @@ def mock_vpn_get_provider():
     provider.logout.return_value = {"success": True, "message": "Logged out"}
     provider.get_peers.return_value = []
 
-    with patch("api.routes.vpn._get_vpn_provider", return_value=provider):
+    with patch("app.api.routes.vpn._get_vpn_provider", return_value=provider):
         yield provider
 
 
@@ -309,7 +312,7 @@ def mock_vpn_registry():
         {"name": "tailscale", "installed": True, "description": "Tailscale VPN"},
         {"name": "zerotier", "installed": False, "description": "ZeroTier VPN"},
     ]
-    with patch("api.routes.vpn.get_provider_registry", return_value=mock_reg):
+    with patch("app.api.routes.vpn.get_provider_registry", return_value=mock_reg):
         yield mock_reg
 
 
@@ -328,7 +331,7 @@ def mock_vpn_no_provider():
             detail=translate("vpn.no_provider_configured", "en"),
         )
 
-    with patch("api.routes.vpn._get_vpn_provider", side_effect=raise_no_provider):
+    with patch("app.api.routes.vpn._get_vpn_provider", side_effect=raise_no_provider):
         yield
 
 
@@ -353,7 +356,7 @@ def mock_vpn_preferences():
     mock_prefs.get_vpn_config = Mock(side_effect=get_vpn_config)
     mock_prefs.set_vpn_config = Mock(side_effect=set_vpn_config)
 
-    with patch("api.routes.vpn._get_preferences_service", return_value=mock_prefs):
+    with patch("app.api.routes.vpn._get_preferences_service", return_value=mock_prefs):
         yield mock_prefs
 
 

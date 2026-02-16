@@ -25,7 +25,7 @@ class TestWebSocketInitialNetworkStatus:
     @patch("app.main.websocket_manager")
     @patch("app.main.mavlink_service")
     @patch("app.main.video_service")
-    @patch("api.routes.network.get_network_status")
+    @patch("app.api.routes.network.get_network_status")
     async def test_network_status_sent_on_connect(
         self, mock_get_network_status, mock_video, mock_mavlink, mock_ws_manager
     ):
@@ -78,7 +78,7 @@ class TestWebSocketInitialNetworkStatus:
     @pytest.mark.asyncio
     @patch("app.main.websocket_manager")
     @patch("app.main.mavlink_service")
-    @patch("api.routes.network.get_network_status")
+    @patch("app.api.routes.network.get_network_status")
     async def test_network_status_sent_before_periodic_broadcast(
         self, mock_get_network_status, mock_mavlink, mock_ws_manager
     ):
@@ -123,7 +123,7 @@ class TestWebSocketInitialNetworkStatus:
 
     @pytest.mark.asyncio
     @patch("app.main.mavlink_service")
-    @patch("api.routes.network.get_network_status")
+    @patch("app.api.routes.network.get_network_status")
     async def test_network_status_handles_errors_gracefully(self, mock_get_network_status, mock_mavlink):
         """Test that errors in network_status don't prevent connection"""
         from app.main import websocket_endpoint
@@ -152,7 +152,7 @@ class TestWebSocketInitialNetworkStatus:
     @patch("app.main.websocket_manager")
     @patch("app.main.mavlink_service")
     @patch("app.main.video_service")
-    @patch("api.routes.network.get_network_status")
+    @patch("app.api.routes.network.get_network_status")
     async def test_initial_broadcasts_include_all_status_types(
         self, mock_get_network_status, mock_video, mock_mavlink, mock_ws_manager
     ):
@@ -199,7 +199,7 @@ class TestWebSocketNetworkStatusCaching:
 
     @pytest.mark.asyncio
     @patch("app.main.mavlink_service")
-    @patch("api.routes.network.get_network_status")
+    @patch("app.api.routes.network.get_network_status")
     async def test_multiple_connections_benefit_from_cache(self, mock_get_network_status, mock_mavlink):
         """Test that multiple WebSocket connections use cached network_status"""
         from app.main import websocket_endpoint

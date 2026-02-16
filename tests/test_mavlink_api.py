@@ -44,7 +44,7 @@ def mock_mavlink_service():
         "success": True,
         "results": {"RC_PROTOCOLS": {"success": True, "value": 0}},
     }
-    with patch("api.routes.mavlink.mavlink_service", mock):
+    with patch("app.api.routes.mavlink.mavlink_service", mock):
         yield mock
 
 
@@ -69,7 +69,7 @@ def mock_mavlink_service_connected():
         "success": True,
         "results": {"RC_PROTOCOLS": {"success": True, "value": 256}},
     }
-    with patch("api.routes.mavlink.mavlink_service", mock):
+    with patch("app.api.routes.mavlink.mavlink_service", mock):
         yield mock
 
 
@@ -144,7 +144,7 @@ class TestMAVLinkConnect:
 
     def test_connect_no_service_returns_500(self, client):
         """Should return 500 when mavlink_service not initialized"""
-        with patch("api.routes.mavlink.mavlink_service", None):
+        with patch("app.api.routes.mavlink.mavlink_service", None):
             response = client.post(
                 "/api/mavlink/connect",
                 json={"port": "/dev/ttyUSB0", "baudrate": 115200},

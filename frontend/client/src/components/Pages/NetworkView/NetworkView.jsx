@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { useToast } from '../../../contexts/ToastContext'
 import { useWebSocket } from '../../../contexts/WebSocketContext'
 import api from '../../../services/api'
-import { API_TIMEOUTS, UI_DELAYS, getSignalBars } from './networkConstants'
+import { API_TIMEOUTS, getSignalBars } from './networkConstants'
 
 // Helper to format bitrate
 function formatBitrate(val) {

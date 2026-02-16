@@ -33,7 +33,7 @@ def client(mock_router_service):
     main.py imports router via 'api.routes.router' (relative path),
     so we must patch that module path, not 'app.api.routes.router'.
     """
-    with patch("api.routes.router._router_service", mock_router_service):
+    with patch("app.api.routes.router._router_service", mock_router_service):
         yield TestClient(app)
 
 

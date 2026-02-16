@@ -456,20 +456,39 @@ def mock_api_services(monkeypatch):
         "config": {},
         "adaptive_config": {},
     }
+    # Return empty list instead of Mock to avoid RecursionError during JSON serialization
     mock_webrtc_service.get_logs.return_value = []
     mock_webrtc_service.get_4g_optimized_config.return_value = {"video": {}, "ice": {}}
 
     import app.api.routes.webrtc as webrtc_routes
 
-    # Also set on the module main.py uses (via sys.path manipulation)
-    try:
-        import api.routes.webrtc as webrtc_routes_alt
-
-        webrtc_routes_alt._webrtc_service = mock_webrtc_service
-    except ImportError:
-        pass
-
     webrtc_routes._webrtc_service = mock_webrtc_service
+
+    # Mock Router service for router routes
+    mock_router_service = Mock()
+    mock_router_service.get_status.return_value = {
+        "running": False,
+        "outputs": [],
+        "message_count": 0,
+    }
+    mock_router_service.get_outputs.return_value = []
+    mock_router_service.add_output.return_value = {"success": True, "id": "mock-output-id"}
+    mock_router_service.update_output.return_value = {"success": True}
+    mock_router_service.remove_output.return_value = {"success": True}
+
+    import app.api.routes.router as router_routes
+
+    router_routes._router_service = mock_router_service
+
+    # Mock MAVLink service for mavlink routes
+    import app.api.routes.mavlink as mavlink_routes
+
+    mavlink_routes.mavlink_service = mock_mavlink
+
+    # Mock preferences service for preferences routes
+    import app.services.preferences as prefs_module
+
+    prefs_module._preferences_service = mock_prefs
 
     return {
         "preferences": mock_prefs,
@@ -477,6 +496,7 @@ def mock_api_services(monkeypatch):
         "video_config": mock_video_config,
         "video_service": mock_video_service,
         "webrtc_service": mock_webrtc_service,
+        "router_service": mock_router_service,
     }
 
 
