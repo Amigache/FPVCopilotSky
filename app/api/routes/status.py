@@ -6,16 +6,30 @@ import sys
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from importlib import metadata
+from app.services.cache_service import get_cache_service
 
 router = APIRouter(prefix="/api/status", tags=["status"])
 
+# Cache service instance for expensive operations
+_cache = get_cache_service()
+
 
 def check_python_dependencies():
-    """Check if all Python dependencies are installed."""
+    """Check if all Python dependencies are installed.
+
+    Results are cached for 30 minutes since dependencies don't change frequently.
+    """
+    # Check cache first (30 minute TTL)
+    cached = _cache.get("python_dependencies")
+    if cached is not None:
+        return cached
+
     try:
         requirements_path = Path(__file__).parents[3] / "requirements.txt"
         if not requirements_path.exists():
-            return {"status": "warning", "message": "requirements.txt not found"}
+            result = {"status": "warning", "message": "requirements.txt not found"}
+            _cache.set("python_dependencies", result, ttl=1800)
+            return result
 
         # Read lines once
         with open(requirements_path, "r") as f:
@@ -36,34 +50,57 @@ def check_python_dependencies():
                 missing.append(package)
 
         if missing:
-            return {
+            result = {
                 "status": "warning",
                 "installed": len(lines) - len(missing),
                 "total": len(lines),
                 "missing": missing,
             }
+        else:
+            result = {"status": "ok", "message": "All dependencies installed"}
 
-        return {"status": "ok", "message": "All dependencies installed"}
+        # Cache result for 30 minutes
+        _cache.set("python_dependencies", result, ttl=1800)
+        return result
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        result = {"status": "error", "message": str(e)}
+        # Cache errors for shorter time (5 minutes)
+        _cache.set("python_dependencies", result, ttl=300)
+        return result
 
 
 def check_npm_dependencies():
-    """Check if all npm dependencies are installed for frontend."""
+    """Check if all npm dependencies are installed for frontend.
+
+    Results are cached for 30 minutes since dependencies don't change frequently.
+    """
+    # Check cache first (30 minute TTL)
+    cached = _cache.get("npm_dependencies")
+    if cached is not None:
+        return cached
+
     try:
         package_json = Path("/opt/FPVCopilotSky/frontend/client/package.json")
         if not package_json.exists():
-            return {"status": "warning", "message": "Frontend not available"}
+            result = {"status": "warning", "message": "Frontend not available"}
+            _cache.set("npm_dependencies", result, ttl=1800)
+            return result
 
         node_modules = Path("/opt/FPVCopilotSky/frontend/client/node_modules")
 
         if node_modules.exists() and len(list(node_modules.iterdir())) > 0:
-            return {"status": "ok", "message": "All dependencies installed"}
+            result = {"status": "ok", "message": "All dependencies installed"}
         else:
-            return {"status": "warning", "message": "node_modules not found or empty"}
+            result = {"status": "warning", "message": "node_modules not found or empty"}
 
+        # Cache result for 30 minutes
+        _cache.set("npm_dependencies", result, ttl=1800)
+        return result
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        result = {"status": "error", "message": str(e)}
+        # Cache errors for shorter time (5 minutes)
+        _cache.set("npm_dependencies", result, ttl=300)
+        return result
 
 
 def get_user_permissions():

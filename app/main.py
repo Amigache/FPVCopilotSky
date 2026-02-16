@@ -75,7 +75,7 @@ app.include_router(mavlink.router, prefix="/api/mavlink", tags=["mavlink"])
 app.include_router(system.router, prefix="/api/system", tags=["system"])
 app.include_router(router_routes.router)
 app.include_router(video_routes.router)
-app.include_router(network_routes.router)
+app.include_router(network_routes.router, prefix="/api/network")
 app.include_router(vpn_routes.router)
 app.include_router(modem_routes.router)
 app.include_router(status_routes.router)
@@ -140,7 +140,7 @@ async def websocket_endpoint(websocket: WebSocket):
             # WebSocket has built-in keep-alive
 
     except WebSocketDisconnect:
-        print("WebSocket client disconnected")
+        logger.info("WebSocket client disconnected")
     except Exception as e:
         logger.debug(f"WebSocket error: {e}")
     finally:
@@ -402,23 +402,23 @@ def auto_connect_vpn():
 
         prefs = preferences_service
         if not prefs:
-            print("⚠️ Preferences not initialized for VPN auto-connect")
+            logger.warning(" Preferences not initialized for VPN auto-connect")
             return
 
         vpn_config = prefs.get_vpn_config()
 
         # Check enabled AND auto_connect
         if not vpn_config.get("enabled", False):
-            print("⏭️ VPN not enabled in preferences")
+            logger.info(" VPN not enabled in preferences")
             return
 
         if not vpn_config.get("auto_connect", False):
-            print("⏭️ VPN auto-connect disabled in preferences")
+            logger.info(" VPN auto-connect disabled in preferences")
             return
 
         provider_name = vpn_config.get("provider")
         if not provider_name:
-            print("⏭️ No VPN provider configured")
+            logger.info("No VPN provider configured")
             return
 
         from app.providers import get_provider_registry
@@ -427,27 +427,27 @@ def auto_connect_vpn():
         vpn_provider = registry.get_vpn_provider(provider_name)
 
         if not vpn_provider:
-            print(f"⚠️ VPN provider '{provider_name}' not available")
+            logger.warning(f" VPN provider '{provider_name}' not available")
             return
 
         # Check if already connected
         status = vpn_provider.get_status()
         if status.get("connected"):
-            print(f"✅ VPN already connected ({provider_name})")
+            logger.info(f" VPN already connected ({provider_name})")
             return
 
         # Try to connect
-        print(f"🔄 Auto-connecting to VPN ({provider_name})...")
+        logger.info(f" Auto-connecting to VPN ({provider_name})...")
         result = vpn_provider.connect()
 
         if result.get("success"):
-            print(f"✅ Auto-connected to VPN ({provider_name})")
+            logger.info(f" Auto-connected to VPN ({provider_name})")
         elif result.get("needs_auth"):
-            print(f"ℹ️ VPN requires authentication: {result.get('auth_url', 'Check VPN settings')}")
+            logger.info(f" VPN requires authentication: {result.get('auth_url', 'Check VPN settings')}")
         else:
-            print(f"⚠️ VPN auto-connect failed: {result.get('error', 'Unknown error')}")
+            logger.warning(f" VPN auto-connect failed: {result.get('error', 'Unknown error')}")
     except Exception as e:
-        print(f"⚠️ VPN auto-connect error: {e}")
+        logger.warning(f" VPN auto-connect error: {e}")
 
 
 def auto_connect_serial():
@@ -465,7 +465,7 @@ def auto_connect_serial():
         time.sleep(1)
 
         if not preferences_service or not mavlink_service:
-            print("⚠️ Services not initialized for serial auto-connect")
+            logger.warning(" Services not initialized for serial auto-connect")
             return
 
         prefs = preferences_service
@@ -473,14 +473,14 @@ def auto_connect_serial():
 
         # Check if auto-connect is enabled
         if not serial_config.auto_connect:
-            print("⏭️ Serial auto-connect disabled in preferences")
+            logger.info(" Serial auto-connect disabled in preferences")
             return
 
-        print("🔄 Starting serial auto-connect sequence...")
+        logger.info(" Starting serial auto-connect sequence...")
 
         # If we have a previously successful connection, try that first
         if serial_config.last_successful and serial_config.port:
-            print(f"🔄 Attempting saved connection: {serial_config.port} @ {serial_config.baudrate} baud")
+            logger.info(f" Attempting saved connection: {serial_config.port} @ {serial_config.baudrate} baud")
             result = mavlink_service.connect(serial_config.port, serial_config.baudrate)
 
             if result.get("success"):
@@ -488,19 +488,19 @@ def auto_connect_serial():
                 time.sleep(1)
                 status = mavlink_service.get_status()
                 if status.get("connected"):
-                    print(f"✅ Auto-connected to saved port: {serial_config.port}")
+                    logger.info(f" Auto-connected to saved port: {serial_config.port}")
                     return
                 else:
-                    print("⚠️ Saved connection unstable, scanning for alternatives...")
+                    logger.warning(" Saved connection unstable, scanning for alternatives...")
             else:
-                print(f"⚠️ Saved connection failed: {result.get('message', 'Unknown error')}")
+                logger.warning(f" Saved connection failed: {result.get('message', 'Unknown error')}")
 
         # Auto-detect flight controller
-        print("🔍 Scanning for flight controller...")
+        logger.info(" Scanning for flight controller...")
         detector = get_detector()
 
         if not detector:
-            print("⚠️ Serial detector not available")
+            logger.warning(" Serial detector not available")
             return
 
         detection = detector.detect_flight_controller(
@@ -509,8 +509,8 @@ def auto_connect_serial():
         )
 
         if detection:
-            print(f"📍 Found flight controller: {detection.get('description', detection['port'])}")
-            print(f"   Port: {detection['port']} @ {detection['baudrate']} baud")
+            logger.info(f" Found flight controller: {detection.get('description', detection['port'])}")
+            logger.info(f"   Port: {detection['port']} @ {detection['baudrate']} baud")
 
             # Try to connect
             result = mavlink_service.connect(detection["port"], detection["baudrate"])
@@ -528,21 +528,21 @@ def auto_connect_serial():
                             baudrate=detection["baudrate"],
                             successful=True,
                         )
-                        print(f"✅ Auto-connected and saved: {detection['port']} @ {detection['baudrate']} baud")
+                        logger.info(f" Auto-connected and saved: {detection['port']} @ {detection['baudrate']} baud")
                         return
                     except Exception as e:
-                        print(f"⚠️ Connected but failed to save preferences: {e}")
+                        logger.warning(f" Connected but failed to save preferences: {e}")
                         # Connection is good, so don't disconnect
                 else:
-                    print("⚠️ Detection succeeded and initial connect returned success, but connection unstable")
+                    logger.warning(" Detection succeeded and initial connect returned success, but connection unstable")
             else:
-                print(f"⚠️ Connection attempt failed: {result.get('message', 'Unknown error')}")
+                logger.warning(f" Connection attempt failed: {result.get('message', 'Unknown error')}")
         else:
-            print("⚠️ No flight controller detected - the system is ready for manual connection")
-            print("ℹ️  Connect a flight controller via serial and use the UI to establish connection")
+            logger.warning(" No flight controller detected - the system is ready for manual connection")
+            logger.info("  Connect a flight controller via serial and use the UI to establish connection")
 
     except Exception as e:
-        print(f"⚠️ Serial auto-connect error: {e}")
+        logger.warning(f" Serial auto-connect error: {e}")
         import traceback
 
         traceback.print_exc()
@@ -563,18 +563,20 @@ async def startup_event():
         board_registry = BoardRegistry()
         detected_board = board_registry.get_detected_board()
         if detected_board:
-            print(f"✅ Board detected: {detected_board.board_name}")
-            print(f"   - Variant: {detected_board.variant.name}")
-            print(f"   - CPU: {detected_board.hardware.cpu_cores} cores @ {detected_board.hardware.cpu_model}")
-            print(f"   - RAM: {detected_board.hardware.ram_gb}GB")
-            print(f"   - Storage: {detected_board.hardware.storage_gb}GB ({detected_board.variant.storage_type.value})")
-            print(f"   - Video Sources: {', '.join([f.value for f in detected_board.variant.video_sources])}")
-            print(f"   - Video Encoders: {', '.join([f.value for f in detected_board.variant.video_encoders])}")
+            logger.info(f" Board detected: {detected_board.board_name}")
+            logger.info(f"   - Variant: {detected_board.variant.name}")
+            logger.info(f"   - CPU: {detected_board.hardware.cpu_cores} cores @ {detected_board.hardware.cpu_model}")
+            logger.info(f"   - RAM: {detected_board.hardware.ram_gb}GB")
+            logger.info(
+                f"   - Storage: {detected_board.hardware.storage_gb}GB ({detected_board.variant.storage_type.value})"
+            )
+            logger.info(f"   - Video Sources: {', '.join([f.value for f in detected_board.variant.video_sources])}")
+            logger.info(f"   - Video Encoders: {', '.join([f.value for f in detected_board.variant.video_encoders])}")
         else:
-            print("⚠️  No board detected - using generic configuration")
+            logger.warning("  No board detected - using generic configuration")
     except Exception as e:
         logger.error(f"Board detection failed: {e}")
-        print("⚠️  Board detection error - using generic configuration")
+        logger.warning("  Board detection error - using generic configuration")
 
     # Initialize provider registry (VPN, Modem, Network providers)
     provider_registry = init_provider_registry()
@@ -595,20 +597,20 @@ async def startup_event():
     from app.providers import video_registry_init  # noqa: E402, F401
     from app.providers import video_source_registry_init  # noqa: E402, F401
 
-    print("✅ Provider registry initialized:")
-    print("   - VPN: Tailscale")
-    print("   - Modem: Huawei E3372h")
-    print("   - Network Interfaces: Ethernet, WiFi, VPN, Modem")
-    print("   - Video Sources: V4L2, LibCamera, HDMI Capture, Network Stream")
-    print("   - Video Encoders: Hardware H.264, MJPEG, x264, OpenH264")
+    logger.info(" Provider registry initialized:")
+    logger.info("   - VPN: Tailscale")
+    logger.info("   - Modem: Huawei E3372h")
+    logger.info("   - Network Interfaces: Ethernet, WiFi, VPN, Modem")
+    logger.info("   - Video Sources: V4L2, LibCamera, HDMI Capture, Network Stream")
+    logger.info("   - Video Encoders: Hardware H.264, MJPEG, x264, OpenH264")
 
     # Log available encoders
     available_encoders = provider_registry.get_available_video_encoders()
     encoder_names = [e["display_name"] for e in available_encoders if e["available"]]
     if encoder_names:
-        print(f"   - Video Encoders: {', '.join(encoder_names)}")
+        logger.info(f"   - Video Encoders: {', '.join(encoder_names)}")
     else:
-        print("   - Video Encoders: None available (GStreamer plugins may be missing)")
+        logger.info("   - Video Encoders: None available (GStreamer plugins may be missing)")
 
     # Create router for additional outputs (uses preferences for config)
     router_service = get_router()
@@ -628,7 +630,7 @@ async def startup_event():
     modem_provider = provider_registry.get_modem_provider("huawei_e3372h")
     if modem_provider:
         modem_provider.set_flight_logger(flight_logger)
-        print(f"✅ Flight data logger configured: {flight_logger.log_directory}")
+        logger.info(f" Flight data logger configured: {flight_logger.log_directory}")
 
     # Initialize WebRTC signaling service
     webrtc_service = init_webrtc_service(websocket_manager, loop)
@@ -649,7 +651,7 @@ async def startup_event():
     video_service.set_opencv_service(opencv_service)
     # Connect OpenCV service to telemetry for OSD
     opencv_service.set_telemetry_service(mavlink_service)
-    print("✅ OpenCV service initialized and connected to video stream and telemetry")
+    logger.info(" OpenCV service initialized and connected to video stream and telemetry")
 
     # Initialize Network Event Bridge (self-healing streaming)
     try:
@@ -670,25 +672,25 @@ async def startup_event():
         try:
             await latency_monitor.start()
             logger.info("Latency Monitor started successfully")
-            print("✅ Latency Monitor started (RTT, jitter, packet loss)")
+            logger.info(" Latency Monitor started (RTT, jitter, packet loss)")
         except Exception as e:
             logger.error(f"Failed to start Latency Monitor: {e}")
-            print(f"⚠️  Latency Monitor start error: {e}")
+            logger.warning(f"  Latency Monitor start error: {e}")
 
         try:
             await event_bridge.start()
             logger.info("Network Event Bridge started successfully")
-            print("✅ Network Event Bridge started (self-healing streaming)")
+            logger.info(" Network Event Bridge started (self-healing streaming)")
         except Exception as e:
             logger.error(f"Failed to start Network Event Bridge: {e}")
-            print(f"⚠️  Network Event Bridge start error: {e}")
+            logger.warning(f"  Network Event Bridge start error: {e}")
 
         if not modem_provider:
-            print("ℹ️  Cellular metrics disabled (no modem detected)")
-            print("   Monitoring network quality via latency only")
+            logger.info("  Cellular metrics disabled (no modem detected)")
+            logger.info("   Monitoring network quality via latency only")
     except Exception as e:
         logger.error(f"Network Event Bridge initialization error: {e}")
-        print(f"⚠️  Network Event Bridge init error: {e}")
+        logger.warning(f"  Network Event Bridge init error: {e}")
 
     # Auto-connect to VPN not needed - handled by VPN provider/routes on demand
 
@@ -715,13 +717,13 @@ async def startup_event():
     mavlink.set_mavlink_service(mavlink_service)
     router_routes.set_router_service(router_service)
 
-    print("🚀 FPV Copilot Sky starting up...")
-    print("✅ Router ready for outputs")
-    print("✅ VPN service initialized")
+    logger.info("🚀 FPV Copilot Sky starting up...")
+    logger.info(" Router ready for outputs")
+    logger.info(" VPN service initialized")
 
     # Auto-start video if configured
     if streaming_config and streaming_config.get("auto_start", False):
-        print("📹 Video auto-start enabled in preferences")
+        logger.info("📹 Video auto-start enabled in preferences")
 
         def start_video():
             import time
@@ -729,14 +731,14 @@ async def startup_event():
             time.sleep(2)  # Wait for system to settle
             try:
                 if not video_service:
-                    print("⚠️ Video service not available for auto-start")
+                    logger.warning(" Video service not available for auto-start")
                     return
 
                 if not video_service.is_available():
-                    print("⚠️ No video devices available for auto-start")
+                    logger.warning(" No video devices available for auto-start")
                     return
 
-                print("🔄 Attempting to auto-start video stream...")
+                logger.info(" Attempting to auto-start video stream...")
                 result = video_service.start()
 
                 if result.get("success"):
@@ -744,18 +746,18 @@ async def startup_event():
                     time.sleep(1)
                     status = video_service.get_status()
                     if status.get("streaming"):
-                        print("✅ Video streaming auto-started successfully")
+                        logger.info(" Video streaming auto-started successfully")
                     else:
-                        print("⚠️ Video start returned success but stream not confirmed")
+                        logger.warning(" Video start returned success but stream not confirmed")
                 else:
-                    print(f"⚠️ Video auto-start failed: {result.get('message', 'Unknown error')}")
+                    logger.warning(f" Video auto-start failed: {result.get('message', 'Unknown error')}")
             except Exception as e:
-                print(f"⚠️ Video auto-start exception: {e}")
+                logger.warning(f" Video auto-start exception: {e}")
 
         video_thread = threading.Thread(target=start_video, daemon=True, name="VideoAutoStart")
         video_thread.start()
     else:
-        print("⏭️ Video auto-start disabled in preferences")
+        logger.info(" Video auto-start disabled in preferences")
 
     # Start auto-connect VPN in background thread (non-blocking)
     vpn_thread = threading.Thread(target=auto_connect_vpn, daemon=True, name="VPNAutoConnect")
@@ -774,7 +776,7 @@ def get_detected_board():
 @app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup on shutdown"""
-    print("🛑 FPV Copilot Sky shutting down...")
+    logger.info("🛑 FPV Copilot Sky shutting down...")
 
     # Stop network event bridge
     try:

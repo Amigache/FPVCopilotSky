@@ -96,7 +96,7 @@ const NetworkView = () => {
   const loadWifiNetworks = useCallback(async () => {
     setWifiScanning(true)
     try {
-      const response = await api.get('/api/network/wifi/networks')
+      const response = await api.get('/api/network-interfaces/wifi/scan')
       if (response.ok) {
         const data = await response.json()
         setWifiNetworks(data.networks || [])
@@ -291,7 +291,7 @@ const NetworkView = () => {
         payload.password = wifiPassword
       }
 
-      const response = await api.post('/api/network/wifi/connect', payload)
+      const response = await api.post('/api/network-interfaces/wifi/connect', payload)
       if (response.ok) {
         showToast(
           t('network.wifiConnected', 'Connected to {{ssid}}', { ssid: connectModal.ssid }),
@@ -313,7 +313,7 @@ const NetworkView = () => {
   // Disconnect WiFi
   const handleWifiDisconnect = async () => {
     try {
-      const response = await api.post('/api/network/wifi/disconnect')
+      const response = await api.post('/api/network-interfaces/wifi/disconnect')
       if (response.ok) {
         showToast(t('network.wifiDisconnected', 'Disconnected from WiFi'), 'success')
         await loadDashboard(true) // Reload dashboard after WiFi disconnect

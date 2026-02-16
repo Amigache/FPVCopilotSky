@@ -48,10 +48,12 @@ class TestSystemRouteModule:
 class TestNetworkRouteModule:
     """Test network route module"""
 
-    def test_network_route_file_exists(self):
-        """Test that network route file exists"""
-        route_file = Path(__file__).parent.parent / "app" / "api" / "routes" / "network.py"
-        assert route_file.exists(), "Network route file should exist"
+    def test_network_route_module_exists(self):
+        """Test that network route module exists (as directory with __init__.py)"""
+        route_module = Path(__file__).parent.parent / "app" / "api" / "routes" / "network"
+        assert route_module.exists() and route_module.is_dir(), "Network route module should exist as directory"
+        init_file = route_module / "__init__.py"
+        assert init_file.exists(), "Network module should have __init__.py"
 
     def test_network_route_can_import(self):
         """Test that network route can be imported"""

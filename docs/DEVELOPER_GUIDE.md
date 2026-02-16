@@ -190,12 +190,23 @@ FPVCopilotSky/
 │   ├── api/routes/              # Endpoints REST
 │   │   ├── mavlink.py           # Conexión y telemetría MAVLink
 │   │   ├── video.py             # Control de streaming
-│   │   ├── network.py           # Red, WiFi, modem (~35 endpoints)
+│   │   ├── network/             # Red, WiFi, modem (modular, ~1700 líneas)
+│   │   │   ├── __init__.py      # Router principal (44 líneas)
+│   │   │   ├── common.py        # Utilidades compartidas (105 líneas)
+│   │   │   ├── status.py        # Estado y dashboard (404 líneas)
+│   │   │   ├── flight_mode.py   # Optimización FPV (275 líneas)
+│   │   │   ├── flight_session.py # Grabación de vuelo (150 líneas)
+│   │   │   ├── latency.py       # Monitoreo de latencia (187 líneas)
+│   │   │   ├── failover.py      # Auto-failover (174 líneas)
+│   │   │   ├── dns.py           # Caché DNS (122 líneas)
+│   │   │   ├── bridge.py        # Network-video bridge (105 líneas)
+│   │   │   └── mptcp.py         # Multi-Path TCP (125 líneas)
 │   │   ├── vpn.py               # VPN Tailscale (~7 endpoints)
 │   │   ├── system.py            # CPU, RAM, servicios
 │   │   ├── status.py            # Health check
 │   │   ├── router.py            # Salidas MAVLink
-│   │   └── modem.py             # (alias, redirige a network.py)
+│   │   ├── modem.py             # Modems 4G provider-based
+│   │   └── network_interface.py # Gestión de interfaces de red
 │   │
 │   ├── providers/               # Proveedores de hardware (patrón abstracto)
 │   │   ├── registry.py          # ProviderRegistry (singleton)
@@ -242,6 +253,7 @@ FPVCopilotSky/
 │   │   ├── mavlink_bridge.py    # Bridge serie ↔ red
 │   │   ├── mavlink_router.py    # Gestión de salidas
 │   │   ├── gstreamer_service.py # Pipeline de video
+│   │   ├── cache_service.py     # Caché centralizado thread-safe
 │   │   ├── video_config.py      # Configuración de video
 │   │   ├── video_stream_info.py # MAVLink VIDEO_STREAM_INFORMATION
 │   │   ├── preferences.py       # Persistencia de preferencias

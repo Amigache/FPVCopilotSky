@@ -933,6 +933,83 @@ class GStreamerService:
                 pass
         self._encoder_probe_ids.clear()
 
+    def _install_passthrough_probes(self, rtppay_element):
+        """
+        Install GStreamer pad probes on RTP payloader for passthrough mode.
+        Measures: frame counts, frame sizes (for FPS calculation).
+        """
+        if not rtppay_element or not GSTREAMER_AVAILABLE:
+            return
+
+        try:
+            # Probe on RTP payloader sink pad (frames entering payloader)
+            sinkpad = rtppay_element.get_static_pad("sink")
+            if sinkpad:
+                probe_id = sinkpad.add_probe(Gst.PadProbeType.BUFFER, self._passthrough_probe, None)
+                self._encoder_probe_ids.append((sinkpad, probe_id))
+
+            logger.info(f"Passthrough probes installed on {rtppay_element.get_name()}")
+        except Exception as e:
+            logger.warning(f"Failed to install passthrough probes: {e}")
+
+    def _passthrough_probe(self, pad, info, user_data):
+        """
+        Probe callback for passthrough mode (RTP payloader sink).
+        Counts frames for FPS calculation.
+        """
+        try:
+            buf = info.get_buffer()
+            if not buf:
+                return Gst.PadProbeReturn.OK
+
+            # Get frame size
+            frame_size = buf.get_size()
+
+            # Update encoder stats (thread-safe) - reuse same structure
+            with self.stats_lock:
+                stats = self.encoder_stats
+                stats["frames_encoded"] += 1
+                stats["last_frame_size_bytes"] = frame_size
+
+                # Detect keyframes (IDR NAL units)
+                is_keyframe = False
+                success, map_info = buf.map(Gst.MapFlags.READ)
+                if success:
+                    data = bytes(map_info.data[:16]) if map_info.size >= 16 else bytes(map_info.data)
+                    buf.unmap(map_info)
+
+                    # Look for IDR NAL unit (type 5)
+                    for i in range(len(data) - 4):
+                        if data[i : i + 3] == b"\x00\x00\x01":
+                            nal_type = data[i + 3] & 0x1F
+                            if nal_type == 5:
+                                is_keyframe = True
+                                break
+                        elif data[i : i + 4] == b"\x00\x00\x00\x01":
+                            nal_type = data[i + 4] & 0x1F
+                            if nal_type == 5:
+                                is_keyframe = True
+                                break
+
+                if is_keyframe:
+                    stats["keyframes_sent"] += 1
+                else:
+                    stats["pframes_sent"] += 1
+
+                # Calculate average frame size
+                total_frames = stats["keyframes_sent"] + stats["pframes_sent"]
+                if total_frames > 0:
+                    # Use exponential moving average for frame size
+                    alpha = 0.1
+                    stats["avg_frame_size_bytes"] = int(
+                        alpha * frame_size + (1 - alpha) * stats["avg_frame_size_bytes"]
+                    )
+
+        except Exception as e:
+            logger.debug(f"Passthrough probe error: {e}")
+
+        return Gst.PadProbeReturn.OK
+
     def _on_webrtc_appsink_sample(self, appsink):
         """
         Called by GStreamer whenever a new H264 access unit is ready.
@@ -1058,48 +1135,11 @@ class GStreamerService:
                 print(f"⚠️ Provider {codec_id} not available on system")
                 return False
 
-            # Build config dict from video_config
-            config = {
-                "width": self.video_config.width,
-                "height": self.video_config.height,
-                "framerate": self.video_config.framerate,
-                "bitrate": self.video_config.h264_bitrate,
-                "quality": self.video_config.quality,
-                "gop_size": self.video_config.gop_size,
-                "opencv_enabled": self._is_opencv_enabled(),  # For HW decoder optimization
-            }
-
-            # Validate config
-            validation = provider.validate_config(config)
-            if not validation["valid"]:
-                print(f"❌ Invalid config: {validation['errors']}")
-                self.last_error = "; ".join(validation["errors"])
-                return False
-
-            if validation["warnings"]:
-                for warning in validation["warnings"]:
-                    print(f"⚠️ {warning}")
-
-            # Get pipeline elements from provider
-            pipeline_config = provider.build_pipeline_elements(config)
-            if not pipeline_config["success"]:
-                print(f"❌ Failed to build pipeline elements: {pipeline_config.get('error', 'Unknown error')}")
-                self.last_error = pipeline_config.get("error", "Unknown error")
-                return False
-
-            # Create GStreamer pipeline
-            print(f"🔧 Building pipeline with encoder: {provider.display_name}")
-            pipeline = Gst.Pipeline.new(f"fpv-{codec_id}-pipeline")
-
-            # Store encoder provider name for status reporting
-            self.current_encoder_provider = provider.display_name
-
-            # Get video source provider
+            # Get video source provider FIRST to determine source format
             registry = get_provider_registry()
 
             # Find which source provider handles this device
             source_provider = None
-            source_config_result = None
 
             for source_type in registry.list_video_source_providers():
                 sp = registry.get_video_source(source_type)
@@ -1126,13 +1166,71 @@ class GStreamerService:
                 self.last_error = "No video source provider available"
                 return False
 
-            # Build source element from provider
+            # Build config dict from video_config
+            config = {
+                "width": self.video_config.width,
+                "height": self.video_config.height,
+                "framerate": self.video_config.framerate,
+                "bitrate": self.video_config.h264_bitrate,
+                "quality": self.video_config.quality,
+                "gop_size": self.video_config.gop_size,
+                "opencv_enabled": self._is_opencv_enabled(),  # For HW decoder optimization
+            }
+
+            # Build source element from provider to get source format
             source_config_result = source_provider.build_source_element(self.video_config.device, config)
 
             if not source_config_result["success"]:
                 print(f"❌ Failed to build source element: {source_config_result.get('error')}")
                 self.last_error = source_config_result.get("error", "Unknown error")
                 return False
+
+            # Add source format to config for encoder (H.264, MJPEG, etc)
+            config["source_format"] = source_config_result.get("output_format", "image/jpeg")
+
+            # ═══════════════════════════════════════════════════════════════
+            # AUTO-DETECT H.264 PASSTHROUGH OPPORTUNITY
+            # If camera outputs native H.264 and user requested H.264 encoding,
+            # automatically use passthrough mode (no decode/re-encode)
+            # ═══════════════════════════════════════════════════════════════
+            source_format = config["source_format"]
+            is_h264_camera = "video/x-h264" in source_format
+
+            if is_h264_camera and codec_id in ["h264", "x264"]:
+                # Check if passthrough encoder is available
+                passthrough_provider = registry.get_video_encoder("h264_passthrough")
+                if passthrough_provider and passthrough_provider.is_available():
+                    print("🚀 Camera outputs native H.264, using passthrough mode (ultra low latency)")
+                    codec_id = "h264_passthrough"
+                    provider = passthrough_provider
+                    # Update encoder provider name
+                    self.current_encoder_provider = provider.display_name
+            # ═══════════════════════════════════════════════════════════════
+
+            # Validate config
+            validation = provider.validate_config(config)
+            if not validation["valid"]:
+                print(f"❌ Invalid config: {validation['errors']}")
+                self.last_error = "; ".join(validation["errors"])
+                return False
+
+            if validation["warnings"]:
+                for warning in validation["warnings"]:
+                    print(f"⚠️ {warning}")
+
+            # Get pipeline elements from provider
+            pipeline_config = provider.build_pipeline_elements(config)
+            if not pipeline_config["success"]:
+                print(f"❌ Failed to build pipeline elements: {pipeline_config.get('error', 'Unknown error')}")
+                self.last_error = pipeline_config.get("error", "Unknown error")
+                return False
+
+            # Create GStreamer pipeline
+            print(f"🔧 Building pipeline with encoder: {provider.display_name}")
+            pipeline = Gst.Pipeline.new(f"fpv-{codec_id}-pipeline")
+
+            # Store encoder provider name for status reporting
+            self.current_encoder_provider = provider.display_name
 
             # Create source element
             source_cfg = source_config_result["source_element"]
@@ -1178,6 +1276,7 @@ class GStreamerService:
             caps_filter_str = source_config_result.get("caps_filter", "")
             output_format = source_config_result.get("output_format", "")
             is_jpeg_source = "image/jpeg" in caps_filter_str or "image/jpeg" in output_format
+            is_h264_source = "video/x-h264" in caps_filter_str or "video/x-h264" in output_format
 
             if opencv_enabled:
                 print("🎨 OpenCV processing enabled - inserting into pipeline")
@@ -1189,6 +1288,19 @@ class GStreamerService:
                     if jpegdec:
                         pipeline.add(jpegdec)
                         elements_list.append(jpegdec)
+
+                    # Add videoconvert to ensure BGR format for OpenCV
+                    videoconv = Gst.ElementFactory.make("videoconvert", "opencv_videoconv")
+                    if videoconv:
+                        pipeline.add(videoconv)
+                        elements_list.append(videoconv)
+                elif is_h264_source:
+                    print("   → Detected H.264 source, adding avdec_h264 + videoconvert")
+                    # Add avdec_h264 to decode H.264
+                    h264dec = Gst.ElementFactory.make("avdec_h264", "opencv_h264dec")
+                    if h264dec:
+                        pipeline.add(h264dec)
+                        elements_list.append(h264dec)
 
                     # Add videoconvert to ensure BGR format for OpenCV
                     videoconv = Gst.ElementFactory.make("videoconvert", "opencv_videoconv")
@@ -1234,8 +1346,8 @@ class GStreamerService:
             # Add encoder elements
             encoder_element = None
             for elem_config in pipeline_config["elements"]:
-                # Skip decoder if OpenCV is enabled and we already decoded MJPEG
-                if opencv_enabled and elem_config["name"] == "decoder" and is_jpeg_source:
+                # Skip decoder if OpenCV is enabled and we already decoded (MJPEG or H.264)
+                if opencv_enabled and elem_config["name"] == "decoder" and (is_jpeg_source or is_h264_source):
                     continue
 
                 element = Gst.ElementFactory.make(elem_config["element"], elem_config["name"])
@@ -1264,6 +1376,9 @@ class GStreamerService:
             # Install encoder stats probes
             if encoder_element:
                 self._install_encoder_probes(encoder_element)
+            else:
+                # No encoder (passthrough mode) - install probe on RTP payloader instead
+                print("📊 Passthrough mode: Installing probe on RTP payloader for stats")
 
             # Add RTP payloader
             rtppay = Gst.ElementFactory.make(pipeline_config["rtp_payloader"], "rtppay")
@@ -1276,6 +1391,10 @@ class GStreamerService:
 
             pipeline.add(rtppay)
             elements_list.append(rtppay)
+
+            # Install passthrough probe on RTP payloader if no encoder
+            if not encoder_element:
+                self._install_passthrough_probes(rtppay)
 
             # Create sink based on streaming mode
             sink = self._create_sink_for_mode()
@@ -1398,12 +1517,21 @@ class GStreamerService:
         try:
             probe_types = Gst.PadProbeType.BUFFER | Gst.PadProbeType.BUFFER_LIST
 
-            # Count encoded frames (one buffer per frame) from encoder src pad
+            # Count encoded frames (one buffer per frame)
+            # Try encoder first (for x264, openh264, etc)
             encoder = self.pipeline.get_by_name("encoder")
             if encoder:
                 pad = encoder.get_static_pad("src")
                 if pad:
                     pad.add_probe(probe_types, self._on_frame_probe)
+            else:
+                # No encoder (passthrough mode) - count frames from h264parse src pad
+                h264parse = self.pipeline.get_by_name("h264parse")
+                if h264parse:
+                    pad = h264parse.get_static_pad("src")
+                    if pad:
+                        pad.add_probe(probe_types, self._on_frame_probe)
+                        print("📊 Passthrough: Counting FPS from h264parse")
 
             # Count bytes on the wire from sink pad
             sink = self.pipeline.get_by_name("sink")
