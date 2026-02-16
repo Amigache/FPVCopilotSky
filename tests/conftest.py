@@ -411,6 +411,8 @@ def mock_api_services(monkeypatch):
     # Add missing setter methods that update the backing store
     def set_serial_auto_connect(value):
         mock_prefs._preferences.setdefault("serial", {})["auto_connect"] = value
+        # Also update the config object returned by get_serial_config
+        mock_prefs.get_serial_config.return_value.auto_connect = value
 
     def set_video_config(config):
         mock_prefs._preferences["video"] = config
@@ -499,9 +501,13 @@ def mock_api_services(monkeypatch):
             "pipeline_string": "",
         }
 
-    def mock_configure(config: dict):
+    def mock_configure(config: dict = None, streaming_config: dict = None, **kwargs):
         # Update the mock's config when configure is called
-        mock_video_service._current_config.update(config)
+        # Handle both config and streaming_config parameters
+        if streaming_config:
+            mock_video_service._current_config.update(streaming_config)
+        elif config:
+            mock_video_service._current_config.update(config)
         return None
 
     mock_video_service.get_status = Mock(side_effect=mock_get_status)

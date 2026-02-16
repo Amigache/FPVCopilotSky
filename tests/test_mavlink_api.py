@@ -94,7 +94,7 @@ def mock_serial_preferences():
     mock_prefs.set_serial_auto_connect = Mock(side_effect=set_serial_auto_connect)
     mock_prefs.set_serial_config = Mock(side_effect=set_serial_config)
 
-    with patch("services.preferences.get_preferences", return_value=mock_prefs):
+    with patch("app.services.preferences.get_preferences", return_value=mock_prefs):
         yield mock_prefs, config
 
 
