@@ -31,7 +31,7 @@ const ModemView = () => {
   const loadStatus = useCallback(async () => {
     try {
       const response = await api.get(
-        '/api/network/modem/status/enhanced',
+        '/api/modem/status/enhanced/huawei_e3372h',
         MODEM_API_TIMEOUTS.STATUS_ENHANCED
       )
       if (response.ok) {
@@ -50,7 +50,7 @@ const ModemView = () => {
   // Load band presets
   const loadBandPresets = useCallback(async () => {
     try {
-      const response = await api.get('/api/network/modem/band/presets')
+      const response = await api.get('/api/modem/band/presets/huawei_e3372h')
       if (response.ok) {
         const data = await response.json()
         setBandPresets(data)
@@ -64,7 +64,7 @@ const ModemView = () => {
   const handleTestLatency = async () => {
     setTestingLatency(true)
     try {
-      const response = await api.get('/api/network/modem/latency')
+      const response = await api.get('/api/modem/latency/huawei_e3372h')
       if (response.ok) {
         const data = await response.json()
         setLatency(data)
@@ -106,7 +106,7 @@ const ModemView = () => {
     showToast(`⏳ ${t('modem.changingBand')}`, 'info')
     try {
       const response = await api.post(
-        '/api/network/modem/band',
+        '/api/modem/band/huawei_e3372h',
         { preset },
         MODEM_API_TIMEOUTS.BAND_CHANGE
       )
@@ -130,7 +130,7 @@ const ModemView = () => {
     showToast(`⏳ ${t('modem.changingNetworkMode')}`, 'info')
     try {
       const response = await api.post(
-        '/api/network/modem/mode',
+        '/api/modem/mode/huawei_e3372h',
         { mode },
         MODEM_API_TIMEOUTS.MODE_CHANGE
       )
@@ -154,8 +154,8 @@ const ModemView = () => {
     showToast(`⏳ ${actionMsg} modo video...`, 'info')
     try {
       const endpoint = status?.video_mode_active
-        ? '/api/network/modem/video-mode/disable'
-        : '/api/network/modem/video-mode/enable'
+        ? '/api/modem/video-mode/disable/huawei_e3372h'
+        : '/api/modem/video-mode/enable/huawei_e3372h'
 
       const response = await api.post(endpoint, {}, MODEM_API_TIMEOUTS.VIDEO_MODE_TOGGLE)
       if (response.ok) {
@@ -183,7 +183,7 @@ const ModemView = () => {
       onConfirm: async () => {
         try {
           setModemRebooting(true)
-          const response = await api.post('/api/network/modem/reboot')
+          const response = await api.post('/api/modem/reboot/huawei_e3372h')
           if (response.ok) {
             showToast(`⏳ ${t('network.modemRebooting')}`, 'info')
 
@@ -194,7 +194,7 @@ const ModemView = () => {
               attempts++
               try {
                 const checkResponse = await api.get(
-                  '/api/network/modem/status',
+                  '/api/modem/status/huawei_e3372h',
                   MODEM_API_TIMEOUTS.STATUS_CHECK
                 )
                 if (checkResponse.ok) {

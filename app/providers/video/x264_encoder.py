@@ -83,11 +83,15 @@ class X264Encoder(VideoEncoderProvider):
         """
         Build x264 H.264 pipeline elements.
 
-        When OpenCV is disabled and v4l2jpegdec is available:
+        When source is H.264:
+            camera(H.264) → avdec_h264 → videoconvert → x264enc
+            (Decode and re-encode to allow bitrate/quality control)
+
+        When source is MJPEG and v4l2jpegdec is available:
             camera(MJPEG) → v4l2jpegdec(HW) → videoconvert → x264enc
             (Saves ~5-10ms latency by using hardware JPEG decode)
 
-        When OpenCV is enabled or HW decoder not available:
+        When source is MJPEG and HW decoder not available:
             camera(MJPEG) → jpegdec(SW) → videoconvert → x264enc
         """
         try:
@@ -96,69 +100,89 @@ class X264Encoder(VideoEncoderProvider):
             framerate = config.get("framerate", 30)
             bitrate = config.get("bitrate", 2000)
             opencv_enabled = config.get("opencv_enabled", False)
+            source_format = config.get("source_format", "image/jpeg")  # Get source format
 
-            # Use hardware JPEG decoder when available and OpenCV is OFF
-            # (OpenCV needs BGR format which requires videoconvert anyway)
-            use_hw_jpegdec = self._hw_jpegdec_available and not opencv_enabled
+            elements = []
 
-            if use_hw_jpegdec:
-                logger.info("Using v4l2jpegdec (HW) for JPEG decoding")
-                decoder_element = "v4l2jpegdec"
+            # Determine if we need a decoder and which one
+            # If source is already H.264, use avdec_h264 to decode for re-encoding
+            # If source is MJPEG, use jpegdec or v4l2jpegdec
+            if "video/x-h264" in source_format:
+                print(f"📹 Source is H.264, using avdec_h264 for decoding (source_format: {source_format})")
+                logger.info("Source is H.264, using avdec_h264 for decoding")
+                elements.append({"name": "decoder", "element": "avdec_h264", "properties": {}})
+            elif "image/jpeg" in source_format:
+                # Use hardware JPEG decoder when available and OpenCV is OFF
+                # (OpenCV needs BGR format which requires videoconvert anyway)
+                use_hw_jpegdec = self._hw_jpegdec_available and not opencv_enabled
+
+                if use_hw_jpegdec:
+                    print("📹 Using v4l2jpegdec (HW) for JPEG decoding")
+                    logger.info("Using v4l2jpegdec (HW) for JPEG decoding")
+                    decoder_element = "v4l2jpegdec"
+                else:
+                    decoder_element = "jpegdec"
+
+                elements.append({"name": "decoder", "element": decoder_element, "properties": {}})
             else:
-                decoder_element = "jpegdec"
+                # For raw formats (YUYV, etc), skip decoder
+                print(f"📹 Source format is {source_format}, no decoder needed")
+                logger.info(f"Source format is {source_format}, no decoder needed")
 
-            elements = [
-                {"name": "decoder", "element": decoder_element, "properties": {}},
-                {"name": "videoconvert", "element": "videoconvert", "properties": {}},
-                {"name": "videoscale", "element": "videoscale", "properties": {}},
-                {
-                    "name": "encoder_caps",
-                    "element": "capsfilter",
-                    "properties": {
-                        "caps": f"video/x-raw,format=I420,width={width},height={height},framerate={framerate}/1"
+            # Add conversion and scaling elements
+            elements.extend(
+                [
+                    {"name": "videoconvert", "element": "videoconvert", "properties": {}},
+                    {"name": "videoscale", "element": "videoscale", "properties": {}},
+                    {
+                        "name": "encoder_caps",
+                        "element": "capsfilter",
+                        "properties": {
+                            "caps": f"video/x-raw,format=I420,width={width},height={height},framerate={framerate}/1"
+                        },
                     },
-                },
-                {
-                    "name": "queue_pre",
-                    "element": "queue",
-                    "properties": {
-                        "max-size-buffers": 2,
-                        "max-size-time": 0,
-                        "max-size-bytes": 0,
-                        "leaky": 2,
+                    {
+                        "name": "queue_pre",
+                        "element": "queue",
+                        "properties": {
+                            "max-size-buffers": 2,
+                            "max-size-time": 0,
+                            "max-size-bytes": 0,
+                            "leaky": 2,
+                        },
                     },
-                },
-                {
-                    "name": "encoder",
-                    "element": "x264enc",
-                    "properties": {
-                        "bitrate": bitrate,
-                        "speed-preset": "ultrafast",
-                        "tune": 0x00000004,  # zerolatency
-                        "key-int-max": framerate,
-                        "bframes": 0,
-                        "threads": 4,
-                        "sliced-threads": True,
-                        "rc-lookahead": 0,
-                        "vbv-buf-capacity": 300,
+                    {
+                        "name": "encoder",
+                        "element": "x264enc",
+                        "properties": {
+                            "bitrate": bitrate,
+                            "speed-preset": "ultrafast",
+                            "tune": 0x00000004,  # zerolatency
+                            "key-int-max": framerate,
+                            "bframes": 0,
+                            "threads": 4,
+                            "sliced-threads": True,
+                            "rc-lookahead": 0,
+                            "vbv-buf-capacity": 300,
+                        },
                     },
-                },
-                {
-                    "name": "queue_post",
-                    "element": "queue",
-                    "properties": {
-                        "max-size-buffers": 3,
-                        "max-size-time": 0,
-                        "max-size-bytes": 0,
-                        "leaky": 2,
+                    {
+                        "name": "queue_post",
+                        "element": "queue",
+                        "properties": {
+                            "max-size-buffers": 3,
+                            "max-size-time": 0,
+                            "max-size-bytes": 0,
+                            "leaky": 2,
+                        },
                     },
-                },
-                {
-                    "name": "h264parse",
-                    "element": "h264parse",
-                    "properties": {"config-interval": -1},
-                },
-            ]
+                    {
+                        "name": "h264parse",
+                        "element": "h264parse",
+                        "properties": {"config-interval": -1},
+                    },
+                ]
+            )
 
             return {
                 "success": True,

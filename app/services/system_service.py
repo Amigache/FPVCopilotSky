@@ -9,6 +9,7 @@ import platform
 import subprocess
 import time
 from typing import List, Dict, Any
+from app.services.cache_service import get_cache_service
 
 
 class SystemService:
@@ -19,11 +20,8 @@ class SystemService:
     _last_cpu_times = None
     _last_cpu_check = 0
 
-    # Cache for logs to prevent excessive system calls
-    _logs_cache = {
-        "backend": {"content": None, "timestamp": 0, "ttl": 2},  # 2 seconds TTL
-        "frontend": {"content": None, "timestamp": 0, "ttl": 2},  # 2 seconds TTL
-    }
+    # Cache service instance
+    _cache = get_cache_service()
 
     @staticmethod
     def get_memory_info() -> Dict[str, Any]:
@@ -471,12 +469,10 @@ class SystemService:
         Returns:
             Log content as string
         """
-        # Check cache
-        cache = SystemService._logs_cache["backend"]
-        current_time = time.time()
-
-        if cache["content"] is not None and (current_time - cache["timestamp"]) < cache["ttl"]:
-            return cache["content"]
+        # Check cache using CacheService
+        cached_logs = SystemService._cache.get("logs_backend")
+        if cached_logs is not None:
+            return cached_logs
 
         # Cache miss or expired - fetch fresh logs
         try:
@@ -492,9 +488,8 @@ class SystemService:
             else:
                 logs = f"Error fetching logs: {result.stderr}"
 
-            # Update cache
-            cache["content"] = logs
-            cache["timestamp"] = current_time
+            # Update cache with 2 second TTL
+            SystemService._cache.set("logs_backend", logs, ttl=2)
 
             return logs
         except subprocess.TimeoutExpired:
@@ -513,12 +508,10 @@ class SystemService:
         Returns:
             Log content as string
         """
-        # Check cache
-        cache = SystemService._logs_cache["frontend"]
-        current_time = time.time()
-
-        if cache["content"] is not None and (current_time - cache["timestamp"]) < cache["ttl"]:
-            return cache["content"]
+        # Check cache using CacheService
+        cached_logs = SystemService._cache.get("logs_frontend")
+        if cached_logs is not None:
+            return cached_logs
 
         # Cache miss or expired - fetch fresh logs
         try:
@@ -551,9 +544,8 @@ class SystemService:
             combined = nginx_error + nginx_access
             logs = combined if combined else "No frontend logs available"
 
-            # Update cache
-            cache["content"] = logs
-            cache["timestamp"] = current_time
+            # Update cache with 2 second TTL
+            SystemService._cache.set("logs_frontend", logs, ttl=2)
 
             return logs
         except subprocess.TimeoutExpired:

@@ -5,7 +5,7 @@ This module registers all available video encoders on import
 
 import logging
 from .registry import get_provider_registry
-from .video import MJPEGEncoder, X264Encoder, OpenH264Encoder, HardwareH264Encoder
+from .video import MJPEGEncoder, X264Encoder, OpenH264Encoder, HardwareH264Encoder, H264PassthroughEncoder
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +20,13 @@ def register_all_video_encoders():
         logger.info("✅ Hardware H.264 encoder registered")
     except Exception as e:
         logger.error(f"❌ Failed to register Hardware H.264 encoder: {e}")
+
+    # Register H.264 Passthrough encoder (very high priority for H.264 cameras)
+    try:
+        registry.register_video_encoder("h264_passthrough", H264PassthroughEncoder)
+        logger.info("✅ H.264 Passthrough encoder registered")
+    except Exception as e:
+        logger.error(f"❌ Failed to register H.264 Passthrough encoder: {e}")
 
     # Register MJPEG encoder
     try:

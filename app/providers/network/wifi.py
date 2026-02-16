@@ -226,6 +226,9 @@ class WiFiInterface(NetworkInterface):
     def scan_networks(self) -> List[Dict]:
         """Scan for available WiFi networks"""
         try:
+            # Get current SSID to mark connected network
+            current_ssid = self._get_ssid()
+
             result = subprocess.run(
                 ["sudo", "iw", "dev", self.interface_name, "scan"],
                 capture_output=True,
@@ -237,20 +240,37 @@ class WiFiInterface(NetworkInterface):
                 return []
 
             networks = []
+            seen_ssids = set()
             current_network = {}
 
             for line in result.stdout.split("\n"):
                 line = line.strip()
 
                 if line.startswith("BSS "):
-                    if current_network:
+                    # Save previous network if valid
+                    if current_network.get("ssid") and current_network["ssid"] not in seen_ssids:
+                        seen_ssids.add(current_network["ssid"])
                         networks.append(current_network)
-                    current_network = {}
+
+                    # Start new network with default values
+                    current_network = {
+                        "ssid": None,
+                        "signal": 0,
+                        "security": "Open",
+                        "connected": False,
+                    }
+
+                    # Check if associated
+                    if "-- associated" in line:
+                        current_network["connected"] = True
 
                 elif line.startswith("SSID:"):
                     ssid = line.split(":", 1)[1].strip()
                     if ssid:
                         current_network["ssid"] = ssid
+                        # Mark as connected if matches current SSID
+                        if ssid == current_ssid:
+                            current_network["connected"] = True
 
                 elif line.startswith("signal:"):
                     signal = line.split(":")[1].strip()
@@ -259,17 +279,29 @@ class WiFiInterface(NetworkInterface):
                     if match:
                         dbm = float(match.group(1))
                         # Convert dBm to percentage (approximate)
-                        if dbm >= -50:
+                        # -30 dBm = 100%, -90 dBm = 0%
+                        if dbm >= -30:
                             percent = 100
-                        elif dbm <= -100:
+                        elif dbm <= -90:
                             percent = 0
                         else:
-                            percent = 2 * (dbm + 100)
-                        current_network["signal_strength"] = int(percent)
-                        current_network["signal_dbm"] = dbm
+                            percent = int((dbm + 90) * (100 / 60))
+                        current_network["signal"] = max(0, min(100, percent))
 
-            if current_network:
+                # Security detection
+                elif line.startswith("RSN:"):
+                    current_network["security"] = "WPA2"
+                elif line.startswith("WPA:") and current_network["security"] == "Open":
+                    current_network["security"] = "WPA"
+                elif "Privacy:" in line and "WEP" in line and current_network["security"] == "Open":
+                    current_network["security"] = "WEP"
+
+            # Don't forget last network
+            if current_network.get("ssid") and current_network["ssid"] not in seen_ssids:
                 networks.append(current_network)
+
+            # Sort by signal strength (descending)
+            networks.sort(key=lambda x: x.get("signal", 0), reverse=True)
 
             return networks
         except Exception as e:

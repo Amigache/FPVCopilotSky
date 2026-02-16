@@ -20,13 +20,15 @@ def client(mock_api_services):
 class TestNetworkPriorityMode:
     """Test network priority mode (WiFi vs 4G)"""
 
-    @patch("app.api.routes.network._run_command")
-    @patch("app.api.routes.network._detect_wifi_interface")
-    @patch("app.api.routes.network._detect_modem_interface")
-    async def test_set_priority_wifi_primary(self, mock_modem, mock_wifi, mock_cmd, client):
+    @patch("app.api.routes.network.status.get_gateway_for_interface", new_callable=AsyncMock)
+    @patch("app.api.routes.network.status.detect_modem_interface", new_callable=AsyncMock)
+    @patch("app.api.routes.network.status.detect_wifi_interface", new_callable=AsyncMock)
+    @patch("app.api.routes.network.status.run_command", new_callable=AsyncMock)
+    def test_set_priority_wifi_primary(self, mock_cmd, mock_wifi, mock_modem, mock_gateway, client):
         """Setting WiFi priority should set WiFi metric lower than modem"""
         mock_wifi.return_value = "wlan0"
         mock_modem.return_value = "eth0"
+        mock_gateway.return_value = "192.168.1.1"
         mock_cmd.return_value = ("", "OK", 0)
 
         response = client.post("/api/network/priority", json={"mode": "wifi"})
@@ -39,13 +41,15 @@ class TestNetworkPriorityMode:
             assert data.get("success")
             assert data.get("mode") == "wifi"
 
-    @patch("app.api.routes.network._run_command")
-    @patch("app.api.routes.network._detect_wifi_interface")
-    @patch("app.api.routes.network._detect_modem_interface")
-    async def test_set_priority_modem_primary(self, mock_modem, mock_wifi, mock_cmd, client):
+    @patch("app.api.routes.network.status.get_gateway_for_interface", new_callable=AsyncMock)
+    @patch("app.api.routes.network.status.detect_modem_interface", new_callable=AsyncMock)
+    @patch("app.api.routes.network.status.detect_wifi_interface", new_callable=AsyncMock)
+    @patch("app.api.routes.network.status.run_command", new_callable=AsyncMock)
+    def test_set_priority_modem_primary(self, mock_cmd, mock_wifi, mock_modem, mock_gateway, client):
         """Setting modem priority should set modem metric lower than WiFi"""
         mock_wifi.return_value = "wlan0"
         mock_modem.return_value = "eth0"
+        mock_gateway.return_value = "192.168.8.1"
         mock_cmd.return_value = ("", "OK", 0)
 
         response = client.post("/api/network/priority", json={"mode": "modem"})
@@ -69,9 +73,9 @@ class TestNetworkPriorityMode:
         # Should reject invalid mode
         assert response.status_code == 400
 
-    @patch("app.api.routes.network._detect_wifi_interface")
-    @patch("app.api.routes.network._detect_modem_interface")
-    async def test_no_interfaces_detected(self, mock_modem, mock_wifi, client):
+    @patch("app.api.routes.network.status.detect_modem_interface", new_callable=AsyncMock)
+    @patch("app.api.routes.network.status.detect_wifi_interface", new_callable=AsyncMock)
+    def test_no_interfaces_detected(self, mock_wifi, mock_modem, client):
         """Should error gracefully when no interfaces found"""
         mock_wifi.return_value = None
         mock_modem.return_value = None
@@ -94,8 +98,8 @@ class TestNetworkPriorityMode:
             if "mode" in data:
                 assert data["mode"] in ["wifi", "modem", "auto", "unknown"]
 
-    @patch("app.api.routes.network._run_command")
-    async def test_route_metrics_applied_correctly(self, mock_cmd, client):
+    @patch("app.api.routes.network.status.run_command", new_callable=AsyncMock)
+    def test_route_metrics_applied_correctly(self, mock_cmd, client):
         """Route commands should be executed with correct metrics"""
         mock_cmd.return_value = ("", "Route changed", 0)
 
@@ -184,8 +188,8 @@ class TestNetworkPriorityEdgeCases:
             # Should succeed or gracefully handle
             assert response.status_code in [200, 400]
 
-    @patch("app.api.routes.network._run_command")
-    async def test_rapid_mode_changes(self, mock_cmd, client):
+    @patch("app.api.routes.network.status.run_command", new_callable=AsyncMock)
+    def test_rapid_mode_changes(self, mock_cmd, client):
         """Rapid mode changes should be handled correctly"""
         mock_cmd.return_value = ("", "OK", 0)
 

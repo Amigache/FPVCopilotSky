@@ -198,7 +198,17 @@ FPVCopilotSky/
 │   │       ├── mavlink.py       # Telemetría MAVLink
 │   │       ├── router.py        # MAVLink router outputs
 │   │       ├── video.py         # Streaming de video
-│   │       ├── network.py       # Gestión de red
+│   │       ├── network/         # Gestión de red (modular)
+│   │       │   ├── __init__.py  # Router principal
+│   │       │   ├── common.py    # Utilidades compartidas
+│   │       │   ├── status.py    # Estado y dashboard
+│   │       │   ├── flight_mode.py    # Optimización FPV
+│   │       │   ├── flight_session.py # Grabación de vuelo
+│   │       │   ├── latency.py   # Monitoreo de latencia
+│   │       │   ├── failover.py  # Auto-failover
+│   │       │   ├── dns.py       # Caché DNS
+│   │       │   ├── bridge.py    # Network-video bridge
+│   │       │   └── mptcp.py     # Multi-Path TCP
 │   │       ├── modem.py         # Modems 4G/LTE
 │   │       ├── vpn.py           # VPN (Tailscale)
 │   │       ├── status.py        # Estado del sistema
@@ -207,6 +217,7 @@ FPVCopilotSky/
 │   │   ├── mavlink_bridge.py   # Conexión MAVLink
 │   │   ├── mavlink_router.py   # Enrutamiento MAVLink
 │   │   ├── gstreamer_service.py # Video GStreamer
+│   │   ├── cache_service.py     # Caché centralizado (TTL, thread-safe)
 │   │   ├── preferences.py       # Persistencia de config
 │   │   ├── serial_detector.py   # Auto-detección serial
 │   │   ├── system_service.py    # Operaciones de sistema
