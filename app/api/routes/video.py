@@ -155,21 +155,66 @@ async def get_cameras(request: Request):
 
 @router.get("/codecs")
 async def get_codecs(request: Request):
-    """Get available video codecs/encoders"""
+    """Get available video codecs/encoders filtered by current video source capabilities"""
     lang = get_language_from_request(request)
     if not _video_service:
         raise HTTPException(status_code=503, detail=translate("services.video_not_initialized", lang))
 
     # Import here to avoid circular dependency
     from app.providers.registry import get_provider_registry
+    from app.providers.video_source import get_video_source_registry
 
     registry = get_provider_registry()
     available_encoders = registry.get_available_video_encoders()
+
+    # Get compatible encoders from current video source
+    compatible_encoder_ids = None
+    if hasattr(_video_service, "video_config") and _video_service.video_config.device:
+        video_registry = get_video_source_registry()
+        current_device = _video_service.video_config.device
+
+        # Find the video source provider for the current device
+        for source_type in video_registry.list_video_source_providers():
+            provider_class = video_registry.get_video_source(source_type)
+            if provider_class:
+                try:
+                    sources = provider_class.detect_sources()
+                    for src in sources:
+                        if src["device_path"] == current_device:
+                            # Get compatible encoders from this source
+                            source_provider = provider_class.from_id(src["id"])
+                            compatible_encoder_ids = source_provider.get_compatible_encoders()
+                            break
+                    if compatible_encoder_ids:
+                        break
+                except Exception:
+                    # If detection fails, continue with next provider
+                    pass
+
+        # Fallback to v4l2 if device not detected yet
+        if not compatible_encoder_ids:
+            try:
+                v4l2_class = video_registry.get_video_source("v4l2:")
+                if v4l2_class:
+                    source_id = f"v4l2:{current_device}"
+                    source_provider = v4l2_class.from_id(source_id)
+                    compatible_encoder_ids = source_provider.get_compatible_encoders()
+            except Exception:
+                pass
 
     # Format for frontend consumption
     codecs = []
     for encoder in available_encoders:
         if encoder["available"]:  # Only return actually available codecs
+            # Filter by source compatibility if we have that info
+            if compatible_encoder_ids is not None:
+                encoder_id = encoder["codec_id"]
+
+                # Check if this encoder is compatible with the current source
+                if encoder_id not in compatible_encoder_ids:
+                    # Skip encoders that are not compatible with the source
+                    continue
+
             caps = encoder["capabilities"]
             codecs.append(
                 {

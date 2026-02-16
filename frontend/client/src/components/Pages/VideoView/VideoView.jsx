@@ -22,6 +22,10 @@ const VideoView = () => {
   // ── State ──────────────────────────────────────────────────────────────────
   const [loading, setLoading] = useState(true)
   const [cameras, setCameras] = useState([])
+  const [videoSources, setVideoSources] = useState([]) // New: video sources from providers
+  const [selectedSource, setSelectedSource] = useState(null) // Track selected source for capabilities
+
+  // ... existing state variables ...
   const [availableCodecs, setAvailableCodecs] = useState([])
   const [config, setConfig] = useState({
     device: VIDEO_DEFAULTS.DEVICE,
@@ -116,6 +120,18 @@ const VideoView = () => {
     }
   }, [])
 
+  const loadVideoSources = useCallback(async () => {
+    try {
+      const response = await api.get('/api/system/video-sources')
+      if (response.ok) {
+        const data = await response.json()
+        setVideoSources(data.sources || [])
+      }
+    } catch (error) {
+      console.error('Error loading video sources:', error)
+    }
+  }, [])
+
   const loadCodecs = useCallback(async () => {
     try {
       const response = await api.get('/api/video/codecs')
@@ -165,11 +181,17 @@ const VideoView = () => {
   useEffect(() => {
     const loadData = async () => {
       setLoading(true)
-      await Promise.all([loadCameras(), loadCodecs(), loadNetworkIp(), loadAutoAdaptiveBitrate()])
+      await Promise.all([
+        loadCameras(),
+        loadVideoSources(),
+        loadCodecs(),
+        loadNetworkIp(),
+        loadAutoAdaptiveBitrate(),
+      ])
       setLoading(false)
     }
     loadData()
-  }, [loadCameras, loadCodecs, loadNetworkIp, loadAutoAdaptiveBitrate])
+  }, [loadCameras, loadVideoSources, loadCodecs, loadNetworkIp, loadAutoAdaptiveBitrate])
 
   // RTSP mode: auto-populate URL + reload network IP (merged from two effects)
   useEffect(() => {
@@ -360,62 +382,144 @@ const VideoView = () => {
     [cameras, config.device]
   )
 
-  const availableResolutions = useMemo(() => currentCamera?.resolutions || [], [currentCamera])
+  const currentSource = useMemo(
+    () => videoSources.find((source) => source.device_path === config.device) || selectedSource,
+    [videoSources, config.device, selectedSource]
+  )
+
+  const availableResolutions = useMemo(() => {
+    // Prefer video source capabilities over legacy camera data
+    if (currentSource?.capabilities?.resolutions) {
+      // Convert from {width: 1920, height: 1080} format to "1920x1080" strings
+      return currentSource.capabilities.resolutions.map((res) => `${res.width}x${res.height}`)
+    }
+    return currentCamera?.resolutions || []
+  }, [currentSource, currentCamera])
 
   const currentResolution = `${config.width}x${config.height}`
 
-  const availableFps = useMemo(
-    () => currentCamera?.resolutions_fps?.[currentResolution] || FALLBACK_FPS,
-    [currentCamera, currentResolution]
-  )
+  const availableFps = useMemo(() => {
+    // For video sources, use framerates array directly
+    if (currentSource?.capabilities?.framerates) {
+      return currentSource.capabilities.framerates
+    }
+    // For legacy cameras, use resolutions_fps mapping
+    return currentCamera?.resolutions_fps?.[currentResolution] || FALLBACK_FPS
+  }, [currentSource, currentCamera, currentResolution])
 
-  // Auto-select first camera if configured device doesn't exist
+  // Auto-select first available source if configured device doesn't exist
   useEffect(() => {
-    if (cameras.length > 0 && !cameras.find((cam) => cam.device === config.device)) {
-      const firstCam = cameras[0]
-      if (firstCam.resolutions?.length > 0) {
-        const firstRes = firstCam.resolutions[0]
-        const [w, h] = firstRes.split('x')
-        const fps = firstCam.resolutions_fps?.[firstRes]?.[0] || VIDEO_DEFAULTS.FRAMERATE
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setConfig((prev) => ({
-          ...prev,
-          device: firstCam.device,
-          width: safeInt(w, VIDEO_DEFAULTS.WIDTH),
-          height: safeInt(h, VIDEO_DEFAULTS.HEIGHT),
-          framerate: fps,
-        }))
+    const configuredDeviceExists =
+      cameras.find((cam) => cam.device === config.device) ||
+      videoSources.find((source) => source.device_path === config.device)
+
+    if (!configuredDeviceExists) {
+      // Prefer video sources over legacy cameras
+      const firstSource = videoSources.find((source) => source.available) || cameras[0]
+
+      if (firstSource) {
+        const devicePath = firstSource.device_path || firstSource.device
+
+        // Handle video source capabilities
+        if (firstSource.capabilities?.resolutions?.length > 0) {
+          const firstRes = firstSource.capabilities.resolutions[0]
+          const w = firstRes.width
+          const h = firstRes.height
+          const fps = firstSource.capabilities.framerates?.[0] || VIDEO_DEFAULTS.FRAMERATE
+          // eslint-disable-next-line react-hooks/set-state-in-effect
+          setConfig((prev) => ({
+            ...prev,
+            device: devicePath,
+            width: safeInt(w, VIDEO_DEFAULTS.WIDTH),
+            height: safeInt(h, VIDEO_DEFAULTS.HEIGHT),
+            framerate: fps,
+          }))
+          setSelectedSource(firstSource)
+        }
+        // Handle legacy camera format
+        else if (firstSource.resolutions?.length > 0) {
+          const firstRes = firstSource.resolutions[0]
+          const [w, h] = firstRes.split('x')
+          const fps = firstSource.resolutions_fps?.[firstRes]?.[0] || VIDEO_DEFAULTS.FRAMERATE
+          // eslint-disable-next-line react-hooks/set-state-in-effect
+          setConfig((prev) => ({
+            ...prev,
+            device: devicePath,
+            width: safeInt(w, VIDEO_DEFAULTS.WIDTH),
+            height: safeInt(h, VIDEO_DEFAULTS.HEIGHT),
+            framerate: fps,
+          }))
+        }
       }
     }
-  }, [cameras, config.device])
+  }, [cameras, videoSources, config.device])
 
   // Handle camera change — reset to first available resolution
   const handleCameraChange = useCallback(
     (device) => {
-      const camera = cameras.find((cam) => cam.device === device)
-      if (camera?.resolutions?.length > 0) {
-        const firstRes = camera.resolutions[0]
-        const [w, h] = firstRes.split('x')
-        const fps = camera.resolutions_fps?.[firstRes]?.[0] || VIDEO_DEFAULTS.FRAMERATE
-        updateConfig((prev) => ({
-          ...prev,
-          device,
-          width: safeInt(w, VIDEO_DEFAULTS.WIDTH),
-          height: safeInt(h, VIDEO_DEFAULTS.HEIGHT),
-          framerate: fps,
-        }))
-      } else {
-        updateConfig((prev) => ({ ...prev, device }))
+      // Find the selected source from videoSources or legacy cameras
+      const source =
+        videoSources.find((source) => source.device_path === device) ||
+        cameras.find((cam) => cam.device === device)
+
+      setSelectedSource(source)
+
+      // Handle video source capabilities
+      if (source && source.capabilities) {
+        const capabilities = source.capabilities
+        if (capabilities.resolutions && capabilities.resolutions.length > 0) {
+          const firstRes = capabilities.resolutions[0]
+          const w = firstRes.width
+          const h = firstRes.height
+          const fps = capabilities.framerates?.[0] || VIDEO_DEFAULTS.FRAMERATE
+          updateConfig((prev) => ({
+            ...prev,
+            device,
+            width: safeInt(w, VIDEO_DEFAULTS.WIDTH),
+            height: safeInt(h, VIDEO_DEFAULTS.HEIGHT),
+            framerate: fps,
+          }))
+        } else {
+          updateConfig((prev) => ({ ...prev, device }))
+        }
+      }
+      // Handle legacy camera format
+      else {
+        const camera = cameras.find((cam) => cam.device === device)
+        if (camera?.resolutions?.length > 0) {
+          const firstRes = camera.resolutions[0]
+          const [w, h] = firstRes.split('x')
+          const fps = camera.resolutions_fps?.[firstRes]?.[0] || VIDEO_DEFAULTS.FRAMERATE
+          updateConfig((prev) => ({
+            ...prev,
+            device,
+            width: safeInt(w, VIDEO_DEFAULTS.WIDTH),
+            height: safeInt(h, VIDEO_DEFAULTS.HEIGHT),
+            framerate: fps,
+          }))
+        } else {
+          updateConfig((prev) => ({ ...prev, device }))
+        }
       }
     },
-    [cameras, updateConfig]
+    [cameras, videoSources, updateConfig]
   )
 
-  // Handle resolution change — reset to first available FPS
+  // Handle resolution change – reset to first available FPS
   const handleResolutionChange = useCallback(
     (resolution) => {
       const [w, h] = resolution.split('x')
-      const fps = currentCamera?.resolutions_fps?.[resolution]?.[0] || VIDEO_DEFAULTS.FRAMERATE
+      let fps = VIDEO_DEFAULTS.FRAMERATE
+
+      // For video sources, use framerates array directly (no resolution-specific FPS)
+      if (currentSource?.capabilities?.framerates) {
+        fps = currentSource.capabilities.framerates[0] || VIDEO_DEFAULTS.FRAMERATE
+      }
+      // For legacy cameras, use resolutions_fps mapping
+      else {
+        fps = currentCamera?.resolutions_fps?.[resolution]?.[0] || VIDEO_DEFAULTS.FRAMERATE
+      }
+
       updateConfig((prev) => ({
         ...prev,
         width: safeInt(w, VIDEO_DEFAULTS.WIDTH),
@@ -423,7 +527,7 @@ const VideoView = () => {
         framerate: fps,
       }))
     },
-    [currentCamera, updateConfig]
+    [currentSource, currentCamera, updateConfig]
   )
 
   // Pipeline string from backend (no more client-side duplication)
@@ -461,6 +565,7 @@ const VideoView = () => {
           <VideoSourceCard
             config={config}
             cameras={cameras}
+            videoSources={videoSources} // Add new video sources
             streaming={status.streaming}
             handleCameraChange={handleCameraChange}
             handleResolutionChange={handleResolutionChange}

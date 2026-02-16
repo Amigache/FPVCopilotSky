@@ -18,6 +18,8 @@ const SystemView = () => {
   const [memoryInfo, setMemoryInfo] = useState(null)
   const [boardInfo, setBoardInfo] = useState(null)
   const [boardLoading, setBoardLoading] = useState(true)
+  const [videoSources, setVideoSources] = useState([])
+  const [videoSourcesLoading, setVideoSourcesLoading] = useState(true)
 
   const loadStatus = async () => {
     try {
@@ -77,12 +79,27 @@ const SystemView = () => {
     }
   }
 
+  const loadVideoSources = async () => {
+    try {
+      const response = await api.get('/api/system/video-sources')
+      if (response.ok) {
+        const data = await response.json()
+        setVideoSources(data.sources || [])
+      }
+    } catch (error) {
+      console.error('Error loading video sources:', error)
+    } finally {
+      setVideoSourcesLoading(false)
+    }
+  }
+
   // Load initial status
   useEffect(() => {
     loadStatus()
     loadServices()
     loadResources()
     loadBoard()
+    loadVideoSources()
     // No polling needed - all updates come via WebSocket
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -503,6 +520,66 @@ const SystemView = () => {
               ></div>
             </div>
           </div>
+        </div>
+
+        {/* Video Sources Card */}
+        <div className="card">
+          <h2>📷 {t('views.system.videoSources', 'Video Sources')}</h2>
+          {videoSourcesLoading ? (
+            <div className="waiting-data">{t('common.loading')}</div>
+          ) : videoSources.length === 0 ? (
+            <div className="waiting-data">
+              {t('views.system.noVideoSources', 'No video sources detected')}
+            </div>
+          ) : (
+            <div className="video-sources-list">
+              {videoSources.map((source) => (
+                <div
+                  key={source.id}
+                  className={`video-source-item ${source.available ? 'available' : 'unavailable'}`}
+                >
+                  <div className="source-header">
+                    <span className="source-status-icon">{source.available ? '📹' : '⚠️'}</span>
+                    <span className="source-name">{source.name}</span>
+                    <span className="source-type">{source.type.toUpperCase()}</span>
+                  </div>
+                  <div className="source-details">
+                    <div className="source-device-path">{source.device_path}</div>
+                    <div className="source-capabilities">
+                      {source.capabilities?.resolutions?.length > 0 && (
+                        <span className="source-capability">
+                          📐 {Math.max(...source.capabilities.resolutions.map((r) => r.width))}x
+                          {Math.max(...source.capabilities.resolutions.map((r) => r.height))} max
+                        </span>
+                      )}
+                      {source.capabilities?.framerates?.length > 0 && (
+                        <span className="source-capability">
+                          🎬 {Math.max(...source.capabilities.framerates)} fps max
+                        </span>
+                      )}
+                      {source.capabilities?.native_formats?.length > 0 && (
+                        <span className="source-capability">
+                          🔧 {source.capabilities.native_formats.join(', ')}
+                        </span>
+                      )}
+                    </div>
+                    {source.compatible_encoders?.length > 0 && (
+                      <div className="source-encoders">
+                        <span className="encoders-label">Compatible encoders:</span>
+                        <div className="encoders-tags">
+                          {source.compatible_encoders.map((encoder, idx) => (
+                            <span key={idx} className="encoder-tag">
+                              {encoder}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Services Card */}

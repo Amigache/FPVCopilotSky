@@ -247,53 +247,77 @@ class PreferencesService:
     # ==================== Video Configuration ====================
 
     def get_video_config(self) -> Dict[str, Any]:
-        """Get video configuration with smart device matching.
-
-        If the saved device path doesn't exist or doesn't match the saved camera name,
-        attempts to find the correct device by matching device_name and bus_info.
-        This handles device path changes between reboots (e.g. /dev/video1 → /dev/video0).
-        """
+        """Get video configuration with smart device matching using video source providers."""
         with self._lock:
             config = self._preferences.get("video", {})
-            device = config.get("device", "")
-            saved_name = config.get("device_name", "")
-            saved_bus = config.get("device_bus_info", "")
+            source_id = config.get("source_id", "")
 
-            # If we have a saved camera identity, use it for smart matching
-            if saved_name:
-                from .video_config import get_device_identity, find_device_by_identity
+            # If no source_id configured, try to auto-detect
+            if not source_id:
+                from app.providers.video_source import get_video_source_registry
 
-                needs_rematch = False
+                registry = get_video_source_registry()
+                sources = registry.get_available_sources()
 
-                if not device or not os.path.exists(device):
-                    # Device path doesn't exist at all
-                    needs_rematch = True
+                if sources:
+                    # Use first available source
+                    first_source = sources[0]
+                    config["source_id"] = first_source["id"]
+                    config["source_type"] = first_source["type"]
+                    config["device_name"] = first_source["name"]
+                    print(f"ℹ️ Auto-detected video source: {first_source['name']} ({first_source['id']})")
+
+                    # Convert to legacy format for compatibility
+                    if first_source["type"] in ["v4l2", "hdmi"]:
+                        config["device"] = first_source["device_path"]
                 else:
-                    # Device path exists - verify it's the same camera
-                    current_identity = get_device_identity(device)
-                    if not current_identity or current_identity.get("name") != saved_name:
-                        # Device path exists but is a different camera or not a capture device
-                        needs_rematch = True
+                    print("ℹ️ No video sources detected")
+            else:
+                # Verify existing source is still available
+                from app.providers.video_source import get_video_source_registry
 
-                if needs_rematch:
-                    # Find the camera by its name/bus_info
-                    new_device = find_device_by_identity(saved_name, saved_bus)
-                    if new_device:
-                        print(f"🔄 Camera '{saved_name}' moved: {device} → {new_device}")
-                        config["device"] = new_device
-                        # Persist the corrected device path
-                        self._preferences["video"]["device"] = new_device
-                        self._save()
+                registry = get_video_source_registry()
+                provider = registry.get_provider_for_source(source_id)
+
+                if provider and provider.is_available():
+                    # Source still available
+                    config["device_name"] = getattr(provider, "device_name", config.get("device_name", ""))
+                    # Convert to legacy format
+                    if hasattr(provider, "device_path"):
+                        config["device"] = provider.device_path
+                else:
+                    # Source no longer available, try to find alternative
+                    print(f"⚠️ Video source {source_id} no longer available, searching alternatives...")
+                    sources = registry.get_available_sources()
+
+                    # Try to find similar source by name
+                    saved_name = config.get("device_name", "")
+                    for source in sources:
+                        if saved_name and saved_name in source["name"]:
+                            config["source_id"] = source["id"]
+                            config["source_type"] = source["type"]
+                            config["device_name"] = source["name"]
+                            print(f"🔄 Found similar video source: {source['name']} ({source['id']})")
+                            if source["type"] in ["v4l2", "hdmi"]:
+                                config["device"] = source["device_path"]
+                            break
                     else:
-                        print(f"⚠️ Camera '{saved_name}' not found on any /dev/video* device")
-                        # Fallback: find any capture device
-                        self._fallback_detect_device(config, device)
-            elif device and not os.path.exists(device):
-                # Legacy: no saved name, device doesn't exist - basic fallback
-                self._fallback_detect_device(config, device)
-            elif not device:
-                # No device configured at all - auto-detect
-                self._fallback_detect_device(config, device)
+                        # Use first available source as fallback
+                        if sources:
+                            first_source = sources[0]
+                            config["source_id"] = first_source["id"]
+                            config["source_type"] = first_source["type"]
+                            config["device_name"] = first_source["name"]
+                            print(f"🔄 Fallback to first available source: {first_source['name']}")
+                            if first_source["type"] in ["v4l2", "hdmi"]:
+                                config["device"] = first_source["device_path"]
+                        else:
+                            print("⚠️ No video sources available")
+
+            # Persist changes if config was modified
+            if self._preferences.get("video", {}) != config:
+                self._preferences["video"] = config
+                self._save()
 
             return config
 

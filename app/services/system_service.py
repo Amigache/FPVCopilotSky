@@ -210,6 +210,7 @@ class SystemService:
             List of dictionaries with service status information
         """
         services = []
+        current_pid = os.getpid()
 
         for service_name in SystemService.MONITORED_SERVICES:
             service_info = {
@@ -224,66 +225,121 @@ class SystemService:
                 "pid": None,
             }
 
-            try:
-                # Check if service is active
-                result = subprocess.run(
-                    ["systemctl", "is-active", service_name],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                )
-                service_info["active"] = result.returncode == 0
-                service_info["status"] = result.stdout.strip()
+            # Special handling for fpvcopilot-sky service querying itself
+            # If we're running, we're obviously active - this is guaranteed and never fails
+            if service_name == "fpvcopilot-sky":
+                # These values are ALWAYS set - if this code runs, the service is active
+                service_info["active"] = True
+                service_info["status"] = "active"
+                service_info["pid"] = current_pid
+                service_info["description"] = "FPV Copilot Sky Backend (FastAPI)"
 
-                # Get service description, memory, and PID if active
-                if service_info["active"]:
-                    # Get service properties
+                # Try to get additional metrics, but failures won't affect active status
+                try:
+                    # Get memory for current process
+                    with open(f"/proc/{current_pid}/status", "r") as f:
+                        for line in f:
+                            if line.startswith("VmRSS:"):
+                                mem_kb = int(line.split()[1])
+                                mem_bytes = mem_kb * 1024
+                                service_info["memory_bytes"] = mem_bytes
+                                if mem_bytes >= 1024 * 1024 * 1024:
+                                    service_info["memory"] = f"{mem_bytes / (1024*1024*1024):.1f} GB"
+                                else:
+                                    service_info["memory"] = f"{mem_bytes // (1024*1024)} MB"
+                                break
+                except Exception:
+                    # Memory read failed, but service is still active
+                    pass
+
+                try:
+                    # Get CPU usage for current process
+                    cpu_percent = SystemService._get_process_cpu(current_pid)
+                    if cpu_percent is not None:
+                        service_info["cpu_percent"] = round(cpu_percent, 1)
+                except Exception:
+                    # CPU read failed, but service is still active
+                    pass
+
+                try:
+                    # Get uptime from systemctl (optional, non-critical)
                     show_result = subprocess.run(
-                        [
-                            "systemctl",
-                            "show",
-                            service_name,
-                            "--property=Description,MemoryCurrent,ActiveEnterTimestamp,MainPID",
-                        ],
+                        ["systemctl", "show", service_name, "--property=ActiveEnterTimestamp"],
                         capture_output=True,
                         text=True,
-                        timeout=5,
+                        timeout=2,
                     )
-
                     if show_result.returncode == 0:
                         for line in show_result.stdout.strip().split("\n"):
                             if "=" in line:
                                 key, value = line.split("=", 1)
-                                if key == "Description":
-                                    service_info["description"] = value
-                                elif key == "MemoryCurrent":
-                                    try:
-                                        mem_bytes = int(value)
-                                        service_info["memory_bytes"] = mem_bytes
-                                        if mem_bytes >= 1024 * 1024 * 1024:
-                                            service_info["memory"] = f"{mem_bytes / (1024*1024*1024):.1f} GB"
-                                        else:
-                                            service_info["memory"] = f"{mem_bytes // (1024*1024)} MB"
-                                    except Exception:
-                                        pass
-                                elif key == "ActiveEnterTimestamp":
+                                if key == "ActiveEnterTimestamp":
                                     service_info["uptime"] = value
-                                elif key == "MainPID":
-                                    try:
-                                        service_info["pid"] = int(value)
-                                    except Exception:
-                                        pass
+                except Exception:
+                    # Uptime read failed, but service is still active
+                    pass
+            else:
+                # Normal systemctl query for other services (nginx, etc.)
+                try:
+                    # Check if service is active
+                    result = subprocess.run(
+                        ["systemctl", "is-active", service_name],
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                    )
+                    service_info["active"] = result.returncode == 0
+                    service_info["status"] = result.stdout.strip()
 
-                    # Get CPU usage for the service's main process
-                    if service_info["pid"]:
-                        cpu_percent = SystemService._get_process_cpu(service_info["pid"])
-                        if cpu_percent is not None:
-                            service_info["cpu_percent"] = round(cpu_percent, 1)
+                    # Get service description, memory, and PID if active
+                    if service_info["active"]:
+                        # Get service properties
+                        show_result = subprocess.run(
+                            [
+                                "systemctl",
+                                "show",
+                                service_name,
+                                "--property=Description,MemoryCurrent,ActiveEnterTimestamp,MainPID",
+                            ],
+                            capture_output=True,
+                            text=True,
+                            timeout=5,
+                        )
 
-            except subprocess.TimeoutExpired:
-                service_info["status"] = "timeout"
-            except Exception as e:
-                service_info["status"] = f"error: {str(e)}"
+                        if show_result.returncode == 0:
+                            for line in show_result.stdout.strip().split("\n"):
+                                if "=" in line:
+                                    key, value = line.split("=", 1)
+                                    if key == "Description":
+                                        service_info["description"] = value
+                                    elif key == "MemoryCurrent":
+                                        try:
+                                            mem_bytes = int(value)
+                                            service_info["memory_bytes"] = mem_bytes
+                                            if mem_bytes >= 1024 * 1024 * 1024:
+                                                service_info["memory"] = f"{mem_bytes / (1024*1024*1024):.1f} GB"
+                                            else:
+                                                service_info["memory"] = f"{mem_bytes // (1024*1024)} MB"
+                                        except Exception:
+                                            pass
+                                    elif key == "ActiveEnterTimestamp":
+                                        service_info["uptime"] = value
+                                    elif key == "MainPID":
+                                        try:
+                                            service_info["pid"] = int(value)
+                                        except Exception:
+                                            pass
+
+                        # Get CPU usage for the service's main process
+                        if service_info["pid"]:
+                            cpu_percent = SystemService._get_process_cpu(service_info["pid"])
+                            if cpu_percent is not None:
+                                service_info["cpu_percent"] = round(cpu_percent, 1)
+
+                except subprocess.TimeoutExpired:
+                    service_info["status"] = "timeout"
+                except Exception as e:
+                    service_info["status"] = f"error: {str(e)}"
 
             services.append(service_info)
 

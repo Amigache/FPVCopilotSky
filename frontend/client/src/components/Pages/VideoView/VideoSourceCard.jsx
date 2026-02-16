@@ -4,6 +4,7 @@ import { safeInt, VIDEO_DEFAULTS } from './videoConstants'
 const VideoSourceCard = ({
   config,
   cameras,
+  videoSources = [], // New: video sources from providers
   streaming,
   handleCameraChange,
   handleResolutionChange,
@@ -12,6 +13,26 @@ const VideoSourceCard = ({
   availableFps,
 }) => {
   const { t } = useTranslation()
+
+  // Combine legacy cameras and new video sources for backward compatibility
+  const allSources = [
+    ...cameras.map((cam) => ({
+      id: cam.device,
+      name: cam.name,
+      device_path: cam.device,
+      type: 'legacy',
+      provider: cam.provider,
+    })),
+    ...videoSources
+      .filter((source) => source.available)
+      .map((source) => ({
+        id: source.id,
+        name: source.name,
+        device_path: source.device_path,
+        type: source.type,
+        provider: source.type,
+      })),
+  ]
 
   return (
     <div className="card" data-testid="video-source-card">
@@ -24,12 +45,12 @@ const VideoSourceCard = ({
           onChange={(e) => handleCameraChange(e.target.value)}
           disabled={streaming}
         >
-          {cameras.length === 0 ? (
+          {allSources.length === 0 ? (
             <option value="">{t('views.video.noCamerasAvailable')}</option>
           ) : (
-            cameras.map((cam) => (
-              <option key={cam.device} value={cam.device}>
-                {cam.name} {cam.provider && `[${cam.provider}]`} ({cam.device})
+            allSources.map((source) => (
+              <option key={source.id} value={source.device_path}>
+                {source.name} [{source.provider}] ({source.device_path})
               </option>
             ))
           )}

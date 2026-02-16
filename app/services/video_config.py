@@ -3,7 +3,7 @@ Video Configuration for FPV Streaming
 Supports MJPEG and H.264 encoding with UDP output
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional, Dict
 import ipaddress
 import subprocess
@@ -78,51 +78,12 @@ def find_device_by_identity(name: str, bus_info: str = "") -> Optional[str]:
     return name_match
 
 
-def auto_detect_camera() -> str:
-    """
-    Auto-detect USB camera device.
-    Looks for uvcvideo devices and returns the first one found.
-    Falls back to /dev/video0 if nothing found.
-    """
-    try:
-        # Get all video devices
-        devices = glob.glob("/dev/video*")
-
-        for device in sorted(devices):
-            try:
-                # Check if it's a USB camera (uvcvideo driver)
-                result = subprocess.run(
-                    ["v4l2-ctl", "--device", device, "--info"],
-                    capture_output=True,
-                    text=True,
-                    timeout=2,
-                )
-
-                if result.returncode == 0:
-                    output = result.stdout.lower()
-                    # Look for uvcvideo driver (USB cameras) and video capture capability
-                    if "uvcvideo" in output and "video capture" in output:
-                        return device
-            except Exception:
-                continue
-
-        # If no uvcvideo found, return first available device
-        if devices:
-            return devices[0]
-
-    except Exception:
-        pass
-
-    # Fallback
-    return "/dev/video0"
-
-
 @dataclass
 class VideoConfig:
     """Video capture and encoding configuration"""
 
-    # Camera settings - auto-detect at initialization
-    device: str = field(default_factory=auto_detect_camera)
+    # Camera settings - no auto-detection, use provider system instead
+    device: str = "/dev/video0"  # Default device, will be set by provider system
     width: int = 960
     height: int = 720
     framerate: int = 30

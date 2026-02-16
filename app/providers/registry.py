@@ -10,8 +10,8 @@ from .base import (
     ModemProvider,
     NetworkInterface,
     VideoEncoderProvider,
-    VideoSourceProvider,
 )
+from .video_source import VideoSourceProvider
 
 logger = logging.getLogger(__name__)
 

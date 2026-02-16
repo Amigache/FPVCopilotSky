@@ -224,3 +224,55 @@ async def get_board_info(request: Request):
             "message": translate("system.board_info_error", lang, error=str(e)),
             "data": None,
         }
+
+
+@router.get("/video-sources")
+async def get_video_sources(request: Request):
+    """Get all detected video sources (cameras, capture cards, streams)"""
+    try:
+        lang = get_language_from_request(request)
+        from app.providers.video_source import get_video_source_registry
+
+        registry = get_video_source_registry()
+        sources = registry.get_available_sources()
+
+        return {
+            "success": True,
+            "sources": sources,
+            "count": len(sources),
+        }
+    except Exception as e:
+        lang = get_language_from_request(request)
+        return {
+            "success": False,
+            "message": translate("system.video_sources_error", lang, error=str(e)),
+            "sources": [],
+            "count": 0,
+        }
+
+
+@router.get("/video-sources/{source_id:path}")
+async def get_video_source_details(source_id: str, request: Request):
+    """Get detailed information about a specific video source"""
+    try:
+        lang = get_language_from_request(request)
+        from app.providers.video_source import get_video_source_registry
+
+        registry = get_video_source_registry()
+        source = registry.get_source_by_id(source_id)
+
+        if source:
+            return {"success": True, "source": source}
+        else:
+            return {
+                "success": False,
+                "message": translate("system.video_source_not_found", lang, source_id=source_id),
+                "source": None,
+            }
+    except Exception as e:
+        lang = get_language_from_request(request)
+        return {
+            "success": False,
+            "message": translate("system.video_source_error", lang, error=str(e)),
+            "source": None,
+        }

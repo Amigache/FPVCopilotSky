@@ -123,51 +123,37 @@ class RTSPServer:
         framerate = config["framerate"]
 
         try:
-            from app.providers.registry import get_provider_registry
+            from app.providers.video_source import get_video_source_registry
 
-            registry = get_provider_registry()
+            registry = get_video_source_registry()
 
             # Find which source provider handles this device
             for source_type in registry.list_video_source_providers():
-                sp = registry.get_video_source(source_type)
-                if not sp or not sp.is_available():
+                provider_class = registry.get_video_source(source_type)
+                if not provider_class:
                     continue
-                for src in sp.discover_sources():
-                    if src.get("device") == device:
-                        result = sp.build_source_element(src["source_id"], config)
-                        if result.get("success"):
-                            el = result["source_element"]
-                            props = " ".join(
-                                f"{k}={v}"
-                                for k, v in el.get("properties", {}).items()
-                                if k != "device" and not isinstance(v, bool)
-                            )
-                            bool_props = " ".join(
-                                f"{k}={'true' if v else 'false'}"
-                                for k, v in el.get("properties", {}).items()
-                                if isinstance(v, bool)
-                            )
-                            all_props = " ".join(filter(None, [props, bool_props]))
-                            source_part = f"{el['element']} {all_props}".strip()
-
-                            # Add device property for v4l2src / libcamerasrc
-                            if el["element"] == "v4l2src":
-                                source_part = f"v4l2src device={device} {all_props}".strip()
-                            elif el["element"] == "libcamerasrc":
-                                cam_name = el.get("properties", {}).get("camera-name", "0")
-                                source_part = f"libcamerasrc camera-name={cam_name} do-timestamp=true"
-
-                            caps = result.get("caps_filter", "")
-                            if caps:
-                                source_part += f" ! {caps}"
-
-                            # Add post-processing elements (e.g. jpegdec)
-                            for post_el in result.get("post_elements", []):
-                                pe_props = " ".join(f"{k}={v}" for k, v in post_el.get("properties", {}).items())
-                                source_part += f" ! {post_el['element']} {pe_props}".strip()
-
-                            logger.info(f"RTSP source from provider: {sp.display_name}")
-                            return source_part
+                try:
+                    sources = provider_class.detect_sources()
+                    for src in sources:
+                        if src.get("device_path") == device:
+                            # Create provider instance for this source
+                            provider = provider_class.from_id(src["id"])
+                            if provider and provider.is_available():
+                                try:
+                                    # Get GStreamer element string
+                                    width = config.get("width", 960)
+                                    height = config.get("height", 720)
+                                    fps = config.get("framerate", 30)
+                                    element_str = provider.get_gstreamer_element(width, height, fps)
+                                    if element_str:
+                                        logger.info(f"RTSP source from provider: {provider_class.__name__}")
+                                        return element_str
+                                except Exception as e:
+                                    logger.error(f"Error getting GStreamer element: {e}")
+                                    continue
+                except Exception as e:
+                    logger.error(f"Error detecting sources for {source_type}: {e}")
+                    continue
         except Exception as e:
             logger.warning(f"Provider source lookup failed, using fallback: {e}")
 
