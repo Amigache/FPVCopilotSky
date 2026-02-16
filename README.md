@@ -15,56 +15,78 @@ FPV Copilot Sky convierte un SBC Linux (Radxa Zero, Raspberry Pi, Orange Pi…) 
 
 ## ✨ ¿Qué puedes hacer?
 
-| Función                   | Descripción                                                                              |
-| ------------------------- | ---------------------------------------------------------------------------------------- |
-| **📡 Telemetría MAVLink** | Conexión directa al FC, auto-detección de puertos, múltiples salidas UDP/TCP simultáneas |
-| **🎥 Video HD**           | Streaming UDP, Multicast y RTSP — H.264 y MJPEG, cámaras USB y CSI, ajustes en vivo      |
-| **📱 Modem 4G/LTE**       | Gestión completa de Huawei HiLink, bandas LTE, modo video optimizado, test de latencia   |
-| **🔐 VPN Tailscale**      | Acceso remoto en 1 clic, conexión mesh P2P cifrada desde cualquier lugar                 |
-| **🌐 Red inteligente**    | Priorización WiFi/4G automática, failover, métricas de ruta                              |
-| **💻 WebUI**              | Interfaz responsive en español e inglés, tiempo real por WebSocket                       |
+### 📡 **Telemetría MAVLink - Control de vuelo inteligente**
 
-## 🏗️ Flujo de datos
+- **Auto-detección de puertos serie** — El sistema detecta automáticamente tu controladora de vuelo conectada por USB/UART
+- **Router MAVLink integrado** — Crea salidas UDP/TCP ilimitadas para conectar múltiples GCS (QGroundControl, Mission Planner) simultáneamente
+- **Configuración desde WebUI** — Ajusta baudrate, puertos, y crea presets para tus aplicaciones favoritas sin tocar el terminal
+- **Auto-conexión** — Opción de conectar automáticamente al arranque para vuelos autónomos
+- **Parámetros de vuelo** — Lee y modifica parámetros de ArduPilot/PX4 directamente, aplica configuraciones recomendadas para FPV con un clic
+- **Calibración RC** — Ajusta rangos de canales RC para obtener el máximo recorrido de sticks
+- **Monitor de telemetría** — Visualiza actitud, GPS, batería, velocidades y mensajes del FC en tiempo real
 
-```
-            ┌─────────────────────────────────────────┐
-            │      NAVEGADOR / CONTROL REMOTO         │
-            │    (Dashboard, Telemetría, Video)       │
-            └──────────────────┬──────────────────────┘
-                               │ HTTPS / HTTP
-                    ┌──────────▼──────────┐
-                    │   FPV Copilot Sky   │
-                    │  (SBC: Radxa/RPi)   │
-                    └──────┬──┬──┬──┬─────┘
-        ┌───────────────────┘  │  │  └────────────────┐
-        │                      │  │                    │
-    ┌───▼──────┐    ┌─────────▼──▼───────┐    ┌──────▼────┐
-    │ FC       │    │   Video Stream    │    │  Modem    │
-    │ MAVLink  │    │  GStreamer UDP / │    │  4G/LTE   │
-    │ Telemetry│    │  Multicast/RTSP │    │  Huawei   │
-    └──────────┘    └─────────┬─────────┘    └──────┬────┘
-                              │                      │
-                              ▼                      ▼
-                    ┌────────────────────────────────────┐
-                    │  RED LOCAL / 4G / INTERNET        │
-                    │  WiFi • Ethernet • LTE • Tailscale │
-                    └────────────────────────────────────┘
-                              │
-                              ▼
-                    ┌────────────────────┐
-                    │ Controlador de GCS  │
-                    │ QGroundControl /    │
-                    │ Mission Planner     │
-                    └────────────────────┘
-```
+### 🎥 **Video HD - Streaming profesional de baja latencia**
 
-### Arquitectura de componentes
+- **Múltiples códecs** — H.264 hardware/software, MJPEG; selección automática del mejor encoder según tu hardware
+- **Modos de red flexibles** — UDP unicast, Multicast (multi-receptor), RTSP server, WebRTC embebido en navegador
+- **Ajustes en vivo** — Cambia bitrate, calidad JPEG, GOP size sin reiniciar el stream durante el vuelo
+- **Auto-start** — Arranca automáticamente el video al iniciar el sistema para operaciones desatendidas
+- **Selector de cámaras** — Soporta USB (V4L2), CSI (libcamera en Raspberry Pi), streams de red; cambio en caliente
+- **Resoluciones adaptables** — Desde 640×480 hasta 1920×1080, múltiples framerates (15/24/30 fps)
+- **Pipeline visible** — Inspecciona el comando GStreamer generado, cópialo para depuración o uso externo
+- **Estadísticas en vivo** — FPS actual, bitrate real, salud del pipeline, uptime del stream
 
-- **Backend (Python/FastAPI)**: Maneja MAVLink, video, VPN, modem
-- **Frontend (React/Vite)**: Interfaz web responsive, WebSocket en tiempo real
-- **Servicios (systemd)**: Arranque automático, gestor de procesos
-- **Nginx**: Proxy inverso, hosting de estáticos, compresión gzip
-- **Providers**: Sistema modular agnóstico de hardware (modem, VPN, network)
+### 📱 **Modem 4G/LTE - Conectividad móvil optimizada**
+
+- **Gestión Huawei HiLink** — Control completo de modems E3372, E8372, E3276 vía API HTTP nativa
+- **Análisis de cobertura** — Visualiza RSSI, RSRQ, SINR, Cell ID, PCI, bandas activas en tiempo real
+- **Modo Video** — Preset de optimización que configura bandas LTE, network mode y parámetros para mínima latencia
+- **Test de latencia** — Ping continuo a 1.1.1.1 con estadísticas de RTT, jitter, packet loss y clasificación de calidad
+- **Video Quality Score** — Recomendaciones automáticas de bitrate, resolución y FPS según la señal actual
+- **Cambio de banda** — Presets para forzar B3/B7/B20 o combinaciones multi-banda desde la WebUI
+- **Reboot remoto** — Reinicia el modem sin desconectar físicamente cuando se cuelga
+- **Métricas de tráfico** — Download/upload actual y acumulado, tiempo de conexión
+
+### 🔐 **VPN Tailscale - Acceso remoto sin configuración**
+
+- **Conexión en 1 clic** — Escanea automáticamente proveedores VPN instalados (Tailscale, ZeroTier, WireGuard)
+- **Auth flow embebido** — Abre la URL de autenticación desde la WebUI, polling automático hasta conectar
+- **Auto-connect** — Habilita la reconexión automática al arranque para control remoto permanente
+- **Vista de red mesh** — Listado de todos los peers conectados con hostname, IP tailnet, OS, tráfico TX/RX
+- **Selector de peers** — Dropdown inteligente para rellenar IPs de destino en video/telemetría
+- **Status en vivo** — Badge que muestra estado conectado/desconectado con contador de peers activos
+
+### 🌐 **Red inteligente - Auto-failover WiFi ⇄ 4G**
+
+- **Priorización dinámica** — Cambia entre WiFi y 4G como ruta principal con un toggle; actualiza métricas automáticamente
+- **Flight Mode** — Activa optimizaciones de red completas para vuelo (tc qdisc, sysctls, prioridades de ruta)
+- **Calidad de Red en tiempo real** — Score compuesto (0-100) basado en SINR, RSRQ, RTT, jitter y packet loss
+- **Bridge de eventos** — Conecta la calidad de red con el pipeline de video para adaptar parámetros automáticamente
+- **Recomendaciones adaptativas** — El sistema sugiere bitrate, resolución y FPS óptimos según la calidad detectada
+- **Monitoreo de interfaces** — Visualiza estado de wlan0, usb0/eth1 (modem), eth0 con IPs, gateways, métricas
+- **Rutas por defecto** — Tabla de enrutamiento con visual de la ruta activa y sus prioridades
+- **WiFi scanner** — Detecta redes cercanas con nivel de señal, conéctate desde la interfaz
+
+### 🧠 **Optimizaciones avanzadas - Network Event Bridge**
+
+- **Auto-ajuste de bitrate** — Reduce o aumenta automáticamente el bitrate del video según SINR y latencia medidos cada 2 segundos
+- **CAKE Qdisc anti-bufferbloat** — Reduce la latencia de video hasta un 40% en enlaces 4G congestionados controlando colas activas
+- **Failover predictivo** — Anticipa degradación de red analizando tendencias de SINR y jitter; cambia de ruta antes del corte total
+- **MPTCP bonding** — Combina WiFi + 4G en una sola conexión multi-ruta para redundancia real (requiere kernel 5.6+)
+- **VPN policy routing** — Separa tráfico de video (fwmark 0x200) y control VPN (fwmark 0x100) en tablas de enrutamiento distintas
+- **Self-healing de streaming** — Fuerza keyframes, reinicia GStreamer, ajusta resolución automáticamente según eventos de red
+- **Registro de eventos** — Historial de cambios de celda, bandas, SINR drops, reconnections con timestamps
+
+### 💻 **WebUI moderna - Interfaz completa y responsive**
+
+- **Dashboard en tiempo real** — Actitud, GPS, batería, velocidades, mensajes del FC actualizados por WebSocket
+- **8 pestañas funcionales** — Dashboard, Video, Red, Telemetría, Router MAVLink, Modem, VPN, Sistema
+- **Bilingüe (ES/EN)** — Cambio de idioma persistente, traducciones completas con react-i18next
+- **Modo claro/oscuro** — Tema oscuro por defecto optimizado para uso nocturno en campo
+- **Logs integrados** — Visualiza logs de backend y frontend sin salir del navegador
+- **Gestión de preferencias** — Reset completo de configuración, backup/restore manual
+- **Flight Session recorder** — Graba muestras de calidad de red durante el vuelo para análisis posterior
+- **Experimental tab** — Filtros OpenCV en vivo (edges, blur, threshold) sobre el stream de video
 
 ## 📦 ¿Qué necesitas?
 
@@ -132,7 +154,7 @@ Toda la documentación extendida está en la **[Wiki del proyecto](docs/INDEX.md
 | ------------ | ------------------------------------------------------------------- |
 | **Backend**  | Python 3.12, FastAPI, Uvicorn, PyMAVLink, GStreamer, huawei-lte-api |
 | **Frontend** | React 19, Vite, i18next, WebSocket                                  |
-| **Infra**    | Nginx, systemd, NetworkManager, Tailscale                           |
+| **Infra**    | Nginx, systemd, NetworkManager, Tailscale, tc/CAKE, MPTCP, iptables |
 
 ## 📄 Licencia
 

@@ -28,6 +28,10 @@ const StatusView = () => {
   const [experimentalTabEnabled, setExperimentalTabEnabled] = useState(true)
   const [savingExtras, setSavingExtras] = useState(false)
 
+  // Auto-adaptive bitrate state
+  const [autoAdaptiveBitrate, setAutoAdaptiveBitrate] = useState(true)
+  const [savingBitrateSetting, setSavingBitrateSetting] = useState(false)
+
   // Track previous armed state for edge detection
   const [prevArmed, setPrevArmed] = useState(false)
 
@@ -271,6 +275,47 @@ const StatusView = () => {
     setSavingExtras(false)
   }
 
+  const loadAutoAdaptiveBitrate = async () => {
+    try {
+      const response = await api.get('/api/video/config/auto-adaptive-bitrate')
+      if (response.ok) {
+        const data = await response.json()
+        setAutoAdaptiveBitrate(data.enabled)
+      }
+    } catch (error) {
+      console.error('Error loading auto-adaptive bitrate setting:', error)
+    }
+  }
+
+  const handleToggleAutoAdaptive = async (enabled) => {
+    setSavingBitrateSetting(true)
+    try {
+      const response = await api.post('/api/video/config/auto-adaptive-bitrate', { enabled })
+      if (response.ok) {
+        setAutoAdaptiveBitrate(enabled)
+        showToast(
+          enabled
+            ? t('status.preferences.autoAdaptiveEnabled', 'Auto-ajuste de bitrate activado')
+            : t('status.preferences.autoAdaptiveDisabled', 'Auto-ajuste de bitrate desactivado'),
+          'success'
+        )
+      } else {
+        showToast(
+          t('status.preferences.errorSavingSettings', 'Error al guardar configuración'),
+          'error'
+        )
+      }
+    } catch (error) {
+      console.error('Error toggling auto-adaptive bitrate:', error)
+      showToast(
+        t('status.preferences.errorSavingSettings', 'Error al guardar configuración'),
+        'error'
+      )
+    } finally {
+      setSavingBitrateSetting(false)
+    }
+  }
+
   const handleStartFlightSession = async () => {
     try {
       const response = await api.post('/api/network/modem/flight-session/start')
@@ -351,6 +396,7 @@ const StatusView = () => {
     loadStatus()
     loadFlightSession()
     loadFlightPreferences()
+    loadAutoAdaptiveBitrate()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -749,6 +795,31 @@ const StatusView = () => {
           <h2>{t('status.sections.preferences')}</h2>
 
           <div className="info-section">
+            {/* Auto-adaptive bitrate toggle */}
+            <div className="preference-item">
+              <Toggle
+                checked={autoAdaptiveBitrate}
+                onChange={(e) => handleToggleAutoAdaptive(e.target.checked)}
+                disabled={savingBitrateSetting}
+                label={t('status.preferences.autoAdaptiveBitrate', 'Auto-ajuste de Bitrate')}
+              />
+              <p className="preference-description">
+                {t(
+                  'status.preferences.autoAdaptiveDescription',
+                  'El sistema ajusta automáticamente el bitrate según la calidad de la red (señal 4G/LTE). Recomendado para vuelo FPV.'
+                )}
+              </p>
+              {!autoAdaptiveBitrate && (
+                <p className="preference-warning">
+                  ⚠️{' '}
+                  {t(
+                    'status.preferences.autoAdaptiveWarning',
+                    'Con el auto-ajuste desactivado, deberás controlar manualmente el bitrate desde la vista de vídeo.'
+                  )}
+                </p>
+              )}
+            </div>
+
             <p className="preferences-info">{t('status.preferences.description')}</p>
 
             <button

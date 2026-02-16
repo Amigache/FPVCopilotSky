@@ -5,7 +5,7 @@ Endpoints for managing modem connections and providers
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
-from providers import get_provider_registry
+from app.providers import get_provider_registry
 from app.i18n import get_language_from_request, translate
 
 router = APIRouter(prefix="/api/modem", tags=["modem"])

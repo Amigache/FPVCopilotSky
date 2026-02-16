@@ -191,7 +191,17 @@
       "errorLiveUpdate": "Error al actualizar parámetro en vivo",
       "liveMode": "En vivo — solo se puede cambiar calidad/bitrate",
       "lockedWhileLive": "Red bloqueada durante la transmisión",
-      "liveUpdated": "Parámetro actualizado en vivo"
+      "liveUpdated": "Parámetro actualizado en vivo",
+      "bitrateAdjusted": "Bitrate ajustado",
+      "bitrateAutoMode": "Modo automático activo",
+      "bitrateAutoHint": "Este es el bitrate objetivo/máximo configurado. El bitrate real de transmisión puede ser menor si la calidad de red lo requiere. Consulta las Estadísticas para ver el bitrate actual. Desactiva el modo automático en Estado > Preferencias para control manual.",
+      "quality": {
+        "excellent": "Excelente",
+        "good": "Buena",
+        "fair": "Aceptable",
+        "poor": "Deficiente",
+        "degraded": "Degradada"
+      }
     },
     "flightController": {
       "title": "🔗 Conexión",
@@ -331,7 +341,14 @@
       "connectivity": "Conectividad",
       "systemFeatures": "Características del Sistema",
       "boardUnknown": "Board no detectado",
-      "hwEncoderNotAvailable": "HW H.264 no disponible en kernel mainline. Para codificación por hardware, usa kernel Armbian legacy."
+      "hwEncoderNotAvailable": "HW H.264 no disponible en kernel mainline. Para codificación por hardware, usa kernel Armbian legacy.",
+      "advancedSettings": "Configuración Avanzada",
+      "autoAdaptiveBitrate": "Auto-ajuste de Bitrate",
+      "autoAdaptiveDescription": "El sistema ajusta automáticamente el bitrate según la calidad de la red (señal 4G/LTE). Recomendado para vuelo FPV.",
+      "autoAdaptiveWarning": "Con el auto-ajuste desactivado, deberás controlar manualmente el bitrate desde la vista de vídeo.",
+      "autoAdaptiveEnabled": "Auto-ajuste de bitrate activado",
+      "autoAdaptiveDisabled": "Auto-ajuste de bitrate desactivado",
+      "errorSavingSettings": "Error al guardar configuración"
     }
   },
   "router": {
@@ -649,7 +666,13 @@
       "resetButton": "🔄 Restablecer Preferencias",
       "resetting": "⏳ Restableciendo...",
       "resetSuccess": "Preferencias restablecidas correctamente. Se recomienda reiniciar la aplicación.",
-      "resetError": "Error al restablecer preferencias"
+      "resetError": "Error al restablecer preferencias",
+      "autoAdaptiveBitrate": "Auto-ajuste de Bitrate",
+      "autoAdaptiveDescription": "El sistema ajusta automáticamente el bitrate según la calidad de la red (señal 4G/LTE). Recomendado para vuelo FPV.",
+      "autoAdaptiveWarning": "Con el auto-ajuste desactivado, deberás controlar manualmente el bitrate desde la vista de vídeo.",
+      "autoAdaptiveEnabled": "Auto-ajuste de bitrate activado",
+      "autoAdaptiveDisabled": "Auto-ajuste de bitrate desactivado",
+      "errorSavingSettings": "Error al guardar configuración"
     },
     "flightSession": {
       "description": "Registra métricas de red durante el vuelo para análisis y optimización.",

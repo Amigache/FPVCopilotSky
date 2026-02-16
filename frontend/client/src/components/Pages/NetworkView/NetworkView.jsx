@@ -1,15 +1,28 @@
 import './NetworkView.css'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+
 import { useTranslation } from 'react-i18next'
 import { useToast } from '../../../contexts/ToastContext'
 import { useWebSocket } from '../../../contexts/WebSocketContext'
 import api from '../../../services/api'
 import { API_TIMEOUTS, UI_DELAYS, getSignalBars } from './networkConstants'
 
+// Helper to format bitrate
+function formatBitrate(val) {
+  if (!val && val !== 0) return '—'
+  if (val > 10000) return `${(val / 1000).toFixed(0)} Mbps`
+  return `${val} kbps`
+}
+
 const NetworkView = () => {
   const { t } = useTranslation()
   const { showToast } = useToast()
   const { messages } = useWebSocket()
+
+  // Video stats from WebSocket (as in VideoView)
+  const videoStatus = messages.video_status || {}
+  const videoStats = videoStatus.stats || {}
+  const videoConfig = videoStatus.config || {}
 
   // State
   const [loading, setLoading] = useState(true)
@@ -22,6 +35,20 @@ const NetworkView = () => {
   // Flight Mode
   const [flightMode, setFlightMode] = useState(null)
   const [togglingFlightMode, setTogglingFlightMode] = useState(false)
+
+  // Network Quality Bridge (Self-healing streaming)
+  const [bridgeStatus, setBridgeStatus] = useState({
+    active: false,
+    check_interval: 2,
+    signal_quality: 0,
+    jitter_ms: 0,
+    latency_ms: 0,
+    recent_events: [],
+  })
+  const [bridgeInitialized, setBridgeInitialized] = useState(false)
+  const [bridgeStarting, setBridgeStarting] = useState(false)
+  const bridgePollRef = useRef(null)
+  const bridgeStartAttemptRef = useRef(false)
 
   // WiFi Connect Modal
   const [connectModal, setConnectModal] = useState({ open: false, ssid: '', security: '' })
@@ -80,16 +107,16 @@ const NetworkView = () => {
     setWifiScanning(false)
   }, [])
 
-  // Initial load - use unified dashboard endpoint
+  // Initial load - dashboard for status, separate WiFi scan
   useEffect(() => {
     const loadAll = async () => {
       setLoading(true)
       setWifiScanning(true)
-      await loadDashboard(true) // Force refresh on initial load
+      // Load dashboard (network status, modem, flight mode - NO WiFi scan)
+      await loadDashboard(true)
       setLoading(false)
-      // Keep wifiScanning=true briefly to show spinner while networks load
-      await new Promise((resolve) => setTimeout(resolve, UI_DELAYS.WIFI_SCAN_ANIMATION))
-      setWifiScanning(false)
+      // Scan WiFi networks separately (only real scan trigger)
+      await loadWifiNetworks()
     }
     loadAll()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -146,6 +173,74 @@ const NetworkView = () => {
       setHilinkStatus(messages.modem_status)
     }
   }, [messages.modem_status])
+
+  // Update from WebSocket - network quality bridge
+  useEffect(() => {
+    if (messages.network_quality) {
+      setBridgeStatus(messages.network_quality)
+      if (!bridgeInitialized) {
+        setBridgeInitialized(true)
+      }
+    }
+  }, [messages.network_quality, bridgeInitialized])
+
+  // Auto-start bridge if inactive
+  const startBridge = useCallback(async () => {
+    if (bridgeStarting || bridgeStartAttemptRef.current) return
+
+    setBridgeStarting(true)
+    bridgeStartAttemptRef.current = true
+
+    try {
+      const response = await api.post('/api/network/bridge/start')
+      if (response.ok) {
+        console.log('Bridge started successfully')
+        // Wait a bit and refresh status
+        await new Promise((resolve) => setTimeout(resolve, 1000))
+        const statusResponse = await api.get('/api/network/bridge/status', 5000)
+        if (statusResponse.ok) {
+          const data = await statusResponse.json()
+          if (data.success) {
+            setBridgeStatus(data)
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error starting bridge:', error)
+    } finally {
+      setBridgeStarting(false)
+    }
+  }, [bridgeStarting])
+
+  // Poll bridge status - initial load and periodic refresh
+  useEffect(() => {
+    const pollBridge = async () => {
+      try {
+        const response = await api.get('/api/network/bridge/status', 5000)
+        if (response.ok) {
+          const data = await response.json()
+          if (data.success) {
+            setBridgeStatus(data)
+            if (!bridgeInitialized) {
+              setBridgeInitialized(true)
+            }
+            // Auto-start if inactive (only once)
+            if (data.active === false && !bridgeStartAttemptRef.current) {
+              console.log('Bridge inactive, auto-starting...')
+              startBridge()
+            }
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    // Initial load
+    pollBridge()
+    // Poll every 10s as fallback (WebSocket is primary source)
+    bridgePollRef.current = setInterval(pollBridge, 10000)
+    return () => clearInterval(bridgePollRef.current)
+  }, [bridgeInitialized, startBridge])
 
   // Set priority mode
   const handleSetMode = async (mode) => {
@@ -305,6 +400,402 @@ const NetworkView = () => {
       <div className="network-columns">
         {/* Left Column */}
         <div className="network-col">
+          {/* Network Quality Bridge Card - Always Active - Moved to top */}
+          <div className="card network-bridge-card">
+            <h2>📊 {t('network.qualityBridge', 'Calidad de Red')}</h2>
+
+            {bridgeStatus?.quality_score ? (
+              (() => {
+                const qs = bridgeStatus.quality_score
+                const score = qs.score || 0
+
+                // Si el servicio no está activo, mostrar mensaje con botón de reinicio
+                if (bridgeStatus.active === false && bridgeInitialized) {
+                  return (
+                    <div className="bridge-inactive">
+                      <div className="bridge-inactive-icon">{bridgeStarting ? '⏳' : '⚠️'}</div>
+                      <div>
+                        {bridgeStarting
+                          ? 'Iniciando monitoreo...'
+                          : 'Servicio de monitoreo inactivo'}
+                      </div>
+                      <div className="bridge-inactive-hint">
+                        {bridgeStarting
+                          ? 'Espera unos segundos...'
+                          : 'Intentando iniciar automáticamente...'}
+                      </div>
+                      {!bridgeStarting && (
+                        <button
+                          className="btn-primary"
+                          onClick={startBridge}
+                          style={{ marginTop: '12px' }}
+                        >
+                          🔄 Reintentar manualmente
+                        </button>
+                      )}
+                    </div>
+                  )
+                }
+
+                const scoreColor =
+                  score >= 80
+                    ? '#4caf50'
+                    : score >= 60
+                      ? '#8bc34a'
+                      : score >= 40
+                        ? '#ff9800'
+                        : score >= 20
+                          ? '#f44336'
+                          : '#b71c1c'
+                const trendIcon =
+                  qs.trend === 'improving' ? '📈' : qs.trend === 'degrading' ? '📉' : '➡️'
+                const cell = bridgeStatus.cell_state || {}
+                const lat = bridgeStatus.latency || {}
+                const events = bridgeStatus.recent_events || []
+                const lastEvents = events.slice(-5).reverse()
+
+                // Use primary_type from bridge to determine connection mode
+                const primaryType = bridgeStatus.primary_type || 'unknown'
+                const hasModem = primaryType === 'modem'
+
+                return (
+                  <div className="bridge-content">
+                    {/* Two-column layout: Score on left, Metrics on right */}
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 1fr',
+                        gap: '20px',
+                        marginBottom: '16px',
+                      }}
+                    >
+                      {/* Left Column: Score Ring & Trend */}
+                      <div
+                        className="bridge-score-section"
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <div
+                          className="score-ring"
+                          style={{
+                            '--score-color': scoreColor,
+                            '--score-pct': `${score}%`,
+                            width: '140px',
+                            height: '140px',
+                          }}
+                        >
+                          <div
+                            className="score-value"
+                            style={{ color: scoreColor, fontSize: '2.5rem' }}
+                          >
+                            {Math.round(score)}
+                          </div>
+                          <div className="score-label" style={{ fontSize: '0.95rem' }}>
+                            {qs.label}
+                          </div>
+                        </div>
+                        <div
+                          className="score-trend"
+                          style={{ marginTop: '12px', fontSize: '1rem' }}
+                        >
+                          {trendIcon}{' '}
+                          {qs.trend === 'improving'
+                            ? 'Mejorando'
+                            : qs.trend === 'degrading'
+                              ? 'Degradando'
+                              : 'Estable'}
+                        </div>
+                      </div>
+
+                      {/* Right Column: Metrics in vertical layout */}
+                      <div
+                        className="bridge-metrics"
+                        style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}
+                      >
+                        {/* SINR - Only relevant for modem connections */}
+                        {hasModem ? (
+                          <div className="bridge-metric">
+                            <span className="metric-label">SINR</span>
+                            <span
+                              className="metric-value"
+                              style={{
+                                color:
+                                  (cell.sinr || 0) > 10
+                                    ? '#4caf50'
+                                    : (cell.sinr || 0) > 5
+                                      ? '#ff9800'
+                                      : '#f44336',
+                              }}
+                            >
+                              {cell.sinr != null ? `${cell.sinr.toFixed(1)} dB` : '\u2014'}
+                            </span>
+                            <div className="metric-bar">
+                              <div
+                                className="metric-bar-fill"
+                                style={{
+                                  width: `${
+                                    cell.sinr != null
+                                      ? Math.min(100, Math.max(0, ((cell.sinr + 5) * 100) / 30))
+                                      : 0
+                                  }%`,
+                                  background: scoreColor,
+                                }}
+                              />
+                            </div>
+                          </div>
+                        ) : (
+                          /* WiFi/Ethernet: Show connection type instead of SINR */
+                          <div className="bridge-metric">
+                            <span className="metric-label">Conexión</span>
+                            <span className="metric-value" style={{ color: '#2196f3' }}>
+                              {primaryType === 'wifi'
+                                ? '📶 WiFi'
+                                : primaryType === 'ethernet'
+                                  ? '🔌 Ethernet'
+                                  : '🌐 Red'}
+                            </span>
+                            <div className="metric-bar">
+                              <div
+                                className="metric-bar-fill"
+                                style={{
+                                  width: `${Math.max(0, 100 - (lat.rtt_ms || 0) / 4)}%`,
+                                  background:
+                                    (lat.rtt_ms || 0) < 50
+                                      ? '#4caf50'
+                                      : (lat.rtt_ms || 0) < 150
+                                        ? '#ff9800'
+                                        : '#f44336',
+                                }}
+                              />
+                            </div>
+                          </div>
+                        )}
+                        <div className="bridge-metric">
+                          <span className="metric-label">RTT</span>
+                          <span
+                            className="metric-value"
+                            style={{
+                              color:
+                                lat.rtt_ms < 100
+                                  ? '#4caf50'
+                                  : lat.rtt_ms < 200
+                                    ? '#ff9800'
+                                    : '#f44336',
+                            }}
+                          >
+                            {lat.rtt_ms != null && lat.rtt_ms !== undefined
+                              ? `${lat.rtt_ms} ms`
+                              : '\u2014'}
+                          </span>
+                          <div className="metric-bar">
+                            <div
+                              className="metric-bar-fill"
+                              style={{
+                                width: `${
+                                  lat.rtt_ms != null ? Math.max(0, 100 - lat.rtt_ms / 4) : 0
+                                }%`,
+                                background: lat.rtt_ms < 100 ? '#4caf50' : '#ff9800',
+                              }}
+                            />
+                          </div>
+                        </div>
+                        <div className="bridge-metric">
+                          <span className="metric-label">Jitter</span>
+                          <span
+                            className="metric-value"
+                            style={{
+                              color:
+                                lat.jitter_ms < 20
+                                  ? '#4caf50'
+                                  : lat.jitter_ms < 50
+                                    ? '#ff9800'
+                                    : '#f44336',
+                            }}
+                          >
+                            {lat.jitter_ms != null && lat.jitter_ms !== undefined
+                              ? `${lat.jitter_ms} ms`
+                              : '\u2014'}
+                          </span>
+                          <div className="metric-bar">
+                            <div
+                              className="metric-bar-fill"
+                              style={{
+                                width: `${
+                                  lat.jitter_ms != null ? Math.max(0, 100 - lat.jitter_ms) : 0
+                                }%`,
+                                background: lat.jitter_ms < 20 ? '#4caf50' : '#ff9800',
+                              }}
+                            />
+                          </div>
+                        </div>
+                        <div className="bridge-metric">
+                          <span className="metric-label">Pérdida</span>
+                          <span
+                            className="metric-value"
+                            style={{
+                              color:
+                                lat.packet_loss < 2
+                                  ? '#4caf50'
+                                  : lat.packet_loss < 5
+                                    ? '#ff9800'
+                                    : '#f44336',
+                            }}
+                          >
+                            {lat.packet_loss != null && lat.packet_loss !== undefined
+                              ? `${lat.packet_loss}%`
+                              : '\u2014'}
+                          </span>
+                          <div className="metric-bar">
+                            <div
+                              className="metric-bar-fill"
+                              style={{
+                                width: `${
+                                  lat.packet_loss != null
+                                    ? Math.max(0, 100 - lat.packet_loss * 5)
+                                    : 0
+                                }%`,
+                                background: lat.packet_loss < 2 ? '#4caf50' : '#f44336',
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Info note about connection mode */}
+                    {!hasModem && (
+                      <div
+                        style={{
+                          padding: '8px 12px',
+                          background: 'rgba(33, 150, 243, 0.1)',
+                          border: '1px solid rgba(33, 150, 243, 0.3)',
+                          borderRadius: '6px',
+                          marginBottom: '12px',
+                          fontSize: '0.85rem',
+                          color: '#2196f3',
+                        }}
+                      >
+                        ℹ️ Conectado vía {primaryType === 'wifi' ? 'WiFi' : 'Ethernet'} — Calidad
+                        basada en latencia
+                      </div>
+                    )}
+                    {hasModem && (
+                      <div
+                        style={{
+                          padding: '8px 12px',
+                          background: 'rgba(76, 175, 80, 0.1)',
+                          border: '1px solid rgba(76, 175, 80, 0.3)',
+                          borderRadius: '6px',
+                          marginBottom: '12px',
+                          fontSize: '0.85rem',
+                          color: '#4caf50',
+                        }}
+                      >
+                        📡 Modo 4G — {cell.operator || 'Operador'}{' '}
+                        {cell.network_type ? `(${cell.network_type})` : ''}{' '}
+                        {cell.band ? `B${cell.band}` : ''}
+                      </div>
+                    )}
+
+                    {/* Actual vs Recommended Video Stats */}
+                    <div className="bridge-recommended">
+                      <span className="rec-item" title="Actual bitrate">
+                        🎥 <b>{formatBitrate(videoStats.current_bitrate)}</b>
+                        <span style={{ opacity: 0.6, marginLeft: 4, marginRight: 4 }}>/</span>
+                        <span title="Recomendado">
+                          {qs.recommended?.bitrate_kbps
+                            ? `${qs.recommended.bitrate_kbps} kbps`
+                            : '—'}
+                        </span>
+                      </span>
+                      <span className="rec-item" title="Actual resolución">
+                        📐{' '}
+                        <b>
+                          {videoConfig.width && videoConfig.height
+                            ? `${videoConfig.width}x${videoConfig.height}`
+                            : '—'}
+                        </b>
+                        <span style={{ opacity: 0.6, marginLeft: 4, marginRight: 4 }}>/</span>
+                        <span title="Recomendado">{qs.recommended?.resolution || '—'}</span>
+                      </span>
+                      <span className="rec-item" title="Actual FPS">
+                        🎞️ <b>{videoConfig.framerate || videoStats.current_fps || '—'} fps</b>
+                        <span style={{ opacity: 0.6, marginLeft: 4, marginRight: 4 }}>/</span>
+                        <span title="Recomendado">{qs.recommended?.framerate || '—'} fps</span>
+                      </span>
+                    </div>
+
+                    {/* Cell Info */}
+                    {cell.cell_id && (
+                      <div className="bridge-cell-info">
+                        <span>📡 Cell: {cell.cell_id}</span>
+                        <span>PCI: {cell.pci}</span>
+                        <span>Band: {cell.band}</span>
+                        <span>{cell.network_type}</span>
+                      </div>
+                    )}
+
+                    {/* Recent Events */}
+                    <div className="bridge-events">
+                      <div className="events-title">Eventos recientes</div>
+                      {lastEvents.length > 0 ? (
+                        lastEvents.map((ev, idx) => {
+                          const eventIcons = {
+                            cell_change: '🔄',
+                            band_change: '📶',
+                            sinr_drop: '📉',
+                            sinr_recovery: '📈',
+                            high_jitter: '⚡',
+                            jitter_recovery: '✅',
+                            high_rtt: '🐢',
+                            rtt_recovery: '✅',
+                            packet_loss: '📦',
+                            packet_loss_recovery: '✅',
+                            disconnection: '❌',
+                            reconnection: '🔁',
+                          }
+                          const icon = eventIcons[ev.event] || '📋'
+                          const time = new Date(ev.timestamp * 1000).toLocaleTimeString('es-ES', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit',
+                          })
+                          return (
+                            <div key={idx} className="bridge-event-item">
+                              <span className="event-icon">{icon}</span>
+                              <span className="event-name">{ev.event.replace(/_/g, ' ')}</span>
+                              {ev.actions?.length > 0 && (
+                                <span className="event-actions">→ {ev.actions.join(', ')}</span>
+                              )}
+                              <span className="event-time">{time}</span>
+                            </div>
+                          )
+                        })
+                      ) : (
+                        <div
+                          className="bridge-event-item"
+                          style={{ opacity: 0.6, fontStyle: 'italic' }}
+                        >
+                          <span>Sin eventos recientes</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })()
+            ) : (
+              <div className="bridge-inactive">
+                <div className="bridge-inactive-icon">📊</div>
+                <div>Recopilando datos...</div>
+                <div className="bridge-inactive-hint">Las métricas aparecerán en unos segundos</div>
+              </div>
+            )}
+          </div>
+
           {/* Interfaces Card */}
           <div className="card">
             <h2>🔌 {t('network.interfaces', 'Interfaces')}</h2>
@@ -337,11 +828,6 @@ const NetworkView = () => {
                   )}
                 </div>
               ))}
-              {interfaces.length === 0 && (
-                <div className="loading-indicator">
-                  {t('network.noInterfaces', 'No interfaces found')}
-                </div>
-              )}
             </div>
           </div>
 
@@ -433,9 +919,7 @@ const NetworkView = () => {
 
           {/* Modem Card - Enhanced with HiLink API */}
           <div className="card modem-card">
-            <div className="card-header">
-              <h2>📶 {t('network.modem4G', 'MÓDEM 4G')}</h2>
-            </div>
+            <h2>📶 {t('network.modem4G', 'MÓDEM 4G')}</h2>
             <div className="modem-status">
               {hilinkStatus?.available ? (
                 <>
@@ -546,10 +1030,7 @@ const NetworkView = () => {
               ) : (
                 <div className="modem-not-detected">
                   <div className="icon">📵</div>
-                  <div>{t('network.modemNotDetected', 'No 4G modem detected')}</div>
-                  <div style={{ fontSize: '0.8rem', marginTop: '8px', opacity: 0.7 }}>
-                    {t('network.modemHint', 'Connect a USB 4G modem (HiLink compatible)')}
-                  </div>
+                  <div>{t('network.modemNotDetected', 'Modem not detected')}</div>
                 </div>
               )}
             </div>

@@ -95,7 +95,31 @@ sudo apt-get install -y \
     iproute2 \
     ethtool \
     curl \
-    net-tools
+    net-tools \
+    iptables
+
+# Install CAKE qdisc and tc for bufferbloat control (Flight Mode)
+echo "⚙️  Installing traffic control tools for CAKE bufferbloat mitigation..."
+sudo apt-get install -y iproute2 || true
+# CAKE is built into kernel 6.x+ (sch_cake module)
+if modinfo sch_cake &>/dev/null 2>&1; then
+    echo "  ✓ CAKE qdisc kernel module available"
+else
+    echo "  ⚠️  CAKE qdisc module not found (kernel may not support it)"
+fi
+if command -v tc &>/dev/null; then
+    echo "  ✓ tc (traffic control) available"
+else
+    echo "  ⚠️  tc not found"
+fi
+
+# Check MPTCP kernel support
+echo "🔀 Checking MPTCP (Multi-Path TCP) support..."
+if sysctl net.mptcp.enabled &>/dev/null 2>&1; then
+    echo "  ✓ MPTCP supported by kernel"
+else
+    echo "  ℹ️  MPTCP not supported by this kernel (requires 5.6+)"
+fi
 
 # Enable and start network services
 echo "🔧 Configuring network services..."
@@ -304,6 +328,18 @@ $USER ALL=(ALL) NOPASSWD: /usr/sbin/ip link show *
 $USER ALL=(ALL) NOPASSWD: /usr/sbin/ip addr show
 $USER ALL=(ALL) NOPASSWD: /usr/sbin/ip -o addr show
 $USER ALL=(ALL) NOPASSWD: /usr/sbin/ip -o -4 addr show
+# Traffic control (CAKE bufferbloat, Flight Mode QoS)
+$USER ALL=(ALL) NOPASSWD: /usr/sbin/tc qdisc *
+$USER ALL=(ALL) NOPASSWD: /usr/sbin/tc -s qdisc *
+$USER ALL=(ALL) NOPASSWD: /usr/sbin/tc class *
+$USER ALL=(ALL) NOPASSWD: /usr/sbin/tc filter *
+# iptables for VPN policy routing and QoS marking
+$USER ALL=(ALL) NOPASSWD: /usr/sbin/iptables -t mangle *
+$USER ALL=(ALL) NOPASSWD: /usr/sbin/iptables -t mangle -D *
+# ip rule for policy routing
+$USER ALL=(ALL) NOPASSWD: /usr/sbin/ip rule *
+# MPTCP configuration
+$USER ALL=(ALL) NOPASSWD: /usr/sbin/ip mptcp *
 EOF
 sudo chmod 440 "$WIFI_SUDOERS_FILE"
 echo "  ✓ WiFi and network priority sudo permissions configured"
@@ -523,6 +559,11 @@ net.core.somaxconn=4096
 # ===== IPv6 Disable (reduce overhead for embedded) =====
 net.ipv6.conf.all.disable_ipv6=1
 net.ipv6.conf.default.disable_ipv6=1
+
+# ===== MPTCP (Multi-Path TCP for WiFi+4G bonding) =====
+net.mptcp.enabled=1
+net.mptcp.allow_join_initial_addr_port=1
+net.mptcp.checksum_enabled=0
 
 # ===== Memory Management =====
 vm.swappiness=10

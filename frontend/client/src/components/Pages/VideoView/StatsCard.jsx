@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 
-const StatsCard = ({ status, webrtcVideoStats }) => {
+const StatsCard = ({ status, webrtcVideoStats, autoAdaptiveBitrate }) => {
   const { t } = useTranslation()
   const { stats, config } = status
   const isWebRTC = config.mode === 'webrtc'
@@ -32,6 +32,7 @@ const StatsCard = ({ status, webrtcVideoStats }) => {
           <span className="stat-label">{t('views.video.bitrateLabel')}</span>
           <span className="stat-value">
             {isWebRTC && webrtcVideoStats ? webrtcVideoStats.bitrate : stats.current_bitrate}
+            {autoAdaptiveBitrate && <span className="stat-auto-indicator"> (auto)</span>}
           </span>
           <span className="stat-unit">kbps</span>
         </div>

@@ -43,6 +43,14 @@ class FailoverConfig:
     # Monitoring
     check_interval_s: float = 2.0  # How often to check latency
 
+    # Predictive failover (Mejora Nº2)
+    enable_predictive: bool = True  # Use SINR trend for early switching
+    sinr_critical_threshold: float = 2.0  # dB - immediately switch below this
+    sinr_drop_rate_threshold: float = 30.0  # % drop triggers pre-switch
+    sinr_drop_window_samples: int = 5  # Samples to measure drop rate
+    jitter_threshold_ms: float = 60.0  # High jitter also triggers concern
+    predictive_weight: float = 0.5  # How much predictive affects decision (0-1)
+
 
 @dataclass
 class FailoverState:
@@ -138,7 +146,7 @@ class AutoFailover:
                 await asyncio.sleep(self.config.check_interval_s)
 
     async def _check_and_switch(self):
-        """Check latency and switch if needed"""
+        """Check latency and signal quality, switch if needed (with predictive)"""
         # Get current latency stats
         monitor = get_latency_monitor()
         stats = await monitor.get_current_latency()
@@ -157,23 +165,83 @@ class AutoFailover:
             return
 
         avg_latency = sum(s.avg_latency for s in successful_stats) / len(successful_stats)
+        avg_jitter = max((s.jitter_ms for s in successful_stats), default=0)
 
-        # Check if latency is degraded
-        if avg_latency > self.config.latency_threshold_ms:
+        # ==========================================
+        # Predictive failover: check SINR trend
+        # ==========================================
+        predictive_urgency = 0.0  # 0 = no concern, 1 = must switch now
+
+        if self.config.enable_predictive:
+            try:
+                from app.services.network_event_bridge import get_network_event_bridge
+
+                bridge = get_network_event_bridge()
+                bridge_status = bridge.get_status()
+
+                sinr = bridge_status.get("cell_state", {}).get("sinr")
+                quality_score = bridge_status.get("quality_score", {}).get("score", 50)
+                trend = bridge_status.get("quality_score", {}).get("trend", "stable")
+
+                if sinr is not None:
+                    # Critical SINR: immediate concern
+                    if sinr < self.config.sinr_critical_threshold:
+                        predictive_urgency = 1.0
+                        logger.warning(f"Predictive: SINR critically low ({sinr:.1f} dB)")
+
+                    # Degrading trend with low quality score
+                    elif trend == "degrading" and quality_score < 30:
+                        predictive_urgency = 0.7
+                        logger.info(f"Predictive: quality degrading (score={quality_score:.0f})")
+
+                    # Check recent SINR drop events
+                    recent_events = bridge_status.get("recent_events", [])
+                    sinr_drops = [
+                        e
+                        for e in recent_events
+                        if e.get("event") == "sinr_drop" and time.time() - e.get("timestamp", 0) < 15
+                    ]
+                    if sinr_drops:
+                        drop_pct = max(e.get("details", {}).get("drop_percent", 0) for e in sinr_drops)
+                        if drop_pct >= self.config.sinr_drop_rate_threshold:
+                            predictive_urgency = max(predictive_urgency, 0.8)
+                            logger.warning(f"Predictive: rapid SINR drop ({drop_pct:.0f}%)")
+
+            except Exception as e:
+                logger.debug(f"Predictive check error: {e}")
+
+        # Jitter also contributes to urgency
+        if avg_jitter > self.config.jitter_threshold_ms:
+            jitter_urgency = min(1.0, avg_jitter / (self.config.jitter_threshold_ms * 2))
+            predictive_urgency = max(predictive_urgency, jitter_urgency * 0.5)
+
+        # ==========================================
+        # Combined decision: latency + predictive
+        # ==========================================
+        # Predictive can lower the effective threshold
+        effective_threshold = self.config.latency_threshold_ms * (
+            1.0 - predictive_urgency * self.config.predictive_weight
+        )
+
+        if avg_latency > effective_threshold or predictive_urgency >= 0.8:
             async with self._lock:
                 self.state.consecutive_bad_samples += 1
 
+                # Predictive urgency reduces required consecutive samples
+                effective_window = max(3, int(self.config.latency_check_window * (1 - predictive_urgency * 0.6)))
+
                 logger.debug(
-                    f"High latency detected: {avg_latency:.1f}ms "
-                    f"(threshold: {self.config.latency_threshold_ms}ms), "
-                    f"consecutive bad samples: {self.state.consecutive_bad_samples}"
+                    f"Failover check: latency={avg_latency:.1f}ms, "
+                    f"jitter={avg_jitter:.1f}ms, "
+                    f"urgency={predictive_urgency:.2f}, "
+                    f"samples={self.state.consecutive_bad_samples}/{effective_window}"
                 )
 
                 # Check if we should switch
-                if self.state.consecutive_bad_samples >= self.config.latency_check_window:
+                if self.state.consecutive_bad_samples >= effective_window:
                     await self._perform_switch_if_needed(avg_latency)
         else:
-            # Latency is good
+            # Conditions are good
             async with self._lock:
                 self.state.consecutive_bad_samples = 0
 
@@ -303,6 +371,10 @@ class AutoFailover:
                     "latency_check_window": self.config.latency_check_window,
                     "switch_cooldown_s": self.config.switch_cooldown_s,
                     "restore_delay_s": self.config.restore_delay_s,
+                    "enable_predictive": self.config.enable_predictive,
+                    "sinr_critical_threshold": self.config.sinr_critical_threshold,
+                    "sinr_drop_rate_threshold": self.config.sinr_drop_rate_threshold,
+                    "jitter_threshold_ms": self.config.jitter_threshold_ms,
                 },
             }
 

@@ -191,7 +191,17 @@
       "errorLiveUpdate": "Error updating live parameter",
       "liveMode": "Live — only quality/bitrate can be changed",
       "lockedWhileLive": "Network locked while streaming",
-      "liveUpdated": "Parameter updated live"
+      "liveUpdated": "Parameter updated live",
+      "bitrateAdjusted": "Bitrate adjusted",
+      "bitrateAutoMode": "Automatic mode active",
+      "bitrateAutoHint": "This is the target/maximum configured bitrate. The actual transmission bitrate may be lower if network quality requires it. Check Statistics for current bitrate. Disable automatic mode in Status > Preferences for manual control.",
+      "quality": {
+        "excellent": "Excellent",
+        "good": "Good",
+        "fair": "Fair",
+        "poor": "Poor",
+        "degraded": "Degraded"
+      }
     },
     "flightController": {
       "title": "🔗 Connection",
@@ -331,7 +341,14 @@
       "connectivity": "Connectivity",
       "systemFeatures": "System Features",
       "boardUnknown": "No board detected",
-      "hwEncoderNotAvailable": "HW H.264 not available on mainline kernel. For hardware encoding, use Armbian legacy kernel."
+      "hwEncoderNotAvailable": "HW H.264 not available on mainline kernel. For hardware encoding, use Armbian legacy kernel.",
+      "advancedSettings": "Advanced Settings",
+      "autoAdaptiveBitrate": "Auto-adaptive Bitrate",
+      "autoAdaptiveDescription": "The system automatically adjusts bitrate based on network quality (4G/LTE signal). Recommended for FPV flight.",
+      "autoAdaptiveWarning": "With auto-adaptation disabled, you must manually control bitrate from the video view.",
+      "autoAdaptiveEnabled": "Auto-adaptive bitrate enabled",
+      "autoAdaptiveDisabled": "Auto-adaptive bitrate disabled",
+      "errorSavingSettings": "Error saving settings"
     }
   },
   "router": {
@@ -645,7 +662,13 @@
       "resetButton": "🔄 Reset Preferences",
       "resetting": "⏳ Resetting...",
       "resetSuccess": "Preferences reset successfully. Restarting the application is recommended.",
-      "resetError": "Error resetting preferences"
+      "resetError": "Error resetting preferences",
+      "autoAdaptiveBitrate": "Auto-adaptive Bitrate",
+      "autoAdaptiveDescription": "The system automatically adjusts bitrate based on network quality (4G/LTE signal). Recommended for FPV flight.",
+      "autoAdaptiveWarning": "With auto-adaptation disabled, you must manually control bitrate from the video view.",
+      "autoAdaptiveEnabled": "Auto-adaptive bitrate enabled",
+      "autoAdaptiveDisabled": "Auto-adaptive bitrate disabled",
+      "errorSavingSettings": "Error saving settings"
     },
     "flightSession": {
       "description": "Record network metrics during flight for analysis and optimization.",

@@ -14,11 +14,12 @@ import logging
 import asyncio
 import re
 import time
-from providers import get_provider_registry
+from app.providers import get_provider_registry
 from app.services.network_optimizer import get_network_optimizer
 from app.services.latency_monitor import get_latency_monitor, start_latency_monitoring, stop_latency_monitoring
 from app.services.auto_failover import get_auto_failover, stop_auto_failover, NetworkMode
 from app.services.dns_cache import get_dns_cache
+from app.services.network_event_bridge import get_network_event_bridge
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/network", tags=["network"])
@@ -90,16 +91,25 @@ async def _detect_wifi_interface() -> Optional[str]:
     return None
 
 
-async def _detect_modem_interface() -> Optional[str]:
-    """Detect USB 4G modem interface (looks for 192.168.8.x IP)"""
+async def _detect_modem_interfaces() -> List[str]:
+    """Detect ALL USB 4G modem interfaces (looks for 192.168.8.x IP)"""
+    modems = []
     stdout, _, returncode = await _run_command(["ip", "-o", "addr", "show"])
     if returncode == 0:
         for line in stdout.split("\n"):
             if "192.168.8." in line:
                 match = re.search(r"^\d+:\s+(\S+)\s+inet\s+192\.168\.8\.", line)
                 if match:
-                    return match.group(1)
-    return None
+                    iface = match.group(1)
+                    if iface not in modems:
+                        modems.append(iface)
+    return modems
+
+
+async def _detect_modem_interface() -> Optional[str]:
+    """Detect first USB 4G modem interface (backward compatibility)"""
+    modems = await _detect_modem_interfaces()
+    return modems[0] if modems else None
 
 
 async def _get_interfaces() -> List[Dict]:
@@ -424,6 +434,12 @@ async def get_network_status():
 # Simple in-memory cache
 _dashboard_cache = {"data": None, "timestamp": 0, "ttl": 2}  # Cache for 2 seconds
 
+# Track modem detection state to auto-set priority on first connect
+_modem_state = {"last_detected": False, "auto_priority_set": False}
+
+# WiFi scan cache - only updated by explicit /wifi/networks calls (tab load or manual refresh)
+_wifi_scan_cache = {"networks": [], "timestamp": 0}
+
 
 @router.get("/dashboard")
 async def get_network_dashboard(force_refresh: bool = False):
@@ -452,19 +468,20 @@ async def get_network_dashboard(force_refresh: bool = False):
             return {**_dashboard_cache["data"], "cached": True, "cache_age": round(cache_age, 2)}
 
     try:
-        # Execute all data fetching in parallel for maximum speed
+        # Execute data fetching in parallel (WiFi NOT included - only scanned on demand)
         results = await asyncio.gather(
             _get_network_status_internal(),  # Network status
             _get_modem_status_internal(),  # Modem HiLink status
-            _get_wifi_networks_internal(),  # WiFi networks
             _get_flight_mode_status_internal(),  # Flight Mode
             return_exceptions=True,
         )
 
         network_status = results[0] if not isinstance(results[0], Exception) else {}
         modem_status = results[1] if not isinstance(results[1], Exception) else {"available": False}
-        wifi_networks = results[2] if not isinstance(results[2], Exception) else []
-        flight_mode = results[3] if not isinstance(results[3], Exception) else {"active": False}
+        flight_mode = results[2] if not isinstance(results[2], Exception) else {"active": False}
+
+        # WiFi networks: return whatever is cached (no scanning here)
+        wifi_networks = _wifi_scan_cache["networks"]
 
         dashboard_data = {
             "success": True,
@@ -475,6 +492,28 @@ async def get_network_dashboard(force_refresh: bool = False):
             "flight_mode": flight_mode,
             "cached": False,
         }
+
+        # Auto-set ALL modems as primary on first detection (unless Flight Mode is active)
+        modem_detected = network_status.get("modem", {}).get("detected", False)
+        flight_mode_active = flight_mode.get("active", False)
+
+        if modem_detected and not _modem_state["last_detected"] and not flight_mode_active:
+            # Modem(s) just connected for the first time (not in Flight Mode)
+            # This will configure ALL detected modems with priority metric
+            try:
+                modem_interfaces = await _detect_modem_interfaces()
+                logger.info(
+                    f"Modem(s) detected for first time: {', '.join(modem_interfaces)} - auto-setting as primary network"
+                )
+                await set_priority_mode(PriorityModeRequest(mode="modem"))
+                _modem_state["auto_priority_set"] = True
+                # Force refresh routes to reflect new priority
+                dashboard_data["network"] = await _get_network_status_internal()
+            except Exception as e:
+                logger.error(f"Failed to auto-set modem priority: {e}")
+
+        # Update modem detection state
+        _modem_state["last_detected"] = modem_detected
 
         # Update cache
         _dashboard_cache["data"] = dashboard_data
@@ -596,16 +635,6 @@ async def _get_modem_status_internal() -> Dict:
         return {"available": False, "connected": False}
 
 
-async def _get_wifi_networks_internal() -> List[Dict]:
-    """Internal: Get WiFi networks list"""
-    try:
-        networks = await _scan_wifi_networks()
-        return networks
-    except Exception as e:
-        logger.debug(f"WiFi scan failed: {e}")
-        return []
-
-
 async def _get_flight_mode_status_internal() -> Dict:
     """Internal: Get Flight Mode status"""
     try:
@@ -635,32 +664,29 @@ async def get_interfaces():
     return {"success": True, "interfaces": interfaces}
 
 
+# =============================
+# WiFi Management
+# =============================
+
+
 @router.get("/wifi/networks")
 async def get_wifi_networks():
-    """Scan and return available WiFi networks using WiFi provider"""
+    """Scan and return available WiFi networks.
+
+    This is the ONLY endpoint that triggers a real WiFi scan.
+    Called on tab load and manual refresh button only.
+    Results are cached and served by the dashboard endpoint.
+    """
     try:
-        # Get WiFi provider
-        registry = get_provider_registry()
-        wifi_provider = registry.get_network_interface("wifi")
+        # Scan using internal function (iw dev scan)
+        networks = await _scan_wifi_networks()
 
-        if not wifi_provider:
-            logger.warning("WiFi provider not available")
-            return {"success": True, "networks": []}
+        # Update global cache so dashboard can return these without scanning
+        _wifi_scan_cache["networks"] = networks
+        _wifi_scan_cache["timestamp"] = time.time()
+        logger.info(f"WiFi scan completed: {len(networks)} networks found")
 
-        # Use provider's scan_networks method
-        loop = asyncio.get_event_loop()
-        networks = await loop.run_in_executor(None, wifi_provider.scan_networks)
-
-        # Add security info (stub for now - could be enhanced)
-        for network in networks:
-            if "security" not in network:
-                network["security"] = "WPA2"  # Default assumption
-            if "connected" not in network:
-                # Check if this network is currently connected
-                status = wifi_provider.get_status()
-                network["connected"] = network.get("ssid") == status.get("ssid")
-
-        return {"success": True, "networks": networks}
+        return {"success": True, "networks": networks, "cached": False}
 
     except Exception as e:
         logger.error(f"Error scanning WiFi networks: {e}")
@@ -769,14 +795,14 @@ async def set_priority_mode(request: PriorityModeRequest):
 
         # Detect interfaces
         wifi_interface = await _detect_wifi_interface()
-        modem_interface = await _detect_modem_interface()
+        modem_interfaces = await _detect_modem_interfaces()
 
-        if not wifi_interface and not modem_interface:
+        if not wifi_interface and not modem_interfaces:
             raise HTTPException(status_code=503, detail="No network interfaces detected")
 
         if request.mode == "wifi" and not wifi_interface:
             raise HTTPException(status_code=503, detail="WiFi interface not detected")
-        if request.mode == "modem" and not modem_interface:
+        if request.mode == "modem" and not modem_interfaces:
             raise HTTPException(status_code=503, detail="Modem interface not detected")
 
         errors = []
@@ -813,8 +839,8 @@ async def set_priority_mode(request: PriorityModeRequest):
                 logger.warning(f"No NM connection found for {wifi_interface}, " "trying ip route fallback")
                 await _set_route_metric_fallback(wifi_interface, wifi_metric, errors)
 
-        # --- Modem metric (not NM-managed, use ip route) ---
-        if modem_interface:
+        # --- Modem metrics (apply to ALL detected modems) ---
+        for modem_interface in modem_interfaces:
             modem_metric = 100 if request.mode == "modem" else 600
             modem_conn = await _get_nm_connection_name(modem_interface)
             if modem_conn:
@@ -831,13 +857,13 @@ async def set_priority_mode(request: PriorityModeRequest):
                     ]
                 )
                 if rc != 0:
-                    errors.append(f"Modem metric modify failed: {stderr}")
+                    errors.append(f"Modem {modem_interface} metric modify failed: {stderr}")
                 else:
                     _, stderr, rc = await _run_command(["sudo", "nmcli", "connection", "up", modem_conn])
                     if rc != 0:
-                        errors.append(f"Modem connection reactivate failed: {stderr}")
+                        errors.append(f"Modem {modem_interface} connection reactivate failed: {stderr}")
                     else:
-                        logger.info(f"Modem {modem_conn} metric set to {modem_metric}")
+                        logger.info(f"Modem {modem_interface} ({modem_conn}) metric set to {modem_metric}")
             else:
                 # Modem is not NM-managed, use ip route directly
                 await _set_route_metric_fallback(modem_interface, modem_metric, errors)
@@ -850,8 +876,13 @@ async def set_priority_mode(request: PriorityModeRequest):
         primary_route = min(routes, key=lambda r: r.get("metric", 0)) if routes else None
         actual_primary = primary_route.get("interface") if primary_route else None
 
-        expected_primary = wifi_interface if request.mode == "wifi" else modem_interface
-        verified = actual_primary == expected_primary
+        # For modem mode, verify any modem is primary
+        if request.mode == "modem":
+            expected_primary = modem_interfaces[0] if modem_interfaces else None
+            verified = actual_primary in modem_interfaces if modem_interfaces else False
+        else:
+            expected_primary = wifi_interface
+            verified = actual_primary == expected_primary
 
         if errors:
             logger.warning(f"Priority mode {request.mode} set with errors: {errors}")
@@ -2259,4 +2290,201 @@ async def install_dns_cache():
         raise
     except Exception as e:
         logger.error(f"Error installing DNS cache: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ===================================================================
+# Network Event Bridge - Self-healing streaming (Mejoras Nº3,4,7,8)
+# ===================================================================
+
+
+@router.get("/bridge/status")
+async def get_bridge_status():
+    """
+    Get network-video event bridge status.
+
+    Returns composite quality score, cell state, latency metrics,
+    and recent network events with video actions taken.
+    """
+    try:
+        bridge = get_network_event_bridge()
+        return {"success": True, **bridge.get_status()}
+    except Exception as e:
+        logger.error(f"Error getting bridge status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/bridge/start")
+async def start_event_bridge():
+    """
+    Start the network-video event bridge.
+
+    Begins monitoring cellular signal metrics and automatically
+    adapts video encoding parameters based on network conditions.
+    """
+    try:
+        bridge = get_network_event_bridge()
+        await bridge.start()
+        return {"success": True, "message": "Network event bridge started"}
+    except Exception as e:
+        logger.error(f"Error starting bridge: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/bridge/stop")
+async def stop_event_bridge():
+    """Stop the network-video event bridge"""
+    try:
+        bridge = get_network_event_bridge()
+        await bridge.stop()
+        return {"success": True, "message": "Network event bridge stopped"}
+    except Exception as e:
+        logger.error(f"Error stopping bridge: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/bridge/events")
+async def get_bridge_events(last_n: int = 100):
+    """
+    Get network event history.
+
+    Shows cell changes, SINR drops, jitter spikes, and the
+    video actions that were triggered in response.
+    """
+    try:
+        bridge = get_network_event_bridge()
+        events = bridge.get_event_history(last_n)
+        return {"success": True, "events": events, "count": len(events)}
+    except Exception as e:
+        logger.error(f"Error getting bridge events: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/bridge/quality-score")
+async def get_quality_score():
+    """
+    Get composite network quality score (0-100).
+
+    Weighted combination of SINR, RSRQ, jitter, and packet loss.
+    Includes recommended bitrate, resolution, and framerate.
+    """
+    try:
+        bridge = get_network_event_bridge()
+        status = bridge.get_status()
+        return {"success": True, **status.get("quality_score", {})}
+    except Exception as e:
+        logger.error(f"Error getting quality score: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ===================================================================
+# MPTCP Configuration (Mejora Nº1)
+# ===================================================================
+
+
+@router.get("/mptcp/status")
+async def get_mptcp_status():
+    """
+    Get MPTCP (Multi-Path TCP) status.
+
+    Checks if kernel supports MPTCP, current enabled state,
+    and available subflow configuration.
+    """
+    import subprocess
+
+    try:
+        result = {"available": False, "enabled": False, "kernel_support": False}
+
+        # Check kernel support
+        try:
+            proc = subprocess.run(["sysctl", "-n", "net.mptcp.enabled"], capture_output=True, text=True, timeout=5)
+            if proc.returncode == 0:
+                result["kernel_support"] = True
+                result["enabled"] = proc.stdout.strip() == "1"
+                result["available"] = True
+        except Exception:
+            pass
+
+        # Get MPTCP settings
+        if result["kernel_support"]:
+            for param in [
+                "add_addr_timeout",
+                "allow_join_initial_addr_once",
+                "checksum_enabled",
+                "pm_type",
+                "stale_loss_cnt",
+            ]:
+                try:
+                    proc = subprocess.run(
+                        ["sysctl", "-n", f"net.mptcp.{param}"], capture_output=True, text=True, timeout=5
+                    )
+                    if proc.returncode == 0:
+                        result[param] = proc.stdout.strip()
+                except Exception:
+                    pass
+
+            # Check number of subflows
+            try:
+                proc = subprocess.run(["ip", "mptcp", "limits", "show"], capture_output=True, text=True, timeout=5)
+                if proc.returncode == 0:
+                    result["subflow_limits"] = proc.stdout.strip()
+            except Exception:
+                pass
+
+        return {"success": True, **result}
+
+    except Exception as e:
+        logger.error(f"Error getting MPTCP status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/mptcp/enable")
+async def enable_mptcp():
+    """
+    Enable MPTCP in the kernel.
+
+    Sets net.mptcp.enabled=1 and configures default subflow limits.
+    Requires kernel 5.6+ with MPTCP support.
+    """
+    import subprocess
+
+    try:
+        # Enable MPTCP
+        proc = subprocess.run(["sysctl", "-w", "net.mptcp.enabled=1"], capture_output=True, text=True, timeout=5)
+        if proc.returncode != 0:
+            raise HTTPException(status_code=500, detail=f"Failed to enable MPTCP: {proc.stderr}")
+
+        # Set reasonable defaults for streaming
+        subprocess.run(
+            ["ip", "mptcp", "limits", "set", "subflow", "2", "add_addr_accepted", "2"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+
+        return {"success": True, "message": "MPTCP enabled"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error enabling MPTCP: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/mptcp/disable")
+async def disable_mptcp():
+    """Disable MPTCP"""
+    import subprocess
+
+    try:
+        proc = subprocess.run(["sysctl", "-w", "net.mptcp.enabled=0"], capture_output=True, text=True, timeout=5)
+        if proc.returncode != 0:
+            raise HTTPException(status_code=500, detail=f"Failed to disable MPTCP: {proc.stderr}")
+
+        return {"success": True, "message": "MPTCP disabled"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error disabling MPTCP: {e}")
         raise HTTPException(status_code=500, detail=str(e))

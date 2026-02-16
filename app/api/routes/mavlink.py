@@ -5,7 +5,7 @@ Endpoints for MAVLink connection management
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
-from services.mavlink_dialect import MAVLinkDialect
+from app.services.mavlink_dialect import MAVLinkDialect
 from app.i18n import get_language_from_request, translate
 
 router = APIRouter()
@@ -45,7 +45,7 @@ async def connect(request: ConnectRequest, req: Request):
 
     # Save successful connection to preferences
     try:
-        from services.preferences import get_preferences
+        from app.services.preferences import get_preferences
 
         prefs = get_preferences()
         prefs.set_serial_config(port=request.port, baudrate=request.baudrate, successful=True)
@@ -216,7 +216,7 @@ async def get_serial_preferences():
         Serial configuration including port, baudrate, and auto_connect settings
     """
     try:
-        from services.preferences import get_preferences
+        from app.services.preferences import get_preferences
 
         prefs = get_preferences()
         config = prefs.get_serial_config()
@@ -245,7 +245,7 @@ async def save_serial_preferences(preferences: SerialPreferencesModel, request: 
     """
     try:
         lang = get_language_from_request(request)
-        from services.preferences import get_preferences
+        from app.services.preferences import get_preferences
 
         prefs = get_preferences()
 
