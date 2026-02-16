@@ -571,6 +571,18 @@
   margin-left: 74px;
 }
 
+.preference-warning {
+  background: rgba(255, 165, 0, 0.1);
+  border: 1px solid rgba(255, 165, 0, 0.3);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  color: #ffa726;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  margin-top: 8px;
+  margin-left: 74px;
+}
+
 .flight-session-active {
   display: flex;
   align-items: center;

@@ -7,7 +7,7 @@ from typing import Dict, Optional
 from pydantic import BaseModel
 import logging
 
-from providers import get_provider_registry
+from app.providers import get_provider_registry
 from app.i18n import get_language_from_request, translate
 
 logger = logging.getLogger(__name__)

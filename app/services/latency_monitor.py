@@ -38,6 +38,10 @@ class LatencyStats:
     packet_loss: float
     sample_count: int
     last_update: float
+    # Jitter metrics (Mejora Nº4: jitter-based quality)
+    jitter_ms: float = 0.0  # Standard deviation of RTT
+    variance_ms: float = 0.0  # Variance of RTT
+    p95_latency: float = 0.0  # 95th percentile latency
 
 
 class LatencyMonitor:
@@ -244,15 +248,28 @@ class LatencyMonitor:
                 else:
                     latencies = [r.latency_ms for r in successful]
 
+                    # Jitter calculation (Mejora Nº4)
+                    avg_lat = sum(latencies) / len(latencies)
+                    variance = sum((x - avg_lat) ** 2 for x in latencies) / len(latencies)
+                    jitter = variance**0.5
+
+                    # P95 latency
+                    sorted_lats = sorted(latencies)
+                    p95_idx = int(len(sorted_lats) * 0.95)
+                    p95 = sorted_lats[min(p95_idx, len(sorted_lats) - 1)]
+
                     stats[t] = LatencyStats(
                         target=t,
                         interface=successful[-1].interface,
-                        avg_latency=sum(latencies) / len(latencies),
+                        avg_latency=avg_lat,
                         min_latency=min(latencies),
                         max_latency=max(latencies),
                         packet_loss=(1 - len(successful) / len(history)) * 100,
                         sample_count=len(history),
                         last_update=successful[-1].timestamp,
+                        jitter_ms=round(jitter, 2),
+                        variance_ms=round(variance, 2),
+                        p95_latency=round(p95, 2),
                     )
 
             return stats

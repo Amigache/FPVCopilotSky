@@ -4,7 +4,7 @@ Endpoints for system information
 """
 
 from fastapi import APIRouter, Request
-from services.system_service import SystemService
+from app.services.system_service import SystemService
 from app.i18n import get_language_from_request, translate
 
 router = APIRouter()
@@ -57,7 +57,7 @@ async def get_system_resources():
 async def get_preferences_all():
     """Get all preferences"""
     try:
-        from services.preferences import get_preferences
+        from app.services.preferences import get_preferences
 
         prefs = get_preferences()
         return prefs.get_all_preferences()
@@ -69,7 +69,7 @@ async def get_preferences_all():
 async def update_preferences(request: Request):
     """Update preferences (partial update)"""
     try:
-        from services.preferences import get_preferences
+        from app.services.preferences import get_preferences
 
         prefs = get_preferences()
         data = await request.json()
@@ -110,7 +110,7 @@ async def reset_preferences(request: Request):
     """Reset all preferences to defaults"""
     try:
         lang = get_language_from_request(request)
-        from services.preferences import get_preferences
+        from app.services.preferences import get_preferences
 
         prefs = get_preferences()
         success = prefs.reset_preferences()
@@ -204,7 +204,7 @@ async def get_board_info(request: Request):
     """Get detected board/platform information with hardware specs and supported features"""
     try:
         lang = get_language_from_request(request)
-        from providers.board import BoardRegistry
+        from app.providers.board import BoardRegistry
 
         registry = BoardRegistry()
         detected_board = registry.get_detected_board()

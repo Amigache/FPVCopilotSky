@@ -162,6 +162,61 @@ if [ $BACKEND_RUNNING -eq 0 ]; then
     fi
 fi
 
+echo -e "\n${BLUE}📊 Network Quality & Self-Healing${NC}"
+# Check CAKE qdisc
+if modinfo sch_cake &>/dev/null 2>&1; then
+    echo -e "${GREEN}✓${NC} CAKE qdisc kernel module available"
+else
+    echo -e "${YELLOW}⚠️${NC}  CAKE qdisc module not available (bufferbloat control unavailable)"
+fi
+
+# Check tc (traffic control)
+if command -v tc &>/dev/null; then
+    # Check if CAKE is active on any interface
+    CAKE_ACTIVE=$(tc qdisc show 2>/dev/null | grep -c "cake" || echo "0")
+    if [ "$CAKE_ACTIVE" -gt 0 ]; then
+        echo -e "${GREEN}✅${NC} CAKE qdisc active on $CAKE_ACTIVE interface(s)"
+    else
+        echo -e "${GREEN}✓${NC} tc (traffic control) available"
+    fi
+else
+    echo -e "${YELLOW}⚠️${NC}  tc (traffic control) not found"
+fi
+
+# Check iptables
+if command -v iptables &>/dev/null; then
+    echo -e "${GREEN}✓${NC} iptables available (VPN policy routing)"
+else
+    echo -e "${YELLOW}⚠️${NC}  iptables not found (VPN policy routing unavailable)"
+fi
+
+# Check MPTCP
+if sysctl net.mptcp.enabled &>/dev/null 2>&1; then
+    MPTCP_ENABLED=$(sysctl -n net.mptcp.enabled 2>/dev/null)
+    if [ "$MPTCP_ENABLED" = "1" ]; then
+        echo -e "${GREEN}✅${NC} MPTCP enabled (multi-path TCP for WiFi+4G bonding)"
+    else
+        echo -e "${YELLOW}⚠️${NC}  MPTCP available but disabled (enable via API or sysctl)"
+    fi
+else
+    echo -e "${BLUE}ℹ️${NC}  MPTCP not supported by kernel (requires 5.6+)"
+fi
+
+# Network Event Bridge status via API
+if [ $BACKEND_RUNNING -eq 0 ]; then
+    BRIDGE_STATUS=$(curl -s --max-time 3 http://localhost:8000/api/network/bridge/status 2>/dev/null)
+    if [ -n "$BRIDGE_STATUS" ]; then
+        BRIDGE_ACTIVE=$(echo "$BRIDGE_STATUS" | grep -o '"active":\s*true' | head -1)
+        if [ -n "$BRIDGE_ACTIVE" ]; then
+            QUALITY_SCORE=$(echo "$BRIDGE_STATUS" | grep -oP '"score":\s*\K[\d.]+' | head -1)
+            QUALITY_LABEL=$(echo "$BRIDGE_STATUS" | grep -oP '"label":\s*"\K[^"]+' | head -1)
+            echo -e "${GREEN}✅${NC} Network Event Bridge ACTIVE (Score: ${QUALITY_SCORE:-?}/100 - ${QUALITY_LABEL:-?})"
+        else
+            echo -e "${YELLOW}⚠️${NC}  Network Event Bridge stopped (start via /api/network/bridge/start)"
+        fi
+    fi
+fi
+
 
 
 echo -e "\n${BLUE}💻 Python Environment${NC}"

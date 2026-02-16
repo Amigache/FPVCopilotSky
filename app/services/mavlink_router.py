@@ -584,7 +584,7 @@ class MAVLinkRouter:
             )
 
         try:
-            from services.preferences import get_preferences
+            from app.services.preferences import get_preferences
 
             prefs = get_preferences()
             prefs.set_router_outputs(configs)
@@ -594,7 +594,7 @@ class MAVLinkRouter:
     def _load_config(self):
         """Load configuration from preferences service."""
         try:
-            from services.preferences import get_preferences
+            from app.services.preferences import get_preferences
 
             prefs = get_preferences()
             configs = prefs.get_router_outputs()

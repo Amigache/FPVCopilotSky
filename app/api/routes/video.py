@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 from typing import Optional, Literal
 import ipaddress
 from app.i18n import get_language_from_request, translate
+from app.services.preferences import get_preferences
 
 router = APIRouter(prefix="/api/video", tags=["video"])
 
@@ -258,7 +259,7 @@ async def configure_video(config: VideoConfigRequest, request: Request):
 
     # Save to preferences (including identity fields for smart matching)
     try:
-        from services.preferences import get_preferences
+        from app.services.preferences import get_preferences
 
         prefs = get_preferences()
         current = prefs.get_video_config()
@@ -270,7 +271,7 @@ async def configure_video(config: VideoConfigRequest, request: Request):
         elif "device" in config_dict:
             # Auto-detect identity from the device path if not provided by frontend
             try:
-                from services.video_config import get_device_identity
+                from app.services.video_config import get_device_identity
 
                 identity = get_device_identity(config_dict["device"])
                 if identity:
@@ -316,7 +317,7 @@ async def configure_streaming(config: StreamingConfigRequest, request: Request):
 
     # Save to preferences
     try:
-        from services.preferences import get_preferences
+        from app.services.preferences import get_preferences
 
         prefs = get_preferences()
         current = prefs.get_streaming_config()
@@ -354,7 +355,7 @@ async def live_update(req: LivePropertyRequest, request: Request):
 
     # Save to preferences
     try:
-        from services.preferences import get_preferences
+        from app.services.preferences import get_preferences
 
         prefs = get_preferences()
         current = prefs.get_video_config()
@@ -393,3 +394,50 @@ async def get_network_ip(request: Request):
         "ip": ip,
         "rtsp_url": f"rtsp://{ip}:8554/fpv",
     }
+
+
+@router.get("/config/auto-adaptive-bitrate")
+async def get_auto_adaptive_bitrate():
+    """Get auto-adaptive bitrate configuration"""
+    prefs = get_preferences()
+    enabled = prefs.get_auto_adaptive_bitrate()
+
+    return {
+        "enabled": enabled,
+        "description": (
+            "Auto-adaptive bitrate adjusts video quality based on network conditions (SINR, RTT, jitter, packet loss). "
+            "Recommended for 4G/LTE connections. Disable for manual control on stable networks (WiFi/Ethernet)."
+        ),
+    }
+
+
+@router.post("/config/auto-adaptive-bitrate")
+async def set_auto_adaptive_bitrate(request: Request):
+    """Enable or disable auto-adaptive bitrate"""
+    try:
+        body = await request.json()
+        enabled = body.get("enabled", True)
+
+        prefs = get_preferences()
+        prefs.set_auto_adaptive_bitrate(enabled)
+
+        # If enabling, start the Network Event Bridge
+        # If disabling, stop it
+        from app.services.network_event_bridge import get_network_event_bridge
+
+        bridge = get_network_event_bridge()
+
+        if enabled:
+            await bridge.start()
+            message = "Auto-adaptive bitrate enabled. Network Event Bridge started."
+        else:
+            await bridge.stop()
+            message = "Auto-adaptive bitrate disabled. You can now control bitrate manually."
+
+        return {
+            "success": True,
+            "enabled": enabled,
+            "message": message,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

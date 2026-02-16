@@ -525,7 +525,7 @@ class GStreamerService:
 
         # Log board detection info at pipeline build
         try:
-            from providers.board import BoardRegistry
+            from app.providers.board import BoardRegistry
 
             detected_board = BoardRegistry().get_detected_board()
             if detected_board:
@@ -985,7 +985,7 @@ class GStreamerService:
             Adapted codec_id that's supported on this board
         """
         try:
-            from providers.board import BoardRegistry
+            from app.providers.board import BoardRegistry
 
             detected_board = BoardRegistry().get_detected_board()
             if not detected_board:

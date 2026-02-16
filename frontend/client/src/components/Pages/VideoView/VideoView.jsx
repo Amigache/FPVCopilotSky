@@ -50,6 +50,7 @@ const VideoView = () => {
   const [webrtcVideoStats, setWebrtcVideoStats] = useState(null)
   const [webrtcKey, setWebrtcKey] = useState(0)
   const [networkValidationErrors, setNetworkValidationErrors] = useState(false)
+  const [autoAdaptiveBitrate, setAutoAdaptiveBitrate] = useState(true) // Auto-adaptive by default
   const initialLoadDone = useRef(false)
   const liveUpdateTimer = useRef(null)
   const webrtcViewerRef = useRef(null)
@@ -148,15 +149,27 @@ const VideoView = () => {
     }
   }, [])
 
+  const loadAutoAdaptiveBitrate = useCallback(async () => {
+    try {
+      const response = await api.get('/api/video/config/auto-adaptive-bitrate')
+      if (response.ok) {
+        const data = await response.json()
+        setAutoAdaptiveBitrate(data.enabled)
+      }
+    } catch (error) {
+      console.error('Error loading auto-adaptive bitrate:', error)
+    }
+  }, [])
+
   // Initial data load
   useEffect(() => {
     const loadData = async () => {
       setLoading(true)
-      await Promise.all([loadCameras(), loadCodecs(), loadNetworkIp()])
+      await Promise.all([loadCameras(), loadCodecs(), loadNetworkIp(), loadAutoAdaptiveBitrate()])
       setLoading(false)
     }
     loadData()
-  }, [loadCameras, loadCodecs, loadNetworkIp])
+  }, [loadCameras, loadCodecs, loadNetworkIp, loadAutoAdaptiveBitrate])
 
   // RTSP mode: auto-populate URL + reload network IP (merged from two effects)
   useEffect(() => {
@@ -463,6 +476,7 @@ const VideoView = () => {
               updateConfig={updateConfig}
               debouncedLiveUpdate={debouncedLiveUpdate}
               liveUpdate={liveUpdate}
+              autoAdaptiveBitrate={autoAdaptiveBitrate}
             />
           )}
           <NetworkSettingsCard
@@ -506,7 +520,11 @@ const VideoView = () => {
             />
           )}
           {status.streaming && status.stats && (
-            <StatsCard status={status} webrtcVideoStats={webrtcVideoStats} />
+            <StatsCard
+              status={status}
+              webrtcVideoStats={webrtcVideoStats}
+              autoAdaptiveBitrate={autoAdaptiveBitrate}
+            />
           )}
         </div>
       </div>

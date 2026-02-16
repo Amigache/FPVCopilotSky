@@ -90,6 +90,7 @@ class PreferencesService:
                 "codec": "mjpeg",
                 "quality": 85,
                 "h264_bitrate": 2000,
+                "auto_adaptive_bitrate": True,  # Enable automatic bitrate adaptation via Network Event Bridge
             },
             "streaming": {
                 "udp_host": "",  # No default IP, user must configure
@@ -338,6 +339,20 @@ class PreferencesService:
                 self._preferences["video"] = {}
             self._preferences["video"].update(config)
             self._save()
+
+    def set_auto_adaptive_bitrate(self, enabled: bool):
+        """Enable/disable automatic adaptive bitrate via Network Event Bridge."""
+        with self._lock:
+            if "video" not in self._preferences:
+                self._preferences["video"] = self._default_preferences()["video"]
+            self._preferences["video"]["auto_adaptive_bitrate"] = enabled
+            self._save()
+            print(f"✅ Auto-adaptive bitrate: {'enabled' if enabled else 'disabled'}")
+
+    def get_auto_adaptive_bitrate(self) -> bool:
+        """Get auto-adaptive bitrate setting."""
+        with self._lock:
+            return self._preferences.get("video", {}).get("auto_adaptive_bitrate", True)
 
     # ==================== Streaming Configuration ====================
 

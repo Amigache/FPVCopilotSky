@@ -160,6 +160,22 @@ class TailscaleProvider(VPNProvider):
     def connect(self) -> Dict:
         """Connect to Tailscale"""
         try:
+            # Check if Tailscale daemon is running
+            daemon_check = subprocess.run(
+                ["systemctl", "is-active", "tailscaled"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+
+            if daemon_check.returncode != 0:
+                # Tailscale daemon is not running
+                return {
+                    "success": False,
+                    "error": "Tailscale daemon is not running. Please start it with: sudo systemctl start tailscaled",
+                    "needs_daemon_start": True,
+                }
+
             # Check if already connected
             status = self.get_status()
             if status.get("connected") and status.get("authenticated"):
@@ -321,6 +337,22 @@ class TailscaleProvider(VPNProvider):
     def logout(self) -> Dict:
         """Logout from Tailscale (clears local credentials)"""
         try:
+            # Check if Tailscale daemon is running
+            daemon_check = subprocess.run(
+                ["systemctl", "is-active", "tailscaled"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+
+            if daemon_check.returncode != 0:
+                # Tailscale daemon is not running
+                return {
+                    "success": False,
+                    "error": "Tailscale daemon is not running. Please start it with: sudo systemctl start tailscaled",
+                    "needs_daemon_start": True,
+                }
+
             result = subprocess.run(
                 ["sudo", "-n", "tailscale", "logout"],
                 capture_output=True,

@@ -47,6 +47,17 @@ class FlightModeConfig:
     # DNS caching
     enable_dns_cache: bool = True
 
+    # CAKE bufferbloat mitigation (Mejora Nº6)
+    enable_cake: bool = True
+    cake_bandwidth_up_mbit: int = 10  # Upload bandwidth limit (conservative for LTE)
+    cake_bandwidth_down_mbit: int = 30  # Download bandwidth limit
+
+    # VPN policy routing (Mejora Nº5)
+    enable_vpn_policy_routing: bool = True
+    vpn_fwmark: int = 0x100  # fwmark for VPN control traffic
+    vpn_table: int = 100  # Routing table for VPN
+    video_table: int = 200  # Routing table for video traffic
+
 
 class NetworkOptimizer:
     """Service for optimizing network for FPV video streaming"""
@@ -298,6 +309,376 @@ class NetworkOptimizer:
             logger.error(f"Error configuring power save: {e}")
             return False
 
+    # ======================
+    # CAKE Bufferbloat Mitigation (Mejora Nº6)
+    # ======================
+
+    def _configure_cake(self, interface: str, enable: bool = True) -> bool:
+        """
+        Configure CAKE qdisc for bufferbloat mitigation.
+
+        CAKE (Common Applications Kept Enhanced) is a queue discipline that:
+        - Controls latency under load
+        - Reduces queue buildup in LTE uplink buffers
+        - Dramatically improves RTT stability during video upload
+
+        This is arguably the single most impactful optimization for 4G streaming.
+        """
+        try:
+            if enable:
+                # Remove any existing qdisc first
+                self._run_command(
+                    ["sudo", "tc", "qdisc", "del", "dev", interface, "root"],
+                    check=False,
+                )
+
+                # Apply CAKE on egress (upload - most critical for video streaming)
+                _, stderr, rc = self._run_command(
+                    [
+                        "sudo",
+                        "tc",
+                        "qdisc",
+                        "replace",
+                        "dev",
+                        interface,
+                        "root",
+                        "cake",
+                        "bandwidth",
+                        f"{self.config.cake_bandwidth_up_mbit}mbit",
+                        "besteffort",  # Single-tier (simpler, lower overhead)
+                        "wash",  # Clear DSCP on ingress to prevent priority inversion
+                        "nat",  # Perform NAT-aware flow isolation
+                        "ack-filter",  # Filter redundant ACKs (saves uplink bandwidth)
+                    ]
+                )
+
+                if rc != 0:
+                    logger.warning(f"CAKE setup failed: {stderr}")
+                    return False
+
+                # Apply CAKE on ingress via IFB (download bufferbloat control)
+                # Create IFB interface if not exists
+                self._run_command(
+                    ["sudo", "modprobe", "ifb", "numifbs=1"],
+                    check=False,
+                )
+                self._run_command(
+                    ["sudo", "ip", "link", "set", "ifb0", "up"],
+                    check=False,
+                )
+
+                # Redirect ingress to IFB
+                self._run_command(
+                    ["sudo", "tc", "qdisc", "del", "dev", interface, "ingress"],
+                    check=False,
+                )
+                self._run_command(
+                    [
+                        "sudo",
+                        "tc",
+                        "qdisc",
+                        "add",
+                        "dev",
+                        interface,
+                        "ingress",
+                    ]
+                )
+                self._run_command(
+                    [
+                        "sudo",
+                        "tc",
+                        "filter",
+                        "add",
+                        "dev",
+                        interface,
+                        "parent",
+                        "ffff:",
+                        "protocol",
+                        "ip",
+                        "u32",
+                        "match",
+                        "u32",
+                        "0",
+                        "0",
+                        "action",
+                        "mirred",
+                        "egress",
+                        "redirect",
+                        "dev",
+                        "ifb0",
+                    ],
+                    check=False,
+                )
+
+                # Apply CAKE on IFB (download direction)
+                self._run_command(
+                    ["sudo", "tc", "qdisc", "del", "dev", "ifb0", "root"],
+                    check=False,
+                )
+                self._run_command(
+                    [
+                        "sudo",
+                        "tc",
+                        "qdisc",
+                        "replace",
+                        "dev",
+                        "ifb0",
+                        "root",
+                        "cake",
+                        "bandwidth",
+                        f"{self.config.cake_bandwidth_down_mbit}mbit",
+                        "besteffort",
+                        "wash",
+                        "ingress",
+                    ],
+                    check=False,
+                )
+
+                logger.info(
+                    f"CAKE enabled on {interface}: "
+                    f"up={self.config.cake_bandwidth_up_mbit}mbit, "
+                    f"down={self.config.cake_bandwidth_down_mbit}mbit"
+                )
+                return True
+            else:
+                # Remove CAKE qdiscs
+                self._run_command(
+                    ["sudo", "tc", "qdisc", "del", "dev", interface, "root"],
+                    check=False,
+                )
+                self._run_command(
+                    ["sudo", "tc", "qdisc", "del", "dev", interface, "ingress"],
+                    check=False,
+                )
+                self._run_command(
+                    ["sudo", "tc", "qdisc", "del", "dev", "ifb0", "root"],
+                    check=False,
+                )
+                logger.info(f"CAKE removed from {interface}")
+                return True
+
+        except Exception as e:
+            logger.error(f"Error configuring CAKE: {e}")
+            return False
+
+    def get_cake_stats(self, interface: str = None) -> Dict:
+        """Get CAKE qdisc statistics for monitoring"""
+        try:
+            if not interface:
+                interface = self._get_modem_interface()
+            if not interface:
+                return {"available": False, "error": "No modem interface"}
+
+            stdout, _, rc = self._run_command(["tc", "-s", "qdisc", "show", "dev", interface, "root"])
+
+            if rc != 0 or "cake" not in stdout.lower():
+                return {"available": False, "error": "CAKE not active"}
+
+            # Parse basic CAKE stats
+            stats = {"available": True, "interface": interface, "raw": stdout}
+
+            import re
+
+            # Extract key metrics
+            sent_match = re.search(r"Sent (\d+) bytes (\d+) pkt", stdout)
+            if sent_match:
+                stats["bytes_sent"] = int(sent_match.group(1))
+                stats["packets_sent"] = int(sent_match.group(2))
+
+            dropped_match = re.search(r"dropped (\d+)", stdout)
+            if dropped_match:
+                stats["dropped"] = int(dropped_match.group(1))
+
+            backlog_match = re.search(r"backlog (\d+)b", stdout)
+            if backlog_match:
+                stats["backlog_bytes"] = int(backlog_match.group(1))
+
+            return stats
+
+        except Exception as e:
+            return {"available": False, "error": str(e)}
+
+    # ======================
+    # VPN Policy Routing (Mejora Nº5)
+    # ======================
+
+    def _configure_vpn_policy_routing(self, modem_interface: str, enable: bool = True) -> bool:
+        """
+        Configure policy routing to isolate VPN control traffic from video traffic.
+
+        This ensures that changing the default route (e.g., WiFi↔4G failover)
+        does NOT disrupt the VPN tunnel.
+
+        Architecture:
+          Table 100 → VPN control traffic (fwmark 0x100)
+          Table 200 → Video traffic (fwmark 0x200)
+          Main table → Everything else
+        """
+        try:
+            vpn_mark = hex(self.config.vpn_fwmark)
+            vpn_table = str(self.config.vpn_table)
+
+            if enable:
+                # Find the modem gateway
+                stdout, _, _ = self._run_command(["ip", "route", "show", "dev", modem_interface])
+                gateway = None
+                for line in stdout.split("\n"):
+                    if "default" in line:
+                        parts = line.split()
+                        if "via" in parts:
+                            idx = parts.index("via")
+                            if idx + 1 < len(parts):
+                                gateway = parts[idx + 1]
+                                break
+
+                if not gateway:
+                    logger.warning("No gateway found for VPN policy routing")
+                    return False
+
+                # Add routing rules (idempotent: delete first, then add)
+                # Rule: packets with fwmark vpn_mark → lookup vpn_table
+                self._run_command(
+                    ["sudo", "ip", "rule", "del", "fwmark", vpn_mark, "table", vpn_table],
+                    check=False,
+                )
+                self._run_command(
+                    [
+                        "sudo",
+                        "ip",
+                        "rule",
+                        "add",
+                        "fwmark",
+                        vpn_mark,
+                        "table",
+                        vpn_table,
+                    ]
+                )
+
+                # Set default route in vpn_table via modem
+                self._run_command(
+                    ["sudo", "ip", "route", "del", "default", "table", vpn_table],
+                    check=False,
+                )
+                self._run_command(
+                    [
+                        "sudo",
+                        "ip",
+                        "route",
+                        "add",
+                        "default",
+                        "via",
+                        gateway,
+                        "dev",
+                        modem_interface,
+                        "table",
+                        vpn_table,
+                    ]
+                )
+
+                # Mark Tailscale/VPN control traffic with fwmark
+                # Tailscale uses UDP port 41641
+                self._run_command(
+                    [
+                        "sudo",
+                        "iptables",
+                        "-t",
+                        "mangle",
+                        "-A",
+                        "OUTPUT",
+                        "-p",
+                        "udp",
+                        "--dport",
+                        "41641",
+                        "-j",
+                        "MARK",
+                        "--set-mark",
+                        vpn_mark,
+                    ],
+                    check=False,
+                )
+
+                # Also mark WireGuard traffic (UDP port 51820)
+                self._run_command(
+                    [
+                        "sudo",
+                        "iptables",
+                        "-t",
+                        "mangle",
+                        "-A",
+                        "OUTPUT",
+                        "-p",
+                        "udp",
+                        "--dport",
+                        "51820",
+                        "-j",
+                        "MARK",
+                        "--set-mark",
+                        vpn_mark,
+                    ],
+                    check=False,
+                )
+
+                logger.info(f"VPN policy routing enabled: fwmark={vpn_mark} → table {vpn_table} via {gateway}")
+                return True
+
+            else:
+                # Remove rules and routes
+                self._run_command(
+                    ["sudo", "ip", "rule", "del", "fwmark", vpn_mark, "table", vpn_table],
+                    check=False,
+                )
+                self._run_command(
+                    ["sudo", "ip", "route", "flush", "table", vpn_table],
+                    check=False,
+                )
+
+                # Remove iptables marks
+                self._run_command(
+                    [
+                        "sudo",
+                        "iptables",
+                        "-t",
+                        "mangle",
+                        "-D",
+                        "OUTPUT",
+                        "-p",
+                        "udp",
+                        "--dport",
+                        "41641",
+                        "-j",
+                        "MARK",
+                        "--set-mark",
+                        vpn_mark,
+                    ],
+                    check=False,
+                )
+                self._run_command(
+                    [
+                        "sudo",
+                        "iptables",
+                        "-t",
+                        "mangle",
+                        "-D",
+                        "OUTPUT",
+                        "-p",
+                        "udp",
+                        "--dport",
+                        "51820",
+                        "-j",
+                        "MARK",
+                        "--set-mark",
+                        vpn_mark,
+                    ],
+                    check=False,
+                )
+
+                logger.info("VPN policy routing disabled")
+                return True
+
+        except Exception as e:
+            logger.error(f"Error configuring VPN policy routing: {e}")
+            return False
+
     def enable_flight_mode(self) -> Dict:
         """
         Enable Flight Mode - Full network optimization for FPV streaming
@@ -336,6 +717,19 @@ class NetworkOptimizer:
             # 4. Disable power saving
             if self.config.disable_power_save and self._disable_power_save(modem_interface, disable=True):
                 optimizations.append("Power saving disabled")
+
+            # 5. Enable CAKE bufferbloat mitigation
+            if self.config.enable_cake and self._configure_cake(modem_interface, enable=True):
+                optimizations.append(
+                    f"CAKE enabled (up={self.config.cake_bandwidth_up_mbit}mbit, "
+                    f"down={self.config.cake_bandwidth_down_mbit}mbit)"
+                )
+
+            # 6. Configure VPN policy routing
+            if self.config.enable_vpn_policy_routing and self._configure_vpn_policy_routing(
+                modem_interface, enable=True
+            ):
+                optimizations.append("VPN policy routing enabled (tunnel isolation)")
 
             self.flight_mode_active = True
 
@@ -392,6 +786,14 @@ class NetworkOptimizer:
             if modem_interface and self.config.disable_power_save:
                 self._disable_power_save(modem_interface, disable=False)
 
+            # Remove CAKE
+            if modem_interface and self.config.enable_cake:
+                self._configure_cake(modem_interface, enable=False)
+
+            # Remove VPN policy routing
+            if modem_interface and self.config.enable_vpn_policy_routing:
+                self._configure_vpn_policy_routing(modem_interface, enable=False)
+
             self.flight_mode_active = False
             self.original_settings = {}
 
@@ -416,6 +818,10 @@ class NetworkOptimizer:
                 "tcp_congestion": self.config.tcp_congestion_control,
                 "video_ports": self.config.video_ports,
                 "dscp_class": self.config.dscp_class,
+                "cake_enabled": self.config.enable_cake,
+                "cake_bandwidth_up": self.config.cake_bandwidth_up_mbit,
+                "cake_bandwidth_down": self.config.cake_bandwidth_down_mbit,
+                "vpn_policy_routing": self.config.enable_vpn_policy_routing,
             },
             "original_settings": self.original_settings if self.flight_mode_active else {},
         }
@@ -447,6 +853,15 @@ class NetworkOptimizer:
                             metrics["mtu"] = int(mtu_parts[1].split()[0])
                         except (ValueError, IndexError):
                             metrics["mtu"] = None
+
+            # Get CAKE stats
+            if modem_interface:
+                cake_stats = self.get_cake_stats(modem_interface)
+                metrics["cake"] = cake_stats
+
+            # Get MPTCP status
+            mptcp_stdout, _, mptcp_rc = self._run_command(["sysctl", "-n", "net.mptcp.enabled"], check=False)
+            metrics["mptcp_enabled"] = mptcp_stdout.strip() == "1" if mptcp_rc == 0 else False
 
             return {"success": True, "metrics": metrics}
 

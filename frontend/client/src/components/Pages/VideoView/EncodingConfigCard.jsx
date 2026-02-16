@@ -8,6 +8,7 @@ const EncodingConfigCard = ({
   updateConfig,
   debouncedLiveUpdate,
   liveUpdate,
+  autoAdaptiveBitrate,
 }) => {
   const { t } = useTranslation()
   const isLiveEditable = streaming && config.mode === 'udp'
@@ -96,29 +97,46 @@ const EncodingConfigCard = ({
         <>
           <div
             className={`form-group ${
-              isLiveEditable ? 'field-live' : streaming ? 'field-disabled' : ''
+              autoAdaptiveBitrate
+                ? 'field-auto-adaptive'
+                : isLiveEditable
+                  ? 'field-live'
+                  : streaming
+                    ? 'field-disabled'
+                    : ''
             }`}
           >
             <label>
               {t('views.video.bitrate')}
-              {isLiveEditable && <span className="live-tag">LIVE</span>}
+              {autoAdaptiveBitrate && <span className="auto-tag">AUTO</span>}
+              {!autoAdaptiveBitrate && isLiveEditable && <span className="live-tag">LIVE</span>}
             </label>
-            <select
-              value={config.h264_bitrate}
-              onChange={(e) => {
-                const val = safeInt(e.target.value, VIDEO_DEFAULTS.H264_BITRATE)
-                updateConfig((prev) => ({ ...prev, h264_bitrate: val }))
-                if (isLiveEditable) liveUpdate('bitrate', val)
-              }}
-              disabled={streaming && !isLiveEditable}
-            >
-              {BITRATE_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.value}
-                  {opt.labelKey ? ` (${t(`views.video.${opt.labelKey}`)})` : ''}
-                </option>
-              ))}
-            </select>
+            {autoAdaptiveBitrate ? (
+              <>
+                <div className="bitrate-auto-info">
+                  <span className="bitrate-value">{config.h264_bitrate} kbps</span>
+                  <span className="bitrate-hint">✨ {t('views.video.bitrateAutoMode')}</span>
+                </div>
+                <small className="hint">{t('views.video.bitrateAutoHint')}</small>
+              </>
+            ) : (
+              <select
+                value={config.h264_bitrate}
+                onChange={(e) => {
+                  const val = safeInt(e.target.value, VIDEO_DEFAULTS.H264_BITRATE)
+                  updateConfig((prev) => ({ ...prev, h264_bitrate: val }))
+                  if (isLiveEditable) liveUpdate('bitrate', val)
+                }}
+                disabled={streaming && !isLiveEditable}
+              >
+                {BITRATE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.value}
+                    {opt.labelKey ? ` (${t(`views.video.${opt.labelKey}`)})` : ''}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
 
           {/* GOP size — only for OpenH264 */}

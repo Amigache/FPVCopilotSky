@@ -1519,13 +1519,25 @@ FPV Copilot Sky incluye servicios especializados para optimización de red, moni
 ┌─────────────────────────────────────────┐
 │         Latency Monitor                 │
 │  Ping continuo a múltiples targets      │
-│  Calcula: avg, min, max, packet loss    │
+│  Calcula: avg, min, max, jitter, p95    │
 └───────────┬─────────────────────────────┘
             │ Publica métricas cada 2s
             ↓
 ┌─────────────────────────────────────────┐
+│      Network Event Bridge  🧠           │
+│  Quality Score compuesto (0-100)        │
+│  SINR 35% + Jitter 30% + RSRQ 15%     │
+│  + Packet Loss 20%, EMA smoothing      │
+│  Cell change detection, SINR trends     │
+│  → Auto-ajusta video (bitrate/GOP/kf)  │
+│  → WebSocket broadcast: network_quality │
+└───────────┬─────────────────────────────┘
+            │ Alimenta failover predictivo
+            ↓
+┌─────────────────────────────────────────┐
 │         Auto-Failover                   │
-│  Lee latency stats, decide switch       │
+│  Lee latency stats + bridge SINR trend  │
+│  Failover predictivo: anticipa caídas   │
 │  Hysteresis: 30s cooldown, 15 samples  │
 └───────────┬─────────────────────────────┘
             │ Ejecuta callback de switch
@@ -1539,7 +1551,8 @@ FPV Copilot Sky incluye servicios especializados para optimización de red, moni
             ↓
 ┌─────────────────────────────────────────┐
 │    Flight Mode (Network Optimizer)      │
-│  MTU 1420, QoS DSCP, TCP BBR            │
+│  MTU 1420, QoS DSCP, TCP BBR           │
+│  CAKE bufferbloat, VPN policy routing   │
 │  Buffers 25MB, power saving OFF         │
 └─────────────────────────────────────────┘
 ```
@@ -1553,7 +1566,7 @@ FPV Copilot Sky incluye servicios especializados para optimización de red, moni
 - Ping paralelo a 3 targets (8.8.8.8, 1.1.1.1, 9.9.9.9)
 - Intervalo configurable (default: 2 segundos)
 - Histórico con ventana deslizante (default: 30 samples = 1 minuto)
-- Cálculo de métricas: avg, min, max, packet loss
+- Cálculo de métricas: avg, min, max, packet loss, **jitter, variance, p95 latency**
 - Thread-safe con asyncio
 
 **Uso**:
@@ -1602,7 +1615,7 @@ LatencyMonitor(
 
 ### AutoFailover (`app/services/auto_failover.py`)
 
-**Propósito**: Switching automático entre WiFi ↔ 4G basado en métricas de latencia.
+**Propósito**: Switching automático entre WiFi ↔ 4G basado en métricas de latencia con **failover predictivo**.
 
 **Características**:
 
@@ -1611,19 +1624,31 @@ LatencyMonitor(
 - Hysteresis: cooldown de 30s entre switches
 - Restore automático al modo preferido (default: modem) tras 60s
 - Switch callback personalizable
+- **Failover predictivo** (cuando Network Event Bridge está activo):
+  - Analiza tendencia SINR (tasa de caída dB/min)
+  - Incorpora jitter del bridge a la decisión
+  - Calcula `predictive_urgency` para ajustar dinámicamente el threshold
+  - Reduce ventana de decisión cuando la señal está cayendo rápido
+  - Configurable: `sinr_critical_threshold`, `sinr_drop_rate_threshold`, `jitter_threshold_ms`, `predictive_weight`
 
 **Lógica de Decisión**:
 
 ```
 1. Monitor loop cada 2 segundos
 2. Obtiene latencia promedio de LatencyMonitor
-3. Si latency > threshold:
+3. Si Network Event Bridge activo:
+   a. Obtiene SINR trend (derivada de señal)
+   b. Obtiene jitter actual
+   c. Calcula predictive_urgency (0-1)
+   d. effective_threshold = threshold × (1 - urgency × weight)
+   e. effective_window = window × (1 - urgency × 0.5)
+4. Si latency > effective_threshold:
    - Incrementa consecutive_bad_samples
-   - Si consecutive >= window (15):
+   - Si consecutive >= effective_window:
      - Verifica cooldown (30s desde último switch)
      - Ejecuta switch a interfaz alternativa
      - Reset consecutive_bad_samples
-4. Si latency OK:
+5. Si latency OK:
    - Reset consecutive_bad_samples
    - Verifica restore (60s desde último switch)
    - Si latency < threshold * 0.7 → restore a preferido
@@ -1714,8 +1739,24 @@ POST /api/network/failover/force-switch
    - Manejo de ráfagas de tráfico
 
 5. **Power Saving OFF**:
+
    - Desactiva power saving en interfaz Ethernet
    - Latencia más consistente
+
+6. **CAKE Bufferbloat Control** (nuevo):
+
+   - `tc qdisc replace dev <iface> root cake bandwidth <bw>mbit`
+   - AQM (Active Queue Management) que elimina bufferbloat en 4G
+   - Configurable: `enable_cake`, `cake_bandwidth_up_mbit` (10), `cake_bandwidth_down_mbit` (30)
+   - Reduce latencia de video hasta un 40% bajo carga
+   - `get_cake_stats()` → estadísticas de cola en tiempo real
+
+7. **VPN Policy Routing** (nuevo):
+   - Separa tráfico video del tráfico de control VPN
+   - `iptables -t mangle` para marcar paquetes con `fwmark`
+   - `ip rule` para enrutar por tablas diferentes
+   - Configurable: `enable_vpn_policy_routing`, `vpn_fwmark`, `vpn_table`, `video_table`
+   - Evita que Tailscale encapsule tráfico de video innecesariamente
 
 **Uso**:
 
@@ -1832,6 +1873,170 @@ POST /api/network/dns/clear
 ```
 
 **Beneficio**: Reduce latencia DNS de ~50ms a ~2ms (95% mejora).
+
+---
+
+### NetworkEventBridge (`app/services/network_event_bridge.py`) 🧠
+
+**Propósito**: Puente inteligente que conecta eventos de red (señal celular, latencia, jitter) con acciones sobre el pipeline de video para auto-curación del streaming.
+
+**Características**:
+
+- **Quality Score compuesto** (0–100) con pesos configurables:
+  - SINR: 35% — señal/ruido del modem
+  - Jitter: 30% — variación de latencia
+  - RSRQ: 15% — calidad de referencia
+  - Packet Loss: 20% — pérdida de paquetes
+- **Suavizado EMA** (Exponential Moving Average) para evitar oscilaciones
+- **Detección de cambios de celda** (cell_id/PCI changes)
+- **Análisis de tendencia SINR** (tasa de caída dB/minuto)
+- **14 tipos de NetworkEvent**: signal_degradation, cell_change, high_jitter, packet_loss_spike, sinr_drop, etc.
+- **9 tipos de VideoAction**: reduce_bitrate, increase_bitrate, force_keyframe, reduce_resolution, etc.
+- **Broadcast WebSocket** de quality score cada ciclo (~1s) vía tipo `network_quality`
+- **Singleton global** via `get_network_event_bridge()`
+
+**Inicialización** (`app/main.py`):
+
+```python
+from app.services.network_event_bridge import get_network_event_bridge
+
+# En startup_event(), después de inicializar video:
+bridge = get_network_event_bridge()
+bridge.set_services(
+    modem_provider=modem_provider,
+    gstreamer_service=gstreamer_service,
+    webrtc_service=webrtc_service,
+    websocket_manager=websocket_manager,
+    latency_monitor=latency_monitor
+)
+await bridge.start()
+
+# En shutdown_event():
+bridge = get_network_event_bridge()
+await bridge.stop()
+```
+
+**Ciclo de monitoreo** (`_monitor_loop`):
+
+```
+Cada ~1 segundo:
+1. Lee señal del modem (SINR, RSRQ, RSRP, cell_id, PCI, band, EARFCN)
+2. Lee latencia del LatencyMonitor (avg, jitter, packet_loss, p95)
+3. Calcula score parcial por componente:
+   - sinr_score = clamp((sinr - (-10)) / (25 - (-10)) × 100)
+   - rsrq_score = clamp((rsrq - (-20)) / (-3 - (-20)) × 100)
+   - jitter_score = clamp((1 - jitter/100) × 100)
+   - loss_score = clamp((1 - loss/10) × 100)
+4. Pondera: score = 0.35×sinr + 0.15×rsrq + 0.30×jitter + 0.20×loss
+5. Suavizado EMA: smoothed = α × raw + (1-α) × previous  (α = 0.3)
+6. Detecta eventos: cell_change, sinr_drop, high_jitter...
+7. Mapea eventos → acciones de video (reduce_bitrate, force_keyframe...)
+8. Ejecuta acciones via GStreamer/WebRTC APIs
+9. Broadcast via WebSocket: {type: "network_quality", data: {...}}
+```
+
+**Formato WebSocket** (`network_quality`):
+
+```json
+{
+  "type": "network_quality",
+  "data": {
+    "active": true,
+    "quality_score": {
+      "score": 72.5,
+      "label": "Bueno",
+      "color": "#f0ad4e",
+      "components": {
+        "sinr": { "value": 14.2, "score": 69.1 },
+        "rsrq": { "value": -8.5, "score": 67.6 },
+        "jitter": { "value": 18.3, "score": 81.7 },
+        "packet_loss": { "value": 0.5, "score": 95.0 }
+      }
+    },
+    "cell_info": {
+      "cell_id": "1234567",
+      "pci": "42",
+      "band": "B3",
+      "earfcn": "1300"
+    },
+    "latency": {
+      "avg_ms": 45.2,
+      "jitter_ms": 18.3,
+      "packet_loss_pct": 0.5,
+      "p95_ms": 72.1
+    },
+    "recommended_settings": {
+      "bitrate_kbps": 3000,
+      "gop_size": 15,
+      "resolution": "854x480"
+    },
+    "recent_events": [
+      {
+        "type": "high_jitter",
+        "timestamp": "2026-02-08T17:30:15Z",
+        "details": { "jitter_ms": 45.2, "threshold": 30.0 }
+      }
+    ]
+  }
+}
+```
+
+**API Endpoints**:
+
+```
+POST /api/network/bridge/start         # Iniciar bridge
+POST /api/network/bridge/stop          # Detener
+GET  /api/network/bridge/status        # Estado completo (score, cell, events)
+GET  /api/network/bridge/quality-score # Solo quality score
+GET  /api/network/bridge/events        # Últimos N eventos
+```
+
+**Uso programático**:
+
+```python
+from app.services.network_event_bridge import get_network_event_bridge
+
+bridge = get_network_event_bridge()
+
+# Obtener estado
+status = bridge.get_status()
+# {active, quality_score, cell_info, latency, recent_events, recommended_settings}
+
+# Quality score actual
+score = bridge.get_quality_score()
+# {score: 72.5, label: "Bueno", color: "#f0ad4e", components: {...}}
+
+# Últimos eventos
+events = bridge.get_recent_events(limit=20)
+```
+
+---
+
+### MPTCP (Multi-Path TCP)
+
+**Propósito**: Usar WiFi + 4G simultáneamente para redundancia y mayor ancho de banda combinado.
+
+**Requisitos**: Kernel 5.6+ con soporte MPTCP. El instalador verifica y configura automáticamente:
+
+```
+net.mptcp.enabled = 1
+net.mptcp.allow_join_initial_addr_port = 1
+net.mptcp.checksum_enabled = 0
+```
+
+**API Endpoints**:
+
+```
+GET  /api/network/mptcp/status         # Estado MPTCP
+POST /api/network/mptcp/enable         # Habilitar (sysctl + ip mptcp)
+POST /api/network/mptcp/disable        # Deshabilitar
+```
+
+**Flujo de habilitación**:
+
+1. `sysctl -w net.mptcp.enabled=1`
+2. `ip mptcp endpoint add <iface_ip> dev <iface> subflow` para cada interfaz
+3. Verifica endpoints creados
 
 ---
 
@@ -1974,12 +2179,15 @@ GET  /api/mavlink/telemetry           # Datos de telemetría
 GET  /api/video/status                # Estado del stream (incluye providers activos)
 POST /api/video/start                 # Iniciar streaming (auto-selecciona providers)
 POST /api/video/stop                  # Detener streaming
+POST /api/video/restart               # Reiniciar streaming
 POST /api/video/config/video          # Configurar video (Pydantic: VideoConfigRequest)
 POST /api/video/config/streaming      # Configurar red/emisión (StreamingConfigRequest)
 GET  /api/video/cameras               # Cámaras detectadas (todos los providers)
 GET  /api/video/codecs                # Codificadores disponibles (todos los providers)
 GET  /api/video/network/ip            # IP de la placa y URL RTSP sugerida
-PUT  /api/video/update-property       # Cambiar propiedad en vivo (LivePropertyRequest)
+PUT  /api/video/live-update           # Cambiar property+value en vivo (LiveUpdateRequest)
+GET  /api/video/config/auto-adaptive-bitrate  # Estado del auto-ajuste de bitrate
+POST /api/video/config/auto-adaptive-bitrate  # Activar/desactivar auto-ajuste (enabled: bool)
 ```
 
 > **Validación**: Las rutas POST/PUT usan modelos Pydantic con validación de rangos,
@@ -2054,6 +2262,43 @@ PUT  /api/video/update-property       # Cambiar propiedad en vivo (LivePropertyR
   }
 ]
 ```
+
+**Ejemplo: Auto-Adaptive Bitrate**
+
+```
+GET /api/video/config/auto-adaptive-bitrate
+```
+
+Respuesta:
+
+```json
+{
+  "enabled": true,
+  "description": "Auto-ajuste activado. El Network Event Bridge controla el bitrate según calidad de red."
+}
+```
+
+```
+POST /api/video/config/auto-adaptive-bitrate
+Content-Type: application/json
+
+{
+  "enabled": true
+}
+```
+
+Cuando `enabled: true`:
+
+- El selector de bitrate en la UI muestra "AUTO" en lugar de un dropdown
+- El Network Event Bridge ajusta automáticamente el bitrate cada 2 segundos según SINR, jitter y latencia
+- El bitrate objetivo se muestra en la UI pero no es editable manualmente
+- Los ajustes se realizan llamando internamente a `/api/video/live-update` con `property: "bitrate"` y `value: <nuevo_bitrate_kbps>`
+
+Cuando `enabled: false`:
+
+- El selector de bitrate vuelve a ser un dropdown manual
+- El usuario selecciona el bitrate fijo desde la interfaz
+- El Network Event Bridge no interviene en el bitrate
 
 ---
 
@@ -2136,6 +2381,24 @@ POST /api/network/dns/stop            # Detener servicio
 POST /api/network/dns/clear           # Limpiar cache
 ```
 
+**Network Event Bridge** (auto-curación streaming):
+
+```
+POST /api/network/bridge/start        # Iniciar bridge
+POST /api/network/bridge/stop         # Detener
+GET  /api/network/bridge/status       # Estado completo (score, cell, events)
+GET  /api/network/bridge/quality-score # Quality score actual
+GET  /api/network/bridge/events       # Últimos eventos de red
+```
+
+**MPTCP** (multi-path TCP):
+
+```
+GET  /api/network/mptcp/status        # Estado MPTCP
+POST /api/network/mptcp/enable        # Habilitar bonding WiFi+4G
+POST /api/network/mptcp/disable       # Deshabilitar
+```
+
 **Flight Session** (logging vuelo):
 
 ```
@@ -2191,11 +2454,21 @@ const MyComponent = () => {
   // messages.modem_status se actualiza automáticamente cada 10s
   // messages.telemetry se actualiza cada 1s
   // messages.vpn_status se actualiza cada 10s
+  // messages.network_quality se actualiza cada ~1s (cuando bridge activo)
   // etc.
 
   return <div>{messages.modem_status?.signal?.rssi}</div>;
 };
 ```
+
+### Tipos de mensaje WebSocket
+
+| Tipo              | Frecuencia | Fuente               | Datos principales                                            |
+| ----------------- | ---------- | -------------------- | ------------------------------------------------------------ |
+| `telemetry`       | ~1s        | MAVLink service      | GPS, actitud, batería, modo vuelo                            |
+| `modem_status`    | ~10s       | Modem provider       | Señal, tráfico, operador                                     |
+| `vpn_status`      | ~10s       | VPN provider         | Conectado, IP, peers                                         |
+| `network_quality` | ~1s        | Network Event Bridge | Quality score, cell info, latencia, eventos, recomendaciones |
 
 ---
 

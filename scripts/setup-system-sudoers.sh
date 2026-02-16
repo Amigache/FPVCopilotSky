@@ -56,6 +56,20 @@ $CURRENT_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl enable dnsmasq
 $CURRENT_USER ALL=(ALL) NOPASSWD: /usr/bin/killall -USR1 dnsmasq
 $CURRENT_USER ALL=(ALL) NOPASSWD: /usr/bin/killall -HUP dnsmasq
 $CURRENT_USER ALL=(ALL) NOPASSWD: /usr/bin/tee *
+
+# Allow $CURRENT_USER to manage traffic control (CAKE bufferbloat)
+$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/sbin/tc qdisc *
+$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/sbin/tc class *
+$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/sbin/tc filter *
+
+# Allow $CURRENT_USER to manage iptables (VPN policy routing marks)
+$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/sbin/iptables -t mangle *
+
+# Allow $CURRENT_USER to manage policy routing rules
+$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/sbin/ip rule *
+
+# Allow $CURRENT_USER to manage MPTCP (multi-path TCP)
+$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/sbin/ip mptcp *
 EOF
 
 # Set proper permissions
@@ -71,6 +85,10 @@ if visudo -c -f "$SUDOERS_FILE" > /dev/null 2>&1; then
     echo "  - sudo systemctl status fpvcopilot-sky"
     echo "  - sudo journalctl -u fpvcopilot-sky"
     echo "  - sudo ip route add/del/change (for network priority management)"
+    echo "  - sudo tc qdisc/class/filter (for CAKE bufferbloat control)"
+    echo "  - sudo iptables -t mangle (for VPN policy routing)"
+    echo "  - sudo ip rule (for policy routing rules)"
+    echo "  - sudo ip mptcp (for multi-path TCP management)"
 else
     echo "❌ Error: Invalid sudoers syntax"
     rm -f "$SUDOERS_FILE"

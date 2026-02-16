@@ -6,8 +6,6 @@ FastAPI server for MAVLink drone control
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-import sys
-import os
 import asyncio
 import threading
 import time
@@ -15,45 +13,44 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Add parent directory to path to import modules
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
 # Modular providers system
-from providers import init_provider_registry, get_provider_registry  # noqa: E402
-from providers.vpn.tailscale import TailscaleProvider  # noqa: E402
-from providers.modem.hilink.huawei import HuaweiE3372hProvider  # noqa: E402
-from providers.network import (  # noqa: E402
+from app.providers import init_provider_registry, get_provider_registry  # noqa: E402
+from app.providers.vpn.tailscale import TailscaleProvider  # noqa: E402
+from app.providers.modem.hilink.huawei import HuaweiE3372hProvider  # noqa: E402
+from app.providers.network import (  # noqa: E402
     EthernetInterface,
     WiFiInterface,
     VPNInterface,
     ModemInterface,
 )
-from services.flight_data_logger import FlightDataLogger  # noqa: E402
-from providers.board import BoardRegistry  # noqa: E402
+from app.services.flight_data_logger import FlightDataLogger  # noqa: E402
+from app.services.network_event_bridge import get_network_event_bridge  # noqa: E402
+from app.services.latency_monitor import get_latency_monitor  # noqa: E402
+from app.providers.board import BoardRegistry  # noqa: E402
 
 # Use simplified MAVLink bridge and router
-from services.mavlink_bridge import MAVLinkBridge  # noqa: E402
-from services.mavlink_router import get_router  # noqa: E402
-from services.websocket_manager import websocket_manager  # noqa: E402
-from services.preferences import get_preferences  # noqa: E402
-from services.serial_detector import get_detector  # noqa: E402
-from services.gstreamer_service import init_gstreamer_service  # noqa: E402, F401
-from services.webrtc_service import init_webrtc_service  # noqa: E402
-from services.video_stream_info import (  # noqa: E402
+from app.services.mavlink_bridge import MAVLinkBridge  # noqa: E402
+from app.services.mavlink_router import get_router  # noqa: E402
+from app.services.websocket_manager import websocket_manager  # noqa: E402
+from app.services.preferences import get_preferences  # noqa: E402
+from app.services.serial_detector import get_detector  # noqa: E402
+from app.services.gstreamer_service import init_gstreamer_service  # noqa: E402, F401
+from app.services.webrtc_service import init_webrtc_service  # noqa: E402
+from app.services.video_stream_info import (  # noqa: E402
     init_video_stream_info_service,
     get_video_stream_info_service,
 )
-from services.opencv_service import init_opencv_service  # noqa: E402
-from api.routes import mavlink, system  # noqa: E402
-from api.routes import router as router_routes  # noqa: E402
-from api.routes import video as video_routes  # noqa: E402
-from api.routes import webrtc as webrtc_routes  # noqa: E402
-from api.routes import network as network_routes  # noqa: E402
-from api.routes import vpn as vpn_routes  # noqa: E402
-from api.routes import modem as modem_routes  # noqa: E402
-from api.routes import status as status_routes  # noqa: E402
-from api.routes import network_interface as network_interface_routes  # noqa: E402
-from api.routes import experimental as experimental_routes  # noqa: E402
+from app.services.opencv_service import init_opencv_service  # noqa: E402
+from app.api.routes import mavlink, system  # noqa: E402
+from app.api.routes import router as router_routes  # noqa: E402
+from app.api.routes import video as video_routes  # noqa: E402
+from app.api.routes import webrtc as webrtc_routes  # noqa: E402
+from app.api.routes import network as network_routes  # noqa: E402
+from app.api.routes import vpn as vpn_routes  # noqa: E402
+from app.api.routes import modem as modem_routes  # noqa: E402
+from app.api.routes import status as status_routes  # noqa: E402
+from app.api.routes import network_interface as network_interface_routes  # noqa: E402
+from app.api.routes import experimental as experimental_routes  # noqa: E402
 
 app = FastAPI(title="FPV Copilot Sky", version="1.0.0")
 
@@ -106,7 +103,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
         # Send initial network status
         try:
-            from api.routes.network import get_network_status
+            from app.api.routes.network import get_network_status
 
             network_status = await get_network_status()
             await websocket_manager.broadcast("network_status", network_status)
@@ -115,7 +112,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
         # Send initial VPN status (from provider registry)
         try:
-            from services.preferences import get_preferences
+            from app.services.preferences import get_preferences
 
             registry = get_provider_registry()
             prefs = get_preferences()
@@ -182,7 +179,7 @@ async def periodic_stats_broadcast():
 
             # Status health check every 5 seconds
             if counter % 5 == 0:
-                from api.routes.status import (
+                from app.api.routes.status import (
                     check_python_dependencies,
                     check_npm_dependencies,
                     check_system_info,
@@ -213,7 +210,7 @@ async def periodic_stats_broadcast():
             # Network status every 5 seconds
             if counter % 5 == 0:
                 try:
-                    from api.routes.network import get_network_status
+                    from app.api.routes.network import get_network_status
 
                     network_status = await get_network_status()
                     await websocket_manager.broadcast("network_status", network_status)
@@ -222,7 +219,7 @@ async def periodic_stats_broadcast():
 
             # System resources (CPU/Memory) every 3 seconds
             if counter % 3 == 0:
-                from services.system_service import SystemService
+                from app.services.system_service import SystemService
 
                 await websocket_manager.broadcast(
                     "system_resources",
@@ -234,7 +231,7 @@ async def periodic_stats_broadcast():
 
             # Services status every 5 seconds
             if counter % 5 == 0:
-                from services.system_service import SystemService
+                from app.services.system_service import SystemService
 
                 services = SystemService.get_services_status()
                 await websocket_manager.broadcast("system_services", {"services": services, "count": len(services)})
@@ -263,7 +260,7 @@ async def periodic_stats_broadcast():
             # Modem status every 10 seconds (avoid hammering modem API)
             if counter % 10 == 0:
                 try:
-                    from providers import get_provider_registry
+                    from app.providers import get_provider_registry
 
                     registry = get_provider_registry()
                     modem_provider = registry.get_modem_provider("huawei_e3372h")
@@ -376,7 +373,7 @@ async def periodic_stats_broadcast():
             # OpenCV status every 10 seconds
             if counter % 10 == 0:
                 try:
-                    from services.opencv_service import get_opencv_service
+                    from app.services.opencv_service import get_opencv_service
 
                     opencv_service = get_opencv_service()
                     if opencv_service:
@@ -424,7 +421,7 @@ def auto_connect_vpn():
             print("⏭️ No VPN provider configured")
             return
 
-        from providers import get_provider_registry
+        from app.providers import get_provider_registry
 
         registry = get_provider_registry()
         vpn_provider = registry.get_vpn_provider(provider_name)
@@ -654,6 +651,45 @@ async def startup_event():
     opencv_service.set_telemetry_service(mavlink_service)
     print("✅ OpenCV service initialized and connected to video stream and telemetry")
 
+    # Initialize Network Event Bridge (self-healing streaming)
+    try:
+        # Initialize latency monitor (works with any internet connection)
+        latency_monitor = get_latency_monitor()
+
+        # Initialize Network Event Bridge
+        event_bridge = get_network_event_bridge()
+        event_bridge.set_services(
+            modem_provider=modem_provider,  # Optional: only for cellular metrics (SINR, cell changes)
+            gstreamer_service=video_service,
+            webrtc_service=webrtc_service,
+            websocket_manager=websocket_manager,
+            latency_monitor=latency_monitor,
+        )
+
+        # Start services with proper error handling
+        try:
+            await latency_monitor.start()
+            logger.info("Latency Monitor started successfully")
+            print("✅ Latency Monitor started (RTT, jitter, packet loss)")
+        except Exception as e:
+            logger.error(f"Failed to start Latency Monitor: {e}")
+            print(f"⚠️  Latency Monitor start error: {e}")
+
+        try:
+            await event_bridge.start()
+            logger.info("Network Event Bridge started successfully")
+            print("✅ Network Event Bridge started (self-healing streaming)")
+        except Exception as e:
+            logger.error(f"Failed to start Network Event Bridge: {e}")
+            print(f"⚠️  Network Event Bridge start error: {e}")
+
+        if not modem_provider:
+            print("ℹ️  Cellular metrics disabled (no modem detected)")
+            print("   Monitoring network quality via latency only")
+    except Exception as e:
+        logger.error(f"Network Event Bridge initialization error: {e}")
+        print(f"⚠️  Network Event Bridge init error: {e}")
+
     # Auto-connect to VPN not needed - handled by VPN provider/routes on demand
 
     # Load video config from preferences
@@ -739,6 +775,13 @@ def get_detected_board():
 async def shutdown_event():
     """Cleanup on shutdown"""
     print("🛑 FPV Copilot Sky shutting down...")
+
+    # Stop network event bridge
+    try:
+        event_bridge = get_network_event_bridge()
+        await event_bridge.stop()
+    except Exception:
+        pass
 
     # Stop video stream info service
     video_stream_info_service = get_video_stream_info_service()
