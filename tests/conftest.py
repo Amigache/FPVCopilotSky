@@ -372,6 +372,63 @@ def mock_api_services(monkeypatch):
             "enabled": True,
         }
     ]
+
+    # Add missing methods to prevent RecursionError during JSON serialization
+    mock_prefs.get_all_preferences.return_value = {
+        "serial": {
+            "port": "/dev/ttyUSB0",
+            "baudrate": 115200,
+            "auto_connect": True,
+        },
+        "video": {
+            "device": "/dev/video0",
+            "codec": "h264",
+            "width": 1920,
+            "height": 1080,
+            "fps": 30,
+            "bitrate": 2000,
+            "auto_start": True,
+        },
+        "streaming": {
+            "mode": "udp",
+            "udp_host": "192.168.1.136",
+            "udp_port": 5600,
+            "enabled": True,
+        },
+        "vpn": {
+            "provider": "tailscale",
+            "auto_connect": True,
+        },
+        "flight_session": {
+            "auto_start_on_arm": False,
+            "log_directory": "/tmp/logs",
+        },
+    }
+
+    # Add _preferences dict backing store
+    mock_prefs._preferences = mock_prefs.get_all_preferences.return_value.copy()
+
+    # Add missing setter methods that update the backing store
+    def set_serial_auto_connect(value):
+        mock_prefs._preferences.setdefault("serial", {})["auto_connect"] = value
+
+    def set_video_config(config):
+        mock_prefs._preferences["video"] = config
+
+    def set_vpn_config(config):
+        mock_prefs._preferences["vpn"] = config
+
+    def set_ui_preference(key, value):
+        mock_prefs._preferences.setdefault("ui", {})[key] = value
+
+    mock_prefs.set_streaming_config.return_value = None
+    mock_prefs.set_video_config = Mock(side_effect=set_video_config)
+    mock_prefs.set_vpn_config = Mock(side_effect=set_vpn_config)
+    mock_prefs.set_serial_auto_connect = Mock(side_effect=set_serial_auto_connect)
+    mock_prefs.set_ui_preference = Mock(side_effect=set_ui_preference)
+    mock_prefs.reset_preferences.return_value = True
+    mock_prefs._save.return_value = None
+
     monkeypatch.setattr(
         "app.services.preferences.PreferencesService",
         lambda *args, **kwargs: mock_prefs,
@@ -405,35 +462,50 @@ def mock_api_services(monkeypatch):
 
     # Mock GStreamerService (video service)
     mock_video_service = Mock()
-    mock_video_service.get_status.return_value = {
-        "available": True,
-        "streaming": False,
-        "enabled": True,
-        "config": {
-            "device": "/dev/video0",
-            "codec": "h264",
-            "width": 1920,
-            "height": 1080,
-            "framerate": 30,
-            "quality": 85,
-            "h264_bitrate": 2000,
-            "auto_start": False,
-            "mode": "udp",
-            "udp_host": "192.168.1.136",
-            "udp_port": 5600,
-            "multicast_group": "239.1.1.1",
-            "multicast_port": 5600,
-            "multicast_ttl": 1,
-            "rtsp_enabled": False,
-            "rtsp_url": "rtsp://localhost:8554/fpv",
-            "rtsp_transport": "tcp",
-        },
-        "stats": {},
-        "providers": {},
-        "last_error": None,
-        "pipeline_string": "",
+
+    # Start with initial config
+    video_config = {
+        "device": "/dev/video0",
+        "codec": "h264",
+        "width": 1920,
+        "height": 1080,
+        "framerate": 30,
+        "quality": 85,
+        "h264_bitrate": 2000,
+        "auto_start": False,
+        "mode": "udp",
+        "udp_host": "192.168.1.136",
+        "udp_port": 5600,
+        "multicast_group": "239.1.1.1",
+        "multicast_port": 5600,
+        "multicast_ttl": 1,
+        "rtsp_enabled": False,
+        "rtsp_url": "rtsp://localhost:8554/fpv",
+        "rtsp_transport": "tcp",
     }
-    mock_video_service.configure.return_value = None
+
+    # Track state in the mock
+    mock_video_service._current_config = video_config.copy()
+
+    def mock_get_status():
+        return {
+            "available": True,
+            "streaming": False,
+            "enabled": True,
+            "config": mock_video_service._current_config.copy(),
+            "stats": {},
+            "providers": {},
+            "last_error": None,
+            "pipeline_string": "",
+        }
+
+    def mock_configure(config: dict):
+        # Update the mock's config when configure is called
+        mock_video_service._current_config.update(config)
+        return None
+
+    mock_video_service.get_status = Mock(side_effect=mock_get_status)
+    mock_video_service.configure = Mock(side_effect=mock_configure)
     mock_video_service.is_available.return_value = True
 
     # Patch the video routes module to inject the mock service

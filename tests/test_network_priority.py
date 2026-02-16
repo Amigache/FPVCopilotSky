@@ -27,7 +27,7 @@ class TestNetworkPriorityMode:
         """Setting WiFi priority should set WiFi metric lower than modem"""
         mock_wifi.return_value = "wlan0"
         mock_modem.return_value = "eth0"
-        mock_cmd.return_value = (0, "OK")
+        mock_cmd.return_value = ("", "OK", 0)
 
         response = client.post("/api/network/priority", json={"mode": "wifi"})
 
@@ -43,7 +43,7 @@ class TestNetworkPriorityMode:
         """Setting modem priority should set modem metric lower than WiFi"""
         mock_wifi.return_value = "wlan0"
         mock_modem.return_value = "eth0"
-        mock_cmd.return_value = (0, "OK")
+        mock_cmd.return_value = ("", "OK", 0)
 
         response = client.post("/api/network/priority", json={"mode": "modem"})
 
@@ -94,7 +94,7 @@ class TestNetworkPriorityMode:
     @patch("app.api.routes.network._run_command")
     async def test_route_metrics_applied_correctly(self, mock_cmd, client):
         """Route commands should be executed with correct metrics"""
-        mock_cmd.return_value = (0, "Route changed")
+        mock_cmd.return_value = ("", "Route changed", 0)
 
         response = client.post("/api/network/priority", json={"mode": "wifi"})
 
@@ -184,7 +184,7 @@ class TestNetworkPriorityEdgeCases:
     @patch("app.api.routes.network._run_command")
     async def test_rapid_mode_changes(self, mock_cmd, client):
         """Rapid mode changes should be handled correctly"""
-        mock_cmd.return_value = (0, "OK")
+        mock_cmd.return_value = ("", "OK", 0)
 
         modes = ["wifi", "modem", "wifi"]
         for mode in modes:
