@@ -3,6 +3,7 @@ LibCamera Source Provider
 Handles CSI cameras via libcamera (modern Raspberry Pi, some Radxa boards)
 """
 
+import re
 import subprocess
 import logging
 from typing import Dict, List, Optional, Any
@@ -52,7 +53,8 @@ class LibCameraSource(VideoSourceProvider):
         """
         Discover libcamera sources.
 
-        Uses libcamera-hello --list-cameras to detect available cameras.
+        Uses libcamera-hello --list-cameras to detect available cameras
+        and parse real sensor modes (resolutions + FPS).
         """
         if not self.is_available():
             return []
@@ -71,46 +73,12 @@ class LibCameraSource(VideoSourceProvider):
             if result.returncode != 0:
                 return []
 
-            # Parse output
-            # Example output:
-            # Available cameras
-            # -----------------
-            # 0 : imx219 [3280x2464] (/base/soc/i2c0mux/i2c@1/imx219@10)
-            #     Modes: 'SRGGB10_CSI2P' : 640x480 [206.65 fps - (1000, 752)/1280x960 crop]
-
-            parsed_cameras = []
-            for line in result.stdout.split("\n"):
-                line = line.strip()
-
-                # Parse camera line (starts with number)
-                if line and line[0].isdigit() and ":" in line:
-                    parts = line.split(":", 1)
-                    if len(parts) == 2:
-                        camera_id = parts[0].strip()
-                        info = parts[1].strip()
-
-                        # Extract name and sensor
-                        name_parts = info.split("[")
-                        sensor_name = name_parts[0].strip()
-
-                        # Extract max resolution
-                        max_res = None
-                        if len(name_parts) > 1:
-                            res_str = name_parts[1].split("]")[0]
-                            if "x" in res_str:
-                                max_res = res_str
-
-                        parsed_cameras.append(
-                            {
-                                "camera_id": camera_id,
-                                "sensor_name": sensor_name,
-                                "max_resolution": max_res,
-                            }
-                        )
+            # Parse the full output to extract per-camera modes
+            parsed_cameras = self._parse_camera_list(result.stdout)
 
             # Add all discovered cameras
             for cam in parsed_cameras:
-                caps = self.get_source_capabilities(cam["camera_id"])
+                caps = self._build_capabilities(cam)
                 if caps:
                     cameras.append(
                         {
@@ -128,70 +96,154 @@ class LibCameraSource(VideoSourceProvider):
 
         return cameras
 
-    def get_source_capabilities(self, source_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Get capabilities for a libcamera source.
+    # ------------------------------------------------------------------
+    # Parsing helpers
+    # ------------------------------------------------------------------
 
-        LibCamera provides comprehensive ISP capabilities, better than V4L2.
-        """
-        try:
-            # Common resolutions for Raspberry Pi cameras
-            # Will be available based on sensor (imx219, imx477, etc.)
-            common_resolutions = [
-                "3280x2464",  # Max for IMX219
-                "1920x1080",  # Full HD
-                "1640x1232",  # 4:3 mid
-                "1280x720",  # HD
-                "640x480",  # VGA
-            ]
+    @staticmethod
+    def _parse_camera_list(stdout: str) -> List[Dict[str, Any]]:
+        """Parse ``libcamera-hello --list-cameras`` output.
 
-            # Common framerates (libcamera supports variable)
-            common_fps = {
-                "640x480": [120, 90, 60, 30, 15],
-                "1280x720": [60, 30, 24, 15],
-                "1640x1232": [40, 30, 24, 15],
+        Example output::
+
+            Available cameras
+            -----------------
+            0 : imx219 [3280x2464 10-bit RGGB] (/base/soc/i2c0mux/i2c@1/imx219@10)
+                Modes: 'SRGGB10_CSI2P' : 640x480 [206.65 fps - (1000, 752)/1280x960 crop]
+                                          1640x1232 [41.85 fps - (0, 0)/3280x2464 crop]
+                                          1920x1080 [47.57 fps - (680, 692)/1920x1080 crop]
+                                          3280x2464 [21.19 fps - (0, 0)/3280x2464 crop]
+                       'SRGGB8' :         640x480 [206.65 fps - ...]
+                                          ...
+
+        Returns a list of dicts with keys:
+            camera_id, sensor_name, max_resolution, modes [{width, height, fps}]
+        """
+        cameras: List[Dict[str, Any]] = []
+        current_cam: Optional[Dict[str, Any]] = None
+        # Regex for camera header: "0 : imx219 [3280x2464 ...] (/path)"
+        cam_re = re.compile(r"^\s*(\d+)\s*:\s*(\S+)\s*\[(\d+)x(\d+)")
+        # Regex for a mode line: "1920x1080 [47.57 fps"
+        mode_re = re.compile(r"(\d{3,5})x(\d{3,5})\s*\[\s*([\d.]+)\s*fps")
+
+        for line in stdout.split("\n"):
+            cam_match = cam_re.match(line)
+            if cam_match:
+                if current_cam is not None:
+                    cameras.append(current_cam)
+                current_cam = {
+                    "camera_id": cam_match.group(1),
+                    "sensor_name": cam_match.group(2),
+                    "max_resolution": f"{cam_match.group(3)}x{cam_match.group(4)}",
+                    "modes": [],
+                    "_seen": set(),
+                }
+                continue
+            if current_cam is not None:
+                for m in mode_re.finditer(line):
+                    w, h, fps = int(m.group(1)), int(m.group(2)), float(m.group(3))
+                    key = (w, h)
+                    if key not in current_cam["_seen"]:
+                        current_cam["_seen"].add(key)
+                        current_cam["modes"].append({"width": w, "height": h, "fps": fps})
+
+        if current_cam is not None:
+            cameras.append(current_cam)
+
+        # Clean up internal field
+        for cam in cameras:
+            cam.pop("_seen", None)
+
+        return cameras
+
+    def _build_capabilities(self, cam: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Build a capabilities dict from parsed camera data.
+
+        If the camera has real modes (parsed from ``--list-cameras``), those
+        are used.  Otherwise falls back to a conservative default set.
+        """
+        modes = cam.get("modes", [])
+
+        if modes:
+            # Build resolution list from real modes (largest first)
+            modes_sorted = sorted(modes, key=lambda m: m["width"] * m["height"], reverse=True)
+            resolutions = [f"{m['width']}x{m['height']}" for m in modes_sorted]
+
+            # Build FPS-per-resolution from real data
+            fps_map: Dict[str, List[int]] = {}
+            for m in modes_sorted:
+                res = f"{m['width']}x{m['height']}"
+                max_fps = int(m["fps"])
+                # Build a sensible set of lower framerates
+                fps_list = sorted(
+                    {f for f in [max_fps, 30, 24, 15, 10] if f <= max_fps},
+                    reverse=True,
+                )
+                fps_map[res] = fps_list
+        else:
+            # Fallback: conservative defaults
+            resolutions = ["1920x1080", "1280x720", "640x480"]
+            fps_map = {
                 "1920x1080": [30, 24, 15],
-                "3280x2464": [15, 10],
+                "1280x720": [60, 30, 24, 15],
+                "640x480": [120, 90, 60, 30, 15],
             }
 
-            return {
-                "is_capture_device": True,
-                "identity": {
-                    "name": f"LibCamera {source_id}",
-                    "driver": "libcamera",
-                    "bus_info": "csi",
-                },
-                "is_usb": False,
-                "is_csi": True,
-                "supported_formats": [
-                    "NV12",
-                    "YUYV",
-                    "RGB",
-                    "MJPEG",
-                    "H264",
-                ],  # LibCamera ISP can output many formats
-                "default_format": "NV12",  # Native format, best performance
-                "format_resolutions": {
-                    "NV12": common_resolutions,
-                    "H264": [
-                        "1920x1080",
-                        "1280x720",
-                        "640x480",
-                    ],  # Hardware encoding available
-                },
-                "supported_resolutions": common_resolutions,
-                "supported_framerates": common_fps,
-                "hardware_encoding": True,  # LibCamera often has ISP with H264 encoder
-                "device_path": source_id,
-                "isp_available": True,  # Image Signal Processor features
-                "autofocus": False,  # Depends on camera module
-                "autoexposure": True,
-                "autowhitebalance": True,
-            }
+        sensor_name = cam.get("sensor_name", "unknown")
 
-        except Exception as e:
-            logger.error(f"Failed to get capabilities for libcamera {source_id}: {e}")
-            return None
+        return {
+            "is_capture_device": True,
+            "identity": {
+                "name": f"LibCamera {cam.get('camera_id', '0')} ({sensor_name})",
+                "driver": "libcamera",
+                "bus_info": "csi",
+                "sensor": sensor_name,
+            },
+            "is_usb": False,
+            "is_csi": True,
+            "supported_formats": [
+                "NV12",
+                "YUYV",
+                "RGB",
+            ],
+            "default_format": "NV12",
+            "format_resolutions": {
+                "NV12": resolutions,
+            },
+            "supported_resolutions": resolutions,
+            "supported_framerates": fps_map,
+            "hardware_encoding": False,  # ISP does NOT encode H264; encoder providers handle that
+            "device_path": cam.get("camera_id", "0"),
+            "isp_available": True,
+            "autofocus": sensor_name.lower() in ("imx708",),
+            "autoexposure": True,
+            "autowhitebalance": True,
+        }
+
+    def get_source_capabilities(self, source_id: str) -> Optional[Dict[str, Any]]:
+        """Get capabilities for a libcamera source.
+
+        Delegates to ``_build_capabilities`` using cached discovery data
+        when available, falling back to a conservative default set.
+        """
+        # Try to find real data from a previous discover_sources() call
+        try:
+            result = subprocess.run(
+                ["libcamera-hello", "--list-cameras"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0:
+                cams = self._parse_camera_list(result.stdout)
+                for cam in cams:
+                    if cam["camera_id"] == source_id or f"libcamera:{cam['camera_id']}" == source_id:
+                        return self._build_capabilities(cam)
+        except Exception:
+            pass
+
+        # Fallback: build with no modes (will use defaults)
+        return self._build_capabilities({"camera_id": source_id, "sensor_name": "unknown", "modes": []})
 
     def build_source_element(self, source_id: str, config: Dict) -> Dict:
         """

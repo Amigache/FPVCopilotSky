@@ -116,6 +116,7 @@ class RTSPServer:
     def _build_source_string(self, device: str, config: dict) -> str:
         """
         Build the GStreamer source portion of the pipeline using providers.
+        Uses the registry's cached discovery to avoid redundant subprocess calls.
         Falls back to basic v4l2src + MJPEG if provider is unavailable.
         """
         width = config["width"]
@@ -127,12 +128,12 @@ class RTSPServer:
 
             registry = get_provider_registry()
 
-            # Find which source provider handles this device
+            # Find which source provider handles this device (using cache)
             for source_type in registry.list_video_source_providers():
                 sp = registry.get_video_source(source_type)
                 if not sp or not sp.is_available():
                     continue
-                for src in sp.discover_sources():
+                for src in registry.discover_sources_cached(source_type):
                     if src.get("device") == device:
                         result = sp.build_source_element(src["source_id"], config)
                         if result.get("success"):

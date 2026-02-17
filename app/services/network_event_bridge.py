@@ -264,12 +264,22 @@ class NetworkEventBridge:
         # Monitoring state
         self._monitoring = False
         self._monitor_task: Optional[asyncio.Task] = None
+        self._netlink_task: Optional[asyncio.Task] = None
+        self._route_changed_event: asyncio.Event = asyncio.Event()
         self._lock = asyncio.Lock()
 
         # Cooldowns to avoid flapping
         self._last_cell_change_time: float = 0
         self._last_bitrate_change_time: float = 0
         self._last_keyframe_time: float = 0
+
+        # Adaptive resolution state (4.8)
+        self._low_score_since: float = 0.0  # timestamp when score first dropped below threshold
+        self._last_resolution_change_time: float = 0.0
+        self._pre_downscale_resolution: Optional[tuple] = None  # (width, height) before downscale
+        self._adaptive_res_threshold: float = 30.0  # score below which to trigger
+        self._adaptive_res_hold_s: float = 10.0  # how long score must stay low
+        self._adaptive_res_cooldown_s: float = 30.0  # min time between resolution changes
 
         logger.info("NetworkEventBridge initialized")
 
@@ -306,7 +316,8 @@ class NetworkEventBridge:
 
         self._monitoring = True
         self._monitor_task = asyncio.create_task(self._monitor_loop())
-        logger.info("NetworkEventBridge started")
+        self._netlink_task = asyncio.create_task(self._netlink_route_monitor())
+        logger.info("NetworkEventBridge started (polling + netlink)")
 
     async def stop(self):
         """Stop monitoring"""
@@ -314,14 +325,64 @@ class NetworkEventBridge:
             return
 
         self._monitoring = False
-        if self._monitor_task:
-            self._monitor_task.cancel()
-            try:
-                await self._monitor_task
-            except asyncio.CancelledError:
-                pass
+        self._route_changed_event.set()  # unblock any wait
 
+        for task in (self._monitor_task, self._netlink_task):
+            if task:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+
+        self._monitor_task = None
+        self._netlink_task = None
         logger.info("NetworkEventBridge stopped")
+
+    # ======================
+    # Netlink route monitor
+    # ======================
+
+    async def _netlink_route_monitor(self):
+        """Watch for route changes via ``ip monitor route``.
+
+        When a route change is detected the ``_route_changed_event`` flag is
+        set so the main polling loop can immediately re-evaluate the primary
+        interface instead of waiting for the next polling interval.
+        """
+        while self._monitoring:
+            proc = None
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    "ip",
+                    "monitor",
+                    "route",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+                while self._monitoring and proc.stdout:
+                    try:
+                        line = await asyncio.wait_for(proc.stdout.readline(), timeout=30.0)
+                    except asyncio.TimeoutError:
+                        continue
+                    if not line:
+                        break  # EOF
+                    decoded = line.decode(errors="replace").strip()
+                    if decoded:
+                        logger.info(f"[Netlink] Route change detected: {decoded}")
+                        self._route_changed_event.set()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.debug(f"Netlink monitor error: {e}")
+                await asyncio.sleep(5.0)  # backoff before retry
+            finally:
+                if proc:
+                    try:
+                        proc.kill()
+                        await proc.wait()
+                    except Exception:
+                        pass
 
     # ======================
     # Main Loop
@@ -425,10 +486,23 @@ class NetworkEventBridge:
                 # 6. Adaptive bitrate
                 await self._apply_adaptive_bitrate()
 
+                # 6b. Adaptive resolution (pipeline restart when score is critically low)
+                await self._apply_adaptive_resolution()
+
                 # 7. Broadcast status
                 await self._broadcast_status()
 
-                await asyncio.sleep(self.config.poll_interval_s)
+                # Sleep OR wake immediately if netlink detected a route change
+                self._route_changed_event.clear()
+                try:
+                    await asyncio.wait_for(
+                        self._route_changed_event.wait(),
+                        timeout=self.config.poll_interval_s,
+                    )
+                    # Route changed — loop immediately
+                    logger.debug("[Bridge] Woke early due to netlink route change")
+                except asyncio.TimeoutError:
+                    pass  # normal poll interval elapsed
 
             except asyncio.CancelledError:
                 break
@@ -1009,7 +1083,10 @@ class NetworkEventBridge:
     # ======================
 
     async def _apply_adaptive_bitrate(self):
-        """Apply smooth bitrate adaptation based on composite quality score"""
+        """Apply smooth bitrate adaptation based on composite quality score.
+
+        Supports both H.264 (adjusts bitrate) and MJPEG (adjusts quality).
+        """
         # Check if auto-adaptive bitrate is enabled in preferences
         try:
             prefs = get_preferences()
@@ -1022,15 +1099,54 @@ class NetworkEventBridge:
             return
 
         now = time.time()
-        # Rate-limit bitrate changes
+        # Rate-limit changes
         if now - self._last_bitrate_change_time < self.config.poll_interval_s:
             return
 
-        target_bitrate = self._quality_score.recommended_bitrate_kbps
+        current_config = self._gstreamer_service.video_config
+        codec = (current_config.codec or "mjpeg").lower()
+        score = self._quality_score.score
 
         try:
-            # Get current bitrate
-            current_config = self._gstreamer_service.video_config
+            # ── MJPEG: adapt quality instead of bitrate ──
+            if codec == "mjpeg":
+                current_quality = getattr(current_config, "quality", 85) or 85
+                # Map score (0-100) → quality (30-95)
+                # score 100 → quality 95, score 0 → quality 30
+                target_quality = int(30 + (score / 100) * 65)
+                target_quality = max(30, min(95, target_quality))
+
+                diff = target_quality - current_quality
+                if abs(diff) < 3:
+                    return  # Too small to bother
+
+                # Limit change rate: max 10 units per step
+                max_change = 10
+                new_quality = current_quality + max(-max_change, min(max_change, diff))
+                new_quality = max(30, min(95, new_quality))
+
+                result = self._gstreamer_service.update_live_property("quality", new_quality)
+                if result.get("success"):
+                    self._last_bitrate_change_time = now
+                    if self._websocket_manager:
+                        try:
+                            await self._websocket_manager.broadcast(
+                                "bitrate_changed",
+                                {
+                                    "codec": "mjpeg",
+                                    "old_quality": current_quality,
+                                    "new_quality": new_quality,
+                                    "quality_score": score,
+                                    "quality_label": self._quality_score.quality_label,
+                                    "timestamp": now,
+                                },
+                            )
+                        except Exception:
+                            pass
+                return
+
+            # ── H.264 family: adapt bitrate ──
+            target_bitrate = self._quality_score.recommended_bitrate_kbps
             current_bitrate = getattr(current_config, "h264_bitrate", 1500) or 1500
 
             # Limit change rate
@@ -1047,10 +1163,6 @@ class NetworkEventBridge:
             result = self._gstreamer_service.update_live_property("bitrate", new_bitrate)
             if result.get("success"):
                 self._last_bitrate_change_time = now
-                # logger.debug(
-                #     f"Adaptive bitrate: {current_bitrate} → {new_bitrate} kbps "
-                #     f"(score={self._quality_score.score})"
-                # )
 
                 # Broadcast bitrate change notification via WebSocket
                 if self._websocket_manager:
@@ -1058,9 +1170,10 @@ class NetworkEventBridge:
                         await self._websocket_manager.broadcast(
                             "bitrate_changed",
                             {
+                                "codec": codec,
                                 "old_bitrate": current_bitrate,
                                 "new_bitrate": new_bitrate,
-                                "quality_score": self._quality_score.score,
+                                "quality_score": score,
                                 "quality_label": self._quality_score.quality_label,
                                 "timestamp": now,
                             },
@@ -1070,6 +1183,123 @@ class NetworkEventBridge:
 
         except Exception:
             pass  # logger.debug(f"Adaptive bitrate error: {e}")
+
+    # ======================
+    # Adaptive Resolution (4.8)
+    # ======================
+
+    async def _apply_adaptive_resolution(self):
+        """Downscale resolution when quality_score stays below threshold.
+
+        Rules:
+        * Score < ``_adaptive_res_threshold`` for > ``_adaptive_res_hold_s``
+          → stop pipeline, reconfigure with recommended resolution, restart.
+        * Score recovers above threshold+15 for > hold time
+          → restore original resolution.
+        * Minimum ``_adaptive_res_cooldown_s`` between changes to avoid flapping.
+        """
+        # Check if auto-adaptive bitrate is enabled (resolution piggybacks on the same flag)
+        try:
+            prefs = get_preferences()
+            if not prefs.get_auto_adaptive_bitrate():
+                return
+        except Exception:
+            pass
+
+        if not self._gstreamer_service or not self._gstreamer_service.is_streaming:
+            return
+
+        now = time.time()
+        score = self._quality_score.score
+
+        # Respect cooldown
+        if (now - self._last_resolution_change_time) < self._adaptive_res_cooldown_s:
+            return
+
+        # --- Downscale path ---
+        if score < self._adaptive_res_threshold:
+            if self._low_score_since == 0:
+                self._low_score_since = now
+                return  # start counting
+
+            elapsed_low = now - self._low_score_since
+            if elapsed_low < self._adaptive_res_hold_s:
+                return  # not yet sustained
+
+            # Score has been critically low long enough — downscale
+            rec_res = self._quality_score.recommended_resolution  # e.g. "640x360"
+            rec_fps = self._quality_score.recommended_framerate
+            try:
+                new_w, new_h = (int(x) for x in rec_res.split("x"))
+            except Exception:
+                return
+
+            cfg = self._gstreamer_service.video_config
+            cur_w, cur_h = cfg.width, cfg.height
+
+            if new_w >= cur_w and new_h >= cur_h:
+                return  # already at or below recommended
+
+            # Save current resolution for later restore
+            if self._pre_downscale_resolution is None:
+                self._pre_downscale_resolution = (cur_w, cur_h)
+
+            logger.warning(
+                f"[AdaptiveRes] Score {score:.0f} < {self._adaptive_res_threshold} "
+                f"for {elapsed_low:.0f}s → downscaling {cur_w}x{cur_h} → {new_w}x{new_h} @ {rec_fps}fps"
+            )
+
+            self._gstreamer_service.configure(video_config={"width": new_w, "height": new_h, "framerate": rec_fps})
+            self._gstreamer_service.restart()
+            self._last_resolution_change_time = now
+            self._low_score_since = 0
+
+            if self._websocket_manager:
+                try:
+                    await self._websocket_manager.broadcast(
+                        "resolution_changed",
+                        {
+                            "old_resolution": f"{cur_w}x{cur_h}",
+                            "new_resolution": f"{new_w}x{new_h}",
+                            "framerate": rec_fps,
+                            "quality_score": score,
+                            "reason": "adaptive_downscale",
+                        },
+                    )
+                except Exception:
+                    pass
+        else:
+            self._low_score_since = 0  # reset counter
+
+            # --- Restore path ---
+            if self._pre_downscale_resolution and score > (self._adaptive_res_threshold + 15):
+                orig_w, orig_h = self._pre_downscale_resolution
+                cfg = self._gstreamer_service.video_config
+                if cfg.width < orig_w or cfg.height < orig_h:
+                    logger.info(
+                        f"[AdaptiveRes] Score recovered to {score:.0f} — "
+                        f"restoring {cfg.width}x{cfg.height} → {orig_w}x{orig_h}"
+                    )
+                    self._gstreamer_service.configure(video_config={"width": orig_w, "height": orig_h, "framerate": 30})
+                    self._gstreamer_service.restart()
+                    self._last_resolution_change_time = now
+
+                    if self._websocket_manager:
+                        try:
+                            await self._websocket_manager.broadcast(
+                                "resolution_changed",
+                                {
+                                    "old_resolution": f"{cfg.width}x{cfg.height}",
+                                    "new_resolution": f"{orig_w}x{orig_h}",
+                                    "framerate": 30,
+                                    "quality_score": score,
+                                    "reason": "adaptive_restore",
+                                },
+                            )
+                        except Exception:
+                            pass
+
+                self._pre_downscale_resolution = None
 
     # ======================
     # Video Action Helpers

@@ -24,6 +24,7 @@ class VideoDeviceService:
         self._devices: List[Dict[str, Any]] = []
         self._scan_timestamp: Optional[float] = None
         self._scanning = False
+        self._cache_ttl: float = 30.0  # seconds
 
     def scan_devices(self) -> List[Dict[str, Any]]:
         """
@@ -65,7 +66,7 @@ class VideoDeviceService:
                     continue
 
                 try:
-                    sources = provider.discover_sources()
+                    sources = registry.discover_sources_cached(source_type)
                 except Exception as e:
                     logger.error(f"Failed to discover sources from {source_type}: {e}")
                     continue
@@ -137,14 +138,32 @@ class VideoDeviceService:
 
     def get_devices(self) -> List[Dict[str, Any]]:
         """
-        Get cached device list. Performs initial scan if never scanned.
+        Get cached device list.  Scans on first call or when the cache
+        has expired (TTL = 30 s by default).
 
         Returns:
             List of video devices.
         """
         if self._scan_timestamp is None:
             return self.scan_devices()
+        if (time.time() - self._scan_timestamp) >= self._cache_ttl:
+            return self.scan_devices()
         return self._devices
+
+    def invalidate_cache(self) -> None:
+        """Invalidate the local device cache **and** the registry source cache.
+
+        Call this on hotplug events or when the user explicitly requests
+        a rescan from the UI.
+        """
+        self._scan_timestamp = None
+        try:
+            from app.providers.registry import get_provider_registry
+
+            get_provider_registry().invalidate_source_cache()
+        except Exception:
+            pass
+        logger.info("Video device cache invalidated")
 
     def get_device_by_id(self, device_id: str) -> Optional[Dict[str, Any]]:
         """

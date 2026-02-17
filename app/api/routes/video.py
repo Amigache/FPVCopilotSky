@@ -136,6 +136,67 @@ async def get_status(request: Request):
     return _video_service.get_status()
 
 
+@router.get("/stats")
+async def get_stats(request: Request):
+    """Get detailed video streaming statistics.
+
+    Returns pipeline counters, encoder-specific metrics (encode time,
+    keyframe ratio, frame sizes), and stream health indicators.
+    More detailed than the stats section in /status.
+    """
+    lang = get_language_from_request(request)
+    if not _video_service:
+        raise HTTPException(status_code=503, detail=translate("services.video_not_initialized", lang))
+
+    import time as _time
+
+    # Thread-safe copy of counters
+    with _video_service.stats_lock:
+        stats_copy = dict(_video_service.stats)
+    encoder_copy = _video_service.encoder_stats.copy()
+
+    uptime = None
+    if stats_copy.get("start_time") and _video_service.is_streaming:
+        uptime = int(_time.time() - stats_copy["start_time"])
+
+    # Derived metrics
+    frames_encoded = encoder_copy.get("frames_encoded", 0)
+    keyframes = encoder_copy.get("keyframes_sent", 0)
+    pframes = encoder_copy.get("pframes_sent", 0)
+    keyframe_ratio = round(keyframes / frames_encoded, 4) if frames_encoded > 0 else 0.0
+    target_fps = _video_service.video_config.framerate or 30
+    fps = stats_copy.get("current_fps", 0)
+    fps_pct = round(fps / target_fps * 100, 1) if target_fps else 0
+
+    return {
+        "streaming": _video_service.is_streaming,
+        "uptime": uptime,
+        "pipeline": {
+            "frames_sent": stats_copy.get("frames_sent", 0),
+            "bytes_sent": stats_copy.get("bytes_sent", 0),
+            "bytes_sent_mb": round(stats_copy.get("bytes_sent", 0) / (1024 * 1024), 2),
+            "current_fps": fps,
+            "target_fps": target_fps,
+            "fps_percent": fps_pct,
+            "current_bitrate_kbps": stats_copy.get("current_bitrate", 0),
+            "errors": stats_copy.get("errors", 0),
+        },
+        "encoder": {
+            "frames_encoded": frames_encoded,
+            "avg_encode_time_ms": encoder_copy.get("avg_encode_time_ms", 0.0),
+            "max_encode_time_ms": encoder_copy.get("max_encode_time_ms", 0.0),
+            "last_frame_size_bytes": encoder_copy.get("last_frame_size_bytes", 0),
+            "avg_frame_size_bytes": encoder_copy.get("avg_frame_size_bytes", 0),
+            "keyframes_sent": keyframes,
+            "pframes_sent": pframes,
+            "keyframe_ratio": keyframe_ratio,
+            "frames_dropped_pre_encoder": encoder_copy.get("frames_dropped_pre_encoder", 0),
+            "frames_dropped_post_encoder": encoder_copy.get("frames_dropped_post_encoder", 0),
+        },
+        "health": _video_service._calculate_health(stats_copy.get("errors", 0), fps, target_fps),
+    }
+
+
 @router.get("/cameras")
 async def get_cameras(request: Request):
     """Get available cameras from all video source providers"""
@@ -397,6 +458,21 @@ async def get_pipeline_string(request: Request):
         "port": _video_service.streaming_config.udp_port,
         "mode": _video_service.streaming_config.mode,
     }
+
+
+@router.get("/pipeline-strings")
+async def get_pipeline_strings(request: Request):
+    """Get GStreamer receive pipeline strings for every supported client mode.
+
+    Returns ready-to-paste pipeline strings for UDP unicast, multicast, and
+    RTSP so that Mission Planner / QGC users can quickly connect regardless
+    of the active streaming mode.
+    """
+    lang = get_language_from_request(request)
+    if not _video_service:
+        raise HTTPException(status_code=503, detail=translate("services.video_not_initialized", lang))
+
+    return _video_service.get_client_pipeline_strings()
 
 
 @router.get("/network/ip")

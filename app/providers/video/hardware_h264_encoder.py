@@ -38,6 +38,7 @@ class HardwareH264Encoder(VideoEncoderProvider):
         self.rtp_payload_type = 96
         self.priority = 100  # Highest priority - hardware is always best
         self.encoder_device = self._detect_encoder_device()
+        self._hw_jpegdec_available = self._check_hw_jpegdec()
 
     def _detect_encoder_device(self) -> str:
         """
@@ -87,6 +88,18 @@ class HardwareH264Encoder(VideoEncoderProvider):
             logger.debug(f"Hardware encoder detection failed: {e}")
 
         return ""
+
+    @staticmethod
+    def _check_hw_jpegdec() -> bool:
+        """Check if v4l2jpegdec (hardware JPEG decoder) is available."""
+        try:
+            result = subprocess.run(["gst-inspect-1.0", "v4l2jpegdec"], capture_output=True, timeout=2)
+            available = result.returncode == 0
+            if available:
+                logger.info("Hardware JPEG decoder (v4l2jpegdec) available for HW encoder pipeline")
+            return available
+        except Exception:
+            return False
 
     def _detect_encoder_element(self) -> str:
         """
@@ -150,8 +163,16 @@ class HardwareH264Encoder(VideoEncoderProvider):
             "priority": self.priority,
             "device": self.encoder_device,
             "gst_element": self.gst_encoder_element,
+            "hw_jpegdec_available": self._hw_jpegdec_available,
+            "features": {
+                "gop_control": True,
+                "b_frames_control": True,
+                "hw_jpeg_decode": self._hw_jpegdec_available,
+            },
             "description": (
-                "Encoding por hardware del SoC. CPU <10%, latencia ultra-baja. " f"Device: {self.encoder_device}"
+                "Encoding por hardware del SoC. CPU <10%, latencia ultra-baja. "
+                f"Device: {self.encoder_device}. "
+                f"HW JPEG decode: {'✅' if self._hw_jpegdec_available else '❌'}"
             ),
         }
 
@@ -159,7 +180,10 @@ class HardwareH264Encoder(VideoEncoderProvider):
         """
         Build hardware encoder pipeline elements.
 
-        Pipeline: videoconvert → v4l2h264enc → h264parse → rtph264pay
+        Source format handling:
+        - MJPEG source → jpegdec → videoconvert → HW encoder
+        - H.264 source → avdec_h264 → videoconvert → HW encoder
+        - Raw source (YUYV, NV12) → videoconvert → HW encoder (no decoder needed)
         """
         try:
             if not self.is_available():
@@ -169,45 +193,89 @@ class HardwareH264Encoder(VideoEncoderProvider):
             height = config.get("height", 1080)
             framerate = config.get("framerate", 30)
             bitrate = config.get("bitrate", 3000)
+            source_format = config.get("source_format", "image/jpeg")
+            opencv_enabled = config.get("opencv_enabled", False)
 
-            elements = [
-                {"name": "decoder", "element": "jpegdec", "properties": {}},
-                {"name": "videoconvert", "element": "videoconvert", "properties": {}},
-                {"name": "videoscale", "element": "videoscale", "properties": {}},
-                {
-                    "name": "encoder_caps",
-                    "element": "capsfilter",
-                    "properties": {
-                        "caps": f"video/x-raw,format=NV12,width={width},height={height},framerate={framerate}/1"
+            # GOP size: lower = faster error recovery (good for FPV/4G)
+            # Default 30 = one keyframe per second at 30fps
+            gop_size = config.get("gop_size", 30)
+
+            elements = []
+
+            # ── Decoder selection based on source format ──
+            if "video/x-h264" in source_format:
+                logger.info("HW encoder: Source is H.264, using avdec_h264 for decoding")
+                elements.append({"name": "decoder", "element": "avdec_h264", "properties": {}})
+            elif "image/jpeg" in source_format:
+                # Prefer hardware JPEG decoder when available and OpenCV is OFF
+                use_hw_jpegdec = self._hw_jpegdec_available and not opencv_enabled
+                if use_hw_jpegdec:
+                    logger.info("HW encoder: Using v4l2jpegdec (hardware) for MJPEG decoding")
+                    elements.append({"name": "decoder", "element": "v4l2jpegdec", "properties": {}})
+                else:
+                    logger.info("HW encoder: Using jpegdec (software) for MJPEG decoding")
+                    elements.append({"name": "decoder", "element": "jpegdec", "properties": {}})
+            else:
+                # Raw format (YUYV, NV12, etc.) - no decoder needed
+                logger.info(f"HW encoder: Source is {source_format}, no decoder needed")
+
+            # ── Build V4L2 M2M extra-controls string ──
+            # V4L2 M2M encoders accept configuration via the extra-controls
+            # property using the s-type (struct) control format.
+            extra_controls_parts = [f"video_bitrate={bitrate * 1000}"]
+
+            # GOP size → video_gop_size (keyframe interval)
+            if gop_size and gop_size > 0:
+                extra_controls_parts.append(f"video_gop_size={gop_size}")
+
+            # B-frames disabled for low-latency FPV
+            extra_controls_parts.append("video_b_frames=0")
+
+            extra_controls_str = "s," + ",".join(extra_controls_parts)
+
+            elements.extend(
+                [
+                    {"name": "videoconvert", "element": "videoconvert", "properties": {}},
+                    {"name": "videoscale", "element": "videoscale", "properties": {}},
+                    {
+                        "name": "encoder_caps",
+                        "element": "capsfilter",
+                        "properties": {
+                            "caps": f"video/x-raw,format=NV12,width={width},height={height},framerate={framerate}/1"
+                        },
                     },
-                },
-                {
-                    "name": "queue_pre",
-                    "element": "queue",
-                    "properties": {
-                        "max-size-buffers": 2,
-                        "max-size-time": 0,
-                        "max-size-bytes": 0,
-                        "leaky": 2,
+                    {
+                        "name": "queue_pre",
+                        "element": "queue",
+                        "properties": {
+                            "max-size-buffers": 2,
+                            "max-size-time": 0,
+                            "max-size-bytes": 0,
+                            "leaky": 2,
+                        },
                     },
-                },
-                {
-                    "name": "encoder",
-                    "element": self.gst_encoder_element,
-                    "properties": {"extra-controls": f"s,video_bitrate={bitrate * 1000}"},  # V4L2 control format
-                },
-                {
-                    "name": "queue_post",
-                    "element": "queue",
-                    "properties": {
-                        "max-size-buffers": 2,
-                        "max-size-time": 0,
-                        "max-size-bytes": 0,
-                        "leaky": 2,
+                    {
+                        "name": "encoder",
+                        "element": self.gst_encoder_element,
+                        "properties": {"extra-controls": extra_controls_str},
                     },
-                },
-                {"name": "h264parse", "element": "h264parse", "properties": {}},
-            ]
+                    {
+                        "name": "queue_post",
+                        "element": "queue",
+                        "properties": {
+                            "max-size-buffers": 2,
+                            "max-size-time": 0,
+                            "max-size-bytes": 0,
+                            "leaky": 2,
+                        },
+                    },
+                    {
+                        "name": "h264parse",
+                        "element": "h264parse",
+                        "properties": {"config-interval": -1},  # Send SPS/PPS with every keyframe (FPV friendly)
+                    },
+                ]
+            )
 
             return {
                 "success": True,
@@ -234,7 +302,7 @@ class HardwareH264Encoder(VideoEncoderProvider):
             }
 
     def get_live_adjustable_properties(self) -> Dict[str, Dict]:
-        """Hardware encoder bitrate can be adjusted live"""
+        """Hardware encoder properties that can be adjusted without pipeline restart"""
         return {
             "bitrate": {
                 "element": "encoder",
@@ -245,7 +313,16 @@ class HardwareH264Encoder(VideoEncoderProvider):
                 "description": "Bitrate H.264 hardware en kbps",
                 "multiplier": 1000,  # Convert to bps
                 "format": "s,video_bitrate={value}",  # V4L2 control format string
-            }
+            },
+            "gop-size": {
+                "element": "encoder",
+                "property": "extra-controls",
+                "min": 1,
+                "max": 300,
+                "default": 30,
+                "description": "Keyframe interval (frames). Menor = mejor recuperación ante pérdida de paquetes",
+                "format": "s,video_gop_size={value}",
+            },
         }
 
     def validate_config(self, config: Dict) -> Dict:

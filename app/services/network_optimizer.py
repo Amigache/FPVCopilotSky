@@ -51,6 +51,9 @@ class FlightModeConfig:
     enable_cake: bool = True
     cake_bandwidth_up_mbit: int = 10  # Upload bandwidth limit (conservative for LTE)
     cake_bandwidth_down_mbit: int = 30  # Download bandwidth limit
+    cake_auto_calibrate: bool = True  # Run burst test to measure real BW
+    cake_calibrate_packets: int = 50  # Number of 1400-byte UDP packets for burst
+    cake_calibrate_margin: float = 0.80  # Use 80 % of measured throughput
 
     # VPN policy routing (Mejora Nº5)
     enable_vpn_policy_routing: bool = True
@@ -312,6 +315,80 @@ class NetworkOptimizer:
     # ======================
     # CAKE Bufferbloat Mitigation (Mejora Nº6)
     # ======================
+
+    def _measure_uplink_bandwidth(self, interface: str) -> Optional[float]:
+        """Measure real uplink bandwidth with a short UDP burst test.
+
+        Sends ``cake_calibrate_packets`` × 1400-byte UDP packets as fast as
+        possible to the local gateway, times the burst, and returns Mbit/s.
+        Returns *None* on failure so the caller can fall back to the static
+        default.
+        """
+        n_packets = self.config.cake_calibrate_packets
+        pkt_size = 1400
+
+        try:
+            # Find gateway for the interface
+            stdout, _, rc = self._run_command(["ip", "route", "show", "dev", interface])
+            gateway = None
+            for line in stdout.split("\n"):
+                if "default" in line:
+                    parts = line.split()
+                    if "via" in parts:
+                        idx = parts.index("via")
+                        if idx + 1 < len(parts):
+                            gateway = parts[idx + 1]
+                            break
+            if not gateway:
+                # Fallback: use the first address on the interface subnet
+                for line in stdout.split("\n"):
+                    parts = line.strip().split()
+                    if parts and "/" in parts[0]:
+                        # Subnet like "192.168.8.0/24" — use .1
+                        import ipaddress
+
+                        net = ipaddress.IPv4Network(parts[0], strict=False)
+                        gateway = str(list(net.hosts())[0])
+                        break
+
+            if not gateway:
+                logger.debug("Burst test: no gateway found")
+                return None
+
+            import socket
+            import time as _time
+
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.settimeout(0.5)
+            # Bind to the specific interface's address (if available)
+            try:
+                sock.setsockopt(socket.SOL_SOCKET, 25, (interface + "\0").encode())  # SO_BINDTODEVICE
+            except Exception:
+                pass  # May require CAP_NET_RAW
+
+            payload = b"\x00" * pkt_size
+            dest = (gateway, 33434)  # High UDP port, unlikely to be filtered
+
+            start = _time.monotonic()
+            for _ in range(n_packets):
+                try:
+                    sock.sendto(payload, dest)
+                except Exception:
+                    break
+            elapsed = _time.monotonic() - start
+            sock.close()
+
+            if elapsed <= 0:
+                return None
+
+            bits = n_packets * pkt_size * 8
+            mbps = bits / elapsed / 1_000_000
+            logger.info(f"Burst test on {interface}: {n_packets} pkts in {elapsed:.3f}s → {mbps:.1f} Mbit/s")
+            return round(mbps, 1)
+
+        except Exception as e:
+            logger.debug(f"Burst test failed: {e}")
+            return None
 
     def _configure_cake(self, interface: str, enable: bool = True) -> bool:
         """
@@ -719,11 +796,27 @@ class NetworkOptimizer:
                 optimizations.append("Power saving disabled")
 
             # 5. Enable CAKE bufferbloat mitigation
-            if self.config.enable_cake and self._configure_cake(modem_interface, enable=True):
-                optimizations.append(
-                    f"CAKE enabled (up={self.config.cake_bandwidth_up_mbit}mbit, "
-                    f"down={self.config.cake_bandwidth_down_mbit}mbit)"
-                )
+            #    Auto-calibrate: measure real uplink BW with a quick burst test
+            if self.config.enable_cake:
+                if self.config.cake_auto_calibrate:
+                    measured = self._measure_uplink_bandwidth(modem_interface)
+                    if measured and measured > 1.0:
+                        calibrated = max(1, int(measured * self.config.cake_calibrate_margin))
+                        self.config.cake_bandwidth_up_mbit = calibrated
+                        optimizations.append(
+                            f"CAKE auto-calibrated: measured {measured} Mbit/s → "
+                            f"shaping at {calibrated} Mbit/s ({int(self.config.cake_calibrate_margin*100)}%)"
+                        )
+                    else:
+                        optimizations.append(
+                            f"CAKE burst test inconclusive, using static {self.config.cake_bandwidth_up_mbit} Mbit/s"
+                        )
+
+                if self._configure_cake(modem_interface, enable=True):
+                    optimizations.append(
+                        f"CAKE enabled (up={self.config.cake_bandwidth_up_mbit}mbit, "
+                        f"down={self.config.cake_bandwidth_down_mbit}mbit)"
+                    )
 
             # 6. Configure VPN policy routing
             if self.config.enable_vpn_policy_routing and self._configure_vpn_policy_routing(

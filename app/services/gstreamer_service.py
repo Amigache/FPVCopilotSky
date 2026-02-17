@@ -1052,63 +1052,88 @@ class GStreamerService:
         """
         Adapt requested codec to available board features.
 
-        E.g., if user requests HW H.264 but board doesn't support it,
-        fallback to x264 software encoder.
+        Smart codec selection:
+        1. If user requests 'h264' (generic), auto-upgrade to hardware H.264
+           if the board has a V4L2 M2M encoder available.
+        2. If user requests a specific HW encoder that's unavailable, fall
+           back gracefully: h264_hardware → h264 (x264) → mjpeg.
+        3. Board feature list is consulted but the final word comes from
+           the provider's is_available() (runtime GStreamer check).
 
         Args:
-            codec_id: Requested codec (e.g., 'h264_hw', 'x264', 'mjpeg')
+            codec_id: Requested codec (e.g., 'h264', 'h264_hardware', 'mjpeg')
 
         Returns:
             Adapted codec_id that's supported on this board
         """
         try:
             from app.providers.board import BoardRegistry
+            from app.providers.registry import get_provider_registry
 
+            registry = get_provider_registry()
             detected_board = BoardRegistry().get_detected_board()
-            if not detected_board:
-                # No board detection, use requested codec as-is
-                return codec_id
 
-            # Check available encoders on this board
-            available_encoders = [f.value for f in detected_board.variant.video_encoders]
-
-            print(f"📊 Board supports encoders: {available_encoders}")
+            # ── Gather board feature list (informational) ──
+            available_encoders = []
+            if detected_board:
+                available_encoders = [f.value for f in detected_board.variant.video_encoders]
+                print(f"📊 Board supports encoders: {available_encoders}")
             print(f"   User requested: {codec_id}")
 
-            # Normalize UI/alias codec IDs to registry codec IDs
+            # Normalize aliases
             requested_codec_id = codec_id
             normalized_codec_id = "h264" if requested_codec_id == "x264" else requested_codec_id
 
-            # Map codec ID to board feature names
-            codec_to_feature = {
-                "h264_hw": "hardware_h264",
-                "h264": "hardware_h264",
-                "h264_hw_meson": "hardware_h264",
-                "x264": "x264",
-                "mjpeg": "mjpeg",
-                "openh264": "openh264",
-            }
+            # ── AUTO-UPGRADE: generic h264 → hardware when available ──
+            # If the user selected 'h264' (or 'x264') without specifying
+            # software/hardware, check if hardware is available and prefer it.
+            if requested_codec_id in ("h264", "x264"):
+                hw_provider = registry.get_video_encoder("h264_hardware")
+                if hw_provider and hw_provider.is_available():
+                    print("🚀 Hardware H.264 encoder detected — auto-upgrading from software")
+                    return "h264_hardware"
 
-            requested_feature = codec_to_feature.get(requested_codec_id)
-
-            # If requested codec is supported, use it
-            if requested_feature and requested_feature in available_encoders:
-                print(f"✅ Using requested {requested_codec_id} (supported on board)")
-                return normalized_codec_id
-
-            # If not supported, fallback strategy:
-            # hardware_h264 → x264 → mjpeg
-            if requested_feature == "hardware_h264" and "x264" in available_encoders:
-                print(f"⚠️ {requested_codec_id} not supported, falling back to x264")
-                return "h264"
-
-            if requested_feature in ["hardware_h264", "x264"] and "mjpeg" in available_encoders:
-                print(f"⚠️ {requested_codec_id} not supported, falling back to mjpeg")
+            # If explicitly requesting hardware and it's available, use it
+            if requested_codec_id in ("h264_hardware", "h264_hw", "h264_hw_meson"):
+                hw_provider = registry.get_video_encoder("h264_hardware")
+                if hw_provider and hw_provider.is_available():
+                    print("✅ Using hardware H.264 encoder")
+                    return "h264_hardware"
+                # HW not available — fall back
+                print("⚠️ Hardware H.264 encoder not available, falling back to x264")
+                sw_provider = registry.get_video_encoder("h264")
+                if sw_provider and sw_provider.is_available():
+                    return "h264"
+                print("⚠️ x264 also unavailable, falling back to MJPEG")
                 return "mjpeg"
 
-            # If we got here, just use what was requested
-            # Provider will handle errors if truly not available
-            print(f"⚠️ {requested_codec_id} not in board features, attempting anyway")
+            # Map codec ID to board feature names for feature-gate check
+            codec_to_feature = {
+                "h264_hardware": "hardware_h264",
+                "h264": "x264",
+                "mjpeg": "mjpeg",
+                "h264_openh264": "openh264",
+            }
+
+            requested_feature = codec_to_feature.get(normalized_codec_id)
+
+            # If board info available, verify codec is in feature list
+            if detected_board and requested_feature:
+                if requested_feature in available_encoders:
+                    print(f"✅ Using {normalized_codec_id} (supported on board)")
+                    return normalized_codec_id
+                else:
+                    # Feature not declared, but the provider might still work
+                    provider = registry.get_video_encoder(normalized_codec_id)
+                    if provider and provider.is_available():
+                        print(f"⚠️ {normalized_codec_id} not in board features but GStreamer reports available")
+                        return normalized_codec_id
+                    # Fallback chain: h264 → mjpeg
+                    if normalized_codec_id != "mjpeg":
+                        print(f"⚠️ {requested_codec_id} not available, falling back to mjpeg")
+                        return "mjpeg"
+
+            # No board detection — trust the requested codec
             return normalized_codec_id
 
         except Exception as e:
@@ -1177,9 +1202,52 @@ class GStreamerService:
                 "opencv_enabled": self._is_opencv_enabled(),  # For HW decoder optimization
             }
 
+            # ═══════════════════════════════════════════════════════════════
+            # BOARD-SPECIFIC PIPELINE HINTS
+            # Apply hardware-aware defaults from the detected board so
+            # encoders can pick optimal formats, queue depths, and GOP.
+            # ═══════════════════════════════════════════════════════════════
+            try:
+                from app.providers.board import BoardRegistry
+
+                detected_board = BoardRegistry().get_detected_board()
+                if detected_board:
+                    hints = detected_board.get_pipeline_hints()
+                    config["board_hints"] = hints
+                    # Use board-recommended GOP if user hasn't explicitly set one
+                    if not self.video_config.gop_size or self.video_config.gop_size <= 0:
+                        config["gop_size"] = hints.get("recommended_gop", 30)
+                        print(f"   📋 Board hint: gop_size={config['gop_size']}")
+            except Exception:
+                pass  # Board hints are optional optimizations
+
             # If passthrough is requested, force H264 format from the camera
             if codec_id == "h264_passthrough":
                 config["format"] = "H264"
+
+            # ═══════════════════════════════════════════════════════════════
+            # VALIDATE SOURCE CONFIG BEFORE BUILDING PIPELINE
+            # Check that the requested resolution/fps is supported by the
+            # camera. Adjust automatically if not, to prevent pipeline
+            # failures with cryptic GStreamer errors.
+            # ═══════════════════════════════════════════════════════════════
+            validation = source_provider.validate_config(self.video_config.device, config)
+            if validation and not validation.get("valid", True):
+                errors = validation.get("errors", [])
+                self.last_error = "; ".join(errors) if errors else "Invalid video configuration for this camera"
+                print(f"❌ Source validation failed: {self.last_error}")
+                return False
+            if validation:
+                for warning in validation.get("warnings", []):
+                    print(f"⚠️ Source config: {warning}")
+                adjusted = validation.get("adjusted_config")
+                if adjusted:
+                    # Apply auto-corrected values (e.g. nearest supported resolution)
+                    for key in ("width", "height", "framerate"):
+                        if key in adjusted and adjusted[key] != config.get(key):
+                            print(f"   ↳ Auto-adjusted {key}: {config[key]} → {adjusted[key]}")
+                            config[key] = adjusted[key]
+                            setattr(self.video_config, key, adjusted[key])
 
             # Build source element from provider to get source format
             source_config_result = source_provider.build_source_element(self.video_config.device, config)
@@ -1763,6 +1831,43 @@ class GStreamerService:
                 "message": "No destination IP configured for streaming",
             }
 
+        # ═══════════════════════════════════════════════════════════════
+        # WARNING: UDP over 4G without VPN
+        # UDP unicast over cellular NAT will likely fail. Warn the user
+        # and suggest WebRTC or VPN for 4G connectivity.
+        # ═══════════════════════════════════════════════════════════════
+        if self.streaming_config.mode == "udp":
+            try:
+                from app.services.network_event_bridge import detect_primary_interface
+                import asyncio
+
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # We're in an async context, schedule and don't block
+                    async def _check_and_warn():
+                        try:
+                            iface_info = await detect_primary_interface()
+                            if iface_info.get("type") == "modem":
+                                warning_msg = (
+                                    "UDP streaming over 4G/LTE detected. "
+                                    "Packets may not reach the client due to carrier NAT. "
+                                    "Consider using WebRTC mode or a VPN (Tailscale/ZeroTier) "
+                                    "for reliable 4G streaming."
+                                )
+                                print(f"⚠️ {warning_msg}")
+                                if self.websocket_manager and self.event_loop:
+                                    await self.websocket_manager.broadcast(
+                                        "video_warning",
+                                        {"type": "udp_over_4g", "message": warning_msg},
+                                    )
+                        except Exception:
+                            pass
+
+                    asyncio.run_coroutine_threadsafe(_check_and_warn(), self.event_loop)
+                # If no loop running, skip - non-critical warning
+            except Exception:
+                pass  # Non-critical: don't block streaming start
+
         # Build pipeline
         if not self.build_pipeline():
             return {
@@ -2015,34 +2120,63 @@ class GStreamerService:
             self._rtsp_monitor_thread.join(timeout=2)
 
     def _start_rtsp_stats_estimator(self):
-        """Start a background thread to estimate RTSP statistics"""
+        """Start a background thread to estimate RTSP statistics.
+
+        RTSP mode runs its own internal GStreamer pipeline inside the RTSP
+        server, so we cannot attach pad probes from outside.  Instead we
+        estimate bytes/frames from configured parameters and use real
+        RTSP session-pool data (client count) to only count stats when
+        at least one client is actually receiving data.
+        """
         import threading
 
         self._rtsp_stats_running = True
 
         def estimate_stats():
-            """Estimate statistics based on configured framerate and bitrate"""
             import time
 
-            # Initialize timing
             with self.stats_lock:
                 self.stats["last_stats_time"] = time.time()
 
             while self._rtsp_stats_running and self.is_streaming:
-                time.sleep(1.0)  # Update every second
+                time.sleep(1.0)
 
                 if not self.is_streaming:
                     break
 
+                # Only accumulate stats when there are active RTSP clients
+                clients = 0
+                if self.rtsp_server:
+                    rtsp_info = self.rtsp_server.get_stats()
+                    clients = rtsp_info.get("clients_connected", 0)
+
+                if clients <= 0:
+                    # No clients — zero out rate but don't accumulate
+                    with self.stats_lock:
+                        now = time.time()
+                        self.stats["current_fps"] = 0
+                        self.stats["current_bitrate"] = 0
+                        self.stats["last_stats_time"] = now
+                    continue
+
                 with self.stats_lock:
-                    # Estimate frames: framerate per second
-                    self.stats["frames_sent"] += self.video_config.framerate
+                    # Use configured values as estimate (RTSP internal pipeline)
+                    fps = self.video_config.framerate or 30
+                    self.stats["frames_sent"] += fps
 
-                    # Estimate bytes: (bitrate in kbps * 1000 / 8) bytes per second
-                    bytes_per_second = (self.video_config.h264_bitrate * 1000) // 8
-                    self.stats["bytes_sent"] += bytes_per_second
+                    # Estimate bitrate from config, codec-aware
+                    codec = (self.video_config.codec or "mjpeg").lower()
+                    if "h264" in codec:
+                        bps = (self.video_config.h264_bitrate or 2000) * 1000
+                    else:
+                        # MJPEG: estimate from quality + resolution + fps
+                        quality = self.video_config.quality or 85
+                        pixels = (self.video_config.width or 960) * (self.video_config.height or 720)
+                        bpp = 0.3 + (quality / 100) * 1.7
+                        bps = int(pixels * bpp * fps)
 
-                    # Update rates
+                    self.stats["bytes_sent"] += bps // 8
+
                     now = time.time()
                     self._update_rates_locked(now)
 
@@ -2220,16 +2354,120 @@ class GStreamerService:
         return f"{hours:02d}:{minutes:02d}:{secs:02d}"
 
     def _calculate_health(self, errors: int, current_fps: int, target_fps: int) -> str:
-        """Calculate stream health status: 'good', 'fair', or 'poor'"""
-        if errors > 10:
-            return "poor"
-        fps_rate = (current_fps / target_fps * 100) if target_fps > 0 else 100
-        if fps_rate >= 95 and errors <= 2:
+        """Calculate holistic stream health from FPS, errors, encoder stats,
+        and (when available) the NetworkQualityScore from the event bridge.
+
+        Returns ``'good'``, ``'fair'``, or ``'poor'``.
+        """
+        # --- 1. Pipeline component (0-100) ---
+        if target_fps > 0:
+            fps_pct = current_fps / target_fps * 100
+        else:
+            fps_pct = 100
+        error_penalty = min(errors * 3, 30)  # up to -30
+        pipeline_score = max(0, min(100, fps_pct - error_penalty))
+
+        # --- 2. Encoder component (0-100) ---
+        enc = self.encoder_stats
+        encode_ms = enc.get("avg_encode_time_ms", 0.0)
+        # Budget: ~33 ms at 30 fps, ~16 ms at 60 fps
+        budget_ms = (1000 / target_fps * 0.8) if target_fps > 0 else 33
+        if budget_ms > 0:
+            enc_load = min(encode_ms / budget_ms, 1.0)
+        else:
+            enc_load = 0
+        dropped = enc.get("frames_dropped_pre_encoder", 0) + enc.get("frames_dropped_post_encoder", 0)
+        drop_penalty = min(dropped * 2, 20)
+        encoder_score = max(0, 100 - int(enc_load * 50) - drop_penalty)
+
+        # --- 3. Network component (0-100) — optional ---
+        network_score: float = 75  # neutral default when bridge is not running
+        try:
+            from app.services.network_event_bridge import get_network_event_bridge
+
+            bridge = get_network_event_bridge()
+            if bridge._monitoring:
+                network_score = bridge._quality_score.score
+        except Exception:
+            pass
+
+        # --- Weighted composite ---
+        composite = 0.45 * pipeline_score + 0.25 * encoder_score + 0.30 * network_score
+
+        if composite >= 70:
             return "good"
-        elif fps_rate >= 80 or errors <= 5:
+        elif composite >= 40:
             return "fair"
         else:
             return "poor"
+
+    # ------------------------------------------------------------------
+    # Client receive-pipeline helpers
+    # ------------------------------------------------------------------
+
+    def get_client_pipeline_strings(self) -> Dict[str, Any]:
+        """Return ready-to-paste GStreamer receive pipelines for every mode.
+
+        Provides pipeline strings for UDP unicast, multicast, and RTSP so
+        that Mission Planner / QGC users can quickly connect.
+        """
+        codec_id = self.video_config.codec.lower()
+        ip = self._get_streaming_ip()
+        udp_port = self.streaming_config.udp_port
+        mc_group = self.streaming_config.multicast_group
+        mc_port = self.streaming_config.multicast_port
+        rtsp_url = self.streaming_config.rtsp_url or f"rtsp://{ip}:8554/fpv"
+
+        result: Dict[str, Any] = {
+            "active_mode": self.streaming_config.mode,
+            "codec": codec_id,
+            "pipelines": {},
+        }
+
+        # Determine depay / decode / encoding-name per codec family
+        if "h265" in codec_id:
+            enc_name, depay, parse, dec, pt = "H265", "rtph265depay", "h265parse", "avdec_h265", 96
+        elif "h264" in codec_id:
+            enc_name, depay, parse, dec, pt = "H264", "rtph264depay", "h264parse", "avdec_h264", 96
+        else:
+            enc_name, depay, parse, dec, pt = "JPEG", "rtpjpegdepay", None, "jpegdec", 26
+
+        sink = "videoconvert ! video/x-raw,format=BGRA ! appsink name=outsink sync=false"
+        sink_low_lat = (
+            "videoconvert ! video/x-raw,format=BGRA ! appsink name=outsink sync=false max-buffers=1 drop=true"
+        )
+
+        # --- UDP unicast ---
+        caps = (
+            f'"application/x-rtp, media=(string)video, '
+            f'clock-rate=(int)90000, encoding-name=(string){enc_name}, payload=(int){pt}"'
+        )
+        parse_elem = f" ! {parse}" if parse else ""
+        result["pipelines"]["udp"] = {
+            "description": f"UDP unicast on port {udp_port}",
+            "pipeline": f"udpsrc port={udp_port} caps={caps} ! {depay}{parse_elem} ! {dec} ! {sink}",
+        }
+
+        # --- Multicast ---
+        result["pipelines"]["multicast"] = {
+            "description": f"Multicast {mc_group}:{mc_port}",
+            "pipeline": (
+                f"udpsrc multicast-group={mc_group} port={mc_port} auto-multicast=true "
+                f"caps={caps} ! {depay}{parse_elem} ! {dec} ! {sink}"
+            ),
+        }
+
+        # --- RTSP ---
+        transport = (self.streaming_config.rtsp_transport or "tcp").lower()
+        result["pipelines"]["rtsp"] = {
+            "description": f"RTSP ({transport}) at {rtsp_url}",
+            "pipeline": (
+                f"rtspsrc location={rtsp_url} latency=20 protocols={transport} ! "
+                f"{depay}{parse_elem} ! {dec} ! {sink_low_lat}"
+            ),
+        }
+
+        return result
 
     def get_pipeline_string(self) -> str:
         """Get GStreamer pipeline string for Mission Planner using provider"""
@@ -2250,6 +2488,10 @@ class GStreamerService:
             provider = registry.get_video_encoder(codec_id)
 
             if provider:
+                if mode == "multicast":
+                    mc_group = self.streaming_config.multicast_group
+                    mc_port = self.streaming_config.multicast_port
+                    return provider.get_pipeline_string_for_client(mc_port, multicast_group=mc_group)
                 return provider.get_pipeline_string_for_client(port)
 
         except Exception as e:
@@ -2407,6 +2649,34 @@ class GStreamerService:
         except Exception:
             pass
 
+    def _broadcast_stats_fast(self):
+        """Broadcast lightweight numeric stats at high frequency.
+
+        Sends only the fields needed for a responsive UI gauge:
+        fps, bitrate, encode_time, health.  Keeps the full
+        ``video_status`` message at 1 Hz for compatibility.
+        """
+        if not self.websocket_manager or not self.event_loop:
+            return
+
+        try:
+            with self.stats_lock:
+                fps = self.stats.get("current_fps", 0)
+                bitrate = self.stats.get("current_bitrate", 0)
+
+            payload = {
+                "fps": fps,
+                "bitrate_kbps": bitrate,
+                "avg_encode_time_ms": self.encoder_stats.get("avg_encode_time_ms", 0.0),
+                "keyframes_sent": self.encoder_stats.get("keyframes_sent", 0),
+            }
+            asyncio.run_coroutine_threadsafe(
+                self.websocket_manager.broadcast("video_stats_fast", payload),
+                self.event_loop,
+            )
+        except Exception:
+            pass
+
     def _start_stats_broadcast(self):
         if self.stats_thread and self.stats_thread.is_alive():
             return
@@ -2416,10 +2686,16 @@ class GStreamerService:
         def _loop():
             import time
 
+            tick = 0
             while not self.stats_stop_event.is_set():
                 if self.is_streaming:
-                    self._broadcast_status()
-                time.sleep(1.0)
+                    # High-frequency lightweight stats every ~250 ms (4 Hz)
+                    self._broadcast_stats_fast()
+                    # Full status every 1 s (every 4th tick)
+                    if tick % 4 == 0:
+                        self._broadcast_status()
+                    tick += 1
+                time.sleep(0.25)
 
         self.stats_thread = threading.Thread(target=_loop, daemon=True, name="VideoStatsBroadcast")
         self.stats_thread.start()
