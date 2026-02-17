@@ -4,6 +4,7 @@ Enables dynamic provider discovery and instantiation
 """
 
 import logging
+import time
 from typing import Dict, Type, Optional, List
 from .base import (
     VPNProvider,
@@ -14,6 +15,9 @@ from .base import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Default TTL for cached discover_sources() results (seconds)
+_SOURCE_CACHE_TTL = 30.0
 
 
 class ProviderRegistry:
@@ -33,6 +37,9 @@ class ProviderRegistry:
         self._network_instances: Dict[str, NetworkInterface] = {}
         self._video_encoder_instances: Dict[str, VideoEncoderProvider] = {}
         self._video_source_instances: Dict[str, VideoSourceProvider] = {}
+
+        # Cache for discover_sources() results: {source_type: (timestamp, results)}
+        self._source_discovery_cache: Dict[str, tuple] = {}
 
     # ==================== VPN PROVIDERS ====================
 
@@ -468,9 +475,43 @@ class ProviderRegistry:
         """Get list of registered video source provider types"""
         return list(self._video_source_providers.keys())
 
+    def discover_sources_cached(self, source_type: str, ttl: float = _SOURCE_CACHE_TTL) -> List[Dict]:
+        """Return cached discover_sources() for *source_type*, refreshing after *ttl* seconds."""
+        now = time.time()
+        cached = self._source_discovery_cache.get(source_type)
+        if cached and (now - cached[0]) < ttl:
+            return cached[1]
+
+        provider = self.get_video_source(source_type)
+        if not provider or not provider.is_available():
+            self._source_discovery_cache[source_type] = (now, [])
+            return []
+
+        try:
+            sources = provider.discover_sources()
+        except Exception as e:
+            logger.error(f"Failed to discover sources from {source_type}: {e}")
+            sources = []
+
+        self._source_discovery_cache[source_type] = (now, sources)
+        return sources
+
+    def invalidate_source_cache(self, source_type: str = None) -> None:
+        """Invalidate cached discover_sources() results.
+
+        Args:
+            source_type: Invalidate a single provider, or *None* to flush all.
+        """
+        if source_type:
+            self._source_discovery_cache.pop(source_type, None)
+        else:
+            self._source_discovery_cache.clear()
+        logger.debug(f"Source discovery cache invalidated: {source_type or 'all'}")
+
     def get_available_video_sources(self) -> List[Dict]:
         """
         Get list of all available video sources from all providers.
+        Uses TTL-based cache to avoid expensive subprocess calls.
 
         Returns:
             [
@@ -487,15 +528,10 @@ class ProviderRegistry:
         """
         all_sources = []
 
-        # Query each registered provider
+        # Query each registered provider (with cache)
         for source_type in self._video_source_providers:
-            provider = self.get_video_source(source_type)
-            if provider and provider.is_available():
-                try:
-                    sources = provider.discover_sources()
-                    all_sources.extend(sources)
-                except Exception as e:
-                    logger.error(f"Failed to discover sources from {source_type}: {e}")
+            sources = self.discover_sources_cached(source_type)
+            all_sources.extend(sources)
 
         # Sort by provider priority (highest first)
         all_sources.sort(
@@ -531,8 +567,8 @@ class ProviderRegistry:
             if provider and provider.is_available():
                 source_id = provider.find_source_by_identity(name, bus_info, driver)
                 if source_id:
-                    # Get full source info
-                    sources = provider.discover_sources()
+                    # Get full source info from cache
+                    sources = self.discover_sources_cached(source_type)
                     for source in sources:
                         if source["source_id"] == source_id:
                             return source
@@ -540,12 +576,13 @@ class ProviderRegistry:
         return None
 
     def clear_cache(self) -> None:
-        """Clear cached provider instances"""
+        """Clear cached provider instances and discovery results"""
         self._vpn_instances.clear()
         self._modem_instances.clear()
         self._network_instances.clear()
         self._video_encoder_instances.clear()
         self._video_source_instances.clear()
+        self._source_discovery_cache.clear()
         logger.info("Provider cache cleared")
 
 

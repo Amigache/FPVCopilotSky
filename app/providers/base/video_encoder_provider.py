@@ -146,28 +146,38 @@ class VideoEncoderProvider(ABC):
 
         return {"valid": len(errors) == 0, "errors": errors, "warnings": warnings}
 
-    def get_pipeline_string_for_client(self, port: int) -> str:
+    def get_pipeline_string_for_client(self, port: int, multicast_group: str = "") -> str:
         """
         Get GStreamer pipeline string for client (Mission Planner, QGC, etc).
+
+        Args:
+            port: UDP port to listen on.
+            multicast_group: If non-empty, generate a multicast receive
+                             pipeline (``udpsrc multicast-group=… auto-multicast=true``).
         Can be overridden for specific requirements.
         """
+        if multicast_group:
+            src = f"udpsrc multicast-group={multicast_group} port={port} " f"auto-multicast=true"
+        else:
+            src = f"udpsrc port={port}"
+
         if self.codec_family == "h264":
             return (
-                f'udpsrc port={port} caps="application/x-rtp, media=(string)video, '
+                f'{src} caps="application/x-rtp, media=(string)video, '
                 f'clock-rate=(int)90000, encoding-name=(string)H264, payload=(int){self.rtp_payload_type}" ! '
                 f"rtph264depay ! avdec_h264 ! videoconvert ! "
                 f"video/x-raw,format=BGRA ! appsink name=outsink sync=false"
             )
         elif self.codec_family == "h265":
             return (
-                f'udpsrc port={port} caps="application/x-rtp, media=(string)video, '
+                f'{src} caps="application/x-rtp, media=(string)video, '
                 f'clock-rate=(int)90000, encoding-name=(string)H265, payload=(int){self.rtp_payload_type}" ! '
                 f"rtph265depay ! avdec_h265 ! videoconvert ! "
                 f"video/x-raw,format=BGRA ! appsink name=outsink sync=false"
             )
         elif self.codec_family == "mjpeg":
             return (
-                f'udpsrc port={port} caps="application/x-rtp, media=(string)video, '
+                f'{src} caps="application/x-rtp, media=(string)video, '
                 f'clock-rate=(int)90000, encoding-name=(string)JPEG, payload=(int){self.rtp_payload_type}" ! '
                 f"rtpjpegdepay ! jpegdec ! videoconvert ! "
                 f"video/x-raw,format=BGRA ! appsink name=outsink sync=false"

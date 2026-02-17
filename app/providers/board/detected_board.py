@@ -49,6 +49,55 @@ class DetectedBoard:
         """Check if board variant has this system feature"""
         return feature in self.variant.system_features
 
+    def get_pipeline_hints(self) -> dict:
+        """
+        Return board-specific pipeline optimization hints.
+
+        These hints inform encoder and source providers about hardware
+        capabilities so they can build optimal pipelines.
+
+        Returns dict with:
+        - preferred_raw_format: 'NV12' or 'I420' (some HW encoders only accept NV12)
+        - max_queue_buffers: recommended queue depth (lower = less latency)
+        - has_hw_jpegdec: hardware JPEG decode available
+        - has_hw_h264enc: hardware H.264 encode available
+        - gpu_model: GPU model string for feature gating
+        - recommended_gop: recommended GOP size for this board
+        """
+        hints = {
+            "preferred_raw_format": "NV12",  # Most HW encoders prefer NV12
+            "max_queue_buffers": 2,
+            "has_hw_jpegdec": False,
+            "has_hw_h264enc": False,
+            "gpu_model": self.hardware.gpu_model or "",
+            "recommended_gop": 30,  # 1 keyframe/sec at 30fps
+        }
+
+        # Check board features
+        encoder_features = [f.value for f in self.variant.video_encoders]
+
+        if "hardware_h264" in encoder_features:
+            hints["has_hw_h264enc"] = True
+            hints["preferred_raw_format"] = "NV12"  # V4L2 M2M requires NV12
+
+        # Board-specific tuning
+        cpu_model = (self.hardware.cpu_model or "").lower()
+
+        if "amlogic" in cpu_model:
+            # Amlogic S905/S922: meson_venc prefers NV12, GOP 30 works well
+            hints["recommended_gop"] = 30
+            hints["max_queue_buffers"] = 2
+        elif "rockchip" in cpu_model:
+            # Rockchip RK3588: rkmpp encoder, very capable
+            hints["recommended_gop"] = 30
+            hints["max_queue_buffers"] = 3  # RK3588 has more headroom
+        elif "broadcom" in cpu_model:
+            # Raspberry Pi: limited HW encoding
+            hints["recommended_gop"] = 15  # Shorter GOP for lower-power boards
+            hints["max_queue_buffers"] = 2
+
+        return hints
+
     def to_dict(self) -> dict:
         """Serialize to JSON for API responses"""
         return {

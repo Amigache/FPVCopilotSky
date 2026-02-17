@@ -23,6 +23,7 @@ class MJPEGEncoder(VideoEncoderProvider):
         self.gst_encoder_element = "jpegenc"
         self.rtp_payload_type = 26  # Standard MJPEG RTP payload
         self.priority = 70  # High priority for low latency
+        self._hw_jpegdec_available = self._check_hw_jpegdec()
 
     def is_available(self) -> bool:
         """Check if jpegenc is available in GStreamer"""
@@ -59,43 +60,71 @@ class MJPEGEncoder(VideoEncoderProvider):
             "description": "Ultra-baja latencia (~30ms), alto bitrate. Ideal para FPV con buena conexión.",
         }
 
+    @staticmethod
+    def _check_hw_jpegdec() -> bool:
+        """Check if v4l2jpegdec (hardware JPEG decoder) is available."""
+        try:
+            result = subprocess.run(["gst-inspect-1.0", "v4l2jpegdec"], capture_output=True, timeout=2)
+            return result.returncode == 0
+        except Exception:
+            return False
+
     def build_pipeline_elements(self, config: Dict) -> Dict:
         """
         Build MJPEG pipeline elements.
-        Pipeline: camera(MJPEG) → jpegdec → jpegenc → rtpjpegpay
+
+        Source format handling:
+        - MJPEG source + HW decoder → v4l2jpegdec → videoconvert → jpegenc
+        - MJPEG source → jpegdec → videoconvert → jpegenc
+        - Raw source → videoconvert → jpegenc (no decoder needed)
         """
         try:
             quality = config.get("quality", 85)
+            source_format = config.get("source_format", "image/jpeg")
+            opencv_enabled = config.get("opencv_enabled", False)
 
-            elements = [
-                {"name": "decoder", "element": "jpegdec", "properties": {}},
-                {
-                    "name": "queue_pre",
-                    "element": "queue",
-                    "properties": {
-                        "max-size-buffers": 2,
-                        "max-size-time": 0,
-                        "max-size-bytes": 0,
-                        "leaky": 2,  # Drop old frames
+            elements = []
+
+            # Source-format aware decoder
+            if "image/jpeg" in source_format:
+                use_hw = self._hw_jpegdec_available and not opencv_enabled
+                decoder_el = "v4l2jpegdec" if use_hw else "jpegdec"
+                elements.append({"name": "decoder", "element": decoder_el, "properties": {}})
+            elif "video/x-h264" in source_format:
+                # Unusual: H.264 source → MJPEG encoder. Decode first.
+                elements.append({"name": "decoder", "element": "avdec_h264", "properties": {}})
+            # else: raw source, no decoder needed
+
+            elements.extend(
+                [
+                    {
+                        "name": "queue_pre",
+                        "element": "queue",
+                        "properties": {
+                            "max-size-buffers": 2,
+                            "max-size-time": 0,
+                            "max-size-bytes": 0,
+                            "leaky": 2,  # Drop old frames
+                        },
                     },
-                },
-                {"name": "videoconvert", "element": "videoconvert", "properties": {}},
-                {
-                    "name": "encoder",
-                    "element": "jpegenc",
-                    "properties": {"quality": quality},
-                },
-                {
-                    "name": "queue_udp",
-                    "element": "queue",
-                    "properties": {
-                        "max-size-buffers": 3,
-                        "max-size-time": 0,
-                        "max-size-bytes": 0,
-                        "leaky": 2,
+                    {"name": "videoconvert", "element": "videoconvert", "properties": {}},
+                    {
+                        "name": "encoder",
+                        "element": "jpegenc",
+                        "properties": {"quality": quality},
                     },
-                },
-            ]
+                    {
+                        "name": "queue_udp",
+                        "element": "queue",
+                        "properties": {
+                            "max-size-buffers": 3,
+                            "max-size-time": 0,
+                            "max-size-bytes": 0,
+                            "leaky": 2,
+                        },
+                    },
+                ]
+            )
 
             return {
                 "success": True,

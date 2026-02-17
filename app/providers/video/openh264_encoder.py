@@ -23,6 +23,7 @@ class OpenH264Encoder(VideoEncoderProvider):
         self.gst_encoder_element = "openh264enc"
         self.rtp_payload_type = 96
         self.priority = 0  # Disabled: slower than x264 in software mode, needs hardware acceleration
+        self._hw_jpegdec_available = self._check_hw_jpegdec()
 
     def is_available(self) -> bool:
         """Check if openh264enc is available in GStreamer"""
@@ -62,10 +63,23 @@ class OpenH264Encoder(VideoEncoderProvider):
             ),
         }
 
+    @staticmethod
+    def _check_hw_jpegdec() -> bool:
+        """Check if v4l2jpegdec (hardware JPEG decoder) is available."""
+        try:
+            result = subprocess.run(["gst-inspect-1.0", "v4l2jpegdec"], capture_output=True, timeout=2)
+            return result.returncode == 0
+        except Exception:
+            return False
+
     def build_pipeline_elements(self, config: Dict) -> Dict:
         """
         Build OpenH264 pipeline elements.
-        Pipeline: camera(MJPEG) → jpegdec → videoconvert → openh264enc → h264parse → rtph264pay
+
+        Source format handling:
+        - H.264 source → avdec_h264 → videoconvert → openh264enc
+        - MJPEG source → v4l2jpegdec(HW)/jpegdec(SW) → videoconvert → openh264enc
+        - Raw source → videoconvert → openh264enc
         """
         try:
             width = config.get("width", 960)
@@ -73,53 +87,70 @@ class OpenH264Encoder(VideoEncoderProvider):
             framerate = config.get("framerate", 30)
             bitrate = config.get("bitrate", 2500)
             gop_size = config.get("gop_size", 2)  # Keyframe interval in frames
+            source_format = config.get("source_format", "image/jpeg")
+            opencv_enabled = config.get("opencv_enabled", False)
 
-            elements = [
-                {"name": "decoder", "element": "jpegdec", "properties": {}},
-                {"name": "videoconvert", "element": "videoconvert", "properties": {}},
-                {"name": "videoscale", "element": "videoscale", "properties": {}},
-                {
-                    "name": "encoder_caps",
-                    "element": "capsfilter",
-                    "properties": {
-                        "caps": f"video/x-raw,format=I420,width={width},height={height},framerate={framerate}/1"
+            elements = []
+
+            # Source-format aware decoder selection
+            if "video/x-h264" in source_format:
+                logger.info("OpenH264: Source is H.264, using avdec_h264 for decoding")
+                elements.append({"name": "decoder", "element": "avdec_h264", "properties": {}})
+            elif "image/jpeg" in source_format:
+                use_hw = self._hw_jpegdec_available and not opencv_enabled
+                decoder_el = "v4l2jpegdec" if use_hw else "jpegdec"
+                logger.info(f"OpenH264: Using {decoder_el} for MJPEG decoding")
+                elements.append({"name": "decoder", "element": decoder_el, "properties": {}})
+            else:
+                logger.info(f"OpenH264: Raw source ({source_format}), no decoder needed")
+
+            elements.extend(
+                [
+                    {"name": "videoconvert", "element": "videoconvert", "properties": {}},
+                    {"name": "videoscale", "element": "videoscale", "properties": {}},
+                    {
+                        "name": "encoder_caps",
+                        "element": "capsfilter",
+                        "properties": {
+                            "caps": f"video/x-raw,format=I420,width={width},height={height},framerate={framerate}/1"
+                        },
                     },
-                },
-                {
-                    "name": "queue_pre",
-                    "element": "queue",
-                    "properties": {
-                        "max-size-buffers": 2,
-                        "max-size-time": 0,
-                        "max-size-bytes": 0,
-                        "leaky": 2,
+                    {
+                        "name": "queue_pre",
+                        "element": "queue",
+                        "properties": {
+                            "max-size-buffers": 2,
+                            "max-size-time": 0,
+                            "max-size-bytes": 0,
+                            "leaky": 2,
+                        },
                     },
-                },
-                {
-                    "name": "encoder",
-                    "element": "openh264enc",
-                    "properties": {
-                        "bitrate": bitrate * 1000,  # OpenH264 expects bps (bits per second)
-                        "rate-control": 1,  # CBR (Constant Bitrate) mode
-                        "gop-size": gop_size,  # Keyframe interval from config
+                    {
+                        "name": "encoder",
+                        "element": "openh264enc",
+                        "properties": {
+                            "bitrate": bitrate * 1000,  # OpenH264 expects bps (bits per second)
+                            "rate-control": 1,  # CBR (Constant Bitrate) mode
+                            "gop-size": gop_size,  # Keyframe interval from config
+                        },
                     },
-                },
-                {
-                    "name": "queue_post",
-                    "element": "queue",
-                    "properties": {
-                        "max-size-buffers": 3,
-                        "max-size-time": 0,
-                        "max-size-bytes": 0,
-                        "leaky": 2,
+                    {
+                        "name": "queue_post",
+                        "element": "queue",
+                        "properties": {
+                            "max-size-buffers": 3,
+                            "max-size-time": 0,
+                            "max-size-bytes": 0,
+                            "leaky": 2,
+                        },
                     },
-                },
-                {
-                    "name": "h264parse",
-                    "element": "h264parse",
-                    "properties": {"config-interval": -1},
-                },
-            ]
+                    {
+                        "name": "h264parse",
+                        "element": "h264parse",
+                        "properties": {"config-interval": -1},
+                    },
+                ]
+            )
 
             return {
                 "success": True,

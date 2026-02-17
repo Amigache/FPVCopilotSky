@@ -425,9 +425,9 @@ class MAVLinkBridge:
                     continue
 
                 # Build HEARTBEAT messages
-                # Camera heartbeat (SysID=1, CompID=191) for video stream identity
+                # Onboard computer heartbeat (SysID=1, CompID=191)
                 camera_hb = self.mav_sender.heartbeat_encode(
-                    type=30,  # MAV_TYPE_CAMERA
+                    type=18,  # MAV_TYPE_ONBOARD_CONTROLLER
                     autopilot=8,  # MAV_AUTOPILOT_INVALID
                     base_mode=0,
                     custom_mode=0,
