@@ -1,8 +1,8 @@
-/* eslint-env jest */
 /**
  * Tests for formatting utilities
  */
 
+import { describe, it, expect } from 'vitest'
 import { formatBitrate } from './formatters'
 
 describe('formatBitrate', () => {
