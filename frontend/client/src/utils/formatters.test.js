@@ -1,3 +1,4 @@
+/* eslint-env jest */
 /**
  * Tests for formatting utilities
  */

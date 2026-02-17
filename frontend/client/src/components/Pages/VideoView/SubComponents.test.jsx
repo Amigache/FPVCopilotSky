@@ -479,7 +479,7 @@ describe('StatsCard', () => {
 
   it('renders bitrate', () => {
     render(<StatsCard status={statusData} />)
-    expect(screen.getByText('2100')).toBeInTheDocument()
+    expect(screen.getByText('2.1 Mbps')).toBeInTheDocument()
   })
 
   it('renders codec info', () => {
