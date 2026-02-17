@@ -85,7 +85,6 @@ const VideoView = () => {
   // Sync remote config → local when no pending changes
   useEffect(() => {
     if (messages.video_status?.config && !hasChanges) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setConfig((prev) => ({ ...prev, ...messages.video_status.config }))
       initialLoadDone.current = true
     }
@@ -174,7 +173,6 @@ const VideoView = () => {
       if (networkIp) {
         const isDefaultUrl = config.rtsp_url === VIDEO_DEFAULTS.RTSP_URL || !config.rtsp_url
         if (isDefaultUrl && networkIp.rtsp_url) {
-          // eslint-disable-next-line react-hooks/set-state-in-effect
           updateConfig((prev) => ({ ...prev, rtsp_url: networkIp.rtsp_url }))
         }
       }
@@ -405,7 +403,6 @@ const VideoView = () => {
         const firstRes = firstDev.resolutions[0]
         const [w, h] = firstRes.split('x')
         const fps = firstDev.fps_by_resolution?.[firstRes]?.[0] || VIDEO_DEFAULTS.FRAMERATE
-        // eslint-disable-next-line react-hooks/set-state-in-effect
         setConfig((prev) => ({
           ...prev,
           device: firstDev.device_path,

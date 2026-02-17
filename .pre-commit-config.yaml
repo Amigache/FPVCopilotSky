@@ -40,3 +40,13 @@ repos:
       - id: prettier
         files: \.(js|jsx|ts|tsx|json|css|md)$
         exclude: ^(node_modules/|htmlcov/|venv/)
+
+  # JavaScript/TypeScript linting (frontend)
+  - repo: local
+    hooks:
+      - id: eslint-frontend
+        name: eslint-frontend
+        entry: bash -c 'cd frontend/client && npm run lint'
+        language: system
+        files: ^frontend/client/.*\.(js|jsx)$
+        pass_filenames: false
