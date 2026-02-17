@@ -1,9 +1,16 @@
 import { useTranslation } from 'react-i18next'
 import { safeInt, VIDEO_DEFAULTS } from './videoConstants'
 
+const SOURCE_TYPE_ICONS = {
+  v4l2: '📷',
+  libcamera: '🎥',
+  hdmi_capture: '🖥️',
+  network_stream: '🌐',
+}
+
 const VideoSourceCard = ({
   config,
-  cameras,
+  videoDevices,
   streaming,
   handleCameraChange,
   handleResolutionChange,
@@ -24,12 +31,13 @@ const VideoSourceCard = ({
           onChange={(e) => handleCameraChange(e.target.value)}
           disabled={streaming}
         >
-          {cameras.length === 0 ? (
+          {videoDevices.length === 0 ? (
             <option value="">{t('views.video.noCamerasAvailable')}</option>
           ) : (
-            cameras.map((cam) => (
-              <option key={cam.device} value={cam.device}>
-                {cam.name} {cam.provider && `[${cam.provider}]`} ({cam.device})
+            videoDevices.map((dev) => (
+              <option key={dev.device_id} value={dev.device_path}>
+                {SOURCE_TYPE_ICONS[dev.source_type] || '📷'} {dev.name} [{dev.provider}] (
+                {dev.device_path})
               </option>
             ))
           )}

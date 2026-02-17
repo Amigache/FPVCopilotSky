@@ -127,6 +127,12 @@ async def connect_modem(provider_name: str, request: Request):
             msg = result.get("message", translate("modem.connection_failed", lang))
             raise HTTPException(status_code=400, detail=msg)
 
+        # Invalidate network_status cache to update mode immediately
+        from app.services.cache_service import get_cache_service
+
+        cache = get_cache_service()
+        cache.invalidate("network_status")
+
         return {"success": True, "provider": provider_name, "result": result}
     except HTTPException:
         raise
@@ -161,6 +167,12 @@ async def disconnect_modem(provider_name: str, request: Request):
         if not result.get("success"):
             msg = result.get("message", translate("modem.disconnection_failed", lang))
             raise HTTPException(status_code=400, detail=msg)
+
+        # Invalidate network_status cache to update mode immediately
+        from app.services.cache_service import get_cache_service
+
+        cache = get_cache_service()
+        cache.invalidate("network_status")
 
         return {"success": True, "provider": provider_name, "result": result}
     except HTTPException:

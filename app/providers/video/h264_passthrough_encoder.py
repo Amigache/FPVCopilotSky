@@ -116,24 +116,38 @@ class H264PassthroughEncoder(VideoEncoderProvider):
             print("📹 H.264 Passthrough: Camera outputs native H.264, no transcoding needed")
             logger.info("Using H.264 passthrough mode (no decode/re-encode)")
 
-            # Simple pipeline: just parse the H.264 stream
+            # Pipeline: parse H.264 NAL stream → queue → RTP
+            #
+            # Key robustness settings for UVC H.264 cameras (Firefly Split, etc):
+            # - h264parse config-interval=-1  : re-inject SPS/PPS before every IDR
+            # - h264parse update-timecodes    : fix timestamp gaps from USB
+            # - queue with leaky downstream    : drop stale frames, never block
+            # - rtph264pay config-interval=1  : send SPS/PPS with EVERY RTP frame
+            #   (critical for UDP where any lost IDR = artifacts until next IDR)
             elements = [
                 {
                     "name": "h264parse",
                     "element": "h264parse",
                     "properties": {
-                        "config-interval": -1,  # Insert SPS/PPS in every keyframe
+                        "config-interval": -1,  # Re-insert SPS/PPS on every IDR
+                        "update-timecodes": True,  # Fix timestamp issues from UVC
                     },
                 },
-                # Optional: queue for buffering
+                {
+                    "name": "capsfilter_parsed",
+                    "element": "capsfilter",
+                    "properties": {
+                        "caps": "video/x-h264,stream-format=byte-stream,alignment=au",
+                    },
+                },
                 {
                     "name": "queue",
                     "element": "queue",
                     "properties": {
-                        "max-size-buffers": 2,
-                        "max-size-time": 0,
+                        "max-size-buffers": 3,
+                        "max-size-time": 200000000,  # 200ms buffer
                         "max-size-bytes": 0,
-                        "leaky": 2,  # Drop old frames if queue full
+                        "leaky": 2,  # Drop oldest if full
                     },
                 },
             ]
@@ -147,7 +161,10 @@ class H264PassthroughEncoder(VideoEncoderProvider):
                 "rtp_payloader_properties": {
                     "pt": self.rtp_payload_type,
                     "mtu": 1400,
-                    "config-interval": -1,  # Send SPS/PPS with every keyframe
+                    # Send SPS/PPS with every IDR — crucial for UDP resilience.
+                    # Cameras like Firefly Split have long GOP (2-5s between IDRs),
+                    # so losing a single IDR without SPS/PPS = prolonged artifacts.
+                    "config-interval": 1,
                 },
             }
         except Exception as e:

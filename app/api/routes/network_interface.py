@@ -413,6 +413,13 @@ async def connect_wifi(request: WiFiConnectRequest) -> InterfaceActionResponse:
         # Get updated status
         status = provider.get_status() if success else None
 
+        # Invalidate network_status cache to update mode immediately
+        if success:
+            from app.services.cache_service import get_cache_service
+
+            cache = get_cache_service()
+            cache.invalidate("network_status")
+
         return InterfaceActionResponse(
             success=success,
             message=(f"Connected to '{request.ssid}'" if success else f"Failed to connect to '{request.ssid}'"),
@@ -451,6 +458,13 @@ async def disconnect_wifi() -> InterfaceActionResponse:
 
         # Get updated status
         status = provider.get_status() if provider.detect() else None
+
+        # Invalidate network_status cache to update mode immediately
+        if success:
+            from app.services.cache_service import get_cache_service
+
+            cache = get_cache_service()
+            cache.invalidate("network_status")
 
         return InterfaceActionResponse(
             success=success,

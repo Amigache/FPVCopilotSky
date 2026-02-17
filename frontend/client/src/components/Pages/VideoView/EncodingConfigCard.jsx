@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { BITRATE_OPTIONS, GOP_OPTIONS, RANGES, VIDEO_DEFAULTS, safeInt } from './videoConstants'
+import { formatBitrate } from '../../../utils/formatters'
 
 const EncodingConfigCard = ({
   config,
@@ -114,7 +115,7 @@ const EncodingConfigCard = ({
             {autoAdaptiveBitrate ? (
               <>
                 <div className="bitrate-auto-info">
-                  <span className="bitrate-value">{config.h264_bitrate} kbps</span>
+                  <span className="bitrate-value">{formatBitrate(config.h264_bitrate)}</span>
                   <span className="bitrate-hint">✨ {t('views.video.bitrateAutoMode')}</span>
                 </div>
                 <small className="hint">{t('views.video.bitrateAutoHint')}</small>

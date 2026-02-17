@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useToast } from '../../../contexts/ToastContext'
 import { useWebSocket } from '../../../contexts/WebSocketContext'
 import api from '../../../services/api'
+import VideoDevicesCard from './VideoDevicesCard'
 
 const SystemView = () => {
   const { t } = useTranslation()
@@ -18,6 +19,9 @@ const SystemView = () => {
   const [memoryInfo, setMemoryInfo] = useState(null)
   const [boardInfo, setBoardInfo] = useState(null)
   const [boardLoading, setBoardLoading] = useState(true)
+  const [videoDevices, setVideoDevices] = useState([])
+  const [videoDevicesLoading, setVideoDevicesLoading] = useState(true)
+  const [activeDevicePath, setActiveDevicePath] = useState('')
 
   const loadStatus = async () => {
     try {
@@ -77,12 +81,27 @@ const SystemView = () => {
     }
   }
 
+  const loadVideoDevices = async () => {
+    try {
+      const response = await api.get('/api/system/video-devices')
+      if (response.ok) {
+        const data = await response.json()
+        setVideoDevices(data.devices || [])
+      }
+    } catch (error) {
+      console.error('Error loading video devices:', error)
+    } finally {
+      setVideoDevicesLoading(false)
+    }
+  }
+
   // Load initial status
   useEffect(() => {
     loadStatus()
     loadServices()
     loadResources()
     loadBoard()
+    loadVideoDevices()
     // No polling needed - all updates come via WebSocket
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -110,6 +129,21 @@ const SystemView = () => {
       setServicesLoading(false)
     }
   }, [messages.system_services])
+
+  // Update video devices from WebSocket
+  useEffect(() => {
+    if (messages.video_devices) {
+      setVideoDevices(messages.video_devices.devices || [])
+      setVideoDevicesLoading(false)
+    }
+  }, [messages.video_devices])
+
+  // Track active video device from video_status WebSocket
+  useEffect(() => {
+    if (messages.video_status?.config?.device) {
+      setActiveDevicePath(messages.video_status.config.device)
+    }
+  }, [messages.video_status])
 
   // Color helpers
   const getUsageColor = (percent) => {
@@ -315,6 +349,13 @@ const SystemView = () => {
       </div>
 
       <div className="monitor-col">
+        {/* Video Devices Card */}
+        <VideoDevicesCard
+          devices={videoDevices}
+          loading={videoDevicesLoading}
+          activeDevicePath={activeDevicePath}
+        />
+
         {/* Memory Card */}
         <div className="card">
           <h2>💾 {t('views.system.memory')}</h2>

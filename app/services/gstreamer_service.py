@@ -1177,6 +1177,10 @@ class GStreamerService:
                 "opencv_enabled": self._is_opencv_enabled(),  # For HW decoder optimization
             }
 
+            # If passthrough is requested, force H264 format from the camera
+            if codec_id == "h264_passthrough":
+                config["format"] = "H264"
+
             # Build source element from provider to get source format
             source_config_result = source_provider.build_source_element(self.video_config.device, config)
 
@@ -1722,6 +1726,14 @@ class GStreamerService:
                     print(f"⚠️ Camera {old_device} not found, using detected: {detected}")
                 else:
                     print(f"📷 Auto-detected camera: {detected}")
+
+                # Save detected device to preferences for persistence
+                if self.preferences_service:
+                    try:
+                        self.preferences_service.update_video_source_device(detected)
+                        print(f"💾 Saved detected device to preferences: {detected}")
+                    except Exception as e:
+                        print(f"⚠️ Failed to save device to preferences: {e}")
             else:
                 msg = (
                     f"Camera not found: {self.video_config.device}"

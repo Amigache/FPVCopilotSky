@@ -6,13 +6,7 @@ import { useToast } from '../../../contexts/ToastContext'
 import { useWebSocket } from '../../../contexts/WebSocketContext'
 import api from '../../../services/api'
 import { API_TIMEOUTS, getSignalBars } from './networkConstants'
-
-// Helper to format bitrate
-function formatBitrate(val) {
-  if (!val && val !== 0) return '—'
-  if (val > 10000) return `${(val / 1000).toFixed(0)} Mbps`
-  return `${val} kbps`
-}
+import { formatBitrate } from '../../../utils/formatters'
 
 const NetworkView = () => {
   const { t } = useTranslation()
@@ -258,6 +252,14 @@ const NetworkView = () => {
     try {
       const response = await api.post('/api/network/priority', { mode })
       if (response.ok) {
+        // Clear network event bridge history when changing mode
+        // (events from modem don't apply to wifi and vice versa)
+        try {
+          await api.post('/api/network/bridge/clear-events')
+        } catch (error) {
+          console.warn('Could not clear bridge events:', error)
+        }
+
         await loadDashboard(true) // Reload dashboard after mode change
         showToast(
           mode === 'wifi'
@@ -707,9 +709,7 @@ const NetworkView = () => {
                         🎥 <b>{formatBitrate(videoStats.current_bitrate)}</b>
                         <span style={{ opacity: 0.6, marginLeft: 4, marginRight: 4 }}>/</span>
                         <span title="Recomendado">
-                          {qs.recommended?.bitrate_kbps
-                            ? `${qs.recommended.bitrate_kbps} kbps`
-                            : '—'}
+                          {formatBitrate(qs.recommended?.bitrate_kbps)}
                         </span>
                       </span>
                       <span className="rec-item" title="Actual resolución">

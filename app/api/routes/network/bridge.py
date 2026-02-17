@@ -96,3 +96,20 @@ async def get_quality_score():
     except Exception as e:
         logger.error(f"Error getting quality score: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/bridge/clear-events")
+async def clear_bridge_events():
+    """
+    Clear network event history.
+
+    Useful when changing network mode (e.g., from modem to WiFi)
+    to start with a fresh event log for the new connection type.
+    """
+    try:
+        bridge = get_network_event_bridge()
+        bridge.clear_events()
+        return {"success": True, "message": "Event history cleared"}
+    except Exception as e:
+        logger.error(f"Error clearing bridge events: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

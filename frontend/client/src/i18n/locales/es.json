@@ -348,7 +348,20 @@
       "autoAdaptiveWarning": "Con el auto-ajuste desactivado, deberás controlar manualmente el bitrate desde la vista de vídeo.",
       "autoAdaptiveEnabled": "Auto-ajuste de bitrate activado",
       "autoAdaptiveDisabled": "Auto-ajuste de bitrate desactivado",
-      "errorSavingSettings": "Error al guardar configuración"
+      "errorSavingSettings": "Error al guardar configuración",
+      "videoDevices": "Dispositivos de Vídeo",
+      "noVideoDevices": "No se detectaron dispositivos de vídeo",
+      "rescan": "Re-escanear",
+      "activeDevice": "Activo",
+      "vdDriver": "Driver",
+      "vdBusInfo": "Bus",
+      "vdProvider": "Proveedor",
+      "vdFormats": "Formatos",
+      "vdResolutions": "Resoluciones",
+      "vdFpsByRes": "FPS por Resolución",
+      "vdResByFormat": "Resoluciones por Formato",
+      "vdCodecs": "Codecs Compatibles",
+      "vdCodecIncompatible": "No compatible con este dispositivo"
     }
   },
   "router": {

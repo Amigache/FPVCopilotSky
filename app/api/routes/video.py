@@ -40,7 +40,24 @@ class VideoConfigRequest(BaseModel):
     @classmethod
     def validate_codec(cls, v):
         if v is not None:
-            allowed = {"mjpeg", "h264", "h264_openh264", "h264_hardware", "h264_v4l2"}
+            # Build allowed set dynamically from registered encoders
+            try:
+                from app.providers.registry import get_provider_registry
+
+                registry = get_provider_registry()
+                encoders = registry.get_available_video_encoders()
+                allowed = {e["codec_id"] for e in encoders if e.get("available")}
+            except Exception:
+                allowed = set()
+            # Fallback: always accept well-known codec IDs
+            allowed |= {
+                "mjpeg",
+                "h264",
+                "h264_openh264",
+                "h264_hardware",
+                "h264_v4l2",
+                "h264_passthrough",
+            }
             if v not in allowed:
                 raise ValueError(f"Invalid codec: {v}. Allowed: {allowed}")
         return v

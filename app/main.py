@@ -152,6 +152,175 @@ async def root():
     return {"name": "FPV Copilot Sky", "version": "1.0.0", "status": "running"}
 
 
+async def _broadcast_status_health():
+    """Broadcast status health check data."""
+    from app.api.routes.status import (
+        check_python_dependencies,
+        check_npm_dependencies,
+        check_system_info,
+        get_app_version,
+        get_frontend_version,
+        get_user_permissions,
+        get_node_version,
+    )
+
+    status_data = {
+        "success": True,
+        "backend": {
+            "running": True,
+            "python_deps": check_python_dependencies(),
+            "system": check_system_info(),
+            "app_version": get_app_version(),
+        },
+        "frontend": {
+            "npm_deps": check_npm_dependencies(),
+            "frontend_version": get_frontend_version(),
+            "node_version": get_node_version(),
+        },
+        "permissions": get_user_permissions(),
+        "timestamp": int(time.time()),
+    }
+    await websocket_manager.broadcast("status", status_data)
+
+
+async def _broadcast_vpn_status():
+    """Broadcast VPN status data."""
+    try:
+        registry = get_provider_registry()
+        prefs = get_preferences()
+        config = prefs.get_vpn_config()
+        provider_name = config.get("provider")
+        if not provider_name:
+            available = registry.get_available_vpn_providers()
+            installed = [p for p in available if p.get("installed")]
+            if installed:
+                provider_name = installed[0]["name"]
+        if provider_name:
+            vpn_provider = registry.get_vpn_provider(provider_name)
+            if vpn_provider:
+                loop = asyncio.get_event_loop()
+                vpn_status = await loop.run_in_executor(None, vpn_provider.get_status)
+                await websocket_manager.broadcast("vpn_status", vpn_status)
+    except Exception as e:
+        logger.debug(f"VPN status broadcast error: {e}")
+
+
+async def _broadcast_modem_status():
+    """Broadcast modem status data."""
+    try:
+        from app.providers import get_provider_registry
+
+        registry = get_provider_registry()
+        modem_provider = registry.get_modem_provider("huawei_e3372h")
+        if not modem_provider or not modem_provider.is_available:
+            return
+
+        # Use raw async methods for full data
+        import asyncio as _asyncio
+
+        device_task = (
+            modem_provider.async_get_raw_device_info()
+            if hasattr(modem_provider, "async_get_raw_device_info")
+            else _asyncio.sleep(0)
+        )
+        signal_task = (
+            modem_provider.async_get_signal_info()
+            if hasattr(modem_provider, "async_get_signal_info")
+            else _asyncio.sleep(0)
+        )
+        network_task = (
+            modem_provider.async_get_raw_network_info()
+            if hasattr(modem_provider, "async_get_raw_network_info")
+            else _asyncio.sleep(0)
+        )
+        traffic_task = (
+            modem_provider.async_get_traffic_stats()
+            if hasattr(modem_provider, "async_get_traffic_stats")
+            else _asyncio.sleep(0)
+        )
+
+        results = await _asyncio.gather(
+            device_task,
+            signal_task,
+            network_task,
+            traffic_task,
+            return_exceptions=True,
+        )
+
+        device_info = results[0] if not isinstance(results[0], Exception) else {}
+        signal_info = results[1] if not isinstance(results[1], Exception) else {}
+        network_info = results[2] if not isinstance(results[2], Exception) else {}
+        traffic_info = results[3] if not isinstance(results[3], Exception) else {}
+
+        device_info = device_info or {}
+        signal_info = signal_info or {}
+        network_info = network_info or {}
+        traffic_info = traffic_info or {}
+
+        available = any([device_info, signal_info, network_info, traffic_info])
+        conn_status = network_info.get("connection_status", "")
+        signal_percent = signal_info.get("signal_percent", 0) or 0
+        signal_bars = min(5, max(0, int(signal_percent / 20))) if signal_percent else 0
+
+        modem_data = {
+            "success": True,
+            "available": available,
+            "connected": conn_status == "Connected",
+            "video_mode_active": getattr(modem_provider, "video_mode_active", False),
+        }
+
+        if device_info:
+            modem_data["device"] = {
+                "device_name": device_info.get("device_name", ""),
+                "model": device_info.get("device_name", ""),
+                "imei": device_info.get("imei", ""),
+                "imsi": device_info.get("imsi", ""),
+                "iccid": device_info.get("iccid", ""),
+                "serial_number": device_info.get("serial_number", ""),
+                "hardware_version": device_info.get("hardware_version", ""),
+                "software_version": device_info.get("software_version", ""),
+                "product_family": device_info.get("product_family", ""),
+            }
+        if signal_info:
+            modem_data["signal"] = {
+                **signal_info,
+                "signal_bars": signal_bars,
+            }
+        if network_info:
+            modem_data["network"] = {
+                "operator": network_info.get("operator", ""),
+                "operator_code": network_info.get("operator_code", ""),
+                "network_type": network_info.get("network_type", ""),
+                "network_type_ex": network_info.get("network_type_ex", ""),
+                "connection_status": conn_status,
+                "signal_icon": network_info.get("signal_icon", signal_bars),
+                "roaming": network_info.get("roaming", False),
+                "primary_dns": network_info.get("primary_dns", ""),
+                "secondary_dns": network_info.get("secondary_dns", ""),
+            }
+        if traffic_info:
+            modem_data["traffic"] = traffic_info
+
+        # Add band/mode data (single extra call, reuses connection)
+        loop = asyncio.get_event_loop()
+        band_data = await loop.run_in_executor(None, modem_provider.get_current_band)
+        if band_data:
+            modem_data["current_band"] = band_data
+            modem_data["mode"] = {
+                "network_mode": band_data.get("network_mode", "00"),
+                "network_mode_name": band_data.get("network_mode_name", "Auto"),
+            }
+
+        # Add video quality
+        vq = await loop.run_in_executor(None, modem_provider.get_video_quality_assessment)
+        if vq and vq.get("available"):
+            modem_data["video_quality"] = vq
+
+        await websocket_manager.broadcast("modem_status", modem_data)
+    except Exception as e:
+        logger.debug(f"Modem broadcast error: {e}")
+
+
 async def periodic_stats_broadcast():
     """Periodically broadcast router stats via WebSocket.
 
@@ -177,46 +346,6 @@ async def periodic_stats_broadcast():
             if counter % 2 == 0 and video_service and video_service.is_streaming:
                 await websocket_manager.broadcast("video_status", video_service.get_status())
 
-            # Status health check every 5 seconds
-            if counter % 5 == 0:
-                from app.api.routes.status import (
-                    check_python_dependencies,
-                    check_npm_dependencies,
-                    check_system_info,
-                    get_app_version,
-                    get_frontend_version,
-                    get_user_permissions,
-                    get_node_version,
-                )
-
-                status_data = {
-                    "success": True,
-                    "backend": {
-                        "running": True,
-                        "python_deps": check_python_dependencies(),
-                        "system": check_system_info(),
-                        "app_version": get_app_version(),
-                    },
-                    "frontend": {
-                        "npm_deps": check_npm_dependencies(),
-                        "frontend_version": get_frontend_version(),
-                        "node_version": get_node_version(),
-                    },
-                    "permissions": get_user_permissions(),
-                    "timestamp": int(time.time()),
-                }
-                await websocket_manager.broadcast("status", status_data)
-
-            # Network status every 5 seconds
-            if counter % 5 == 0:
-                try:
-                    from app.api.routes.network import get_network_status
-
-                    network_status = await get_network_status()
-                    await websocket_manager.broadcast("network_status", network_status)
-                except Exception as e:
-                    logger.debug(f"Network status broadcast error: {e}")
-
             # System resources (CPU/Memory) every 3 seconds
             if counter % 3 == 0:
                 from app.services.system_service import SystemService
@@ -229,6 +358,20 @@ async def periodic_stats_broadcast():
                     },
                 )
 
+            # Status health check every 5 seconds
+            if counter % 5 == 0:
+                await _broadcast_status_health()
+
+            # Network status every 5 seconds
+            if counter % 5 == 0:
+                try:
+                    from app.api.routes.network import get_network_status
+
+                    network_status = await get_network_status()
+                    await websocket_manager.broadcast("network_status", network_status)
+                except Exception as e:
+                    logger.debug(f"Network status broadcast error: {e}")
+
             # Services status every 5 seconds
             if counter % 5 == 0:
                 from app.services.system_service import SystemService
@@ -236,139 +379,22 @@ async def periodic_stats_broadcast():
                 services = SystemService.get_services_status()
                 await websocket_manager.broadcast("system_services", {"services": services, "count": len(services)})
 
-            # VPN status every 10 seconds
+            # Video devices + VPN status every 10 seconds
             if counter % 10 == 0:
                 try:
-                    registry = get_provider_registry()
-                    prefs = get_preferences()
-                    config = prefs.get_vpn_config()
-                    provider_name = config.get("provider")
-                    if not provider_name:
-                        available = registry.get_available_vpn_providers()
-                        installed = [p for p in available if p.get("installed")]
-                        if installed:
-                            provider_name = installed[0]["name"]
-                    if provider_name:
-                        vpn_provider = registry.get_vpn_provider(provider_name)
-                        if vpn_provider:
-                            loop = asyncio.get_event_loop()
-                            vpn_status = await loop.run_in_executor(None, vpn_provider.get_status)
-                            await websocket_manager.broadcast("vpn_status", vpn_status)
+                    from app.services.video_device_service import get_video_device_service
+
+                    vd_service = get_video_device_service()
+                    scan_info = vd_service.get_scan_info()
+                    await websocket_manager.broadcast("video_devices", scan_info)
                 except Exception as e:
-                    logger.debug(f"VPN status broadcast error: {e}")
+                    logger.debug(f"Video devices broadcast error: {e}")
+
+                await _broadcast_vpn_status()
 
             # Modem status every 10 seconds (avoid hammering modem API)
             if counter % 10 == 0:
-                try:
-                    from app.providers import get_provider_registry
-
-                    registry = get_provider_registry()
-                    modem_provider = registry.get_modem_provider("huawei_e3372h")
-                    if modem_provider and modem_provider.is_available:
-                        # Use raw async methods for full data
-                        import asyncio as _asyncio
-
-                        device_task = (
-                            modem_provider.async_get_raw_device_info()
-                            if hasattr(modem_provider, "async_get_raw_device_info")
-                            else _asyncio.sleep(0)
-                        )
-                        signal_task = (
-                            modem_provider.async_get_signal_info()
-                            if hasattr(modem_provider, "async_get_signal_info")
-                            else _asyncio.sleep(0)
-                        )
-                        network_task = (
-                            modem_provider.async_get_raw_network_info()
-                            if hasattr(modem_provider, "async_get_raw_network_info")
-                            else _asyncio.sleep(0)
-                        )
-                        traffic_task = (
-                            modem_provider.async_get_traffic_stats()
-                            if hasattr(modem_provider, "async_get_traffic_stats")
-                            else _asyncio.sleep(0)
-                        )
-
-                        results = await _asyncio.gather(
-                            device_task,
-                            signal_task,
-                            network_task,
-                            traffic_task,
-                            return_exceptions=True,
-                        )
-
-                        device_info = results[0] if not isinstance(results[0], Exception) else {}
-                        signal_info = results[1] if not isinstance(results[1], Exception) else {}
-                        network_info = results[2] if not isinstance(results[2], Exception) else {}
-                        traffic_info = results[3] if not isinstance(results[3], Exception) else {}
-
-                        device_info = device_info or {}
-                        signal_info = signal_info or {}
-                        network_info = network_info or {}
-                        traffic_info = traffic_info or {}
-
-                        available = any([device_info, signal_info, network_info, traffic_info])
-                        conn_status = network_info.get("connection_status", "")
-                        signal_percent = signal_info.get("signal_percent", 0) or 0
-                        signal_bars = min(5, max(0, int(signal_percent / 20))) if signal_percent else 0
-
-                        modem_data = {
-                            "success": True,
-                            "available": available,
-                            "connected": conn_status == "Connected",
-                            "video_mode_active": getattr(modem_provider, "video_mode_active", False),
-                        }
-
-                        if device_info:
-                            modem_data["device"] = {
-                                "device_name": device_info.get("device_name", ""),
-                                "model": device_info.get("device_name", ""),
-                                "imei": device_info.get("imei", ""),
-                                "imsi": device_info.get("imsi", ""),
-                                "iccid": device_info.get("iccid", ""),
-                                "serial_number": device_info.get("serial_number", ""),
-                                "hardware_version": device_info.get("hardware_version", ""),
-                                "software_version": device_info.get("software_version", ""),
-                                "product_family": device_info.get("product_family", ""),
-                            }
-                        if signal_info:
-                            modem_data["signal"] = {
-                                **signal_info,
-                                "signal_bars": signal_bars,
-                            }
-                        if network_info:
-                            modem_data["network"] = {
-                                "operator": network_info.get("operator", ""),
-                                "operator_code": network_info.get("operator_code", ""),
-                                "network_type": network_info.get("network_type", ""),
-                                "network_type_ex": network_info.get("network_type_ex", ""),
-                                "connection_status": conn_status,
-                                "signal_icon": network_info.get("signal_icon", signal_bars),
-                                "roaming": network_info.get("roaming", False),
-                                "primary_dns": network_info.get("primary_dns", ""),
-                                "secondary_dns": network_info.get("secondary_dns", ""),
-                            }
-                        if traffic_info:
-                            modem_data["traffic"] = traffic_info
-
-                        # Add band/mode data (single extra call, reuses connection)
-                        loop = asyncio.get_event_loop()
-                        band_data = await loop.run_in_executor(None, modem_provider.get_current_band)
-                        if band_data:
-                            modem_data["current_band"] = band_data
-                            modem_data["mode"] = {
-                                "network_mode": band_data.get("network_mode", "00"),
-                                "network_mode_name": band_data.get("network_mode_name", "Auto"),
-                            }
-
-                        # Add video quality
-                        vq = await loop.run_in_executor(None, modem_provider.get_video_quality_assessment)
-                        if vq and vq.get("available"):
-                            modem_data["video_quality"] = vq
-
-                        await websocket_manager.broadcast("modem_status", modem_data)
-                except Exception as e:
-                    logger.debug(f"Modem broadcast error: {e}")
+                await _broadcast_modem_status()
 
             # OpenCV status every 10 seconds
             if counter % 10 == 0:
@@ -407,11 +433,7 @@ def auto_connect_vpn():
 
         vpn_config = prefs.get_vpn_config()
 
-        # Check enabled AND auto_connect
-        if not vpn_config.get("enabled", False):
-            logger.info(" VPN not enabled in preferences")
-            return
-
+        # Check only auto_connect (enabled is for manual state persistence)
         if not vpn_config.get("auto_connect", False):
             logger.info(" VPN auto-connect disabled in preferences")
             return
@@ -734,10 +756,7 @@ async def startup_event():
                     logger.warning(" Video service not available for auto-start")
                     return
 
-                if not video_service.is_available():
-                    logger.warning(" No video devices available for auto-start")
-                    return
-
+                # Don't check is_available() - let start() handle device auto-detection
                 logger.info(" Attempting to auto-start video stream...")
                 result = video_service.start()
 
