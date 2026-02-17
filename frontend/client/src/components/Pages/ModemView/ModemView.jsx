@@ -6,6 +6,7 @@ import { useModal } from '../../../contexts/ModalContext'
 import { useWebSocket } from '../../../contexts/WebSocketContext'
 import api from '../../../services/api'
 import { MODEM_API_TIMEOUTS, REBOOT_CONFIG } from './modemConstants'
+import { formatBitrate } from '../../../utils/formatters'
 
 const ModemView = () => {
   const { t } = useTranslation()
@@ -386,7 +387,9 @@ const ModemView = () => {
                 <div className="kpi-content">
                   <div className={`quality-badge ${getQualityColorClass(videoQuality.quality)}`}>
                     <span className="quality-text">{videoQuality.label}</span>
-                    <span className="quality-bitrate">{videoQuality.max_bitrate_kbps} kbps</span>
+                    <span className="quality-bitrate">
+                      {formatBitrate(videoQuality.max_bitrate_kbps)}
+                    </span>
                   </div>
                   <div className="quality-rec">
                     {t('modem.resolution')}: <strong>{videoQuality.recommended_resolution}</strong>

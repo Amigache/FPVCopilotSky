@@ -191,6 +191,28 @@ async def get_network_status():
     wifi_interface = await detect_wifi_interface()
     wifi_connected = any(i["type"] == "wifi" and i["state"] == "UP" for i in interfaces)
 
+    # Determine current network mode based on primary interface
+    primary_interface = routes[0]["interface"] if routes else None
+    mode = "unknown"
+
+    if primary_interface:
+        # Find the interface in our interfaces list to get its type
+        for iface in interfaces:
+            if iface["name"] == primary_interface:
+                iface_type = iface.get("type")
+                if iface_type == "wifi":
+                    mode = "wifi"
+                elif iface_type == "modem":
+                    mode = "modem"
+                break
+
+        # Fallback: determine by interface name if not found in interfaces list
+        if mode == "unknown":
+            if primary_interface.startswith(("wlan", "wl")):
+                mode = "wifi"
+            elif primary_interface.startswith(("enx", "usb", "wwan")) or modem_info["detected"]:
+                mode = "modem"
+
     # Build status
     status = {
         "interfaces": interfaces,
@@ -201,7 +223,8 @@ async def get_network_status():
             "interface": wifi_interface,
         },
         "modem": modem_info,
-        "primary_interface": routes[0]["interface"] if routes else None,
+        "primary_interface": primary_interface,
+        "mode": mode,  # Add mode field for frontend
     }
 
     # Cache it using CacheService (2 second TTL)
@@ -394,6 +417,8 @@ async def set_priority_mode(request: PriorityModeRequest):
                     routes_changed.append(f"Modem metric set to {modem_metric}")
 
         if routes_changed:
+            # Invalidate network_status cache to force recalculation of mode
+            _cache.invalidate("network_status")
             return {"success": True, "mode": mode, "changes": routes_changed, "message": f"Priority set to {mode} mode"}
         else:
             return {"success": False, "message": "No routes could be modified"}

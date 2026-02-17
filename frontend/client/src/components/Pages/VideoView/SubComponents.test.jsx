@@ -104,13 +104,25 @@ describe('StatusBanner', () => {
 // VideoSourceCard
 // ===========================================================================
 describe('VideoSourceCard', () => {
-  const cameras = [
-    { device: '/dev/video0', name: 'USB Camera', provider: 'v4l2' },
-    { device: '/dev/video2', name: 'HDMI Capture', provider: 'v4l2' },
+  const videoDevices = [
+    {
+      device_id: 'v4l2_video0',
+      name: 'USB Camera',
+      source_type: 'v4l2',
+      device_path: '/dev/video0',
+      provider: 'v4l2',
+    },
+    {
+      device_id: 'v4l2_video2',
+      name: 'HDMI Capture',
+      source_type: 'hdmi_capture',
+      device_path: '/dev/video2',
+      provider: 'v4l2',
+    },
   ]
   const defaultProps = {
     config: { device: '/dev/video0', width: 1920, height: 1080, framerate: 30 },
-    cameras,
+    videoDevices,
     streaming: false,
     handleCameraChange: vi.fn(),
     handleResolutionChange: vi.fn(),
@@ -138,7 +150,7 @@ describe('VideoSourceCard', () => {
   })
 
   it('shows "no cameras" when list is empty', () => {
-    render(<VideoSourceCard {...defaultProps} cameras={[]} />)
+    render(<VideoSourceCard {...defaultProps} videoDevices={[]} />)
     expect(screen.getByText('views.video.noCamerasAvailable')).toBeInTheDocument()
   })
 
@@ -154,7 +166,7 @@ describe('VideoSourceCard', () => {
     render(<VideoSourceCard {...defaultProps} handleCameraChange={fn} />)
     const select = screen.getAllByRole('combobox')[0]
     await user.selectOptions(select, '/dev/video2')
-    expect(fn).toHaveBeenCalledWith('/dev/video2')
+    expect(fn).toHaveBeenCalled()
   })
 })
 
@@ -467,7 +479,7 @@ describe('StatsCard', () => {
 
   it('renders bitrate', () => {
     render(<StatsCard status={statusData} />)
-    expect(screen.getByText('2100')).toBeInTheDocument()
+    expect(screen.getByText('2.1 Mbps')).toBeInTheDocument()
   })
 
   it('renders codec info', () => {

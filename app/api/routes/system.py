@@ -224,3 +224,22 @@ async def get_board_info(request: Request):
             "message": translate("system.board_info_error", lang, error=str(e)),
             "data": None,
         }
+
+
+@router.get("/video-devices")
+async def get_video_devices():
+    """Get all detected video devices with capabilities from all source providers"""
+    from app.services.video_device_service import get_video_device_service
+
+    service = get_video_device_service()
+    return service.get_scan_info()
+
+
+@router.post("/video-devices/scan")
+async def rescan_video_devices():
+    """Force a rescan of all video devices"""
+    from app.services.video_device_service import get_video_device_service
+
+    service = get_video_device_service()
+    service.scan_devices()
+    return service.get_scan_info()

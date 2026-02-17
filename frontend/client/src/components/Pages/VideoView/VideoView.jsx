@@ -21,7 +21,8 @@ const VideoView = () => {
 
   // ── State ──────────────────────────────────────────────────────────────────
   const [loading, setLoading] = useState(true)
-  const [cameras, setCameras] = useState([])
+  const [videoDevices, setVideoDevices] = useState([])
+  const [systemCodecs, setSystemCodecs] = useState([])
   const [availableCodecs, setAvailableCodecs] = useState([])
   const [config, setConfig] = useState({
     device: VIDEO_DEFAULTS.DEVICE,
@@ -62,11 +63,11 @@ const VideoView = () => {
 
   // ── Payload builder ────────────────────────────────────────────────────────
   const buildVideoConfigPayload = useCallback(() => {
-    const camera = cameras.find((cam) => cam.device === config.device)
+    const device = videoDevices.find((d) => d.device_path === config.device)
     return {
       device: config.device,
-      device_name: camera?.name || '',
-      device_bus_info: camera?.bus_info || '',
+      device_name: device?.name || '',
+      device_bus_info: device?.bus_info || '',
       width: safeInt(config.width, VIDEO_DEFAULTS.WIDTH),
       height: safeInt(config.height, VIDEO_DEFAULTS.HEIGHT),
       framerate: safeInt(config.framerate, VIDEO_DEFAULTS.FRAMERATE),
@@ -75,7 +76,7 @@ const VideoView = () => {
       h264_bitrate: safeInt(config.h264_bitrate, VIDEO_DEFAULTS.H264_BITRATE),
       gop_size: safeInt(config.gop_size, VIDEO_DEFAULTS.GOP_SIZE),
     }
-  }, [cameras, config])
+  }, [videoDevices, config])
 
   // ── WebSocket status ───────────────────────────────────────────────────────
   const status = messages.video_status || EMPTY_STATUS
@@ -84,7 +85,6 @@ const VideoView = () => {
   // Sync remote config → local when no pending changes
   useEffect(() => {
     if (messages.video_status?.config && !hasChanges) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setConfig((prev) => ({ ...prev, ...messages.video_status.config }))
       initialLoadDone.current = true
     }
@@ -104,15 +104,15 @@ const VideoView = () => {
   }, [])
 
   // ── Data loading ───────────────────────────────────────────────────────────
-  const loadCameras = useCallback(async () => {
+  const loadVideoDevices = useCallback(async () => {
     try {
-      const response = await api.get('/api/video/cameras')
+      const response = await api.get('/api/system/video-devices')
       if (response.ok) {
         const data = await response.json()
-        setCameras(data.cameras || [])
+        setVideoDevices(data.devices || [])
       }
     } catch (error) {
-      console.error('Error loading cameras:', error)
+      console.error('Error loading video devices:', error)
     }
   }, [])
 
@@ -121,16 +121,7 @@ const VideoView = () => {
       const response = await api.get('/api/video/codecs')
       if (response.ok) {
         const data = await response.json()
-        setAvailableCodecs(data.codecs || [])
-        if (data.codecs.length > 0) {
-          setConfig((prev) => {
-            const currentCodecAvailable = data.codecs.some((c) => c.id === prev.codec)
-            if (!currentCodecAvailable) {
-              return { ...prev, codec: data.codecs[0].id }
-            }
-            return prev
-          })
-        }
+        setSystemCodecs(data.codecs || [])
       }
     } catch (error) {
       console.error('Error loading codecs:', error)
@@ -165,11 +156,16 @@ const VideoView = () => {
   useEffect(() => {
     const loadData = async () => {
       setLoading(true)
-      await Promise.all([loadCameras(), loadCodecs(), loadNetworkIp(), loadAutoAdaptiveBitrate()])
+      await Promise.all([
+        loadVideoDevices(),
+        loadCodecs(),
+        loadNetworkIp(),
+        loadAutoAdaptiveBitrate(),
+      ])
       setLoading(false)
     }
     loadData()
-  }, [loadCameras, loadCodecs, loadNetworkIp, loadAutoAdaptiveBitrate])
+  }, [loadVideoDevices, loadCodecs, loadNetworkIp, loadAutoAdaptiveBitrate])
 
   // RTSP mode: auto-populate URL + reload network IP (merged from two effects)
   useEffect(() => {
@@ -177,7 +173,6 @@ const VideoView = () => {
       if (networkIp) {
         const isDefaultUrl = config.rtsp_url === VIDEO_DEFAULTS.RTSP_URL || !config.rtsp_url
         if (isDefaultUrl && networkIp.rtsp_url) {
-          // eslint-disable-next-line react-hooks/set-state-in-effect
           updateConfig((prev) => ({ ...prev, rtsp_url: networkIp.rtsp_url }))
         }
       }
@@ -355,67 +350,97 @@ const VideoView = () => {
   )
 
   // ── Memoized derived values ────────────────────────────────────────────────
-  const currentCamera = useMemo(
-    () => cameras.find((cam) => cam.device === config.device) || cameras[0],
-    [cameras, config.device]
+  const currentDevice = useMemo(
+    () => videoDevices.find((d) => d.device_path === config.device) || videoDevices[0],
+    [videoDevices, config.device]
   )
 
-  const availableResolutions = useMemo(() => currentCamera?.resolutions || [], [currentCamera])
+  const availableResolutions = useMemo(() => currentDevice?.resolutions || [], [currentDevice])
 
   const currentResolution = `${config.width}x${config.height}`
 
   const availableFps = useMemo(
-    () => currentCamera?.resolutions_fps?.[currentResolution] || FALLBACK_FPS,
-    [currentCamera, currentResolution]
+    () => currentDevice?.fps_by_resolution?.[currentResolution] || FALLBACK_FPS,
+    [currentDevice, currentResolution]
   )
 
-  // Auto-select first camera if configured device doesn't exist
+  // Derive available codecs from the selected device's compatible_codecs + system codecs
   useEffect(() => {
-    if (cameras.length > 0 && !cameras.find((cam) => cam.device === config.device)) {
-      const firstCam = cameras[0]
-      if (firstCam.resolutions?.length > 0) {
-        const firstRes = firstCam.resolutions[0]
+    if (!currentDevice || systemCodecs.length === 0) return
+
+    const deviceCodecs = currentDevice.compatible_codecs || []
+    const compatibleIds = new Set(deviceCodecs.filter((c) => c.compatible).map((c) => c.codec_id))
+
+    // Filter system codecs to only those compatible with this device
+    const filtered = systemCodecs.filter((c) => compatibleIds.has(c.id))
+
+    setAvailableCodecs(filtered)
+
+    // Determine best codec for this device:
+    // - Prefer passthrough for H264-capable cameras (ultra-low latency)
+    // - Otherwise keep current codec if compatible, else switch to first compatible
+    if (filtered.length > 0) {
+      const hasPassthrough = deviceCodecs.some(
+        (c) => c.codec_id === 'h264_passthrough' && c.compatible
+      )
+      const passthroughCodec = filtered.find((c) => c.id === 'h264_passthrough')
+      const currentCompatible = filtered.some((c) => c.id === config.codec)
+
+      if (hasPassthrough && passthroughCodec && config.codec !== 'h264_passthrough') {
+        setConfig((prev) => ({ ...prev, codec: 'h264_passthrough' }))
+      } else if (!currentCompatible) {
+        setConfig((prev) => ({ ...prev, codec: filtered[0].id }))
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentDevice, systemCodecs])
+
+  // Auto-select first device if configured device doesn't exist
+  useEffect(() => {
+    if (videoDevices.length > 0 && !videoDevices.find((d) => d.device_path === config.device)) {
+      const firstDev = videoDevices[0]
+      if (firstDev.resolutions?.length > 0) {
+        const firstRes = firstDev.resolutions[0]
         const [w, h] = firstRes.split('x')
-        const fps = firstCam.resolutions_fps?.[firstRes]?.[0] || VIDEO_DEFAULTS.FRAMERATE
-        // eslint-disable-next-line react-hooks/set-state-in-effect
+        const fps = firstDev.fps_by_resolution?.[firstRes]?.[0] || VIDEO_DEFAULTS.FRAMERATE
         setConfig((prev) => ({
           ...prev,
-          device: firstCam.device,
+          device: firstDev.device_path,
           width: safeInt(w, VIDEO_DEFAULTS.WIDTH),
           height: safeInt(h, VIDEO_DEFAULTS.HEIGHT),
           framerate: fps,
         }))
       }
     }
-  }, [cameras, config.device])
+  }, [videoDevices, config.device])
 
   // Handle camera change — reset to first available resolution
   const handleCameraChange = useCallback(
-    (device) => {
-      const camera = cameras.find((cam) => cam.device === device)
-      if (camera?.resolutions?.length > 0) {
-        const firstRes = camera.resolutions[0]
+    (devicePath) => {
+      const device = videoDevices.find((d) => d.device_path === devicePath)
+      if (device?.resolutions?.length > 0) {
+        const firstRes = device.resolutions[0]
         const [w, h] = firstRes.split('x')
-        const fps = camera.resolutions_fps?.[firstRes]?.[0] || VIDEO_DEFAULTS.FRAMERATE
+        const fps = device.fps_by_resolution?.[firstRes]?.[0] || VIDEO_DEFAULTS.FRAMERATE
         updateConfig((prev) => ({
           ...prev,
-          device,
+          device: devicePath,
           width: safeInt(w, VIDEO_DEFAULTS.WIDTH),
           height: safeInt(h, VIDEO_DEFAULTS.HEIGHT),
           framerate: fps,
         }))
       } else {
-        updateConfig((prev) => ({ ...prev, device }))
+        updateConfig((prev) => ({ ...prev, device: devicePath }))
       }
     },
-    [cameras, updateConfig]
+    [videoDevices, updateConfig]
   )
 
   // Handle resolution change — reset to first available FPS
   const handleResolutionChange = useCallback(
     (resolution) => {
       const [w, h] = resolution.split('x')
-      const fps = currentCamera?.resolutions_fps?.[resolution]?.[0] || VIDEO_DEFAULTS.FRAMERATE
+      const fps = currentDevice?.fps_by_resolution?.[resolution]?.[0] || VIDEO_DEFAULTS.FRAMERATE
       updateConfig((prev) => ({
         ...prev,
         width: safeInt(w, VIDEO_DEFAULTS.WIDTH),
@@ -423,7 +448,7 @@ const VideoView = () => {
         framerate: fps,
       }))
     },
-    [currentCamera, updateConfig]
+    [currentDevice, updateConfig]
   )
 
   // Pipeline string from backend (no more client-side duplication)
@@ -460,7 +485,7 @@ const VideoView = () => {
         <div className="video-col">
           <VideoSourceCard
             config={config}
-            cameras={cameras}
+            videoDevices={videoDevices}
             streaming={status.streaming}
             handleCameraChange={handleCameraChange}
             handleResolutionChange={handleResolutionChange}

@@ -137,7 +137,7 @@ class VideoConfig:
     h264_bitrate: int = 2000  # kbps
     h264_preset: str = "ultrafast"  # ultrafast, superfast, veryfast
     h264_tune: str = "zerolatency"
-    gop_size: int = 2  # OpenH264: keyframe interval in frames (for low latency)
+    gop_size: int = 15  # Keyframe interval (IDR frames). 15=0.25s@60fps, good for WiFi/UDP
 
     # Buffer tuning
     max_latency_ms: int = 50

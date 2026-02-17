@@ -260,6 +260,10 @@ class V4L2CameraSource(VideoSourceProvider):
             # Use MJPEG by default (best for USB cameras, low CPU)
             pixel_format = config.get("format", caps.get("default_format", "MJPEG"))
 
+            # Reset V4L2 controls to defaults (brightness, contrast, etc.)
+            # Prevents stale values from degrading image when switching cameras
+            self._reset_controls_to_defaults(source_id)
+
             # Map common format names to GStreamer caps format
             format_mapping = {
                 "MJPEG": "image/jpeg",
@@ -274,12 +278,30 @@ class V4L2CameraSource(VideoSourceProvider):
             # Build caps filter string
             caps_str = f"{gst_format},width={width},height={height},framerate={framerate}/1"
 
+            # v4l2src properties
+            src_props = {"device": source_id, "do-timestamp": True}
+
+            # For H264 cameras: request repeat-sequence-header if available,
+            # and set extra-controls to help with UVC H264 compliance issues
+            if pixel_format == "H264":
+                try:
+                    # Try to set repeat_sequence_header (SPS/PPS with every IDR)
+                    result = subprocess.run(
+                        ["v4l2-ctl", "-d", source_id, "-c", "repeat_sequence_header=1"],
+                        capture_output=True,
+                        timeout=2,
+                    )
+                    if result.returncode == 0:
+                        logger.info(f"Enabled repeat_sequence_header on {source_id}")
+                except Exception:
+                    pass
+
             return {
                 "success": True,
                 "source_element": {
                     "name": "source",
                     "element": "v4l2src",
-                    "properties": {"device": source_id, "do-timestamp": True},
+                    "properties": src_props,
                 },
                 "caps_filter": caps_str,
                 "post_elements": [],  # No additional elements needed after source
@@ -290,6 +312,38 @@ class V4L2CameraSource(VideoSourceProvider):
         except Exception as e:
             logger.error(f"Failed to build source element for {source_id}: {e}")
             return {"success": False, "error": str(e)}
+
+    def _reset_controls_to_defaults(self, device: str):
+        """Reset V4L2 camera controls (brightness, contrast, etc.) to defaults."""
+        try:
+            result = subprocess.run(
+                ["v4l2-ctl", "-d", device, "--list-ctrls"],
+                capture_output=True,
+                text=True,
+                timeout=3,
+            )
+            if result.returncode != 0:
+                return
+
+            for line in result.stdout.split("\n"):
+                # Parse: "brightness 0x00980900 (int) : min=0 max=200 step=1 default=100 value=6"
+                match = re.match(
+                    r"\s*(\w+)\s+0x[0-9a-f]+\s+\(\w+\)\s*:.*default=(\d+)\s+value=(\d+)",
+                    line,
+                )
+                if match:
+                    ctrl_name = match.group(1)
+                    default_val = match.group(2)
+                    current_val = match.group(3)
+                    if current_val != default_val:
+                        subprocess.run(
+                            ["v4l2-ctl", "-d", device, "-c", f"{ctrl_name}={default_val}"],
+                            capture_output=True,
+                            timeout=2,
+                        )
+                        logger.info(f"Reset {ctrl_name} to default {default_val} (was {current_val})")
+        except Exception as e:
+            logger.debug(f"Could not reset controls for {device}: {e}")
 
     def validate_config(self, source_id: str, config: Dict) -> Dict[str, Any]:
         """

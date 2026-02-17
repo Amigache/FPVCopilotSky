@@ -1196,6 +1196,11 @@ class NetworkEventBridge:
             for e in self._events[-last_n:]
         ]
 
+    def clear_events(self):
+        """Clear event history (useful when changing network mode)"""
+        self._events.clear()
+        logger.info("Event history cleared")
+
 
 # ======================
 # Global Instance

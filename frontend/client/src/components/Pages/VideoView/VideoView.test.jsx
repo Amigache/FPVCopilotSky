@@ -12,7 +12,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 // ---------- Hoisted mocks (accessible inside vi.mock factories) ----------
 const { mockMessages, mockApi } = vi.hoisted(() => {
   const routeData = {
-    '/api/video/cameras': { cameras: [] },
+    '/api/system/video-devices': { devices: [], count: 0, last_scan: null },
     '/api/video/codecs': { codecs: [] },
     '/api/video/network/ip': { ip: '127.0.0.1', rtsp_url: 'rtsp://127.0.0.1:8554/stream' },
   }
@@ -155,10 +155,10 @@ describe('VideoView Component', () => {
   })
 
   describe('Data Loading', () => {
-    it('calls /api/video/cameras on mount', async () => {
+    it('calls /api/system/video-devices on mount', async () => {
       render(<VideoView />)
       await waitFor(() => {
-        expect(mockApi.get).toHaveBeenCalledWith('/api/video/cameras')
+        expect(mockApi.get).toHaveBeenCalledWith('/api/system/video-devices')
       })
     })
 

@@ -76,7 +76,7 @@ class X264Encoder(VideoEncoderProvider):
             "latency_estimate": "medium",  # ~60-80ms
             "cpu_usage": "medium-high",  # ~40-60% on 720p30
             "priority": self.priority,
-            "description": "Balance entre calidad y latencia. Mejor compresión que MJPEG.",
+            "description": "Balance entre calidad y latencia. Optimizado para WiFi/UDP con GOP corto.",
         }
 
     def build_pipeline_elements(self, config: Dict) -> Dict:
@@ -101,6 +101,10 @@ class X264Encoder(VideoEncoderProvider):
             bitrate = config.get("bitrate", 2000)
             opencv_enabled = config.get("opencv_enabled", False)
             source_format = config.get("source_format", "image/jpeg")  # Get source format
+
+            # GOP size (keyframe interval) - default 15 frames (good for WiFi/UDP)
+            # Lower = faster recovery from packet loss, higher = better compression
+            gop_size = config.get("gop_size", 15)
 
             elements = []
 
@@ -158,7 +162,7 @@ class X264Encoder(VideoEncoderProvider):
                             "bitrate": bitrate,
                             "speed-preset": "ultrafast",
                             "tune": 0x00000004,  # zerolatency
-                            "key-int-max": framerate,
+                            "key-int-max": gop_size,  # Use configured GOP size (WiFi-friendly)
                             "bframes": 0,
                             "threads": 4,
                             "sliced-threads": True,

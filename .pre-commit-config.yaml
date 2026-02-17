@@ -30,7 +30,7 @@ repos:
     rev: 7.0.0
     hooks:
       - id: flake8
-        args: ['--max-line-length=120', '--extend-ignore=E203,W503']
+        args: ['--max-line-length=120', '--max-complexity=35', '--extend-ignore=E203,W503']
         exclude: ^(htmlcov/|venv/|__pycache__/)
 
   # JavaScript/TypeScript formatting (frontend)
@@ -40,3 +40,13 @@ repos:
       - id: prettier
         files: \.(js|jsx|ts|tsx|json|css|md)$
         exclude: ^(node_modules/|htmlcov/|venv/)
+
+  # JavaScript/TypeScript linting (frontend)
+  - repo: local
+    hooks:
+      - id: eslint-frontend
+        name: eslint-frontend
+        entry: bash -c 'cd frontend/client && npm run lint'
+        language: system
+        files: ^frontend/client/.*\.(js|jsx)$
+        pass_filenames: false

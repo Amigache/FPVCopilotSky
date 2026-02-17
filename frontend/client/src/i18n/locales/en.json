@@ -348,7 +348,20 @@
       "autoAdaptiveWarning": "With auto-adaptation disabled, you must manually control bitrate from the video view.",
       "autoAdaptiveEnabled": "Auto-adaptive bitrate enabled",
       "autoAdaptiveDisabled": "Auto-adaptive bitrate disabled",
-      "errorSavingSettings": "Error saving settings"
+      "errorSavingSettings": "Error saving settings",
+      "videoDevices": "Video Devices",
+      "noVideoDevices": "No video devices detected",
+      "rescan": "Rescan",
+      "activeDevice": "Active",
+      "vdDriver": "Driver",
+      "vdBusInfo": "Bus",
+      "vdProvider": "Provider",
+      "vdFormats": "Formats",
+      "vdResolutions": "Resolutions",
+      "vdFpsByRes": "FPS by Resolution",
+      "vdResByFormat": "Resolutions by Format",
+      "vdCodecs": "Compatible Codecs",
+      "vdCodecIncompatible": "Not compatible with this device"
     }
   },
   "router": {
