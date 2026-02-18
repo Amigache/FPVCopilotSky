@@ -181,24 +181,22 @@ echo ""
 # ============================================
 echo -e "${BLUE}📝 Sudoers Files${NC}"
 
-if [ -f "/etc/sudoers.d/fpvcopilot-wifi" ]; then
-    echo -e "${GREEN}✓ /etc/sudoers.d/fpvcopilot-wifi${NC}"
+if [ -f "/etc/sudoers.d/fpvcopilot-sky" ]; then
+    echo -e "${GREEN}✅ /etc/sudoers.d/fpvcopilot-sky (unified)${NC}"
 else
-    echo -e "${YELLOW}⚠️  /etc/sudoers.d/fpvcopilot-wifi missing${NC}"
-    ((WARNINGS++))
-fi
-
-if [ -f "/etc/sudoers.d/fpvcopilot-system" ]; then
-    echo -e "${GREEN}✓ /etc/sudoers.d/fpvcopilot-system${NC}"
-else
-    echo -e "${YELLOW}⚠️  /etc/sudoers.d/fpvcopilot-system missing${NC}"
-    ((WARNINGS++))
-fi
-
-if [ -f "/etc/sudoers.d/tailscale" ]; then
-    echo -e "${GREEN}✓ /etc/sudoers.d/tailscale${NC}"
-else
-    echo -e "${YELLOW}⚠️  /etc/sudoers.d/tailscale missing (VPN optional)${NC}"
+    # Check for legacy split files
+    LEGACY_COUNT=0
+    for f in /etc/sudoers.d/fpvcopilot-wifi /etc/sudoers.d/fpvcopilot-system /etc/sudoers.d/tailscale; do
+        [ -f "$f" ] && ((LEGACY_COUNT++))
+    done
+    if [ $LEGACY_COUNT -gt 0 ]; then
+        echo -e "${YELLOW}⚠️  Found $LEGACY_COUNT legacy sudoers file(s) — run: sudo bash scripts/setup-sudoers.sh${NC}"
+        ((WARNINGS++))
+    else
+        echo -e "${RED}❌ /etc/sudoers.d/fpvcopilot-sky missing - CRITICAL${NC}"
+        echo -e "   Fix: sudo bash scripts/setup-sudoers.sh"
+        ((CRITICAL_FAILURES++))
+    fi
 fi
 
 echo ""

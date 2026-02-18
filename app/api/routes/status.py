@@ -13,6 +13,10 @@ router = APIRouter(prefix="/api/status", tags=["status"])
 # Cache service instance for expensive operations
 _cache = get_cache_service()
 
+# Project root directory (dynamically determined from this file's location)
+# status.py is at app/api/routes/ so go up 3 levels to reach project root
+PROJECT_ROOT = Path(__file__).parents[3]
+
 
 def check_python_dependencies():
     """Check if all Python dependencies are installed.
@@ -25,7 +29,7 @@ def check_python_dependencies():
         return cached
 
     try:
-        requirements_path = Path(__file__).parents[3] / "requirements.txt"
+        requirements_path = PROJECT_ROOT / "requirements.txt"
         if not requirements_path.exists():
             result = {"status": "warning", "message": "requirements.txt not found"}
             _cache.set("python_dependencies", result, ttl=1800)
@@ -80,13 +84,13 @@ def check_npm_dependencies():
         return cached
 
     try:
-        package_json = Path("/opt/FPVCopilotSky/frontend/client/package.json")
+        package_json = PROJECT_ROOT / "frontend/client/package.json"
         if not package_json.exists():
             result = {"status": "warning", "message": "Frontend not available"}
             _cache.set("npm_dependencies", result, ttl=1800)
             return result
 
-        node_modules = Path("/opt/FPVCopilotSky/frontend/client/node_modules")
+        node_modules = PROJECT_ROOT / "frontend/client/node_modules"
 
         if node_modules.exists() and len(list(node_modules.iterdir())) > 0:
             result = {"status": "ok", "message": "All dependencies installed"}
@@ -156,8 +160,8 @@ def get_user_permissions():
             "groups": [grp.getgrgid(g).gr_name for g in os.getgroups()],
             "home": user.pw_dir,
             "is_root": uid == 0,
-            "can_write_opt": os.access("/opt/FPVCopilotSky", os.W_OK),
-            "can_read_opt": os.access("/opt/FPVCopilotSky", os.R_OK),
+            "can_write_opt": os.access(str(PROJECT_ROOT), os.W_OK),
+            "can_read_opt": os.access(str(PROJECT_ROOT), os.R_OK),
             "sudoers": sudoers_list,
         }
 
@@ -188,7 +192,7 @@ def check_system_info():
 def get_app_version():
     """Get app version from pyproject.toml."""
     try:
-        pyproject_path = Path("/opt/FPVCopilotSky/pyproject.toml")
+        pyproject_path = PROJECT_ROOT / "pyproject.toml"
         if pyproject_path.exists():
             import re
 
@@ -208,7 +212,7 @@ def get_app_version():
 def get_frontend_version():
     """Get frontend version from package.json."""
     try:
-        package_json_path = Path("/opt/FPVCopilotSky/frontend/client/package.json")
+        package_json_path = PROJECT_ROOT / "frontend/client/package.json"
         if package_json_path.exists():
             import json
 
@@ -225,7 +229,7 @@ def get_frontend_version():
 def get_node_version():
     """Get Node.js version from the runtime if available."""
     try:
-        result = subprocess.run(["node", "-v"], capture_output=True, text=True, check=True)
+        result = subprocess.run(["node", "-v"], capture_output=True, text=True, check=True, timeout=5)
         version = result.stdout.strip()
         if version.startswith("v"):
             version = version[1:]

@@ -534,3 +534,38 @@ async def set_auto_adaptive_bitrate(request: Request):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/config/auto-adaptive-resolution")
+async def get_auto_adaptive_resolution():
+    """Get auto-adaptive resolution configuration"""
+    prefs = get_preferences()
+    enabled = prefs.get_auto_adaptive_resolution()
+
+    return {
+        "enabled": enabled,
+        "description": (
+            "Auto-adaptive resolution downscales video when network quality drops severely. "
+            "Works together with bitrate adaptation to maintain smooth streaming. "
+            "Disable if you need fixed resolution regardless of connection quality."
+        ),
+    }
+
+
+@router.post("/config/auto-adaptive-resolution")
+async def set_auto_adaptive_resolution(request: Request):
+    """Enable or disable auto-adaptive resolution"""
+    try:
+        body = await request.json()
+        enabled = body.get("enabled", True)
+
+        prefs = get_preferences()
+        prefs.set_auto_adaptive_resolution(enabled)
+
+        return {
+            "success": True,
+            "enabled": enabled,
+            "message": f"Auto-adaptive resolution {'enabled' if enabled else 'disabled'}.",
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

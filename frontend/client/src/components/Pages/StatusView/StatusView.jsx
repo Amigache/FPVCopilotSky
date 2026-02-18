@@ -32,6 +32,10 @@ const StatusView = () => {
   const [autoAdaptiveBitrate, setAutoAdaptiveBitrate] = useState(true)
   const [savingBitrateSetting, setSavingBitrateSetting] = useState(false)
 
+  // Auto-adaptive resolution state
+  const [autoAdaptiveResolution, setAutoAdaptiveResolution] = useState(true)
+  const [savingResolutionSetting, setSavingResolutionSetting] = useState(false)
+
   // Track previous armed state for edge detection
   const [prevArmed, setPrevArmed] = useState(false)
 
@@ -287,6 +291,18 @@ const StatusView = () => {
     }
   }
 
+  const loadAutoAdaptiveResolution = async () => {
+    try {
+      const response = await api.get('/api/video/config/auto-adaptive-resolution')
+      if (response.ok) {
+        const data = await response.json()
+        setAutoAdaptiveResolution(data.enabled)
+      }
+    } catch (error) {
+      console.error('Error loading auto-adaptive resolution setting:', error)
+    }
+  }
+
   const handleToggleAutoAdaptive = async (enabled) => {
     setSavingBitrateSetting(true)
     try {
@@ -313,6 +329,38 @@ const StatusView = () => {
       )
     } finally {
       setSavingBitrateSetting(false)
+    }
+  }
+
+  const handleToggleAutoAdaptiveResolution = async (enabled) => {
+    setSavingResolutionSetting(true)
+    try {
+      const response = await api.post('/api/video/config/auto-adaptive-resolution', { enabled })
+      if (response.ok) {
+        setAutoAdaptiveResolution(enabled)
+        showToast(
+          enabled
+            ? t('status.preferences.autoResolutionEnabled', 'Auto-ajuste de resolución activado')
+            : t(
+                'status.preferences.autoResolutionDisabled',
+                'Auto-ajuste de resolución desactivado'
+              ),
+          'success'
+        )
+      } else {
+        showToast(
+          t('status.preferences.errorSavingSettings', 'Error al guardar configuración'),
+          'error'
+        )
+      }
+    } catch (error) {
+      console.error('Error toggling auto-adaptive resolution:', error)
+      showToast(
+        t('status.preferences.errorSavingSettings', 'Error al guardar configuración'),
+        'error'
+      )
+    } finally {
+      setSavingResolutionSetting(false)
     }
   }
 
@@ -397,6 +445,7 @@ const StatusView = () => {
     loadFlightSession()
     loadFlightPreferences()
     loadAutoAdaptiveBitrate()
+    loadAutoAdaptiveResolution()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -815,6 +864,31 @@ const StatusView = () => {
                   {t(
                     'status.preferences.autoAdaptiveWarning',
                     'Con el auto-ajuste desactivado, deberás controlar manualmente el bitrate desde la vista de vídeo.'
+                  )}
+                </p>
+              )}
+            </div>
+
+            {/* Auto-adaptive resolution toggle */}
+            <div className="preference-item">
+              <Toggle
+                checked={autoAdaptiveResolution}
+                onChange={(e) => handleToggleAutoAdaptiveResolution(e.target.checked)}
+                disabled={savingResolutionSetting}
+                label={t('status.preferences.autoAdaptiveResolution', 'Auto-ajuste de Resolución')}
+              />
+              <p className="preference-description">
+                {t(
+                  'status.preferences.autoResolutionDescription',
+                  'Reduce la resolución automáticamente cuando la calidad de red cae de forma severa. Trabaja junto con el auto-ajuste de bitrate para mantener streaming fluido.'
+                )}
+              </p>
+              {!autoAdaptiveResolution && (
+                <p className="preference-warning">
+                  ⚠️{' '}
+                  {t(
+                    'status.preferences.autoResolutionWarning',
+                    'Con el auto-ajuste desactivado, la resolución permanecerá fija aunque la conexión sea débil.'
                   )}
                 </p>
               )}

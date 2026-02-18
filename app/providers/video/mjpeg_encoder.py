@@ -3,10 +3,10 @@ MJPEG Encoder Provider
 Ultra-low latency encoder using JPEG compression
 """
 
-import subprocess
 import logging
 from typing import Dict
 from ..base.video_encoder_provider import VideoEncoderProvider
+from app.utils.gstreamer import is_gst_element_available
 
 logger = logging.getLogger(__name__)
 
@@ -23,16 +23,11 @@ class MJPEGEncoder(VideoEncoderProvider):
         self.gst_encoder_element = "jpegenc"
         self.rtp_payload_type = 26  # Standard MJPEG RTP payload
         self.priority = 70  # High priority for low latency
-        self._hw_jpegdec_available = self._check_hw_jpegdec()
+        self._hw_jpegdec_available = is_gst_element_available("v4l2jpegdec")
 
     def is_available(self) -> bool:
         """Check if jpegenc is available in GStreamer"""
-        try:
-            result = subprocess.run(["gst-inspect-1.0", "jpegenc"], capture_output=True, timeout=2)
-            return result.returncode == 0
-        except Exception as e:
-            logger.error(f"Failed to check jpegenc availability: {e}")
-            return False
+        return is_gst_element_available("jpegenc")
 
     def get_capabilities(self) -> Dict:
         """Get MJPEG encoder capabilities"""
@@ -63,11 +58,7 @@ class MJPEGEncoder(VideoEncoderProvider):
     @staticmethod
     def _check_hw_jpegdec() -> bool:
         """Check if v4l2jpegdec (hardware JPEG decoder) is available."""
-        try:
-            result = subprocess.run(["gst-inspect-1.0", "v4l2jpegdec"], capture_output=True, timeout=2)
-            return result.returncode == 0
-        except Exception:
-            return False
+        return is_gst_element_available("v4l2jpegdec")
 
     def build_pipeline_elements(self, config: Dict) -> Dict:
         """

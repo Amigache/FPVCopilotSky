@@ -3,10 +3,10 @@ x264 H.264 Encoder Provider
 High-quality H.264 encoding with comprehensive tuning options
 """
 
-import subprocess
 import logging
 from typing import Dict
 from ..base.video_encoder_provider import VideoEncoderProvider
+from app.utils.gstreamer import is_gst_element_available
 
 logger = logging.getLogger(__name__)
 
@@ -19,13 +19,9 @@ def _check_v4l2jpegdec() -> bool:
     global _v4l2jpegdec_available
     if _v4l2jpegdec_available is not None:
         return _v4l2jpegdec_available
-    try:
-        result = subprocess.run(["gst-inspect-1.0", "v4l2jpegdec"], capture_output=True, timeout=2)
-        _v4l2jpegdec_available = result.returncode == 0
-        if _v4l2jpegdec_available:
-            logger.info("Hardware JPEG decoder (v4l2jpegdec) available")
-    except Exception:
-        _v4l2jpegdec_available = False
+    _v4l2jpegdec_available = is_gst_element_available("v4l2jpegdec")
+    if _v4l2jpegdec_available:
+        logger.info("Hardware JPEG decoder (v4l2jpegdec) available")
     return _v4l2jpegdec_available
 
 
@@ -45,12 +41,7 @@ class X264Encoder(VideoEncoderProvider):
 
     def is_available(self) -> bool:
         """Check if x264enc is available in GStreamer"""
-        try:
-            result = subprocess.run(["gst-inspect-1.0", "x264enc"], capture_output=True, timeout=2)
-            return result.returncode == 0
-        except Exception as e:
-            logger.error(f"Failed to check x264enc availability: {e}")
-            return False
+        return is_gst_element_available("x264enc")
 
     def get_capabilities(self) -> Dict:
         """Get x264 encoder capabilities"""
@@ -162,12 +153,13 @@ class X264Encoder(VideoEncoderProvider):
                             "bitrate": bitrate,
                             "speed-preset": "ultrafast",
                             "tune": 0x00000004,  # zerolatency
-                            "key-int-max": gop_size,  # Use configured GOP size (WiFi-friendly)
+                            "key-int-max": gop_size,
                             "bframes": 0,
                             "threads": 4,
                             "sliced-threads": True,
                             "rc-lookahead": 0,
                             "vbv-buf-capacity": 300,
+                            "sync-lookahead": 0,
                         },
                     },
                     {

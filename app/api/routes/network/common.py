@@ -41,14 +41,27 @@ class ForgetConnectionRequest(BaseModel):
 # =============================
 
 
-async def run_command(cmd: List[str]) -> tuple:
-    """Run a command asynchronously and return stdout, stderr, returncode"""
+async def run_command(cmd: List[str], timeout: float = 30) -> tuple:
+    """Run a command asynchronously and return stdout, stderr, returncode
+
+    Args:
+        cmd: Command and arguments to execute
+        timeout: Maximum seconds to wait for the command (default: 30)
+    """
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
-        stdout, stderr = await proc.communicate()
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         return stdout.decode().strip(), stderr.decode().strip(), proc.returncode
+    except asyncio.TimeoutError:
+        logger.error(f"Command {cmd} timed out after {timeout}s")
+        try:
+            proc.kill()
+            await proc.wait()
+        except ProcessLookupError:
+            pass
+        return "", f"Command timed out after {timeout}s", -1
     except Exception as e:
         logger.error(f"Error running command {cmd}: {e}")
         return "", str(e), -1

@@ -59,9 +59,130 @@ BACKEND_RUNNING=$?
 check_service nginx
 NGINX_RUNNING=$?
 
+echo -e "\n${BLUE}⚡ CPU & Performance${NC}"
+# CPU governor check
+GOV_FILE="/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor"
+if [ -f "$GOV_FILE" ]; then
+    GOV=$(cat "$GOV_FILE")
+    NUM_CORES=$(ls -d /sys/devices/system/cpu/cpu[0-9]*/cpufreq 2>/dev/null | wc -l)
+    ALL_PERF=true
+    for g in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+        if [ "$(cat "$g" 2>/dev/null)" != "performance" ]; then
+            ALL_PERF=false
+            break
+        fi
+    done
+    if $ALL_PERF; then
+        echo -e "${GREEN}✅${NC} CPU governor: performance (all $NUM_CORES cores)"
+    else
+        if [ $BACKEND_RUNNING -eq 0 ]; then
+            echo -e "${RED}❌${NC} CPU governor: $GOV (should be 'performance' while streaming)"
+            echo -e "    ${BLUE}ℹ️${NC}  Systemd ExecStartPre should set this automatically"
+            echo -e "    ${BLUE}ℹ️${NC}  Check: grep ExecStartPre /etc/systemd/system/fpvcopilot-sky.service"
+        else
+            echo -e "${GREEN}✓${NC} CPU governor: $GOV (service not running — normal)"
+        fi
+    fi
+else
+    echo -e "${YELLOW}⚠️${NC}  CPU governor: cpufreq not available"
+fi
 
+# CPU frequency
+if [ -f "/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq" ]; then
+    FREQ=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq)
+    FREQ_MHZ=$((FREQ / 1000))
+    MAX_FREQ=$(cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq 2>/dev/null)
+    MAX_MHZ=$((MAX_FREQ / 1000))
+    if [ "$FREQ" -ge "$((MAX_FREQ - 10000))" ] 2>/dev/null; then
+        echo -e "${GREEN}✓${NC} CPU frequency: ${FREQ_MHZ} MHz / ${MAX_MHZ} MHz (max)"
+    else
+        echo -e "${YELLOW}⚠️${NC}  CPU frequency: ${FREQ_MHZ} MHz / ${MAX_MHZ} MHz (not at max)"
+    fi
+fi
 
-echo -e "\n${BLUE}🌐 Network Services${NC}"
+# Systemd service configuration checks
+SYSTEMD_FILE="/etc/systemd/system/fpvcopilot-sky.service"
+if [ -f "$SYSTEMD_FILE" ]; then
+    # CPUQuota should NOT be active (it throttles multi-threaded x264enc)
+    if grep -q "^CPUQuota=" "$SYSTEMD_FILE" 2>/dev/null; then
+        QUOTA=$(grep "^CPUQuota=" "$SYSTEMD_FILE" | head -1)
+        echo -e "${RED}❌${NC} Systemd $QUOTA (throttles x264enc — should be removed)"
+        echo -e "    ${BLUE}ℹ️${NC}  Fix: redeploy with: sudo bash scripts/deploy.sh"
+    else
+        echo -e "${GREEN}✓${NC} Systemd CPUQuota: not set (correct — x264enc uses all cores)"
+    fi
+
+    # ExecStartPre governor check
+    if grep -q "ExecStartPre=.*performance" "$SYSTEMD_FILE" 2>/dev/null; then
+        echo -e "${GREEN}✓${NC} Systemd ExecStartPre: CPU governor → performance"
+    else
+        echo -e "${RED}❌${NC} Systemd ExecStartPre: CPU governor not configured"
+        echo -e "    ${BLUE}ℹ️${NC}  Fix: redeploy with: sudo bash scripts/deploy.sh"
+    fi
+
+    # ExecStopPost governor restore check
+    if grep -q "ExecStopPost=.*ondemand" "$SYSTEMD_FILE" 2>/dev/null; then
+        echo -e "${GREEN}✓${NC} Systemd ExecStopPost: CPU governor → ondemand (restore)"
+    else
+        echo -e "${YELLOW}⚠️${NC}  Systemd ExecStopPost: CPU governor restore not configured"
+    fi
+
+    # MemoryMax check
+    if grep -q "^MemoryMax=" "$SYSTEMD_FILE" 2>/dev/null; then
+        MEMMAX=$(grep "^MemoryMax=" "$SYSTEMD_FILE" | cut -d= -f2)
+        echo -e "${GREEN}✓${NC} Systemd MemoryMax: $MEMMAX"
+    fi
+
+    # Source vs deployed sync check
+    SOURCE_FILE="/opt/FPVCopilotSky/systemd/fpvcopilot-sky.service"
+    if [ -f "$SOURCE_FILE" ]; then
+        if diff -q "$SOURCE_FILE" "$SYSTEMD_FILE" > /dev/null 2>&1; then
+            echo -e "${GREEN}✓${NC} Systemd service: source and deployed are in sync"
+        else
+            echo -e "${YELLOW}⚠️${NC}  Systemd service: source differs from deployed!"
+            echo -e "    ${BLUE}ℹ️${NC}  Fix: sudo bash scripts/deploy.sh"
+        fi
+    fi
+else
+    echo -e "${RED}❌${NC} Systemd service file not found at $SYSTEMD_FILE"
+fi
+
+# Sysctl streaming optimizations
+echo -e "\n${BLUE}🔧 Kernel Tuning${NC}"
+BBR=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)
+if [ "$BBR" = "bbr" ]; then
+    echo -e "${GREEN}✓${NC} TCP congestion: BBR (optimal for 4G)"
+else
+    echo -e "${YELLOW}⚠️${NC}  TCP congestion: $BBR (should be bbr)"
+fi
+
+QDISC=$(sysctl -n net.core.default_qdisc 2>/dev/null)
+if [ "$QDISC" = "fq" ]; then
+    echo -e "${GREEN}✓${NC} Default qdisc: fq"
+else
+    echo -e "${YELLOW}⚠️${NC}  Default qdisc: $QDISC (should be fq)"
+fi
+
+RMEM=$(sysctl -n net.core.rmem_max 2>/dev/null)
+if [ "$RMEM" -ge 134217728 ] 2>/dev/null; then
+    echo -e "${GREEN}✓${NC} net.core.rmem_max: $(echo "$RMEM" | awk '{printf "%.0fMB", $1/1048576}')"
+else
+    echo -e "${YELLOW}⚠️${NC}  net.core.rmem_max: $RMEM (should be ≥128MB)"
+fi
+
+SWAP=$(sysctl -n vm.swappiness 2>/dev/null)
+if [ "$SWAP" -le 10 ] 2>/dev/null; then
+    echo -e "${GREEN}✓${NC} vm.swappiness: $SWAP"
+else
+    echo -e "${YELLOW}⚠️${NC}  vm.swappiness: $SWAP (should be ≤10 for embedded)"
+fi
+
+if [ -f "/etc/sysctl.d/99-fpv-streaming.conf" ]; then
+    echo -e "${GREEN}✓${NC} FPV streaming sysctl config present"
+else
+    echo -e "${RED}❌${NC} /etc/sysctl.d/99-fpv-streaming.conf missing"
+    echo -e "    ${BLUE}ℹ️${NC}  Fix: bash install.sh (creates sysctl config)"
+fi
 check_service NetworkManager
 check_service ModemManager
 
@@ -173,8 +294,9 @@ fi
 # Check tc (traffic control)
 if command -v tc &>/dev/null; then
     # Check if CAKE is active on any interface
-    CAKE_ACTIVE=$(tc qdisc show 2>/dev/null | grep -c "cake" || echo "0")
-    if [ "$CAKE_ACTIVE" -gt 0 ]; then
+    CAKE_ACTIVE=$(tc qdisc show 2>/dev/null | grep -c "cake" 2>/dev/null)
+    CAKE_ACTIVE=${CAKE_ACTIVE:-0}
+    if [ "$CAKE_ACTIVE" -gt 0 ] 2>/dev/null; then
         echo -e "${GREEN}✅${NC} CAKE qdisc active on $CAKE_ACTIVE interface(s)"
     else
         echo -e "${GREEN}✓${NC} tc (traffic control) available"
@@ -412,77 +534,28 @@ if [ -f "/etc/netplan/30-wifis-dhcp.yaml" ]; then
 fi
 
 echo -e "\n${BLUE}🔑 Sudo Permissions${NC}"
-# Check WiFi sudo permissions
-if [ -f "/etc/sudoers.d/fpvcopilot-wifi" ]; then
-    echo -e "${GREEN}✓${NC} WiFi management sudoers file exists"
 
-    # Test WiFi scan without password
+# Determine which sudoers file is in use
+SUDOERS_UNIFIED="/etc/sudoers.d/fpvcopilot-sky"
+if [ -f "$SUDOERS_UNIFIED" ]; then
+    echo -e "${GREEN}✅${NC} Unified sudoers file: $SUDOERS_UNIFIED"
+
+    # Functional tests
     if sudo -n iw dev wlan0 scan &>/dev/null 2>&1; then
         echo -e "${GREEN}✓${NC} WiFi scan commands work without password"
     else
         echo -e "${YELLOW}⚠️${NC}  WiFi scan commands require password"
     fi
-else
-    echo -e "${RED}❌${NC} WiFi management sudoers file missing"
-    echo -e "    ${BLUE}ℹ️${NC}  WiFi scanning functionality will require password prompts"
-    echo -e "    ${BLUE}ℹ️${NC}  Run: bash install.sh (will configure permissions)"
-fi
-# Check Tailscale sudo permissions
-if [ -f "/etc/sudoers.d/tailscale" ]; then
-    echo -e "${GREEN}✓${NC} Tailscale sudoers file exists"
 
-    # Check if sudoers file contains correct user
-    if sudo grep -q "^$USER ALL=" /etc/sudoers.d/tailscale 2>/dev/null; then
-        echo -e "${GREEN}✓${NC} Sudoers configured for user: $USER"
+    TAILSCALE_TEST=$(sudo -n tailscale status 2>&1)
+    TAILSCALE_EXIT=$?
+    if [[ $TAILSCALE_EXIT -eq 0 ]] || [[ "$TAILSCALE_TEST" =~ "Logged out" ]]; then
+        echo -e "${GREEN}✓${NC} Tailscale commands work without password"
+    else
+        echo -e "${YELLOW}⚠️${NC}  Tailscale commands may require password"
+    fi
 
-        # Test if tailscale commands work without password
-        # We capture both stdout and stderr to check if command runs without password prompt
-        TAILSCALE_TEST=$(sudo -n tailscale status 2>&1)
-        TAILSCALE_EXIT=$?
-        if [[ $TAILSCALE_EXIT -eq 0 ]] || [[ "$TAILSCALE_TEST" =~ "Logged out" ]]; then
-            echo -e "${GREEN}✓${NC} Tailscale commands work without password"
-        else
-            echo -e "${YELLOW}⚠️${NC}  Tailscale commands may require password"
-            echo -e "    ${BLUE}ℹ️${NC}  Test output: $(echo "$TAILSCALE_TEST" | head -1)"
-        fi
-    else
-        echo -e "${YELLOW}⚠️${NC}  Sudoers not configured for current user ($USER)"
-        # Check what user is configured
-        SUDO_USER=$(sudo grep "ALL=" /etc/sudoers.d/tailscale 2>/dev/null | head -1 | cut -d' ' -f1)
-        if [ ! -z "$SUDO_USER" ]; then
-            echo -e "    ${BLUE}ℹ️${NC}  Configured for: $SUDO_USER"
-        fi
-    fi
-else
-    echo -e "${RED}❌${NC} Tailscale sudoers file missing"
-    echo -e "    ${BLUE}ℹ️${NC}  VPN functionality may require password prompts"
-fi
-
-# Check network priority sudo permissions
-echo -e "${BLUE}─${NC} Network priority management:"
-if [ -f "/etc/sudoers.d/fpvcopilot-wifi" ]; then
-    # Check nmcli connection modify
-    if sudo grep -q "nmcli connection modify" /etc/sudoers.d/fpvcopilot-wifi 2>/dev/null; then
-        echo -e "${GREEN}✓${NC} nmcli connection modify permission configured"
-    else
-        echo -e "${RED}❌${NC} nmcli connection modify permission MISSING"
-        echo -e "    ${BLUE}ℹ️${NC}  Network priority switching will fail. Re-run: bash install.sh"
-    fi
-    # Check ip route
-    if sudo grep -q "ip route" /etc/sudoers.d/fpvcopilot-wifi 2>/dev/null; then
-        echo -e "${GREEN}✓${NC} ip route management permission configured"
-    else
-        echo -e "${RED}❌${NC} ip route management permission MISSING"
-        echo -e "    ${BLUE}ℹ️${NC}  Network priority switching will fail. Re-run: bash install.sh"
-    fi
-    # Check ip link
-    if sudo grep -q "ip link" /etc/sudoers.d/fpvcopilot-wifi 2>/dev/null; then
-        echo -e "${GREEN}✓${NC} ip link management permission configured"
-    else
-        echo -e "${RED}❌${NC} ip link management permission MISSING"
-        echo -e "    ${BLUE}ℹ️${NC}  Network interface management will fail. Re-run: bash install.sh"
-    fi
-    # Functional test
+    echo -e "${BLUE}─${NC} Network management:"
     if sudo -n nmcli connection show --active > /dev/null 2>&1; then
         echo -e "${GREEN}✓${NC} nmcli commands work without password"
     else
@@ -498,47 +571,56 @@ if [ -f "/etc/sudoers.d/fpvcopilot-wifi" ]; then
     else
         echo -e "${YELLOW}⚠️${NC}  ip link commands may require password"
     fi
-fi
 
-# Check system management sudo permissions
-if [ -f "/etc/sudoers.d/fpvcopilot-system" ]; then
-    echo -e "${GREEN}✓${NC} System management sudoers file exists"
-
-    # Test if systemctl commands work without password
     SYSTEMCTL_TEST=$(sudo -n systemctl status fpvcopilot-sky 2>&1)
-    SYSTEMCTL_EXIT=$?
-    if [[ $SYSTEMCTL_EXIT -eq 0 ]] || [[ "$SYSTEMCTL_TEST" =~ "Active:" ]]; then
+    if [[ $? -eq 0 ]] || [[ "$SYSTEMCTL_TEST" =~ "Active:" ]]; then
         echo -e "${GREEN}✓${NC} systemctl commands work without password"
     else
         echo -e "${YELLOW}⚠️${NC}  systemctl commands may require password"
     fi
 
-    # Test if journalctl commands work without password
     JOURNALCTL_TEST=$(sudo -n journalctl -u fpvcopilot-sky -n 1 2>&1)
-    JOURNALCTL_EXIT=$?
-    if [[ $JOURNALCTL_EXIT -eq 0 ]]; then
+    if [[ $? -eq 0 ]]; then
         echo -e "${GREEN}✓${NC} journalctl commands work without password"
     else
         echo -e "${YELLOW}⚠️${NC}  journalctl commands may require password"
     fi
 
-    # Check sysctl permissions
-    if sudo grep -q "sysctl -w" /etc/sudoers.d/fpvcopilot-system 2>/dev/null; then
-        echo -e "${GREEN}✓${NC} sysctl (network tuning) permission configured"
+    # Check restricted permissions are present (not dangerous wildcards)
+    if sudo grep -q "sysctl -w net\." "$SUDOERS_UNIFIED" 2>/dev/null; then
+        echo -e "${GREEN}✓${NC} sysctl (restricted network tuning) configured"
     else
-        echo -e "${YELLOW}⚠️${NC}  sysctl permission missing (flight mode optimization unavailable)"
+        echo -e "${YELLOW}⚠️${NC}  sysctl permission missing"
     fi
 
-    # Check ethtool permissions
-    if sudo grep -q "ethtool" /etc/sudoers.d/fpvcopilot-system 2>/dev/null; then
-        echo -e "${GREEN}✓${NC} ethtool (interface tuning) permission configured"
+    if sudo grep -q "ethtool" "$SUDOERS_UNIFIED" 2>/dev/null; then
+        echo -e "${GREEN}✓${NC} ethtool (restricted WoL disable) configured"
     else
-        echo -e "${YELLOW}⚠️${NC}  ethtool permission missing (interface optimization unavailable)"
+        echo -e "${YELLOW}⚠️${NC}  ethtool permission missing"
+    fi
+
+    # Warn about dangerous legacy entries
+    if sudo grep -q "tee \*" "$SUDOERS_UNIFIED" 2>/dev/null; then
+        echo -e "${RED}❌${NC} DANGEROUS: 'tee *' wildcard found — re-run: sudo bash scripts/setup-sudoers.sh"
+    fi
+    if sudo grep -qP "sysctl -w \*$" "$SUDOERS_UNIFIED" 2>/dev/null; then
+        echo -e "${RED}❌${NC} DANGEROUS: 'sysctl -w *' wildcard found — re-run: sudo bash scripts/setup-sudoers.sh"
     fi
 else
-    echo -e "${RED}❌${NC} System management sudoers file missing"
-    echo -e "    ${BLUE}ℹ️${NC}  System restart/logs functionality may require password prompts"
-    echo -e "    ${BLUE}ℹ️${NC}  Run: sudo bash scripts/setup-system-sudoers.sh"
+    # Legacy file detection
+    LEGACY_FILES=""
+    [ -f "/etc/sudoers.d/fpvcopilot-wifi" ] && LEGACY_FILES="$LEGACY_FILES fpvcopilot-wifi"
+    [ -f "/etc/sudoers.d/fpvcopilot-system" ] && LEGACY_FILES="$LEGACY_FILES fpvcopilot-system"
+    [ -f "/etc/sudoers.d/tailscale" ] && LEGACY_FILES="$LEGACY_FILES tailscale"
+    [ -f "/etc/sudoers.d/fpvcopilot-tailscale" ] && LEGACY_FILES="$LEGACY_FILES fpvcopilot-tailscale"
+
+    if [ -n "$LEGACY_FILES" ]; then
+        echo -e "${YELLOW}⚠️${NC}  Legacy sudoers files found:$LEGACY_FILES"
+        echo -e "    ${BLUE}ℹ️${NC}  Migrate to unified file: sudo bash scripts/setup-sudoers.sh"
+    else
+        echo -e "${RED}❌${NC} No sudoers files found"
+        echo -e "    ${BLUE}ℹ️${NC}  Run: sudo bash scripts/setup-sudoers.sh"
+    fi
 fi
 
 # Check general sudo access
@@ -677,9 +759,65 @@ if [ $BACKEND_RUNNING -eq 0 ]; then
     if [ "$PID" != "0" ]; then
         MEM=$(ps -p $PID -o rss= | awk '{print int($1/1024)"MB"}')
         CPU=$(ps -p $PID -o %cpu= | awk '{print $1"%"}')
+        THREADS=$(ps -eLf 2>/dev/null | grep -c "^.*$PID" || echo "?")
         echo "   Backend PID: $PID"
         echo "   Memory: $MEM"
         echo "   CPU: $CPU"
+        echo "   Threads: $THREADS"
+    fi
+
+    # Video streaming performance
+    VIDEO_JSON=$(curl -s --max-time 3 http://localhost:8000/api/video/status 2>/dev/null)
+    if [ -n "$VIDEO_JSON" ]; then
+        IS_STREAMING=$(echo "$VIDEO_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('streaming', False))" 2>/dev/null)
+        if [ "$IS_STREAMING" = "True" ]; then
+            STATS=$(echo "$VIDEO_JSON" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+s = d.get('stats', {})
+fps = s.get('current_fps', 0)
+bitrate = s.get('current_bitrate', 0)
+health = s.get('health', '?')
+uptime = s.get('uptime_formatted', '?')
+frames = s.get('frames_sent', 0)
+print(f'FPS:{fps} BR:{bitrate} HP:{health} UP:{uptime} FR:{frames}')
+" 2>/dev/null)
+            if [ -n "$STATS" ]; then
+                FPS=$(echo "$STATS" | grep -oP 'FPS:\K[0-9]+')
+                BR=$(echo "$STATS" | grep -oP 'BR:\K[0-9]+')
+                HP=$(echo "$STATS" | grep -oP 'HP:\K[a-z]+')
+                UP=$(echo "$STATS" | grep -oP 'UP:\K[0-9:]+')
+                FR=$(echo "$STATS" | grep -oP 'FR:\K[0-9]+')
+
+                echo -e "\n${BLUE}📹 Video Streaming${NC}"
+                # FPS check
+                if [ "$FPS" -ge 25 ] 2>/dev/null; then
+                    echo -e "   ${GREEN}✅${NC} FPS: $FPS (target: 30)"
+                elif [ "$FPS" -ge 15 ] 2>/dev/null; then
+                    echo -e "   ${YELLOW}⚠️${NC}  FPS: $FPS (below target 30)"
+                elif [ "$FPS" -gt 0 ] 2>/dev/null; then
+                    echo -e "   ${RED}❌${NC} FPS: $FPS (critically low)"
+                else
+                    echo -e "   ${YELLOW}⚠️${NC}  FPS: $FPS (starting up...)"
+                fi
+
+                # Health
+                if [ "$HP" = "good" ]; then
+                    echo -e "   ${GREEN}✅${NC} Health: $HP"
+                elif [ "$HP" = "fair" ]; then
+                    echo -e "   ${YELLOW}⚠️${NC}  Health: $HP"
+                else
+                    echo -e "   ${RED}❌${NC} Health: $HP"
+                fi
+
+                echo "   Bitrate: ${BR} kbps"
+                echo "   Uptime: $UP"
+                echo "   Frames: $FR"
+            fi
+        else
+            echo -e "\n${BLUE}📹 Video Streaming${NC}"
+            echo -e "   ${YELLOW}⚠️${NC}  Not streaming (start via web UI or API)"
+        fi
     fi
 fi
 

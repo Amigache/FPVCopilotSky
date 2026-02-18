@@ -180,6 +180,23 @@ const VideoView = () => {
     }
   }, [config.mode]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Listen for resolution changes from auto-adaptive system
+  useEffect(() => {
+    if (messages.resolution_changed) {
+      const { old_resolution, new_resolution, reason } = messages.resolution_changed
+      const reasonText =
+        reason === 'adaptive_downscale'
+          ? t('views.video.qualityDrop')
+          : t('views.video.qualityRestore')
+      showToast(
+        `📐 ${t(
+          'views.video.resolutionAdjusted'
+        )}: ${old_resolution} → ${new_resolution} (${reasonText})`,
+        'info'
+      )
+    }
+  }, [messages.resolution_changed, showToast, t])
+
   // ── Action handlers ────────────────────────────────────────────────────────
   const applyConfigAndStart = async () => {
     setActionLoading('start')

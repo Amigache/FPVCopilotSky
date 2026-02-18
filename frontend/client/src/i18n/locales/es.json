@@ -193,6 +193,9 @@
       "lockedWhileLive": "Red bloqueada durante la transmisión",
       "liveUpdated": "Parámetro actualizado en vivo",
       "bitrateAdjusted": "Bitrate ajustado",
+      "resolutionAdjusted": "Resolución ajustada",
+      "qualityDrop": "caída de calidad",
+      "qualityRestore": "calidad restaurada",
       "bitrateAutoMode": "Modo automático activo",
       "bitrateAutoHint": "Este es el bitrate objetivo/máximo configurado. El bitrate real de transmisión puede ser menor si la calidad de red lo requiere. Consulta las Estadísticas para ver el bitrate actual. Desactiva el modo automático en Estado > Preferencias para control manual.",
       "quality": {
