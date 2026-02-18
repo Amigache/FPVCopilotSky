@@ -28,5 +28,31 @@ SyslogIdentifier=fpvcopilot-sky
 LimitNOFILE=65536
 LimitNPROC=4096
 
+# --- Security hardening ---
+# Isolate /tmp so other services cannot access our temp files
+PrivateTmp=true
+# Prevent access to /home, /root, /run/user
+ProtectHome=true
+# Make /usr, /boot, /efi read-only (not /opt, which we need writable for preferences)
+ProtectSystem=full
+# Prevent loading kernel modules
+ProtectKernelModules=true
+# Prevent modifying control groups
+ProtectControlGroups=true
+# Deny creating SUID/SGID files
+RestrictSUIDSGID=true
+
+# --- Resource limits ---
+# Cap memory at 512 MB to prevent OOM on embedded boards
+MemoryMax=512M
+# Allow full CPU — GStreamer x264enc uses native threads across all 4 cores
+# Previous CPUQuota=80% throttled encoding performance
+# CPUQuota removed intentionally
+
+# --- CPU governor: lock to 'performance' while service is running ---
+# '+' prefix runs as root (needed for sysfs writes) even though service runs as fpvcopilotsky
+ExecStartPre=+/bin/sh -c 'for g in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo performance > "$$g" 2>/dev/null || true; done'
+ExecStopPost=+/bin/sh -c 'for g in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo ondemand > "$$g" 2>/dev/null || true; done'
+
 [Install]
 WantedBy=multi-user.target

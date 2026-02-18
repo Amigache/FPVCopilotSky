@@ -45,47 +45,53 @@ class TestX264EncoderInitialization:
 class TestHardwareJPEGDecoderCheck:
     """Test hardware JPEG decoder availability checking"""
 
-    @patch("app.providers.video.x264_encoder.subprocess.run")
+    @patch("app.utils.gstreamer.subprocess.run")
     def test_v4l2jpegdec_available(self, mock_run):
         """Test when v4l2jpegdec is available"""
-        # Reset cache
+        # Reset caches
         import app.providers.video.x264_encoder as encoder_module
+        import app.utils.gstreamer as gst_util
 
         encoder_module._v4l2jpegdec_available = None
+        gst_util._gst_plugin_cache.pop("v4l2jpegdec", None)
 
         mock_run.return_value = MagicMock(returncode=0)
         result = _check_v4l2jpegdec()
 
         assert result is True
-        mock_run.assert_called_once_with(["gst-inspect-1.0", "v4l2jpegdec"], capture_output=True, timeout=2)
+        mock_run.assert_called_once_with(["gst-inspect-1.0", "v4l2jpegdec"], capture_output=True, timeout=10)
 
-    @patch("app.providers.video.x264_encoder.subprocess.run")
+    @patch("app.utils.gstreamer.subprocess.run")
     def test_v4l2jpegdec_not_available(self, mock_run):
         """Test when v4l2jpegdec is not available"""
-        # Reset cache
+        # Reset caches
         import app.providers.video.x264_encoder as encoder_module
+        import app.utils.gstreamer as gst_util
 
         encoder_module._v4l2jpegdec_available = None
+        gst_util._gst_plugin_cache.pop("v4l2jpegdec", None)
 
         mock_run.return_value = MagicMock(returncode=1)
         result = _check_v4l2jpegdec()
 
         assert result is False
 
-    @patch("app.providers.video.x264_encoder.subprocess.run")
+    @patch("app.utils.gstreamer.subprocess.run")
     def test_v4l2jpegdec_check_exception(self, mock_run):
         """Test when checking v4l2jpegdec raises an exception"""
-        # Reset cache
+        # Reset caches
         import app.providers.video.x264_encoder as encoder_module
+        import app.utils.gstreamer as gst_util
 
         encoder_module._v4l2jpegdec_available = None
+        gst_util._gst_plugin_cache.pop("v4l2jpegdec", None)
 
         mock_run.side_effect = Exception("Command failed")
         result = _check_v4l2jpegdec()
 
         assert result is False
 
-    @patch("app.providers.video.x264_encoder.subprocess.run")
+    @patch("app.utils.gstreamer.subprocess.run")
     def test_v4l2jpegdec_check_cached(self, mock_run):
         """Test that v4l2jpegdec check result is cached"""
         # Set cache
@@ -103,9 +109,13 @@ class TestX264EncoderAvailability:
     """Test X264 encoder availability checking"""
 
     @patch("app.providers.video.x264_encoder._check_v4l2jpegdec")
-    @patch("app.providers.video.x264_encoder.subprocess.run")
+    @patch("app.utils.gstreamer.subprocess.run")
     def test_is_available_when_x264enc_exists(self, mock_run, mock_check):
         """Test is_available returns True when x264enc is available"""
+        import app.utils.gstreamer as gst_util
+
+        gst_util._gst_plugin_cache.pop("x264enc", None)
+
         mock_check.return_value = True
         mock_run.return_value = MagicMock(returncode=0)
 
@@ -113,12 +123,16 @@ class TestX264EncoderAvailability:
         result = encoder.is_available()
 
         assert result is True
-        mock_run.assert_called_once_with(["gst-inspect-1.0", "x264enc"], capture_output=True, timeout=2)
+        mock_run.assert_called_once_with(["gst-inspect-1.0", "x264enc"], capture_output=True, timeout=10)
 
     @patch("app.providers.video.x264_encoder._check_v4l2jpegdec")
-    @patch("app.providers.video.x264_encoder.subprocess.run")
+    @patch("app.utils.gstreamer.subprocess.run")
     def test_is_available_when_x264enc_missing(self, mock_run, mock_check):
         """Test is_available returns False when x264enc is not available"""
+        import app.utils.gstreamer as gst_util
+
+        gst_util._gst_plugin_cache.pop("x264enc", None)
+
         mock_check.return_value = True
         mock_run.return_value = MagicMock(returncode=1)
 
@@ -128,9 +142,13 @@ class TestX264EncoderAvailability:
         assert result is False
 
     @patch("app.providers.video.x264_encoder._check_v4l2jpegdec")
-    @patch("app.providers.video.x264_encoder.subprocess.run")
+    @patch("app.utils.gstreamer.subprocess.run")
     def test_is_available_handles_exception(self, mock_run, mock_check):
         """Test is_available handles exceptions gracefully"""
+        import app.utils.gstreamer as gst_util
+
+        gst_util._gst_plugin_cache.pop("x264enc", None)
+
         mock_check.return_value = True
         mock_run.side_effect = Exception("Command failed")
 
@@ -144,9 +162,13 @@ class TestX264EncoderCapabilities:
     """Test X264 encoder capabilities reporting"""
 
     @patch("app.providers.video.x264_encoder._check_v4l2jpegdec")
-    @patch("app.providers.video.x264_encoder.subprocess.run")
+    @patch("app.utils.gstreamer.subprocess.run")
     def test_get_capabilities_returns_correct_data(self, mock_run, mock_check):
         """Test that get_capabilities returns correct encoder information"""
+        import app.utils.gstreamer as gst_util
+
+        gst_util._gst_plugin_cache.pop("x264enc", None)
+
         mock_check.return_value = True
         mock_run.return_value = MagicMock(returncode=0)
 
@@ -177,9 +199,13 @@ class TestX264EncoderCapabilities:
         assert "description" in caps
 
     @patch("app.providers.video.x264_encoder._check_v4l2jpegdec")
-    @patch("app.providers.video.x264_encoder.subprocess.run")
+    @patch("app.utils.gstreamer.subprocess.run")
     def test_get_capabilities_when_not_available(self, mock_run, mock_check):
         """Test capabilities when encoder is not available"""
+        import app.utils.gstreamer as gst_util
+
+        gst_util._gst_plugin_cache.pop("x264enc", None)
+
         mock_check.return_value = False
         mock_run.return_value = MagicMock(returncode=1)
 

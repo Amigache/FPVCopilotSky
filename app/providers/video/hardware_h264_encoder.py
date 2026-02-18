@@ -92,14 +92,9 @@ class HardwareH264Encoder(VideoEncoderProvider):
     @staticmethod
     def _check_hw_jpegdec() -> bool:
         """Check if v4l2jpegdec (hardware JPEG decoder) is available."""
-        try:
-            result = subprocess.run(["gst-inspect-1.0", "v4l2jpegdec"], capture_output=True, timeout=2)
-            available = result.returncode == 0
-            if available:
-                logger.info("Hardware JPEG decoder (v4l2jpegdec) available for HW encoder pipeline")
-            return available
-        except Exception:
-            return False
+        from app.utils.gstreamer import is_gst_element_available
+
+        return is_gst_element_available("v4l2jpegdec")
 
     def _detect_encoder_element(self) -> str:
         """
@@ -110,16 +105,14 @@ class HardwareH264Encoder(VideoEncoderProvider):
         2. mppvideoen - Rockchip MPP encoder
         3. v4l2video11h264enc - Alternative V4L2 encoder
         """
+        from app.utils.gstreamer import is_gst_element_available
+
         elements_to_try = ["v4l2h264enc", "mppvideoenc", "v4l2video11h264enc"]
 
         for element in elements_to_try:
-            try:
-                result = subprocess.run(["gst-inspect-1.0", element], capture_output=True, timeout=2)
-                if result.returncode == 0:
-                    logger.info(f"Found hardware encoder element: {element}")
-                    return element
-            except Exception:
-                continue
+            if is_gst_element_available(element):
+                logger.info(f"Found hardware encoder element: {element}")
+                return element
 
         return ""
 

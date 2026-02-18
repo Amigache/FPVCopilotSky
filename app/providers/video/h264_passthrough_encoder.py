@@ -3,10 +3,10 @@ H.264 Passthrough Encoder Provider
 Passes through native H.264 from camera without decode/re-encode (ultra low latency, minimal CPU)
 """
 
-import subprocess
 import logging
 from typing import Dict
 from ..base.video_encoder_provider import VideoEncoderProvider
+from app.utils.gstreamer import is_gst_element_available
 
 logger = logging.getLogger(__name__)
 
@@ -26,12 +26,7 @@ class H264PassthroughEncoder(VideoEncoderProvider):
 
     def is_available(self) -> bool:
         """Check if h264parse is available in GStreamer"""
-        try:
-            result = subprocess.run(["gst-inspect-1.0", "h264parse"], capture_output=True, timeout=2)
-            return result.returncode == 0
-        except Exception as e:
-            logger.error(f"Failed to check h264parse availability: {e}")
-            return False
+        return is_gst_element_available("h264parse")
 
     def get_capabilities(self) -> Dict:
         """Get H.264 passthrough capabilities"""

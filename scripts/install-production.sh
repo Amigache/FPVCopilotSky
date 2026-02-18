@@ -43,29 +43,12 @@ fi
 mkdir -p /var/log/nginx
 chown www-data:www-data /var/log/nginx
 
-echo -e "\n${BLUE}🔧 Disabling serial getty on ttyAML0...${NC}"
-# The serial-getty service conflicts with MAVLink communication:
-# - Changes port group from dialout to tty
-# - Removes read permissions from group
-# - Consumes all serial data as console input
-if systemctl is-active --quiet serial-getty@ttyAML0.service 2>/dev/null; then
-    systemctl stop serial-getty@ttyAML0.service
-fi
-systemctl disable serial-getty@ttyAML0.service 2>/dev/null || true
-systemctl mask serial-getty@ttyAML0.service 2>/dev/null || true
-echo -e "${GREEN}✅ Serial getty disabled on ttyAML0${NC}"
-
-# Ensure udev rules are applied for serial port permissions
-if [ -f /etc/udev/rules.d/99-radxa-serial.rules ]; then
-    udevadm trigger --action=change --subsystem-match=tty
-    udevadm settle
-    echo -e "${GREEN}✅ Udev rules applied${NC}"
+# Configure serial ports and disable getty conflicts
+echo -e "\n${BLUE}🔧 Configuring serial port permissions...${NC}"
+if [ -f "scripts/setup-serial-ports.sh" ]; then
+    bash scripts/setup-serial-ports.sh
 else
-    # Create udev rule if it doesn't exist
-    echo 'KERNEL=="ttyAML*", MODE="0660", GROUP="dialout"' > /etc/udev/rules.d/99-radxa-serial.rules
-    udevadm trigger --action=change --subsystem-match=tty
-    udevadm settle
-    echo -e "${GREEN}✅ Udev rules created and applied${NC}"
+    echo -e "${YELLOW}⚠️  Serial port setup script not found (scripts/setup-serial-ports.sh)${NC}"
 fi
 
 echo -e "\n${BLUE}🔧 Optimizing system for 4G video streaming...${NC}"

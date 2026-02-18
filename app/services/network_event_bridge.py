@@ -1198,10 +1198,10 @@ class NetworkEventBridge:
           → restore original resolution.
         * Minimum ``_adaptive_res_cooldown_s`` between changes to avoid flapping.
         """
-        # Check if auto-adaptive bitrate is enabled (resolution piggybacks on the same flag)
+        # Check if auto-adaptive resolution is enabled
         try:
             prefs = get_preferences()
-            if not prefs.get_auto_adaptive_bitrate():
+            if not prefs.get_auto_adaptive_resolution():
                 return
         except Exception:
             pass

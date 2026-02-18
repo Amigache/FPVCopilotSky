@@ -193,6 +193,9 @@
       "lockedWhileLive": "Network locked while streaming",
       "liveUpdated": "Parameter updated live",
       "bitrateAdjusted": "Bitrate adjusted",
+      "resolutionAdjusted": "Resolution adjusted",
+      "qualityDrop": "quality drop",
+      "qualityRestore": "quality restored",
       "bitrateAutoMode": "Automatic mode active",
       "bitrateAutoHint": "This is the target/maximum configured bitrate. The actual transmission bitrate may be lower if network quality requires it. Check Statistics for current bitrate. Disable automatic mode in Status > Preferences for manual control.",
       "quality": {

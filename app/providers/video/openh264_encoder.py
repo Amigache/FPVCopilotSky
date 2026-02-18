@@ -3,10 +3,10 @@ OpenH264 Encoder Provider
 ARM-optimized H.264 encoding with low CPU usage
 """
 
-import subprocess
 import logging
 from typing import Dict
 from ..base.video_encoder_provider import VideoEncoderProvider
+from app.utils.gstreamer import is_gst_element_available
 
 logger = logging.getLogger(__name__)
 
@@ -23,16 +23,11 @@ class OpenH264Encoder(VideoEncoderProvider):
         self.gst_encoder_element = "openh264enc"
         self.rtp_payload_type = 96
         self.priority = 0  # Disabled: slower than x264 in software mode, needs hardware acceleration
-        self._hw_jpegdec_available = self._check_hw_jpegdec()
+        self._hw_jpegdec_available = is_gst_element_available("v4l2jpegdec")
 
     def is_available(self) -> bool:
         """Check if openh264enc is available in GStreamer"""
-        try:
-            result = subprocess.run(["gst-inspect-1.0", "openh264enc"], capture_output=True, timeout=2)
-            return result.returncode == 0
-        except Exception as e:
-            logger.error(f"Failed to check openh264enc availability: {e}")
-            return False
+        return is_gst_element_available("openh264enc")
 
     def get_capabilities(self) -> Dict:
         """Get OpenH264 encoder capabilities"""
@@ -66,11 +61,7 @@ class OpenH264Encoder(VideoEncoderProvider):
     @staticmethod
     def _check_hw_jpegdec() -> bool:
         """Check if v4l2jpegdec (hardware JPEG decoder) is available."""
-        try:
-            result = subprocess.run(["gst-inspect-1.0", "v4l2jpegdec"], capture_output=True, timeout=2)
-            return result.returncode == 0
-        except Exception:
-            return False
+        return is_gst_element_available("v4l2jpegdec")
 
     def build_pipeline_elements(self, config: Dict) -> Dict:
         """

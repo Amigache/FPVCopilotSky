@@ -89,12 +89,14 @@ async def enable_mptcp():
             raise HTTPException(status_code=500, detail=f"Failed to enable MPTCP: {proc.stderr}")
 
         # Set reasonable defaults for streaming
-        subprocess.run(
+        limits_proc = subprocess.run(
             ["ip", "mptcp", "limits", "set", "subflow", "2", "add_addr_accepted", "2"],
             capture_output=True,
             text=True,
             timeout=5,
         )
+        if limits_proc.returncode != 0:
+            logger.warning(f"Failed to set MPTCP limits: {limits_proc.stderr}")
 
         return {"success": True, "message": "MPTCP enabled"}
 

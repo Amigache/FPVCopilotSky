@@ -7,7 +7,7 @@ name = "fpv-copilot-sky"
 version = "1.0.0"
 description = "FPV Copilot Sky - Advanced drone telemetry and control platform"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 authors = [
     {name = "FPV Copilot Team"}
 ]

@@ -34,7 +34,7 @@ class V4L2CameraSource(VideoSourceProvider):
     def is_available(self) -> bool:
         """Check if v4l2-ctl is available"""
         try:
-            result = subprocess.run(["which", "v4l2-ctl"], capture_output=True, timeout=2)
+            result = subprocess.run(["which", "v4l2-ctl"], capture_output=True, timeout=5)
             return result.returncode == 0
         except Exception as e:
             logger.error(f"Failed to check v4l2-ctl availability: {e}")
@@ -279,7 +279,10 @@ class V4L2CameraSource(VideoSourceProvider):
             caps_str = f"{gst_format},width={width},height={height},framerate={framerate}/1"
 
             # v4l2src properties
-            src_props = {"device": source_id, "do-timestamp": True}
+            src_props = {
+                "device": source_id,
+                "do-timestamp": True,
+            }
 
             # For H264 cameras: request repeat-sequence-header if available,
             # and set extra-controls to help with UVC H264 compliance issues

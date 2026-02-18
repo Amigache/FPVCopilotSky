@@ -54,7 +54,6 @@ sudo apt-get install -y \
     gstreamer1.0-plugins-bad \
     gstreamer1.0-plugins-ugly \
     gstreamer1.0-libav \
-    gstreamer1.0-alsa \
     gir1.2-gstreamer-1.0 \
     gir1.2-gst-plugins-base-1.0 \
     python3-gi \
@@ -67,6 +66,7 @@ sudo apt-get install -y \
 # Install FFmpeg libraries for WebRTC (aiortc + av/PyAV)
 echo "🌐 Installing FFmpeg libraries for WebRTC support..."
 sudo apt-get install -y \
+    ffmpeg \
     libavformat-dev \
     libavcodec-dev \
     libavdevice-dev \
@@ -76,12 +76,7 @@ sudo apt-get install -y \
     libavfilter-dev \
     libopus-dev \
     libvpx-dev \
-    libsrtp2-dev \
-    pkg-config
-
-# Install additional tools for video
-echo "🎥 Installing video tools..."
-sudo apt-get install -y ffmpeg v4l-utils || true
+    libsrtp2-dev
 
 # Install network management tools
 echo "🌐 Installing network management tools..."
@@ -95,12 +90,11 @@ sudo apt-get install -y \
     iproute2 \
     ethtool \
     curl \
-    net-tools \
     iptables
 
 # Install CAKE qdisc and tc for bufferbloat control (Flight Mode)
 echo "⚙️  Installing traffic control tools for CAKE bufferbloat mitigation..."
-sudo apt-get install -y iproute2 || true
+# Note: iproute2 already installed in network management tools section
 # CAKE is built into kernel 6.x+ (sch_cake module)
 if modinfo sch_cake &>/dev/null 2>&1; then
     echo "  ✓ CAKE qdisc kernel module available"
@@ -249,6 +243,7 @@ source venv/bin/activate
 echo "📚 Installing Python packages..."
 pip install --upgrade pip
 pip install -r requirements.txt
+pip install -r requirements-dev.txt
 
 # Install Node.js if not installed
 if ! command -v node &> /dev/null; then
@@ -277,80 +272,13 @@ else
     fi
 fi
 
-# Configure sudo permissions for Tailscale
-echo "🔐 Configuring Tailscale sudo permissions..."
-SUDOERS_FILE="/etc/sudoers.d/tailscale"
-if [ ! -f "$SUDOERS_FILE" ]; then
-    sudo tee "$SUDOERS_FILE" > /dev/null << EOF
-# Allow user to manage Tailscale without password
-$USER ALL=(ALL) NOPASSWD: /usr/bin/tailscale up
-$USER ALL=(ALL) NOPASSWD: /usr/bin/tailscale up *
-$USER ALL=(ALL) NOPASSWD: /usr/bin/tailscale down
-$USER ALL=(ALL) NOPASSWD: /usr/bin/tailscale logout
-$USER ALL=(ALL) NOPASSWD: /usr/bin/tailscale status
-$USER ALL=(ALL) NOPASSWD: /usr/bin/tailscale status *
-EOF
-    sudo chmod 440 "$SUDOERS_FILE"
-    echo "  ✓ Tailscale sudo permissions configured"
+# Configure sudo permissions (unified file: /etc/sudoers.d/fpvcopilot-sky)
+echo "🔐 Configuring sudo permissions..."
+if [ -f "scripts/setup-sudoers.sh" ]; then
+    chmod +x scripts/setup-sudoers.sh
+    sudo bash scripts/setup-sudoers.sh
 else
-    echo "  ✓ Tailscale sudo permissions already configured"
-fi
-
-# Configure sudo permissions for WiFi management
-echo "🔐 Configuring WiFi sudo permissions..."
-WIFI_SUDOERS_FILE="/etc/sudoers.d/fpvcopilot-wifi"
-# Always recreate to ensure all permissions are up-to-date
-sudo tee "$WIFI_SUDOERS_FILE" > /dev/null << EOF
-# FPV Copilot Sky - WiFi and network priority management permissions
-$USER ALL=(ALL) NOPASSWD: /usr/sbin/iw dev * scan
-$USER ALL=(ALL) NOPASSWD: /usr/sbin/iw dev * scan *
-$USER ALL=(ALL) NOPASSWD: /usr/sbin/iw dev * link
-$USER ALL=(ALL) NOPASSWD: /usr/bin/nmcli device wifi connect *
-$USER ALL=(ALL) NOPASSWD: /usr/bin/nmcli device wifi disconnect
-$USER ALL=(ALL) NOPASSWD: /usr/bin/nmcli device wifi rescan
-$USER ALL=(ALL) NOPASSWD: /usr/bin/nmcli dev wifi rescan
-$USER ALL=(ALL) NOPASSWD: /usr/bin/nmcli connection up *
-$USER ALL=(ALL) NOPASSWD: /usr/bin/nmcli connection down *
-$USER ALL=(ALL) NOPASSWD: /usr/bin/nmcli connection modify *
-$USER ALL=(ALL) NOPASSWD: /usr/bin/nmcli connection show
-$USER ALL=(ALL) NOPASSWD: /usr/bin/nmcli connection show *
-$USER ALL=(ALL) NOPASSWD: /usr/bin/nmcli dev wifi rescan
-$USER ALL=(ALL) NOPASSWD: /usr/bin/nmcli dev set * managed *
-$USER ALL=(ALL) NOPASSWD: /usr/sbin/ip route add *
-$USER ALL=(ALL) NOPASSWD: /usr/sbin/ip route del *
-$USER ALL=(ALL) NOPASSWD: /usr/sbin/ip route change *
-$USER ALL=(ALL) NOPASSWD: /usr/sbin/ip route replace *
-$USER ALL=(ALL) NOPASSWD: /usr/sbin/ip route show
-$USER ALL=(ALL) NOPASSWD: /usr/sbin/ip route show *
-$USER ALL=(ALL) NOPASSWD: /usr/sbin/ip link set *
-$USER ALL=(ALL) NOPASSWD: /usr/sbin/ip link show
-$USER ALL=(ALL) NOPASSWD: /usr/sbin/ip link show *
-$USER ALL=(ALL) NOPASSWD: /usr/sbin/ip addr show
-$USER ALL=(ALL) NOPASSWD: /usr/sbin/ip -o addr show
-$USER ALL=(ALL) NOPASSWD: /usr/sbin/ip -o -4 addr show
-# Traffic control (CAKE bufferbloat, Flight Mode QoS)
-$USER ALL=(ALL) NOPASSWD: /usr/sbin/tc qdisc *
-$USER ALL=(ALL) NOPASSWD: /usr/sbin/tc -s qdisc *
-$USER ALL=(ALL) NOPASSWD: /usr/sbin/tc class *
-$USER ALL=(ALL) NOPASSWD: /usr/sbin/tc filter *
-# iptables for VPN policy routing and QoS marking
-$USER ALL=(ALL) NOPASSWD: /usr/sbin/iptables -t mangle *
-$USER ALL=(ALL) NOPASSWD: /usr/sbin/iptables -t mangle -D *
-# ip rule for policy routing
-$USER ALL=(ALL) NOPASSWD: /usr/sbin/ip rule *
-# MPTCP configuration
-$USER ALL=(ALL) NOPASSWD: /usr/sbin/ip mptcp *
-EOF
-sudo chmod 440 "$WIFI_SUDOERS_FILE"
-echo "  ✓ WiFi and network priority sudo permissions configured"
-
-# Configure sudo permissions for system management
-echo "🔐 Configuring system management sudo permissions..."
-if [ -f "scripts/setup-system-sudoers.sh" ]; then
-    chmod +x scripts/setup-system-sudoers.sh
-    sudo bash scripts/setup-system-sudoers.sh
-else
-    echo "  ⚠ System sudoers setup script not found"
+    echo "  ⚠ Sudoers setup script not found (scripts/setup-sudoers.sh)"
 fi
 
 # Configure network priority management (VPN-aware routing)
@@ -453,37 +381,32 @@ echo "🔐 Setting up serial port permissions..."
 sudo usermod -a -G dialout $USER
 sudo usermod -a -G video $USER
 
-# Create udev rule for serial ports
-if [ ! -f /etc/udev/rules.d/99-radxa-serial.rules ]; then
-    echo 'KERNEL=="ttyAML*", MODE="0660", GROUP="dialout"' | sudo tee /etc/udev/rules.d/99-radxa-serial.rules > /dev/null
-    echo "  ✓ Udev rules for serial ports created"
+# Configure serial ports and disable getty conflicts
+if [ -f "scripts/setup-serial-ports.sh" ]; then
+    chmod +x scripts/setup-serial-ports.sh
+    sudo bash scripts/setup-serial-ports.sh
+else
+    echo "  ⚠ Serial port setup script not found (scripts/setup-serial-ports.sh)"
 fi
 
-# Disable serial-getty on ttyAML0 to prevent conflicts with MAVLink
-# The serial-getty service conflicts with MAVLink:
-# - Changes port group from dialout to tty
-# - Removes read permissions from group
-# - Consumes all serial data as console input
-if systemctl is-active --quiet serial-getty@ttyAML0.service 2>/dev/null; then
-    sudo systemctl stop serial-getty@ttyAML0.service
+# Install nginx for production reverse proxy
+echo ""
+echo "🌐 Installing nginx for production..."
+if command -v nginx &> /dev/null; then
+    echo "  ✓ Nginx already installed"
+else
+    sudo apt-get install -y nginx
+    echo "  ✓ Nginx installed"
 fi
-sudo systemctl disable serial-getty@ttyAML0.service 2>/dev/null || true
-sudo systemctl mask serial-getty@ttyAML0.service 2>/dev/null || true
-echo "  ✓ Serial getty disabled on ttyAML0"
-
-# Trigger udev to apply serial port rules
-sudo udevadm trigger --action=change --subsystem-match=tty 2>/dev/null || true
-sudo udevadm settle 2>/dev/null || true
-
-# Set permissions for serial ports if they exist
-if ls /dev/ttyAML* > /dev/null 2>&1; then
-    sudo chmod 666 /dev/ttyAML* || true
-    echo "✓ Permissions set for /dev/ttyAML*"
+sudo systemctl enable nginx 2>/dev/null || true
+# Disable default nginx site to avoid conflicts
+if [ -L /etc/nginx/sites-enabled/default ]; then
+    sudo rm /etc/nginx/sites-enabled/default
+    echo "  ✓ Default nginx site disabled"
 fi
-if ls /dev/ttyUSB* > /dev/null 2>&1; then
-    sudo chmod 666 /dev/ttyUSB* || true
-    echo "✓ Permissions set for /dev/ttyUSB*"
-fi
+# Create log directory
+sudo mkdir -p /var/log/nginx
+sudo chown www-data:www-data /var/log/nginx 2>/dev/null || true
 
 # Check GStreamer plugins
 echo ""
@@ -581,33 +504,32 @@ echo "  ✓ Network buffers optimized for 4G streaming"
 echo "  ✓ BBR congestion control enabled"
 echo "  ✓ UDP/TCP tuning applied"
 
+# Deploy to production (build frontend, install systemd service, start)
+echo ""
+echo "🚀 Deploying to production..."
+if [ -f "scripts/deploy.sh" ]; then
+    chmod +x scripts/deploy.sh
+    sudo bash scripts/deploy.sh
+else
+    echo "  ⚠ Deploy script not found (scripts/deploy.sh)"
+    echo "  Skipping production deployment — run manually later"
+fi
+
 echo ""
 echo "✅ Installation complete!"
 echo ""
 echo "=========================================="
-echo "Quick Start:"
+echo "System is ready!"
 echo "=========================================="
 echo ""
-echo "To run the backend:"
-echo "  source venv/bin/activate"
-echo "  python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000"
+IP=$(hostname -I | awk '{print $1}')
+echo "🌐 Application: http://$IP"
+echo "📡 API:         http://$IP:8000/docs"
 echo ""
-echo "To run the frontend:"
-echo "  cd frontend/client && npm run dev -- --host"
+echo "Quick commands:"
+echo "  Status:   bash scripts/status.sh"
+echo "  Restart:  sudo systemctl restart fpvcopilot-sky"
+echo "  Logs:     sudo journalctl -u fpvcopilot-sky -f"
+echo "  Deploy:   sudo bash scripts/deploy.sh"
 echo ""
-echo "API Endpoints:"
-echo "  • MAVLink:    http://localhost:8000/api/mavlink"
-echo "  • Router:     http://localhost:8000/api/mavlink-router"
-echo "  • Video:      http://localhost:8000/api/video"
-echo "  • Codecs:     http://localhost:8000/api/video/codecs"
-echo "  • Network IP: http://localhost:8000/api/video/network/ip"
-echo "  • System:     http://localhost:8000/api/system"
-echo "  • WebSocket:  ws://localhost:8000/ws"
-echo ""
-echo "Video Streaming:"
-echo "  • UDP Unicast:  configure destination IP + port 5600"
-echo "  • Multicast:    group 224.x.x.x + port"
-echo "  • RTSP Server:  rtsp://<IP>:8554/stream"
-echo "  • Pipeline visible in the web UI when streaming"
-echo ""
-echo "⚠️ You may need to log out and log back in for permissions to take effect."
+echo "⚠️ You may need to log out and log back in for group permissions to take effect."

@@ -60,14 +60,41 @@ class DNSCache:
 
         logger.info(f"DNSCache initialized with cache_size={self.config.cache_size}")
 
+    async def _exec(self, *cmd: str, timeout: float = 10, input_data: bytes = None) -> tuple:
+        """Execute a subprocess with timeout protection.
+
+        Args:
+            cmd: Command and arguments
+            timeout: Max seconds to wait (default: 10)
+            input_data: Optional bytes to send to stdin
+
+        Returns:
+            Tuple of (stdout_bytes, stderr_bytes, returncode).
+            On timeout returns (b"", b"timeout", -1).
+        """
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdin=asyncio.subprocess.PIPE if input_data else None,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(input=input_data), timeout=timeout)
+            return stdout, stderr, proc.returncode
+        except asyncio.TimeoutError:
+            logger.warning(f"Command timed out after {timeout}s: {' '.join(cmd)}")
+            try:
+                proc.kill()
+                await proc.wait()
+            except ProcessLookupError:
+                pass
+            return b"", b"Command timed out", -1
+
     async def is_installed(self) -> bool:
         """Check if dnsmasq is installed"""
         try:
-            process = await asyncio.create_subprocess_exec(
-                "which", "dnsmasq", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-            )
-            await process.communicate()
-            return process.returncode == 0
+            _, _, rc = await self._exec("which", "dnsmasq", timeout=5)
+            return rc == 0
         except Exception as e:
             logger.error(f"Error checking dnsmasq installation: {e}")
             return False
@@ -78,24 +105,12 @@ class DNSCache:
             logger.info("Installing dnsmasq...")
 
             # Update package list
-            process = await asyncio.create_subprocess_exec(
-                "sudo", "apt-get", "update", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-            )
-            await process.communicate()
+            await self._exec("sudo", "apt-get", "update", timeout=120)
 
             # Install dnsmasq
-            process = await asyncio.create_subprocess_exec(
-                "sudo",
-                "apt-get",
-                "install",
-                "-y",
-                "dnsmasq",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, stderr = await process.communicate()
+            _, stderr, rc = await self._exec("sudo", "apt-get", "install", "-y", "dnsmasq", timeout=120)
 
-            if process.returncode == 0:
+            if rc == 0:
                 logger.info("dnsmasq installed successfully")
                 return True
             else:
@@ -158,23 +173,18 @@ class DNSCache:
             # Create config directory if it doesn't exist
             config_dir = os.path.dirname(self.config.config_file)
             if not os.path.exists(config_dir):
-                process = await asyncio.create_subprocess_exec(
-                    "sudo", "mkdir", "-p", config_dir, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-                )
-                await process.communicate()
+                await self._exec("sudo", "mkdir", "-p", config_dir, timeout=10)
 
             # Write configuration file
-            process = await asyncio.create_subprocess_exec(
+            _, _, rc = await self._exec(
                 "sudo",
                 "tee",
                 self.config.config_file,
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+                timeout=10,
+                input_data=config_content.encode(),
             )
-            await process.communicate(input=config_content.encode())
 
-            if process.returncode == 0:
+            if rc == 0:
                 logger.info(f"dnsmasq configuration written to {self.config.config_file}")
                 return True
             else:
@@ -199,17 +209,9 @@ class DNSCache:
                 return False
 
             # Restart dnsmasq service
-            process = await asyncio.create_subprocess_exec(
-                "sudo",
-                "systemctl",
-                "restart",
-                "dnsmasq",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, stderr = await process.communicate()
+            _, stderr, rc = await self._exec("sudo", "systemctl", "restart", "dnsmasq", timeout=15)
 
-            if process.returncode == 0:
+            if rc == 0:
                 self._active = True
                 logger.info("dnsmasq service started successfully")
 
@@ -228,12 +230,9 @@ class DNSCache:
     async def stop(self) -> bool:
         """Stop dnsmasq service"""
         try:
-            process = await asyncio.create_subprocess_exec(
-                "sudo", "systemctl", "stop", "dnsmasq", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-            )
-            await process.communicate()
+            _, _, rc = await self._exec("sudo", "systemctl", "stop", "dnsmasq", timeout=15)
 
-            if process.returncode == 0:
+            if rc == 0:
                 self._active = False
                 logger.info("dnsmasq service stopped")
 
@@ -253,15 +252,7 @@ class DNSCache:
         """Get dnsmasq status and statistics"""
         try:
             # Check if service is running
-            process = await asyncio.create_subprocess_exec(
-                "sudo",
-                "systemctl",
-                "is-active",
-                "dnsmasq",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, _ = await process.communicate()
+            stdout, _, _ = await self._exec("sudo", "systemctl", "is-active", "dnsmasq", timeout=10)
             is_running = stdout.decode().strip() == "active"
 
             status = {
@@ -292,13 +283,10 @@ class DNSCache:
         """Get dnsmasq cache statistics"""
         try:
             # Send SIGUSR1 to dnsmasq to dump cache stats to log
-            process = await asyncio.create_subprocess_exec(
-                "sudo", "killall", "-USR1", "dnsmasq", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-            )
-            await process.communicate()
+            await self._exec("sudo", "killall", "-USR1", "dnsmasq", timeout=5)
 
             # Read systemd journal for stats
-            process = await asyncio.create_subprocess_exec(
+            stdout, _, _ = await self._exec(
                 "sudo",
                 "journalctl",
                 "-u",
@@ -306,10 +294,8 @@ class DNSCache:
                 "-n",
                 "50",
                 "--no-pager",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+                timeout=10,
             )
-            stdout, _ = await process.communicate()
 
             log_output = stdout.decode()
 
@@ -337,28 +323,24 @@ class DNSCache:
         """Update /etc/resolv.conf to use local DNS cache"""
         try:
             # Backup original resolv.conf
-            process = await asyncio.create_subprocess_exec(
+            await self._exec(
                 "sudo",
                 "cp",
                 "/etc/resolv.conf",
                 "/etc/resolv.conf.backup",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+                timeout=10,
             )
-            await process.communicate()
 
             # Write new resolv.conf with localhost
             resolv_content = "nameserver 127.0.0.1\n"
 
-            process = await asyncio.create_subprocess_exec(
+            await self._exec(
                 "sudo",
                 "tee",
                 "/etc/resolv.conf",
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+                timeout=10,
+                input_data=resolv_content.encode(),
             )
-            await process.communicate(input=resolv_content.encode())
 
             logger.info("Updated /etc/resolv.conf to use local DNS cache")
 
@@ -372,15 +354,7 @@ class DNSCache:
 
             # Check if backup exists
             if os.path.exists(backup_file):
-                process = await asyncio.create_subprocess_exec(
-                    "sudo",
-                    "cp",
-                    backup_file,
-                    "/etc/resolv.conf",
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                await process.communicate()
+                await self._exec("sudo", "cp", backup_file, "/etc/resolv.conf", timeout=10)
 
                 logger.info("Restored original /etc/resolv.conf")
 
@@ -391,12 +365,9 @@ class DNSCache:
         """Clear DNS cache"""
         try:
             # Send SIGHUP to dnsmasq to clear cache
-            process = await asyncio.create_subprocess_exec(
-                "sudo", "killall", "-HUP", "dnsmasq", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-            )
-            await process.communicate()
+            _, _, rc = await self._exec("sudo", "killall", "-HUP", "dnsmasq", timeout=5)
 
-            if process.returncode == 0:
+            if rc == 0:
                 logger.info("DNS cache cleared")
                 return True
             else:
