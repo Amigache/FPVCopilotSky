@@ -162,10 +162,21 @@ sudo rm /etc/nginx/sites-enabled/default
 sudo systemctl reload nginx
 
 # 5. Script de desarrollo (backend + frontend)
+./fpv    # Opción 3: "Start Development Mode"
+# O manualmente:
 bash scripts/dev.sh
 ```
 
 ### Desarrollo con hot-reload
+
+**Usando el CLI (recomendado)**:
+
+```bash
+./fpv
+# Selecciona opción 3: "Start Development Mode"
+```
+
+**Manual**:
 
 ```bash
 # Terminal 1: Backend con auto-reload
@@ -472,7 +483,8 @@ git checkout -b fix/descripcion-bug
 
 ```bash
 # Haz cambios, prueba localmente
-npm run dev  # o bash scripts/dev.sh
+./fpv                    # CLI: opción 3 "Start Development Mode"
+# O manualmente: npm run dev en frontend/client
 
 # Commit con mensaje descriptivo
 git add .

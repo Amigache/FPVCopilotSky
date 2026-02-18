@@ -16,7 +16,21 @@ Bienvenido a la documentación de **FPV Copilot Sky**. Aquí encontrarás todo l
 
 ## Referencia rápida
 
-### Comandos habituales
+### CLI de Gestión (Recomendado)
+
+```bash
+./fpv    # Menú interactivo con todas las operaciones
+```
+
+El CLI proporciona acceso guiado a:
+
+- 📦 Instalación y Despliegue
+- 🛠️ Modo Desarrollo
+- 📊 Diagnóstico y Estado del Sistema
+- ⚙️ Configuración (Modem, Puertos Serie, Permisos)
+- 🔧 Mantenimiento y Recuperación
+
+### Comandos manuales
 
 ```bash
 bash scripts/status.sh                   # Estado completo del sistema
