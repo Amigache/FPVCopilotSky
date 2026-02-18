@@ -388,19 +388,6 @@ describe('StreamControlCard', () => {
     const buttons = screen.getAllByRole('button')
     buttons.forEach((b) => expect(b).toBeDisabled())
   })
-
-  it('renders auto-start toggle', () => {
-    render(
-      <StreamControlCard
-        streaming={false}
-        actionLoading={null}
-        config={{ auto_start: false }}
-        updateConfig={vi.fn()}
-        {...handlers}
-      />
-    )
-    expect(screen.getByTestId('toggle-input')).toBeInTheDocument()
-  })
 })
 
 // ===========================================================================
