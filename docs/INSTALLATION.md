@@ -56,6 +56,21 @@ bash install.sh
 
 Este script instala y configura automáticamente (~15 minutos):
 
+#### 👤 Creación del Usuario del Sistema
+
+**El script crea automáticamente el usuario `fpvcopilotsky` si no existe:**
+
+- Usuario dedicado para ejecutar el servicio systemd
+- Solicita establecer una contraseña durante la instalación
+- Añadido automáticamente a los grupos:
+  - `dialout` - Acceso a puertos serie (MAVLink)
+  - `video` - Acceso a cámaras
+  - `netdev` - Gestión de dispositivos de red
+  - `sudo` - Administración del sistema
+- Propiedad del directorio `/opt/FPVCopilotSky` asignada al usuario
+
+> **Nota**: Si ya tienes el usuario `fpvcopilotsky`, el script lo detecta y salta este paso.
+
 #### Dependencias del Sistema (APT)
 
 **Esenciales**:
@@ -122,33 +137,87 @@ video    # Acceso a cámaras
 > **Nota**: El entorno virtual se crea con `--system-site-packages` para acceder a GStreamer (PyGObject).
 > Requiere **reiniciar sesión** después de la instalación para que los grupos dialout/video tomen efecto.
 
-### 2.3 Configurar producción
+### 2.3 Despliegue a producción
+
+Después de `install.sh`, usa el **CLI de gestión** para desplegar:
 
 ```bash
-sudo bash scripts/install-production.sh
+./fpv
 ```
 
-Esto configura:
+Selecciona la opción **"Deploy to Production"** del menú.
 
-- **Nginx** como servidor web (proxy inverso → FastAPI:8000)
-- **Servicio systemd** `fpvcopilot-sky` (arranque automático al encender)
-- **Reglas udev** para puertos serie
-- **Serial-getty** deshabilitado en ttyAML0 (Radxa)
-- **Permisos** del proyecto
-
-### 2.4 Compilar y desplegar
+O manualmente:
 
 ```bash
 bash scripts/deploy.sh
 ```
 
-Compila el frontend React, instala la configuración de nginx/systemd, y arranca el servicio. Incluye health-check automático al final.
+Esto:
+
+- Compila el frontend React
+- Instala el servicio systemd `fpvcopilot-sky`
+- Configura nginx como proxy inverso
+- Arranca el servicio
+- Ejecuta un health-check automático
 
 ---
 
-## 3. Verificación
+## 3. CLI de Gestión
 
-### 3.1 Pre-flight check exhaustivo
+FPVCopilotSky incluye una interfaz de línea de comandos interactiva:
+
+```bash
+cd /opt/FPVCopilotSky
+./fpv
+```
+
+### Funciones del CLI
+
+📦 **Instalación & Despliegue**
+
+- Instalar dependencias del sistema
+- Desplegar a producción
+
+🛠️ **Desarrollo**
+
+- Iniciar modo desarrollo con hot-reload
+- Ejecutar suite de tests
+
+📊 **Diagnóstico**
+
+- Estado del sistema completo
+- Verificación pre-vuelo exhaustiva
+- Logs en tiempo real
+
+⚙️ **Configuración**
+
+- Configurar modem USB 4G
+- Configurar puertos serie MAVLink
+- Actualizar permisos sudo
+- Test de gestión de red
+
+🔧 **Mantenimiento**
+
+- Rollback de cambios de red (emergencia)
+- Reiniciar/detener servicio
+
+> **Tip**: El CLI es la forma más fácil de gestionar el sistema. Todos los scripts en `scripts/` están accesibles desde el menú.
+
+---
+
+## 4. Verificación
+
+### 4.1 Pre-flight check exhaustivo
+
+Usa el **CLI**:
+
+```bash
+./fpv
+# Selecciona opción 6: "Pre-flight Check"
+```
+
+O manualmente:
 
 ```bash
 bash scripts/preflight-check.sh
@@ -177,7 +246,16 @@ Salida:
 System is ready for flight! 🚀
 ```
 
-### 3.2 Script de estado
+### 4.2 Script de estado
+
+Usa el **CLI**:
+
+```bash
+./fpv
+# Selecciona opción 5: "System Status"
+```
+
+O manualmente:
 
 ```bash
 bash scripts/status.sh
@@ -185,7 +263,7 @@ bash scripts/status.sh
 
 Muestra: estado del servicio, puertos, dependencias, USB, red, modem, VPN, conectividad.
 
-### 3.3 Verificación manual
+### 4.3 Verificación manual
 
 ```bash
 # Servicio activo
@@ -199,7 +277,7 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost/
 # Debe devolver 200
 ```
 
-### 3.4 Acceder a la WebUI
+### 4.4 Acceder a la WebUI
 
 Abre en el navegador:
 
@@ -211,9 +289,18 @@ Obtén la IP con `hostname -I`.
 
 ---
 
-## 4. Configuración del modem 4G (opcional)
+## 5. Configuración del modem 4G (opcional)
 
 Si usas un modem Huawei HiLink USB:
+
+Usa el **CLI**:
+
+```bash
+./fpv
+# Selecciona opción 8: "Configure USB Modem"
+```
+
+O manualmente:
 
 ```bash
 bash scripts/configure-modem.sh
@@ -237,7 +324,7 @@ curl -s http://192.168.8.1/api/device/information  # Info del modem
 
 ---
 
-## 5. Configuración de Tailscale VPN (opcional)
+## 6. Configuración de Tailscale VPN (opcional)
 
 Si `install.sh` ya instaló Tailscale, los permisos sudo están configurados. Para conectar:
 
@@ -266,17 +353,24 @@ fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/bin/tailscale status *
 
 ---
 
-## 6. Actualización
+## 7. Actualización
 
 ```bash
 cd /opt/FPVCopilotSky
 git pull
+./fpv
+# Selecciona opción 2: "Deploy to Production"
+```
+
+O manualmente:
+
+```bash
 bash scripts/deploy.sh
 ```
 
 ---
 
-## 7. Estructura de servicios
+## 8. Estructura de servicios
 
 ### Systemd
 
@@ -310,7 +404,7 @@ sudo journalctl -u fpvcopilot-sky -f    # Logs
 
 ---
 
-## 8. Solución de problemas de instalación
+## 9. Solución de problemas de instalación
 
 ### "Welcome to nginx" en vez de la WebUI
 

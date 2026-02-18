@@ -477,6 +477,8 @@ CAKE (Common Applications Kept Enhanced) es un algoritmo de control de colas que
 tc qdisc show | grep cake
 
 # Estado detallado del sistema
+./fpv                    # CLI: Opción 5 "System Status"
+# O manualmente:
 bash scripts/status.sh   # Busca la sección "Network Quality & Self-Healing"
 ```
 
@@ -717,7 +719,8 @@ sudo systemctl reload nginx
 - ¿USB conectado? `lsusb | grep -i huawei`
 - ¿Interfaz de red creada? `ip link show | grep enx`
 - ¿Responde la API? `ping -c 1 192.168.8.1`
-- Ejecuta `bash scripts/configure-modem.sh`
+- Reconfigurar: `./fpv` (opción 8: "Configure USB Modem")
+- O manualmente: `bash scripts/configure-modem.sh`
 
 ### VPN no conecta
 

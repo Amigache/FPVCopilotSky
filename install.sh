@@ -31,7 +31,72 @@
 
 set -e
 
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Function to create fpvcopilotsky user if it doesn't exist
+setup_fpvcopilotsky_user() {
+    local USERNAME="fpvcopilotsky"
+
+    if id "$USERNAME" &>/dev/null; then
+        echo -e "${GREEN}✓${NC} User '$USERNAME' already exists"
+        return 0
+    fi
+
+    echo ""
+    echo -e "${BLUE}👤 Setting up FPVCopilotSky system user...${NC}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    echo "The FPVCopilotSky service runs as a dedicated system user for security."
+    echo "This user needs access to hardware (serial ports, cameras, network)."
+    echo ""
+
+    # Create user with home directory
+    echo -e "${BLUE}Creating user '$USERNAME'...${NC}"
+    sudo useradd -m -s /bin/bash "$USERNAME" || {
+        echo -e "${RED}✗ Failed to create user '$USERNAME'${NC}"
+        return 1
+    }
+
+    # Set password
+    echo ""
+    echo -e "${YELLOW}Please set a password for user '$USERNAME':${NC}"
+    sudo passwd "$USERNAME"
+
+    # Add user to required groups
+    echo ""
+    echo -e "${BLUE}Adding '$USERNAME' to system groups...${NC}"
+    sudo usermod -a -G dialout "$USERNAME"     # Serial port access
+    sudo usermod -a -G video "$USERNAME"       # Camera access
+    sudo usermod -a -G netdev "$USERNAME"      # Network device access
+    sudo usermod -a -G sudo "$USERNAME"        # Sudo access for system management
+
+    echo -e "${GREEN}✓${NC} User '$USERNAME' created and configured"
+    echo -e "${GREEN}✓${NC} Groups: dialout, video, netdev, sudo"
+    echo ""
+
+    # Set ownership of project directory
+    if [ -d "/opt/FPVCopilotSky" ]; then
+        echo -e "${BLUE}Setting ownership of /opt/FPVCopilotSky...${NC}"
+        sudo chown -R "$USERNAME:$USERNAME" /opt/FPVCopilotSky
+        echo -e "${GREEN}✓${NC} Directory ownership updated"
+    fi
+
+    echo ""
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${GREEN}✓ User setup completed successfully${NC}"
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+}
+
 echo "🚀 Installing FPV Copilot Sky dependencies..."
+
+# Setup fpvcopilotsky user first
+setup_fpvcopilotsky_user
 
 # Detect system
 echo "📋 System information:"
@@ -381,6 +446,13 @@ echo "🔐 Setting up serial port permissions..."
 sudo usermod -a -G dialout $USER
 sudo usermod -a -G video $USER
 
+# Also add fpvcopilotsky user if different from current user
+if [ "$USER" != "fpvcopilotsky" ] && id "fpvcopilotsky" &>/dev/null; then
+    sudo usermod -a -G dialout fpvcopilotsky
+    sudo usermod -a -G video fpvcopilotsky
+    echo "  ✓ Permissions also set for fpvcopilotsky user"
+fi
+
 # Configure serial ports and disable getty conflicts
 if [ -f "scripts/setup-serial-ports.sh" ]; then
     chmod +x scripts/setup-serial-ports.sh
@@ -526,7 +598,13 @@ IP=$(hostname -I | awk '{print $1}')
 echo "🌐 Application: http://$IP"
 echo "📡 API:         http://$IP:8000/docs"
 echo ""
-echo "Quick commands:"
+echo -e "${GREEN}${BOLD}🎯 FPVCopilotSky Management Console${NC}"
+echo -e "${BLUE}For easy system management, use the CLI:${NC}"
+echo ""
+echo -e "  ${CYAN}cd /opt/FPVCopilotSky${NC}"
+echo -e "  ${CYAN}./fpv${NC}"
+echo ""
+echo "Quick manual commands:"
 echo "  Status:   bash scripts/status.sh"
 echo "  Restart:  sudo systemctl restart fpvcopilot-sky"
 echo "  Logs:     sudo journalctl -u fpvcopilot-sky -f"

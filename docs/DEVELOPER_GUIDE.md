@@ -336,6 +336,15 @@ source venv/bin/activate                 # Activar entorno virtual
 
 ### Modo desarrollo
 
+**Usando el CLI (recomendado)**:
+
+```bash
+./fpv
+# Selecciona opción 3: "Start Development Mode"
+```
+
+**Manual**:
+
 ```bash
 bash scripts/dev.sh
 ```
@@ -347,12 +356,30 @@ Esto arranca:
 
 ### Build y deploy manual
 
+**Usando el CLI (recomendado)**:
+
+```bash
+./fpv
+# Selecciona opción 2: "Deploy to Production"
+```
+
+**Manual**:
+
 ```bash
 cd frontend/client && npm run build      # Compilar React
 bash scripts/deploy.sh                   # Desplegar todo
 ```
 
 ### Tests
+
+**Usando el CLI**:
+
+```bash
+./fpv
+# Selecciona opción 4: "Run Tests"
+```
+
+**Manual**:
 
 ```bash
 # Backend (pytest desde el venv)

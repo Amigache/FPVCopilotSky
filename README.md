@@ -113,12 +113,10 @@ cd FPVCopilotSky
 
 # 2. Instalar dependencias del sistema y entorno Python/Node
 bash install.sh              # ~15 min la primera vez
+                             # Crea automáticamente el usuario fpvcopilotsky si no existe
 
-# 3. Configurar producción (nginx + systemd)
-sudo bash scripts/install-production.sh
-
-# 4. Compilar frontend y arrancar
-bash scripts/deploy.sh
+# 3. Usar el CLI para gestión completa
+./fpv                        # Interfaz de menú amigable
 ```
 
 Abre `http://<IP-DE-TU-SBC>` en el navegador. Listo.
@@ -126,6 +124,22 @@ Abre `http://<IP-DE-TU-SBC>` en el navegador. Listo.
 > **Tip:** Obtén la IP con `hostname -I`
 
 ## 🔧 Comandos rápidos
+
+### CLI de Gestión (Recomendado)
+
+```bash
+./fpv    # Interfaz de menú interactiva para todas las operaciones
+```
+
+El CLI proporciona acceso guiado a:
+
+- 📦 Instalación y Despliegue
+- 🛠️ Modo Desarrollo
+- 📊 Diagnóstico y Estado del Sistema
+- ⚙️ Configuración (Modem, Puertos Serie, Permisos)
+- 🔧 Mantenimiento y Recuperación
+
+### Comandos Manuales
 
 ```bash
 bash scripts/status.sh                   # Estado completo del sistema
