@@ -250,17 +250,6 @@ describe('VPNView', () => {
       })
       expect(screen.queryByTestId('vpn-peers-list')).not.toBeInTheDocument()
     })
-
-    it('renders auto-connect toggle', async () => {
-      setupDefaultMocks()
-      await act(async () => {
-        render(<VPNView />)
-      })
-
-      await waitFor(() => {
-        expect(screen.getByTestId('auto-connect-toggle')).toBeInTheDocument()
-      })
-    })
   })
 
   describe('Auth banner', () => {
@@ -466,28 +455,6 @@ describe('VPNView', () => {
 
       await waitFor(() => {
         expect(mockApi.get).toHaveBeenCalledWith('/api/vpn/preferences')
-      })
-    })
-
-    it('saves preferences when auto-connect toggle changes', async () => {
-      setupDefaultMocks()
-      await act(async () => {
-        render(<VPNView />)
-      })
-
-      await waitFor(() => {
-        expect(screen.getByTestId('auto-connect-toggle')).toBeInTheDocument()
-      })
-
-      await act(async () => {
-        fireEvent.click(screen.getByTestId('auto-connect-toggle'))
-      })
-
-      await waitFor(() => {
-        expect(mockApi.post).toHaveBeenCalledWith(
-          '/api/vpn/preferences',
-          expect.objectContaining({ auto_connect: true })
-        )
       })
     })
   })

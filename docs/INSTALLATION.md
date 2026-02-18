@@ -492,4 +492,117 @@ sudo bash scripts/configure-modem.sh   # Si modem no funciona
 
 ---
 
+---
+
+## 5. Advanced Networking Setup (FASE 1-3)
+
+Esta sección cubre la configuración de red avanzada — detección multi-modem, policy routing y VPN health checks — que se instala **automáticamente** con `install.sh`. No se requieren pasos manuales en una instalación limpia.
+
+### 5.1 Permisos sudo (sudoers)
+
+`install.sh` ejecuta `scripts/setup-sudoers.sh` que crea `/etc/sudoers.d/fpvcopilot-sky` con los permisos necesarios para las operaciones de red:
+
+```
+fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/sbin/iptables -t mangle *
+fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/sbin/ip rule *
+fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/sbin/ip route add *
+fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/sbin/ip route del *
+fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/sbin/ip route show *
+```
+
+Verificar que están presentes:
+
+```bash
+sudo cat /etc/sudoers.d/fpvcopilot-sky | grep -E "iptables|ip rule|ip route"
+```
+
+### 5.2 Dependencias instaladas por install.sh
+
+- `iptables` — marcado de tráfico (mangle table)
+- `iproute2` — policy routing (`ip rule`, `ip route`)
+- `sudo` — ejecución con permisos elevados
+
+> ⚠️ Si tienes `iptables-persistent` instalado, puede causar conflictos con las reglas dinámicas de FPVCopilotSky. `install.sh` detecta este paquete y ofrece desinstalarlo. Para hacerlo manualmente:
+>
+> ```bash
+> sudo apt-get remove -y iptables-persistent
+> ```
+
+### 5.3 Reglas dinámicas (sin persistencia manual)
+
+Las reglas se crean **en cada startup** del servicio y se eliminan en cada shutdown. No es necesario `iptables-save` ni scripts manuales.
+
+**Reglas iptables mangle creadas en startup:**
+
+```bash
+# VPN (Tailscale / WireGuard) → fwmark 0x100
+iptables -t mangle -A OUTPUT -p udp --dport 41641 -j MARK --set-mark 0x100
+iptables -t mangle -A OUTPUT -p udp --dport 51820 -j MARK --set-mark 0x100
+
+# Video GStreamer → fwmark 0x200
+iptables -t mangle -A OUTPUT -p udp --dport 5600:5610 -j MARK --set-mark 0x200
+iptables -t mangle -A OUTPUT -p tcp --dport 8554     -j MARK --set-mark 0x200
+iptables -t mangle -A OUTPUT -p udp --dport 8554     -j MARK --set-mark 0x200
+
+# MAVLink → fwmark 0x300 (sigue tabla de video)
+iptables -t mangle -A OUTPUT -p udp --dport 14550 -j MARK --set-mark 0x300
+iptables -t mangle -A OUTPUT -p udp --dport 14551 -j MARK --set-mark 0x300
+```
+
+**Policy rules creadas en startup:**
+
+```bash
+ip rule add fwmark 0x100 table 100 priority 100   # VPN → tabla 100
+ip rule add fwmark 0x200 table 200 priority 200   # Video → tabla 200
+```
+
+### 5.4 Verificación post-instalación
+
+```bash
+# 1. Confirmar permisos sudo
+sudo cat /etc/sudoers.d/fpvcopilot-sky | grep "iptables\|ip rule\|ip route"
+
+# 2. Confirmar servicio activo
+systemctl status fpvcopilot-sky | grep Active
+
+# 3. Confirmar reglas iptables mangle
+sudo iptables -t mangle -L OUTPUT -n -v | grep MARK
+
+# 4. Confirmar policy rules
+ip rule show
+# Salida esperada: 100: from all fwmark 0x100 lookup 100
+#                  200: from all fwmark 0x200 lookup 200
+
+# 5. Confirmar API policy routing
+curl -s http://localhost:8000/api/network/policy-routing/status | python3 -m json.tool
+```
+
+### 5.5 Comportamiento tras reboot
+
+El servicio está habilitado con `systemctl enable`, por lo que tras un reboot:
+
+1. Systemd inicia el servicio automáticamente
+2. `PolicyRoutingManager.initialize()` recrea todas las reglas iptables e `ip rule`
+3. El estado es siempre consistente con el código — sin reglas residuales
+
+### 5.6 Limpieza manual de emergencia
+
+Si las reglas quedan en un estado inconsistente:
+
+```bash
+# Limpiar via API (servicio activo)
+curl -X POST http://localhost:8000/api/network/policy-routing/cleanup
+
+# O limpiar manualmente (servicio detenido)
+sudo iptables -t mangle -F OUTPUT
+sudo iptables -t mangle -F PREROUTING
+sudo ip rule del fwmark 0x100 table 100 2>/dev/null || true
+sudo ip rule del fwmark 0x200 table 200 2>/dev/null || true
+
+# Reiniciar para recrear reglas limpias
+sudo systemctl restart fpvcopilot-sky
+```
+
+---
+
 [← Índice](INDEX.md) · [Siguiente: Guía de Usuario →](USER_GUIDE.md)

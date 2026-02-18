@@ -6,7 +6,6 @@ import { useModal } from '../../../contexts/ModalContext'
 import { useWebSocket } from '../../../contexts/WebSocketContext'
 import LogsModal from '../../LogsModal/LogsModal'
 import api from '../../../services/api'
-import Toggle from '../../Toggle/Toggle'
 
 const StatusView = () => {
   const { t } = useTranslation()
@@ -16,25 +15,25 @@ const StatusView = () => {
 
   const [loading, setLoading] = useState(true)
   const [statusData, setStatusData] = useState(null)
-  const [resettingPrefs, setResettingPrefs] = useState(false)
+  const [_resettingPrefs, setResettingPrefs] = useState(false)
 
   // Flight session state
   const [flightSession, setFlightSession] = useState(null)
   const [samplingInterval, setSamplingInterval] = useState(null)
   const [autoStartOnArm, setAutoStartOnArm] = useState(false)
-  const [savingPrefs, setSavingPrefs] = useState(false)
+  const [_savingPrefs, setSavingPrefs] = useState(false)
 
   // Extras/Experimental state
-  const [experimentalTabEnabled, setExperimentalTabEnabled] = useState(true)
-  const [savingExtras, setSavingExtras] = useState(false)
+  const [_experimentalTabEnabled, setExperimentalTabEnabled] = useState(true)
+  const [_savingExtras, setSavingExtras] = useState(false)
 
   // Auto-adaptive bitrate state
-  const [autoAdaptiveBitrate, setAutoAdaptiveBitrate] = useState(true)
-  const [savingBitrateSetting, setSavingBitrateSetting] = useState(false)
+  const [_autoAdaptiveBitrate, setAutoAdaptiveBitrate] = useState(true)
+  const [_savingBitrateSetting, setSavingBitrateSetting] = useState(false)
 
   // Auto-adaptive resolution state
-  const [autoAdaptiveResolution, setAutoAdaptiveResolution] = useState(true)
-  const [savingResolutionSetting, setSavingResolutionSetting] = useState(false)
+  const [_autoAdaptiveResolution, setAutoAdaptiveResolution] = useState(true)
+  const [_savingResolutionSetting, setSavingResolutionSetting] = useState(false)
 
   // Track previous armed state for edge detection
   const [prevArmed, setPrevArmed] = useState(false)
@@ -94,7 +93,7 @@ const StatusView = () => {
     }
   }, [isConnected, isRestarting, wasDisconnected, restartingService, showToast, t])
 
-  const handleResetPreferences = () => {
+  const _handleResetPreferences = () => {
     showModal({
       title: t('status.preferences.confirmTitle'),
       message: t('status.preferences.confirmMessage'),
@@ -200,7 +199,7 @@ const StatusView = () => {
     }
   }
 
-  const handleToggleAutoStart = async (enabled) => {
+  const _handleToggleAutoStart = async (enabled) => {
     setSavingPrefs(true)
     // Update state immediately for responsive UI and auto-start to work
     setAutoStartOnArm(enabled)
@@ -231,7 +230,7 @@ const StatusView = () => {
     setSavingPrefs(false)
   }
 
-  const handleToggleExperimentalTab = async (enabled) => {
+  const _handleToggleExperimentalTab = async (enabled) => {
     setSavingExtras(true)
     setExperimentalTabEnabled(enabled)
 
@@ -303,7 +302,7 @@ const StatusView = () => {
     }
   }
 
-  const handleToggleAutoAdaptive = async (enabled) => {
+  const _handleToggleAutoAdaptive = async (enabled) => {
     setSavingBitrateSetting(true)
     try {
       const response = await api.post('/api/video/config/auto-adaptive-bitrate', { enabled })
@@ -332,7 +331,7 @@ const StatusView = () => {
     }
   }
 
-  const handleToggleAutoAdaptiveResolution = async (enabled) => {
+  const _handleToggleAutoAdaptiveResolution = async (enabled) => {
     setSavingResolutionSetting(true)
     try {
       const response = await api.post('/api/video/config/auto-adaptive-resolution', { enabled })
@@ -773,22 +772,6 @@ const StatusView = () => {
               )}
             </p>
 
-            {/* Auto-start on arm toggle */}
-            <div className="preference-item">
-              <Toggle
-                checked={autoStartOnArm}
-                onChange={(e) => handleToggleAutoStart(e.target.checked)}
-                disabled={savingPrefs || flightSession?.active}
-                label={t('status.flightSession.autoStartLabel', 'Auto-start on arm')}
-              />
-              <p className="preference-description">
-                {t(
-                  'status.flightSession.autoStartDescription',
-                  'Session will automatically start when vehicle is armed and stop when disarmed.'
-                )}
-              </p>
-            </div>
-
             {flightSession?.active ? (
               <div className="flight-session-active">
                 <div className="session-status">
@@ -814,97 +797,6 @@ const StatusView = () => {
                 </div>
               )
             )}
-          </div>
-        </div>
-
-        {/* Extras */}
-        <div className="card">
-          <h2>⚙️ {t('status.sections.extras')}</h2>
-
-          <div className="info-section">
-            <p className="extras-info">{t('status.extras.description')}</p>
-
-            {/* Experimental tab toggle */}
-            <div className="preference-item">
-              <Toggle
-                checked={experimentalTabEnabled}
-                onChange={(e) => handleToggleExperimentalTab(e.target.checked)}
-                disabled={savingExtras}
-                label={t('status.extras.experimentalTabLabel')}
-              />
-              <p className="preference-description">
-                {t('status.extras.experimentalTabDescription')}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Preferences Management */}
-        <div className="card">
-          <h2>{t('status.sections.preferences')}</h2>
-
-          <div className="info-section">
-            {/* Auto-adaptive bitrate toggle */}
-            <div className="preference-item">
-              <Toggle
-                checked={autoAdaptiveBitrate}
-                onChange={(e) => handleToggleAutoAdaptive(e.target.checked)}
-                disabled={savingBitrateSetting}
-                label={t('status.preferences.autoAdaptiveBitrate', 'Auto-ajuste de Bitrate')}
-              />
-              <p className="preference-description">
-                {t(
-                  'status.preferences.autoAdaptiveDescription',
-                  'El sistema ajusta automáticamente el bitrate según la calidad de la red (señal 4G/LTE). Recomendado para vuelo FPV.'
-                )}
-              </p>
-              {!autoAdaptiveBitrate && (
-                <p className="preference-warning">
-                  ⚠️{' '}
-                  {t(
-                    'status.preferences.autoAdaptiveWarning',
-                    'Con el auto-ajuste desactivado, deberás controlar manualmente el bitrate desde la vista de vídeo.'
-                  )}
-                </p>
-              )}
-            </div>
-
-            {/* Auto-adaptive resolution toggle */}
-            <div className="preference-item">
-              <Toggle
-                checked={autoAdaptiveResolution}
-                onChange={(e) => handleToggleAutoAdaptiveResolution(e.target.checked)}
-                disabled={savingResolutionSetting}
-                label={t('status.preferences.autoAdaptiveResolution', 'Auto-ajuste de Resolución')}
-              />
-              <p className="preference-description">
-                {t(
-                  'status.preferences.autoResolutionDescription',
-                  'Reduce la resolución automáticamente cuando la calidad de red cae de forma severa. Trabaja junto con el auto-ajuste de bitrate para mantener streaming fluido.'
-                )}
-              </p>
-              {!autoAdaptiveResolution && (
-                <p className="preference-warning">
-                  ⚠️{' '}
-                  {t(
-                    'status.preferences.autoResolutionWarning',
-                    'Con el auto-ajuste desactivado, la resolución permanecerá fija aunque la conexión sea débil.'
-                  )}
-                </p>
-              )}
-            </div>
-
-            <p className="preferences-info">{t('status.preferences.description')}</p>
-
-            <button
-              className="btn-reset-preferences"
-              onClick={handleResetPreferences}
-              disabled={resettingPrefs}
-            >
-              {resettingPrefs
-                ? t('status.preferences.resetting')
-                : t('status.preferences.resetButton')}
-            </button>
           </div>
         </div>
       </div>

@@ -539,8 +539,6 @@ const VideoView = () => {
             applyConfigAndStart={applyConfigAndStart}
             stopStream={stopStream}
             restartStream={restartStream}
-            config={config}
-            updateConfig={updateConfig}
             hasValidationErrors={networkValidationErrors}
           />
           {/* WebRTC Viewer — shown when WebRTC mode is active and streaming */}

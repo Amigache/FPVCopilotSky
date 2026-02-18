@@ -136,7 +136,17 @@ async def _get_routes() -> List[Dict]:
                 if "interface" in route:
                     routes.append(route)
 
-    return routes
+    # Deduplicate: same (interface, gateway, metric) may appear twice
+    # when the kernel has both a static and a DHCP-managed route with identical fields.
+    seen = set()
+    unique_routes = []
+    for route in routes:
+        key = (route.get("interface"), route.get("gateway"), route.get("metric"))
+        if key not in seen:
+            seen.add(key)
+            unique_routes.append(route)
+
+    return unique_routes
 
 
 async def _get_modem_info(modem_interface: Optional[str]) -> Dict:

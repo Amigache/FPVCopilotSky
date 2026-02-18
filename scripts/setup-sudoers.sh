@@ -101,7 +101,7 @@ fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/sbin/tc filter *
 # --- iptables mangle (network_optimizer.py — DSCP marking for VPN policy routing) ---
 fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/sbin/iptables -t mangle *
 
-# --- Policy routing rules (network_optimizer.py) ---
+# --- Policy routing rules (policy_routing_manager.py, network_optimizer.py) ---
 fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/sbin/ip rule *
 
 # --- MPTCP (mptcp.py) ---
@@ -131,10 +131,12 @@ fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/bin/systemctl enable dnsmasq
 fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/bin/killall -USR1 dnsmasq
 fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/bin/killall -HUP dnsmasq
 
-# --- File operations — RESTRICTED to specific paths (dns_cache.py) ---
+# --- File operations — RESTRICTED to specific paths (dns_cache.py, policy_routing_manager.py) ---
 # Instead of "tee *" (any file) and "mkdir -p *" (any directory):
 fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/dnsmasq.d/fpvcopilot.conf
 fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/resolv.conf
+fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/iproute2/rt_tables
+fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/bin/tee -a /etc/iproute2/rt_tables
 fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /etc/dnsmasq.d
 fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/bin/cp /etc/resolv.conf /etc/resolv.conf.backup
 fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/bin/cp /etc/resolv.conf.backup /etc/resolv.conf
@@ -158,6 +160,7 @@ if visudo -c -f "$SUDOERS_FILE" > /dev/null 2>&1; then
     echo "    - Sysctl (restricted to 7 specific network parameters)"
     echo "    - Ethtool (restricted to WoL disable)"
     echo "    - DNS cache (dnsmasq config, restricted file paths)"
+    echo "    - Policy routing (iptables mangle + ip rule + rt_tables)"
     echo ""
     echo "  Removed dangerous wildcards:"
     echo "    ❌ tee *          → ✅ tee /etc/dnsmasq.d/fpvcopilot.conf, tee /etc/resolv.conf"

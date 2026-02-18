@@ -20,10 +20,11 @@
     "network": "🌐 Network",
     "modem": "📶 Modem",
     "vpn": "🔒 VPN",
-    "flightController": "🎮 Flight Controller",
+    "flightController": "🎮 Controladora",
     "system": "⚙️ System",
     "status": "📋 Status",
-    "experimental": "🧪 Experimental"
+    "experimental": "🧪 Experimental",
+    "preferences": "⚙️ Preferences"
   },
   "dashboard": {
     "attitude": "✈️ Attitude",
@@ -369,7 +370,7 @@
   },
   "router": {
     "title": "MAVLink Telemetry Forwarding",
-    "configuredOutputs": "Configured Connections",
+    "configuredOutputs": "Configured Outputs",
     "type": "Type",
     "host": "Host",
     "port": "Port",
@@ -381,7 +382,6 @@
     "tcpServer": "TCP Server (listen)",
     "tcpClient": "TCP Client (outbound)",
     "udp": "UDP",
-    "configuredOutputs": "Configured Outputs",
     "clients": "clients",
     "clientsCount": "Clients",
     "start": "Start",
@@ -587,7 +587,6 @@
     "logoutNeedsSudo": "Logout requires sudo permission. Run in terminal: sudo bash scripts/setup-tailscale-sudoers.sh",
     "alreadyConnected": "Already connected to VPN",
     "connectError": "Failed to connect to VPN",
-    "disconnected": "Disconnected",
     "disconnectError": "Failed to disconnect from VPN",
     "authRequired": "Open the authentication page to complete the connection",
     "authTimeout": "Authentication timeout. Please try again.",
@@ -789,6 +788,55 @@
       "enabled": "OpenCV enabled successfully",
       "disabled": "OpenCV disabled successfully",
       "configApplied": "Configuration applied successfully"
+    }
+  },
+  "preferences": {
+    "title": "Preferences",
+    "subtitle": "Configure system features and toggles",
+    "saved": "Preferences saved",
+    "sections": {
+      "network": "Network",
+      "video": "Video",
+      "vpn": "VPN",
+      "system": "System",
+      "ui": "Interface",
+      "attention": "Attention"
+    },
+    "network": {
+      "modemPool": "Multi-Modem Management",
+      "modemPoolDesc": "Detect and manage multiple 4G modems simultaneously, with automatic quality-based selection",
+      "autoFailover": "Auto Failover",
+      "autoFailoverDesc": "Automatically switch between network interfaces when quality degrades",
+      "policyRouting": "Policy Routing",
+      "policyRoutingDesc": "Isolate VPN, video and MAVLink traffic into dedicated routing tables to prevent disconnections during modem switches",
+      "vpnHealthCheck": "VPN Health Check",
+      "vpnHealthCheckDesc": "Verify VPN connectivity before and after modem switches, with automatic rollback if the tunnel does not recover within the timeout"
+    },
+    "video": {
+      "autoStart": "Auto-start Video",
+      "autoStartDesc": "Start video streaming automatically when the application starts",
+      "adaptiveBitrate": "Adaptive Bitrate",
+      "adaptiveBitrateDesc": "Automatically adjust video bitrate based on network quality score",
+      "adaptiveResolution": "Adaptive Resolution",
+      "adaptiveResolutionDesc": "Automatically reduce resolution when network quality is critically low"
+    },
+    "system": {
+      "autoConnectSerial": "Auto-connect Serial",
+      "autoConnectSerialDesc": "Automatically connect to the flight controller serial port on startup",
+      "autoStartOnArm": "Record on Arm",
+      "autoStartOnArmDesc": "Automatically start flight session recording when the drone is armed"
+    },
+    "ui": {
+      "experimentalTab": "Experimental Tab",
+      "experimentalTabDesc": "Show the experimental features tab in the navigation bar"
+    },
+    "vpn": {
+      "autoConnect": "Auto-connect VPN",
+      "autoConnectDesc": "Automatically connect to VPN when the system starts"
+    },
+    "error": {
+      "load": "Failed to load preferences",
+      "save": "Failed to save preferences"
     }
   }
 }

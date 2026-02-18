@@ -182,3 +182,69 @@ MIT — ver [LICENSE](LICENSE).
 ---
 
 Construido con ❤️ y opensource: [FastAPI](https://fastapi.tiangolo.com/) · [React](https://react.dev/) · [GStreamer](https://gstreamer.freedesktop.org/) · [PyMAVLink](https://github.com/ArduPilot/pymavlink) · [Tailscale](https://tailscale.com/)
+
+---
+
+## 🌐 Multi-Modem & Advanced Networking
+
+FPV Copilot Sky implementa una pila de red avanzada en tres fases que permite gestionar **múltiples modems 4G/LTE simultáneamente** con aislamiento de tráfico y protección VPN garantizada durante cualquier cambio de red.
+
+### Arquitectura de 3 Fases
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  FASE 1 – ModemPool      (app/services/modem_pool.py)        │
+│  Detecta todos los modems, health-checks individuales,       │
+│  quality scoring (SINR 40% + latencia 30% + RSRQ 15% +      │
+│  jitter 15%) y selección automática/manual.                  │
+├─────────────────────────────────────────────────────────────┤
+│  FASE 2 – PolicyRoutingManager                               │
+│           (app/services/policy_routing_manager.py)           │
+│  Aísla tráfico VPN (tabla 100 / fwmark 0x100), video         │
+│  (tabla 200 / fwmark 0x200) y MAVLink (fwmark 0x300) en      │
+│  tablas de enrutamiento dedicadas. Actualiza rutas en cada   │
+│  switch de modem sin interrumpir la VPN.                     │
+├─────────────────────────────────────────────────────────────┤
+│  FASE 3 – VPNHealthChecker                                   │
+│           (app/services/vpn_health_checker.py)               │
+│  Verifica la VPN (Tailscale / WireGuard / OpenVPN) antes y   │
+│  después de cada switch. Rollback automático si la VPN no    │
+│  se recupera en 15 s.                                        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Características clave
+
+| Característica        | Descripción                                                         |
+| --------------------- | ------------------------------------------------------------------- |
+| Detección automática  | Todos los modems USB/PCIe en subnet 192.168.8.x                     |
+| Quality scoring 0-100 | Score compuesto: SINR, RSRQ, latencia, jitter                       |
+| Anti-flapping         | Switch solo si delta > 20 pts y cooldown ≥ 60 s                     |
+| Traffic isolation     | VPN y Video en tablas de routing separadas (tabla 100/200)          |
+| Reglas dinámicas      | iptables mangle recreadas en cada startup — sin persistencia manual |
+| VPN rollback          | Vuelta al modem anterior si VPN falla recuperarse tras el switch    |
+| WebSocket broadcast   | Métricas de todos los modems en tiempo real en la UI                |
+
+### API REST rápida
+
+```bash
+# Listar todos los modems con métricas
+curl http://localhost:8000/api/network/modems
+
+# Seleccionar modem manualmente
+curl -X POST http://localhost:8000/api/network/modems/select \
+  -H "Content-Type: application/json" \
+  -d '{"interface": "enx001122334466", "reason": "manual"}'
+
+# Cambiar modo de selección
+curl -X POST http://localhost:8000/api/network/modems/mode \
+  -d '{"mode": "best_score"}'
+
+# Estado de policy routing (tablas, reglas, fwmarks)
+curl http://localhost:8000/api/network/policy-routing/status
+
+# Estado de VPN health checker
+curl http://localhost:8000/api/network/vpn-health/status
+```
+
+> 📖 Documentación completa: [Guía de Desarrollo → FASE 1-3](docs/DEVELOPER_GUIDE.md) · [Configuración avanzada de red](docs/INSTALLATION.md) · [Uso multi-modem](docs/USER_GUIDE.md)

@@ -57,6 +57,7 @@ function App() {
     { id: 'flightController', label: t('tabs.flightController') },
     { id: 'system', label: t('tabs.system') },
     { id: 'status', label: t('tabs.status') },
+    { id: 'preferences', label: t('tabs.preferences') },
     { id: 'experimental', label: t('tabs.experimental') },
   ]
 

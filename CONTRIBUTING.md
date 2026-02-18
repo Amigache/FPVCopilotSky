@@ -793,6 +793,42 @@ test("renders header title", () => {
 - **Backend**: ≥ 20 % (configurado en `pyproject.toml` → `fail_under`)
 - **Frontend**: ≥ 60 %
 
+### Tests de Red Avanzada (FASE 1-3)
+
+Los módulos de networking avanzado tienen sus propios archivos de test. Ejecútalos de forma individual o junto al resto de la suite:
+
+**Backend — tests unitarios:**
+
+```bash
+# FASE 1: ModemPool
+python3 -m pytest tests/test_modem_pool.py -v
+
+# FASE 2: PolicyRoutingManager
+python3 -m pytest tests/test_policy_routing.py -v
+
+# FASE 3: VPNHealthChecker
+python3 -m pytest tests/test_vpn_health_checker.py -v
+
+# Los tres juntos con coverage
+python3 -m pytest tests/test_modem_pool.py tests/test_policy_routing.py \
+    tests/test_vpn_health_checker.py -v --cov=app/services \
+    --cov-report=term-missing
+```
+
+**Frontend — PreferencesView:**
+
+```bash
+cd frontend/client
+
+# Test del componente PreferencesView (incluye toggles de red avanzada)
+npm run test -- PreferencesView.test.jsx
+
+# Con coverage
+npm run test:coverage -- --reporter=verbose
+```
+
+> **Nota:** Los tests de policy routing y VPN health checker mockean los comandos `ip`, `iptables` y `tailscale`/`wg` via `mock_subprocess` para no requerir permisos root ni hardware real en CI.
+
 ---
 
 ## 📚 Documentación

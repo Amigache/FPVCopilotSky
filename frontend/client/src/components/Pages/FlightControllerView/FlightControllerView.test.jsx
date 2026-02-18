@@ -407,59 +407,6 @@ describe('FlightControllerView', () => {
     })
   })
 
-  describe('Auto-connect toggle', () => {
-    it('renders auto-connect toggle from preferences', async () => {
-      setupDefaultMocks()
-      await renderView()
-
-      await waitFor(() => {
-        const toggle = screen.getByTestId('auto-connect-toggle')
-        expect(toggle).toBeInTheDocument()
-        expect(toggle.checked).toBe(false)
-      })
-    })
-
-    it('saves preferences when toggled', async () => {
-      setupDefaultMocks()
-      // Add mock for preferences POST
-      mockFetchWithTimeout.mockImplementation((url, options) => {
-        if (url.includes('/api/system/ports')) {
-          return Promise.resolve(jsonResponse(portsResponse))
-        }
-        if (url.includes('/api/mavlink/preferences') && options?.method === 'POST') {
-          const body = JSON.parse(options.body)
-          return Promise.resolve(
-            jsonResponse({
-              success: true,
-              preferences: body,
-            })
-          )
-        }
-        if (url.includes('/api/mavlink/preferences')) {
-          return Promise.resolve(jsonResponse(preferencesDefaultResponse))
-        }
-        return Promise.resolve(jsonResponse({}))
-      })
-
-      await renderView()
-
-      await waitFor(() => {
-        expect(screen.getByTestId('auto-connect-toggle')).toBeInTheDocument()
-      })
-
-      await act(async () => {
-        fireEvent.click(screen.getByTestId('auto-connect-toggle'))
-      })
-
-      await waitFor(() => {
-        const postCall = mockFetchWithTimeout.mock.calls.find(
-          (c) => c[0].includes('/api/mavlink/preferences') && c[1]?.method === 'POST'
-        )
-        expect(postCall).toBeDefined()
-      })
-    })
-  })
-
   describe('Parameters', () => {
     it('renders base params section', async () => {
       setupDefaultMocks()
