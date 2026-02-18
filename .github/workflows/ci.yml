@@ -36,8 +36,8 @@ jobs:
       - name: Install linting dependencies
         run: |
           pip install flake8 black mypy
-          grep -v "PyGObject" requirements.txt | pip install -r /dev/stdin
-          grep -v "PyGObject" requirements-dev.txt | pip install -r /dev/stdin
+          grep -v "PyGObject" requirements.txt > /tmp/requirements-filtered.txt && pip install -r /tmp/requirements-filtered.txt
+          grep -v "PyGObject" requirements-dev.txt > /tmp/requirements-dev-filtered.txt && pip install -r /tmp/requirements-dev-filtered.txt
 
       - name: Lint with flake8
         run: |
@@ -102,8 +102,8 @@ jobs:
       - name: Install dependencies
         run: |
           pip install pytest pytest-asyncio pytest-cov pytest-mock
-          grep -v "PyGObject" requirements.txt | pip install -r /dev/stdin
-          grep -v "PyGObject" requirements-dev.txt | pip install -r /dev/stdin
+          grep -v "PyGObject" requirements.txt > /tmp/requirements-filtered.txt && pip install -r /tmp/requirements-filtered.txt
+          grep -v "PyGObject" requirements-dev.txt > /tmp/requirements-dev-filtered.txt && pip install -r /tmp/requirements-dev-filtered.txt
 
       - name: Run unit tests
         env:
