@@ -1367,10 +1367,79 @@ class NetworkEventBridge:
     def get_status(self) -> Dict:
         """Get current bridge status"""
         is_modem = self._primary_type == "modem"
+
+        # Include modem pool status if available
+        modem_pool_status = None
+        try:
+            from app.services.modem_pool import get_modem_pool
+            import asyncio
+
+            pool = get_modem_pool()
+            if pool._running:
+                # Safely get pool status synchronously (avoid nested asyncio.run)
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # Schedule and get result via a task (best-effort, non-blocking)
+                    modem_pool_status = {
+                        "enabled": pool._running,
+                        "active_modem": pool._active_modem,
+                        "selection_mode": pool._selection_mode.value,
+                        "total_modems": len(pool._modems),
+                        "connected_modems": sum(1 for m in pool._modems.values() if m.is_connected),
+                        "healthy_modems": sum(1 for m in pool._modems.values() if m.is_connected and m.is_healthy),
+                        "modems": [m.to_dict() for m in pool._modems.values()],
+                    }
+        except Exception:
+            pass
+
+        # Include policy routing status if available
+        policy_routing_status = None
+        try:
+            from app.services.policy_routing_manager import get_policy_routing_manager
+
+            policy_manager = get_policy_routing_manager()
+            if policy_manager._initialized:
+                policy_routing_status = {
+                    "enabled": True,
+                    "active_modem": (
+                        {
+                            "interface": policy_manager._active_interface,
+                            "gateway": policy_manager._active_gateway,
+                        }
+                        if policy_manager._active_interface
+                        else None
+                    ),
+                    "tables": {
+                        "vpn": 100,
+                        "video": 200,
+                    },
+                    "traffic_classes": [
+                        {"name": "vpn", "fwmark": "0x100", "table_id": 100},
+                        {"name": "video", "fwmark": "0x200", "table_id": 200},
+                        {"name": "mavlink", "fwmark": "0x300", "table_id": 200},
+                    ],
+                }
+        except Exception:
+            pass
+
+        # Include VPN health status if available
+        vpn_health_status = None
+        try:
+            from app.services.vpn_health_checker import get_vpn_health_checker
+
+            vpn_checker = get_vpn_health_checker()
+            if vpn_checker._initialized:
+                vpn_health_status = vpn_checker.get_status()
+        except Exception:
+            pass
+
         return {
             "active": self._monitoring,
             "primary_interface": self._primary_interface,
             "primary_type": self._primary_type,  # "modem", "wifi", "ethernet", "unknown"
+            "modem_pool": modem_pool_status,
+            "policy_routing": policy_routing_status,
+            "vpn_health": vpn_health_status,
             "quality_score": {
                 "score": self._quality_score.score,
                 "label": self._quality_score.quality_label,

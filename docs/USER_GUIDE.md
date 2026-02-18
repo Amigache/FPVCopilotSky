@@ -737,4 +737,76 @@ sudo systemctl reload nginx
 
 ---
 
+---
+
+## 10. Multi-Modem Management
+
+Cuando conectas más de un modem 4G/LTE el sistema los detecta automáticamente y muestra una **tarjeta de Pool de Modems** en la pestaña **Red**.
+
+### Tarjeta de Pool de Modems
+
+Cada modem aparece con:
+
+- **Nombre de interfaz** (p. ej. `enx001122334455`)
+- **Operador y banda** (p. ej. "Movistar · B3")
+- **Barra de calidad visual** 0-100 (verde ≥ 70 · naranja 40-69 · rojo < 40)
+- **Grid de métricas**: SINR (dB) · RSRQ (dB) · Latencia (ms) · Jitter (ms)
+- **Tags de estado**: `ACTIVO` (azul) · `DESCONECTADO` (rojo) · `NO SALUDABLE` (naranja) · `Señal Excelente` (verde)
+- **Botón 🔄 Cambiar** — selecciona manualmente este modem
+
+### Modos de selección automática
+
+Usa el selector de modo en la cabecera de la tarjeta para elegir cómo el sistema elige el modem activo:
+
+| Modo                       | Comportamiento                                  |
+| -------------------------- | ----------------------------------------------- |
+| `best_score` (recomendado) | Auto-selección por quality score más alto       |
+| `best_sinr`                | Prioriza señal celular (SINR)                   |
+| `best_latency`             | Prioriza modem con menor latencia               |
+| `manual`                   | Tú eliges; el sistema no hace switch automático |
+
+El sistema evita cambios constantes: **solo hace switch si el delta de score es > 20 puntos** y han pasado **al menos 60 segundos** desde el último cambio (anti-flapping).
+
+### Indicadores de salud
+
+Un modem se marca **NO SALUDABLE** si:
+
+- 3 health-checks consecutivos fallan
+- No responde a pings
+- SINR < -10 dB
+
+En ese caso el sistema elige automáticamente el siguiente mejor modem disponible (si el modo no es `manual`).
+
+---
+
+## 11. VPN Health Protection
+
+Cuando hay una VPN activa (Tailscale, WireGuard u OpenVPN), el sistema **protege la VPN durante todos los cambios de red** mediante tres pasos:
+
+1. **Verificación pre-switch** — comprueba que la VPN está activa y que el peer responde al ping.
+2. **Ejecutar el switch** — actualiza tablas de routing para VPN y video.
+3. **Verificación post-switch** — espera hasta 15 s a que la VPN se recupere en la nueva ruta.
+
+Si la VPN **no se recupera** en 15 s, el sistema hace **rollback automático** al modem anterior y registra el fallo en los logs.
+
+### Indicadores en la UI
+
+En la pestaña **VPN** verás el badge de estado reflejar el resultado:
+
+- ✅ `Conectado` — VPN activa y peer alcanzable
+- ⚠️ `Reconectando` — esperando recovery post-switch
+- ❌ `Desconectado` — VPN caída (puede indicar rollback en curso)
+
+### Comprobación manual
+
+```bash
+# Estado del VPN health checker
+curl http://localhost:8000/api/network/vpn-health/status
+
+# Forzar health check
+curl -X POST http://localhost:8000/api/network/vpn-health/check
+```
+
+---
+
 [← Índice](INDEX.md) · [Anterior: Instalación](INSTALLATION.md) · [Siguiente: Guía de Desarrollo →](DEVELOPER_GUIDE.md)

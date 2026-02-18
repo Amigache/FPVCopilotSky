@@ -20,10 +20,11 @@
     "network": "🌐 Red",
     "modem": "📶 Módem",
     "vpn": "🔒 VPN",
-    "flightController": "🎮 Controladora de Vuelo",
+    "flightController": "🎮 Controladora",
     "system": "⚙️ Sistema",
     "status": "📋 Estado",
-    "experimental": "🧪 Experimental"
+    "experimental": "🧪 Experimental",
+    "preferences": "⚙️ Preferencias"
   },
   "dashboard": {
     "attitude": "✈️ Actitud",
@@ -369,7 +370,7 @@
   },
   "router": {
     "title": "Reenvío de Telemetría MAVLink",
-    "configuredOutputs": "Conexiones Configuradas",
+    "configuredOutputs": "Salidas Configuradas",
     "type": "Tipo",
     "host": "Host",
     "port": "Puerto",
@@ -379,13 +380,10 @@
     "presetQGC": "QGC Broadcast (UDP 255.x.x.x:14550)",
     "presetMP": "Mission Planner TCP Server (127.0.0.1:5760)",
     "presetUDPLocal": "UDP Local (127.0.0.1:14551)",
-    "presetTCPListen": "TCP Server Genérico (0.0.0.0:5761)",
-    "presetUDPLocal": "UDP Local (127.0.0.1:14551)",
     "presetTCPListen": "TCP Server Escucha (0.0.0.0:5761)",
     "tcpServer": "TCP Server (escucha)",
     "tcpClient": "TCP Client (conexión saliente)",
     "udp": "UDP",
-    "configuredOutputs": "Salidas Configuradas",
     "clients": "clientes",
     "clientsCount": "Clientes",
     "start": "Iniciar",
@@ -591,7 +589,6 @@
     "logoutNeedsSudo": "Cerrar sesión requiere permisos sudo. Ejecuta en terminal: sudo bash scripts/setup-tailscale-sudoers.sh",
     "alreadyConnected": "Ya está conectado a la VPN",
     "connectError": "Error al conectar a la VPN",
-    "disconnected": "Desconectado",
     "disconnectError": "Error al desconectar de la VPN",
     "authRequired": "Abre la página de autenticación para completar la conexión",
     "authTimeout": "Tiempo de autenticación agotado. Por favor, inténtalo de nuevo.",
@@ -793,6 +790,55 @@
       "enabled": "OpenCV activado correctamente",
       "disabled": "OpenCV desactivado correctamente",
       "configApplied": "Configuración aplicada correctamente"
+    }
+  },
+  "preferences": {
+    "title": "Preferencias",
+    "subtitle": "Configura las funciones y ajustes del sistema",
+    "saved": "Preferencias guardadas",
+    "sections": {
+      "network": "Red",
+      "video": "Vídeo",
+      "vpn": "VPN",
+      "system": "Sistema",
+      "ui": "Interfaz",
+      "attention": "Atención"
+    },
+    "network": {
+      "modemPool": "Gestión Multi-Modem",
+      "modemPoolDesc": "Detecta y gestiona múltiples módems 4G simultáneamente con selección automática por calidad",
+      "autoFailover": "Auto Failover",
+      "autoFailoverDesc": "Cambia automáticamente de interfaz de red cuando la calidad cae",
+      "policyRouting": "Policy Routing",
+      "policyRoutingDesc": "Aísla el tráfico VPN, vídeo y MAVLink en tablas de enrutamiento dedicadas para evitar desconexiones al cambiar de módem",
+      "vpnHealthCheck": "Verificación de Salud VPN",
+      "vpnHealthCheckDesc": "Verifica la conectividad VPN antes y después de los cambios de módem, con rollback automático si el túnel no se recupera en el tiempo configurado"
+    },
+    "video": {
+      "autoStart": "Auto-inicio de Vídeo",
+      "autoStartDesc": "Inicia el streaming de vídeo automáticamente al arrancar la aplicación",
+      "adaptiveBitrate": "Bitrate Adaptativo",
+      "adaptiveBitrateDesc": "Ajusta automáticamente el bitrate según la puntuación de calidad de red",
+      "adaptiveResolution": "Resolución Adaptativa",
+      "adaptiveResolutionDesc": "Reduce automáticamente la resolución cuando la calidad de red es críticamente baja"
+    },
+    "system": {
+      "autoConnectSerial": "Auto-conexión Serial",
+      "autoConnectSerialDesc": "Conecta automáticamente al puerto serie de la controladora de vuelo al iniciar",
+      "autoStartOnArm": "Grabar al Armar",
+      "autoStartOnArmDesc": "Inicia automáticamente la grabación de sesión de vuelo cuando el dron se arma"
+    },
+    "ui": {
+      "experimentalTab": "Pestaña Experimental",
+      "experimentalTabDesc": "Muestra la pestaña de funciones experimentales en la barra de navegación"
+    },
+    "vpn": {
+      "autoConnect": "Conectar VPN al iniciar",
+      "autoConnectDesc": "Conecta automáticamente a la VPN cuando el sistema arranca"
+    },
+    "error": {
+      "load": "Error al cargar preferencias",
+      "save": "Error al guardar preferencias"
     }
   }
 }

@@ -917,6 +917,22 @@ const NetworkView = () => {
             )}
           </div>
 
+          {/* Modem Pool Card */}
+          {bridgeStatus?.modem_pool && bridgeStatus.modem_pool.enabled && (
+            <ModemPoolCard
+              pool={bridgeStatus.modem_pool}
+              onSelectModem={async (iface) => {
+                try {
+                  const res = await api.post('/api/network/modems/select', { interface: iface })
+                  if (!res.ok) throw new Error()
+                  showToast(`Modem ${iface} seleccionado`, 'success')
+                } catch {
+                  showToast('Error al cambiar modem', 'error')
+                }
+              }}
+            />
+          )}
+
           {/* Modem Card - Enhanced with HiLink API */}
           <div className="card modem-card">
             <h2>📶 {t('network.modem4G', 'MÓDEM 4G')}</h2>
@@ -1135,3 +1151,139 @@ const NetworkView = () => {
 }
 
 export default NetworkView
+
+// ── ModemPool Card ─────────────────────────────────────────────────────────
+const ModemPoolCard = ({ pool, onSelectModem }) => {
+  const modeLabels = {
+    best_score: 'Auto · mejor puntuación',
+    best_sinr: 'Auto · mejor SINR',
+    best_latency: 'Auto · menor latencia',
+    manual: 'Manual',
+    round_robin: 'Round Robin',
+  }
+
+  const scoreColor = (score) => {
+    if (score >= 70) return '#22c55e'
+    if (score >= 40) return '#f59e0b'
+    return '#ef4444'
+  }
+
+  return (
+    <div className="card modem-pool-card">
+      <div className="modem-pool-header">
+        <h2>📶 Pool de Modems ({pool.total_modems} detectados)</h2>
+        <span className="modem-pool-mode">
+          {modeLabels[pool.selection_mode] || pool.selection_mode}
+        </span>
+      </div>
+
+      {pool.modems && pool.modems.length > 0 ? (
+        <div className="modem-pool-list">
+          {pool.modems.map((modem) => (
+            <div
+              key={modem.interface}
+              className={`modem-pool-item ${modem.is_active ? 'active' : ''} ${
+                !modem.is_connected ? 'disconnected' : ''
+              }`}
+            >
+              <div className="modem-pool-item-top">
+                <div className="modem-pool-item-identity">
+                  <span className="modem-pool-iface">{modem.interface}</span>
+                  {modem.operator && (
+                    <span className="modem-pool-operator">
+                      {modem.operator}
+                      {modem.band ? ` · ${modem.band}` : ''}
+                    </span>
+                  )}
+                </div>
+                <div className="modem-pool-item-tags">
+                  {modem.is_active && <span className="tag tag-active">ACTIVO</span>}
+                  {!modem.is_connected && <span className="tag tag-offline">DESCONECTADO</span>}
+                  {modem.is_connected && !modem.is_healthy && (
+                    <span className="tag tag-warn">NO SALUDABLE</span>
+                  )}
+                  {modem.is_connected && modem.signal_score >= 70 && (
+                    <span className="tag tag-good">Señal Excelente</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Quality bar */}
+              <div className="modem-pool-quality-bar-wrap">
+                <div
+                  className="modem-pool-quality-bar"
+                  style={{
+                    width: `${modem.quality_score}%`,
+                    background: scoreColor(modem.quality_score),
+                  }}
+                />
+                <span
+                  className="modem-pool-quality-label"
+                  style={{ color: scoreColor(modem.quality_score) }}
+                >
+                  {modem.quality_score}/100
+                </span>
+              </div>
+
+              {/* Metrics grid */}
+              <div className="modem-pool-metrics">
+                <div className="modem-metric">
+                  <span className="modem-metric-label">SINR</span>
+                  <span
+                    className="modem-metric-value"
+                    style={{
+                      color:
+                        modem.sinr != null ? scoreColor(((modem.sinr + 5) * 100) / 30) : undefined,
+                    }}
+                  >
+                    {modem.sinr != null ? `${modem.sinr} dB` : '—'}
+                  </span>
+                </div>
+                <div className="modem-metric">
+                  <span className="modem-metric-label">RSRQ</span>
+                  <span className="modem-metric-value">
+                    {modem.rsrq != null ? `${modem.rsrq} dB` : '—'}
+                  </span>
+                </div>
+                <div className="modem-metric">
+                  <span className="modem-metric-label">Latencia</span>
+                  <span
+                    className="modem-metric-value"
+                    style={{
+                      color:
+                        modem.latency_ms > 200
+                          ? '#ef4444'
+                          : modem.latency_ms > 100
+                            ? '#f59e0b'
+                            : '#22c55e',
+                    }}
+                  >
+                    {modem.latency_ms > 0 ? `${modem.latency_ms} ms` : '—'}
+                  </span>
+                </div>
+                <div className="modem-metric">
+                  <span className="modem-metric-label">Jitter</span>
+                  <span className="modem-metric-value">
+                    {modem.jitter_ms > 0 ? `${modem.jitter_ms} ms` : '—'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Switch button */}
+              {!modem.is_active && modem.is_connected && (
+                <button
+                  className="modem-pool-switch-btn"
+                  onClick={() => onSelectModem(modem.interface)}
+                >
+                  🔄 Cambiar
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="modem-pool-empty">Sin modems detectados</div>
+      )}
+    </div>
+  )
+}

@@ -61,6 +61,155 @@ video_service = None
 detected_board = None  # Board provider detection
 
 
+async def _startup_init_network_bridge(modem_provider, video_service, webrtc_service, wsm):
+    """Start latency monitor and network event bridge. Returns latency_monitor (or None)."""
+    latency_monitor = None
+    try:
+        latency_monitor = get_latency_monitor()
+        event_bridge = get_network_event_bridge()
+        event_bridge.set_services(
+            modem_provider=modem_provider,
+            gstreamer_service=video_service,
+            webrtc_service=webrtc_service,
+            websocket_manager=wsm,
+            latency_monitor=latency_monitor,
+        )
+        try:
+            await latency_monitor.start()
+            logger.info(" Latency Monitor started (RTT, jitter, packet loss)")
+        except Exception as e:
+            logger.error(f"Failed to start Latency Monitor: {e}")
+            logger.warning(f"  Latency Monitor start error: {e}")
+        try:
+            await event_bridge.start()
+            logger.info(" Network Event Bridge started (self-healing streaming)")
+        except Exception as e:
+            logger.error(f"Failed to start Network Event Bridge: {e}")
+            logger.warning(f"  Network Event Bridge start error: {e}")
+        if not modem_provider:
+            logger.info("  Cellular metrics disabled (no modem detected)")
+            logger.info("   Monitoring network quality via latency only")
+    except Exception as e:
+        logger.error(f"Network Event Bridge initialization error: {e}")
+        logger.warning(f"  Network Event Bridge init error: {e}")
+    return latency_monitor
+
+
+async def _startup_init_optional_services(preferences_service, modem_provider, latency_monitor):
+    """Initialize optional services: modem pool (FASE 1), policy routing (FASE 2), VPN health (FASE 3)."""
+    try:
+        from app.services.modem_pool import get_modem_pool
+
+        modem_pool = get_modem_pool()
+        modem_pool.set_services(modem_provider=modem_provider, latency_monitor=latency_monitor)
+        await modem_pool.start()
+        logger.info(" Modem Pool started (multi-modem detection & management)")
+    except Exception as e:
+        logger.error(f"Modem Pool initialization error: {e}")
+        logger.warning(f"  Modem Pool init error: {e}")
+
+    try:
+        from app.services.policy_routing_manager import get_policy_routing_manager
+
+        all_prefs = preferences_service.get_all_preferences()
+        if all_prefs.get("network", {}).get("policy_routing_enabled", True):
+            policy_manager = get_policy_routing_manager()
+            ok = await policy_manager.initialize()
+            if ok:
+                logger.info(" Policy Routing Manager initialized (VPN+Video traffic isolation)")
+            else:
+                logger.warning("  Policy Routing Manager init failed — check iptables/sudoers")
+        else:
+            logger.info(" Policy Routing Manager disabled in preferences")
+    except Exception as e:
+        logger.error(f"Policy Routing init error: {e}")
+        logger.warning(f"  Policy Routing init error: {e}")
+
+    try:
+        from app.services.vpn_health_checker import get_vpn_health_checker
+
+        all_prefs = preferences_service.get_all_preferences()
+        if all_prefs.get("network", {}).get("vpn_health_check_enabled", True):
+            vpn_checker = get_vpn_health_checker()
+            detected = await vpn_checker.initialize()
+            if detected:
+                logger.info(
+                    f" VPN Health Checker initialized — type={vpn_checker._vpn_type}, "
+                    f"peer={vpn_checker._peer_ip or 'none'}"
+                )
+            else:
+                logger.info(" VPN Health Checker: no VPN detected — modem switches unguarded")
+        else:
+            logger.info(" VPN Health Checker disabled in preferences")
+    except Exception as e:
+        logger.warning(f"  VPN Health Checker init error (non-fatal): {e}")
+
+
+def _broadcast_router_status(loop):
+    """Broadcast router status changes via WebSocket."""
+    try:
+        outputs = router_service.get_outputs_list()
+        asyncio.run_coroutine_threadsafe(websocket_manager.broadcast("router_status", outputs), loop)
+    except Exception:
+        pass
+
+
+def _auto_start_video():
+    """Auto-start video streaming; intended to run in a background thread."""
+    import time
+
+    time.sleep(2)
+    try:
+        if not video_service:
+            logger.warning(" Video service not available for auto-start")
+            return
+        logger.info(" Attempting to auto-start video stream...")
+        result = video_service.start()
+        if result.get("success"):
+            time.sleep(1)
+            status = video_service.get_status()
+            if status.get("streaming"):
+                logger.info(" Video streaming auto-started successfully")
+            else:
+                logger.warning(" Video start returned success but stream not confirmed")
+        else:
+            logger.warning(f" Video auto-start failed: {result.get('message', 'Unknown error')}")
+    except Exception as e:
+        logger.warning(f" Video auto-start exception: {e}")
+
+
+async def _lifespan_shutdown():
+    """Clean shutdown of all application services."""
+    logger.info("\U0001f6d1 FPV Copilot Sky shutting down...")
+    try:
+        from app.services.modem_pool import get_modem_pool
+
+        await get_modem_pool().stop()
+    except Exception:
+        pass
+    try:
+        from app.services.policy_routing_manager import get_policy_routing_manager
+
+        policy_manager = get_policy_routing_manager()
+        if policy_manager._initialized:
+            await policy_manager.cleanup()
+    except Exception:
+        pass
+    try:
+        await get_network_event_bridge().stop()
+    except Exception:
+        pass
+    svc = get_video_stream_info_service()
+    if svc:
+        svc.stop()
+    if video_service:
+        video_service.shutdown()
+    if router_service:
+        router_service.shutdown()
+    if mavlink_service and mavlink_service.is_connected():
+        mavlink_service.disconnect()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan context manager for startup and shutdown"""
@@ -167,46 +316,11 @@ async def lifespan(app: FastAPI):
     opencv_service.set_telemetry_service(mavlink_service)
     logger.info(" OpenCV service initialized and connected to video stream and telemetry")
 
-    # Initialize Network Event Bridge (self-healing streaming)
-    try:
-        # Initialize latency monitor (works with any internet connection)
-        latency_monitor = get_latency_monitor()
-
-        # Initialize Network Event Bridge
-        event_bridge = get_network_event_bridge()
-        event_bridge.set_services(
-            modem_provider=modem_provider,  # Optional: only for cellular metrics (SINR, cell changes)
-            gstreamer_service=video_service,
-            webrtc_service=webrtc_service,
-            websocket_manager=websocket_manager,
-            latency_monitor=latency_monitor,
-        )
-
-        # Start services with proper error handling
-        try:
-            await latency_monitor.start()
-            logger.info("Latency Monitor started successfully")
-            logger.info(" Latency Monitor started (RTT, jitter, packet loss)")
-        except Exception as e:
-            logger.error(f"Failed to start Latency Monitor: {e}")
-            logger.warning(f"  Latency Monitor start error: {e}")
-
-        try:
-            await event_bridge.start()
-            logger.info("Network Event Bridge started successfully")
-            logger.info(" Network Event Bridge started (self-healing streaming)")
-        except Exception as e:
-            logger.error(f"Failed to start Network Event Bridge: {e}")
-            logger.warning(f"  Network Event Bridge start error: {e}")
-
-        if not modem_provider:
-            logger.info("  Cellular metrics disabled (no modem detected)")
-            logger.info("   Monitoring network quality via latency only")
-    except Exception as e:
-        logger.error(f"Network Event Bridge initialization error: {e}")
-        logger.warning(f"  Network Event Bridge init error: {e}")
-
-    # Auto-connect to VPN not needed - handled by VPN provider/routes on demand
+    # Initialize Network Event Bridge + optional FASE services
+    latency_monitor = await _startup_init_network_bridge(
+        modem_provider, video_service, webrtc_service, websocket_manager
+    )
+    await _startup_init_optional_services(preferences_service, modem_provider, latency_monitor)
 
     # Load video config from preferences
     video_config = preferences_service.get_video_config()
@@ -215,14 +329,7 @@ async def lifespan(app: FastAPI):
         video_service.configure(video_config=video_config, streaming_config=streaming_config)
 
     # Set callback to broadcast router status changes via WebSocket (for immediate updates)
-    def broadcast_router_status():
-        try:
-            outputs = router_service.get_outputs_list()
-            asyncio.run_coroutine_threadsafe(websocket_manager.broadcast("router_status", outputs), loop)
-        except Exception:
-            pass
-
-    router_service.set_status_callback(broadcast_router_status)
+    router_service.set_status_callback(lambda: _broadcast_router_status(loop))
 
     # Start periodic stats broadcast task
     asyncio.create_task(periodic_stats_broadcast())
@@ -238,69 +345,17 @@ async def lifespan(app: FastAPI):
     # Auto-start video if configured
     if streaming_config and streaming_config.get("auto_start", False):
         logger.info("📹 Video auto-start enabled in preferences")
-
-        def start_video():
-            import time
-
-            time.sleep(2)  # Wait for system to settle
-            try:
-                if not video_service:
-                    logger.warning(" Video service not available for auto-start")
-                    return
-
-                # Don't check is_available() - let start() handle device auto-detection
-                logger.info(" Attempting to auto-start video stream...")
-                result = video_service.start()
-
-                if result.get("success"):
-                    # Verify stream is actually running
-                    time.sleep(1)
-                    status = video_service.get_status()
-                    if status.get("streaming"):
-                        logger.info(" Video streaming auto-started successfully")
-                    else:
-                        logger.warning(" Video start returned success but stream not confirmed")
-                else:
-                    logger.warning(f" Video auto-start failed: {result.get('message', 'Unknown error')}")
-            except Exception as e:
-                logger.warning(f" Video auto-start exception: {e}")
-
-        video_thread = threading.Thread(target=start_video, daemon=True, name="VideoAutoStart")
-        video_thread.start()
+        threading.Thread(target=_auto_start_video, daemon=True, name="VideoAutoStart").start()
     else:
         logger.info(" Video auto-start disabled in preferences")
 
-    # Start auto-connect VPN in background thread (non-blocking)
-    vpn_thread = threading.Thread(target=auto_connect_vpn, daemon=True, name="VPNAutoConnect")
-    vpn_thread.start()
-
-    # Start auto-connect in background thread (non-blocking)
-    auto_connect_thread = threading.Thread(target=auto_connect_serial, daemon=True, name="AutoConnect")
-    auto_connect_thread.start()
+    # Start background auto-connect threads
+    threading.Thread(target=auto_connect_vpn, daemon=True, name="VPNAutoConnect").start()
+    threading.Thread(target=auto_connect_serial, daemon=True, name="AutoConnect").start()
 
     yield  # Application is running
 
-    # Shutdown
-    logger.info("🛑 FPV Copilot Sky shutting down...")
-
-    # Stop network event bridge
-    try:
-        event_bridge = get_network_event_bridge()
-        await event_bridge.stop()
-    except Exception:
-        pass
-
-    # Stop video stream info service
-    video_stream_info_service = get_video_stream_info_service()
-    if video_stream_info_service:
-        video_stream_info_service.stop()
-
-    if video_service:
-        video_service.shutdown()
-    if router_service:
-        router_service.shutdown()
-    if mavlink_service and mavlink_service.is_connected():
-        mavlink_service.disconnect()
+    await _lifespan_shutdown()
 
 
 app = FastAPI(title="FPV Copilot Sky", version="1.0.0", lifespan=lifespan)
@@ -313,13 +368,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Global services - event loop will be set on startup
-mavlink_service = None
-router_service = None
-preferences_service = None
-video_service = None
-detected_board = None  # Board provider detection
 
 # Include routers
 app.include_router(mavlink.router, prefix="/api/mavlink", tags=["mavlink"])
@@ -669,8 +717,6 @@ def auto_connect_vpn():
     Auto-connect to VPN based on preferences.
     Runs in a separate thread to not block startup.
     """
-    global preferences_service
-
     try:
         # Wait a bit to ensure preferences are loaded
         import time
@@ -729,8 +775,6 @@ def auto_connect_serial():
     Runs in a separate thread to not block startup.
     Verifies connection persistence and saves preferences only if successful.
     """
-    global mavlink_service, preferences_service
-
     import time
 
     try:

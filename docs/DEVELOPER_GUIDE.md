@@ -2554,4 +2554,249 @@ tailscale status                       # Estado Tailscale
 
 ---
 
+---
+
+## FASE 1: ModemPool
+
+### Propósito
+
+Gestión inteligente de múltiples modems 4G/LTE simultáneos: detección, health checks individuales, quality scoring y selección automática o manual del modem activo.
+
+### Ubicación
+
+- Servicio: `app/services/modem_pool.py`
+- API: `app/api/routes/network/modem_pool.py`
+- Integración WS: `app/services/network_event_bridge.py`
+
+### Arquitectura
+
+```
+ModemPool (singleton)
+├── auto-detection loop (cada 5 s via detect_modem_interfaces())
+├── health monitoring por modem (ping + status de modem provider)
+├── quality scoring compuesto 0-100
+│     sinr_score    = clamp((sinr + 5) * 100 / 30)   # SINR: peso 40%
+│     rsrq_score    = clamp((rsrq + 20) * 100 / 17)  # RSRQ: peso 15%
+│     latency_score = clamp(100 - latency_ms / 4)    # Latencia: peso 30%
+│     jitter_score  = clamp(100 - jitter_ms)         # Jitter: peso 15%
+├── anti-flapping: delta > 20 pts + cooldown 60 s
+└── apply_modem_priority() → llama a PolicyRoutingManager
+```
+
+### Dataclasses clave
+
+```python
+@dataclass
+class ModemInfo:
+    interface: str          # e.g. "enx001122334455"
+    ip_address: Optional[str]
+    gateway: Optional[str]
+    is_connected: bool
+    is_active: bool         # modem seleccionado actualmente
+    is_healthy: bool
+    signal: ModemSignalMetrics   # SINR, RSRQ, RSRP, band, operator
+    network: ModemNetworkMetrics # latency_avg_ms, jitter_ms, packet_loss_pct
+    quality_score: float    # 0-100 compuesto
+    signal_score: float
+    network_score: float
+
+class ModemSelectionMode(Enum):
+    MANUAL      = "manual"
+    BEST_SCORE  = "best_score"
+    BEST_SINR   = "best_sinr"
+    BEST_LATENCY= "best_latency"
+    ROUND_ROBIN = "round_robin"
+```
+
+### API Endpoints
+
+| Método | Endpoint                          | Descripción                   |
+| ------ | --------------------------------- | ----------------------------- |
+| GET    | `/api/network/modems`             | Lista todos los modems        |
+| GET    | `/api/network/modems/connected`   | Solo modems conectados        |
+| GET    | `/api/network/modems/healthy`     | Solo modems saludables        |
+| GET    | `/api/network/modems/active`      | Modem actualmente activo      |
+| GET    | `/api/network/modems/best`        | Mejor modem por quality_score |
+| GET    | `/api/network/modems/{interface}` | Modem específico              |
+| POST   | `/api/network/modems/select`      | Seleccionar modem manualmente |
+| POST   | `/api/network/modems/refresh`     | Forzar re-detección           |
+| POST   | `/api/network/modems/mode`        | Cambiar modo de selección     |
+| GET    | `/api/network/modems/status`      | Resumen del pool              |
+
+### WebSocket broadcast (campo `modem_pool` en `network_quality`)
+
+```json
+"modem_pool": {
+  "enabled": true,
+  "total_modems": 2,
+  "active_modem": "enx001122334455",
+  "selection_mode": "best_score",
+  "modems": [ { "interface": "...", "quality_score": 85.3, ... } ]
+}
+```
+
+### Inicialización / shutdown (app/main.py)
+
+```python
+from app.services.modem_pool import get_modem_pool
+modem_pool = get_modem_pool()
+await modem_pool.start()    # startup
+await modem_pool.stop()     # shutdown
+```
+
+### Parámetros de configuración
+
+Modificar en `app/services/modem_pool.py`:
+
+```python
+self.weight_sinr    = 0.40
+self.weight_rsrq    = 0.15
+self.weight_latency = 0.30
+self.weight_jitter  = 0.15
+self.health_check_interval_s = 5.0
+self.failure_threshold       = 3     # fallos consecutivos → unhealthy
+self.switch_delta_threshold  = 20.0  # puntos mínimos para auto-switch
+self.switch_cooldown_s       = 60.0
+```
+
+---
+
+## FASE 2: PolicyRoutingManager
+
+### Propósito
+
+Aislar tráfico crítico (VPN, video, MAVLink) en tablas de routing dedicadas usando iptables mangle + `ip rule`. Garantiza que los cambios de modem **no interrumpan VPN ni degraden video**.
+
+### Ubicación
+
+- Servicio: `app/services/policy_routing_manager.py`
+- API: `app/api/routes/network/policy_routing.py`
+
+### Tablas de routing
+
+| Tabla     | ID   | Tráfico                                                             | fwmark        |
+| --------- | ---- | ------------------------------------------------------------------- | ------------- |
+| main      | 254  | Tráfico general                                                     | -             |
+| vpn       | 100  | Tailscale UDP 41641, WireGuard UDP 51820                            | 0x100         |
+| video     | 200  | GStreamer UDP 5600-5610, RTSP TCP/UDP 8554, MAVLink UDP 14550/14551 | 0x200 / 0x300 |
+| modem1..N | 201+ | Rutas por modem individual                                          | -             |
+
+### Integración con ModemPool
+
+Cuando `ModemPool.select_modem()` cambia el modem activo, llama a:
+
+```python
+await policy_routing.update_active_modem(interface, gateway)
+# → ip route del default table 100
+# → ip route add default via <gw> dev <iface> table 100
+# → ip route del default table 200
+# → ip route add default via <gw> dev <iface> table 200
+```
+
+### API Endpoints
+
+| Método | Endpoint                                      | Descripción                         |
+| ------ | --------------------------------------------- | ----------------------------------- |
+| GET    | `/api/network/policy-routing/status`          | Estado completo                     |
+| POST   | `/api/network/policy-routing/initialize`      | Inicializar (idempotente)           |
+| POST   | `/api/network/policy-routing/cleanup`         | Limpiar todas las reglas            |
+| POST   | `/api/network/policy-routing/update-modem`    | Actualizar modem activo manualmente |
+| GET    | `/api/network/policy-routing/tables`          | Rutas en todas las tablas           |
+| GET    | `/api/network/policy-routing/rules`           | Policy rules (`ip rule show`)       |
+| GET    | `/api/network/policy-routing/traffic-classes` | Clases de tráfico configuradas      |
+
+### Ciclo de vida (idempotente)
+
+```python
+from app.services.policy_routing_manager import get_policy_routing_manager
+manager = get_policy_routing_manager()
+await manager.initialize()  # startup — crea iptables + ip rule + ip route
+await manager.cleanup()     # shutdown — elimina todas las reglas
+```
+
+### Filosofía: Configuration as Code
+
+Las reglas son **dinámicas** (recreadas en cada startup) — no se usa `iptables-persistent`. Esto garantiza que las reglas siempre reflejan el código actual sin residuos ni conflictos tras actualizaciones.
+
+---
+
+## FASE 3: VPNHealthChecker
+
+### Propósito
+
+Verificar que la VPN (Tailscale, WireGuard, OpenVPN) esté activa antes y después de cada switch de modem, con rollback automático si no se recupera.
+
+### Ubicación
+
+- Servicio: `app/services/vpn_health_checker.py`
+- API: `app/api/routes/network/vpn_health.py`
+
+### VPNs soportadas
+
+| VPN       | Detección                          | Health check                   |
+| --------- | ---------------------------------- | ------------------------------ |
+| Tailscale | `tailscale status`                 | Logged in + ping a peer        |
+| WireGuard | `wg show`                          | Interface activa + allowed IPs |
+| OpenVPN   | `pgrep openvpn` + interfaz tun/tap | Proceso activo + ping          |
+
+### Flujo de protección en ModemPool.select_modem()
+
+```python
+# 1. PRE-SWITCH
+vpn_was_healthy = await vpn_checker.check_vpn_health()
+
+# 2. SWITCH
+success = await self._apply_modem_priority(interface)
+
+# 3. POST-SWITCH (solo si VPN estaba sana)
+if vpn_was_healthy:
+    recovered = await vpn_checker.wait_for_vpn_recovery(timeout_s=15)
+    if not recovered:
+        logger.error("❌ VPN failed — rolling back")
+        await self._apply_modem_priority(previous_modem)
+        return False
+```
+
+### API Endpoints
+
+| Método | Endpoint                          | Descripción                    |
+| ------ | --------------------------------- | ------------------------------ |
+| GET    | `/api/network/vpn-health/status`  | Estado completo de VPN         |
+| POST   | `/api/network/vpn-health/check`   | Health check manual            |
+| GET    | `/api/network/vpn-health/peer-ip` | IP de peer para latency checks |
+| GET    | `/api/network/vpn-health/type`    | Tipo de VPN detectada          |
+
+### Respuesta de status
+
+```json
+{
+  "is_active": true,
+  "vpn_type": "tailscale",
+  "interface": "tailscale0",
+  "local_ip": "100.101.102.103",
+  "peers": ["100.64.0.1"],
+  "peer_reachable": true,
+  "peer_latency_ms": 23.4
+}
+```
+
+### Inicialización (app/main.py)
+
+```python
+from app.services.vpn_health_checker import get_vpn_health_checker
+vpn_checker = get_vpn_health_checker()
+await vpn_checker.initialize()   # detecta tipo VPN
+await vpn_checker.cleanup()      # shutdown
+```
+
+### WebSocket broadcast (campo `vpn_health` en `network_quality`)
+
+Los tipos de mensaje WebSocket disponibles se amplían con `vpn_health`:
+
+| Tipo              | Frecuencia | Nuevos campos                                |
+| ----------------- | ---------- | -------------------------------------------- |
+| `network_quality` | ~1s        | `modem_pool`, `policy_routing`, `vpn_health` |
+
+---
+
 [← Índice](INDEX.md) · [Anterior: Guía de Usuario](USER_GUIDE.md)

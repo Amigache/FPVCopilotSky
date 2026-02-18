@@ -4,7 +4,6 @@ import { useWebSocket } from '../../../contexts/WebSocketContext'
 import { useToast } from '../../../contexts/ToastContext'
 import { useModal } from '../../../contexts/ModalContext'
 import { API_SYSTEM, API_MAVLINK, fetchWithTimeout } from '../../../services/api'
-import Toggle from '../../Toggle/Toggle'
 import {
   AVAILABLE_BAUDRATES,
   DEFAULT_BAUDRATE,
@@ -30,7 +29,7 @@ const FlightControllerView = () => {
   const [availablePorts, setAvailablePorts] = useState([])
   const [loadingPorts, setLoadingPorts] = useState(true)
   const [serialPreferences, setSerialPreferences] = useState({ auto_connect: false })
-  const [savingSerialPreferences, setSavingSerialPreferences] = useState(false)
+  const [_savingSerialPreferences, setSavingSerialPreferences] = useState(false)
 
   // Vehicle type detected from heartbeat
   const [vehicleType, setVehicleType] = useState(null)
@@ -127,7 +126,7 @@ const FlightControllerView = () => {
   }
 
   // Toggle auto-connect
-  const handleAutoConnectChange = async (enabled) => {
+  const _handleAutoConnectChange = async (enabled) => {
     const newPrefs = { ...serialPreferences, auto_connect: enabled }
     setSerialPreferences(newPrefs)
     await saveSerialPreferences(newPrefs)
@@ -566,12 +565,6 @@ const FlightControllerView = () => {
         </div>
 
         <div className="connection-actions">
-          <Toggle
-            checked={serialPreferences.auto_connect || false}
-            onChange={(e) => handleAutoConnectChange(e.target.checked)}
-            disabled={savingSerialPreferences}
-            label={t('views.flightController.autoConnect')}
-          />
           {!isConnected ? (
             <button
               onClick={handleConnect}

@@ -339,7 +339,91 @@ if [ $BACKEND_RUNNING -eq 0 ]; then
     fi
 fi
 
+# ── FASE 1: Multi-Modem Pool ─────────────────────────────────────────────────
+echo -e "\n${BLUE}🔀 Multi-Modem & Policy Routing (FASE 1-3)${NC}"
 
+# ModemPool API
+if [ $BACKEND_RUNNING -eq 0 ]; then
+    POOL_STATUS=$(curl -s --max-time 3 http://localhost:8000/api/network/modems/status 2>/dev/null)
+    if [ -n "$POOL_STATUS" ]; then
+        POOL_ENABLED=$(echo "$POOL_STATUS" | grep -oP '"enabled":\s*\K(true|false)' | head -1)
+        POOL_TOTAL=$(echo   "$POOL_STATUS" | grep -oP '"total_modems":\s*\K\d+' | head -1)
+        POOL_CONN=$(echo    "$POOL_STATUS" | grep -oP '"connected_modems":\s*\K\d+' | head -1)
+        POOL_ACTIVE=$(echo  "$POOL_STATUS" | grep -oP '"active_modem":\s*"\K[^"]+' | head -1)
+        if [ "$POOL_ENABLED" = "true" ]; then
+            echo -e "${GREEN}✅${NC} ModemPool ENABLED — total=$POOL_TOTAL connected=$POOL_CONN active=${POOL_ACTIVE:-none}"
+        else
+            echo -e "${YELLOW}⚠️${NC}  ModemPool present but disabled (enable in Preferences → Network)"
+        fi
+    else
+        echo -e "${YELLOW}⚠️${NC}  ModemPool API unreachable (service may be starting up)"
+    fi
+else
+    echo -e "${YELLOW}⚠️${NC}  Backend not running — skipping ModemPool check"
+fi
+
+# ── FASE 2: Policy Routing ────────────────────────────────────────────────────
+
+# Check iptables mangle marks (fpv_ chains or MARK targets)
+if command -v iptables &>/dev/null; then
+    FPV_MARKS=$(sudo iptables -t mangle -L OUTPUT -n 2>/dev/null | grep -c 'MARK\|0x[0-9]' 2>/dev/null)
+    FPV_MARKS=${FPV_MARKS:-0}
+    if [ "$FPV_MARKS" -gt 0 ] 2>/dev/null; then
+        echo -e "${GREEN}✅${NC} iptables mangle MARK rules active ($FPV_MARKS rules — VPN/Video/MAVLink isolation)"
+    else
+        echo -e "${YELLOW}⚠️${NC}  No iptables mangle marks found (policy routing not initialized or disabled)"
+    fi
+else
+    echo -e "${YELLOW}⚠️${NC}  iptables not available"
+fi
+
+# Check ip rules for fwmark → table routing
+if command -v ip &>/dev/null; then
+    FWMARK_RULES=$(ip rule show 2>/dev/null | grep -c 'fwmark' 2>/dev/null)
+    FWMARK_RULES=${FWMARK_RULES:-0}
+    if [ "$FWMARK_RULES" -gt 0 ] 2>/dev/null; then
+        echo -e "${GREEN}✅${NC} Policy routing rules active ($FWMARK_RULES fwmark rules — tables 100/200 configured)"
+    else
+        echo -e "${YELLOW}⚠️${NC}  No fwmark ip rules found (set via /api/network/policy-routing/apply)"
+    fi
+fi
+
+# Policy Routing API status
+if [ $BACKEND_RUNNING -eq 0 ]; then
+    PR_STATUS=$(curl -s --max-time 3 http://localhost:8000/api/network/policy-routing/status 2>/dev/null)
+    if [ -n "$PR_STATUS" ]; then
+        PR_INIT=$(echo "$PR_STATUS" | grep -oP '"initialized":\s*\K(true|false)' | head -1)
+        if [ "$PR_INIT" = "true" ]; then
+            PR_IFACE=$(echo "$PR_STATUS" | grep -oP '"interface":\s*"\K[^"]+' | head -1)
+            echo -e "${GREEN}✅${NC} PolicyRoutingManager initialized — active modem: ${PR_IFACE:-none}"
+        else
+            echo -e "${YELLOW}⚠️${NC}  PolicyRoutingManager not initialized (enable in Preferences → Network → Policy Routing)"
+        fi
+    fi
+fi
+
+# ── FASE 3: VPN Health Checker ────────────────────────────────────────────────
+
+if [ $BACKEND_RUNNING -eq 0 ]; then
+    VH_STATUS=$(curl -s --max-time 3 http://localhost:8000/api/network/vpn-health/status 2>/dev/null)
+    if [ -n "$VH_STATUS" ]; then
+        VH_INIT=$(echo   "$VH_STATUS" | grep -oP '"initialized":\s*\K(true|false)' | head -1)
+        VH_TYPE=$(echo   "$VH_STATUS" | grep -oP '"vpn_type":\s*"\K[^"]+' | head -1)
+        VH_HEALTHY=$(echo "$VH_STATUS" | grep -oP '"healthy":\s*\K(true|false)' | head -1 2>/dev/null || true)
+        VH_RTT=$(echo    "$VH_STATUS" | grep -oP '"rtt_ms":\s*\K[\d.]+' | head -1)
+        if [ "$VH_TYPE" = "none" ] || [ -z "$VH_TYPE" ]; then
+            echo -e "${BLUE}ℹ️${NC}  VPNHealthChecker: no VPN detected (checks disabled — normal if no VPN installed)"
+        elif [ "$VH_HEALTHY" = "true" ]; then
+            echo -e "${GREEN}✅${NC} VPN health OK — type=${VH_TYPE} RTT=${VH_RTT:-?}ms"
+        elif [ "$VH_INIT" = "true" ]; then
+            echo -e "${YELLOW}⚠️${NC}  VPN health DEGRADED — type=${VH_TYPE} (peer unreachable or interface down)"
+        else
+            echo -e "${YELLOW}⚠️${NC}  VPNHealthChecker not initialized"
+        fi
+    else
+        echo -e "${YELLOW}⚠️${NC}  VPN Health API unreachable"
+    fi
+fi
 
 echo -e "\n${BLUE}💻 Python Environment${NC}"
 if [ -f "/opt/FPVCopilotSky/venv/bin/python3" ]; then

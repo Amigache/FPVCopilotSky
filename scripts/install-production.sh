@@ -108,7 +108,15 @@ chown -R $ACTUAL_USER:$ACTUAL_USER /opt/FPVCopilotSky
 
 echo -e "${GREEN}✅ Permissions configured${NC}"
 
-echo -e "\n${GREEN}✅ Production environment setup complete!${NC}"
+# Configure sudo permissions for advanced networking (FASE 1-3)
+echo -e "\n${BLUE}🔒 Configuring sudo permissions (iptables, ip route, policy routing)...${NC}"
+if [ -f "/opt/FPVCopilotSky/scripts/setup-sudoers.sh" ]; then
+    chmod +x /opt/FPVCopilotSky/scripts/setup-sudoers.sh
+    bash /opt/FPVCopilotSky/scripts/setup-sudoers.sh
+    echo -e "${GREEN}✅ Sudo permissions configured${NC}"
+else
+    echo -e "${YELLOW}⚠️  Sudoers setup script not found (run manually: bash scripts/setup-sudoers.sh)${NC}"
+fi
 echo -e "\n📋 Next steps:"
 echo -e "   1. Build and deploy: ${BLUE}bash /opt/FPVCopilotSky/scripts/deploy.sh${NC}"
 echo -e "   2. Check service status: ${BLUE}sudo systemctl status fpvcopilot-sky${NC}"

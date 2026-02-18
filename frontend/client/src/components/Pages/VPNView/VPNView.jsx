@@ -4,7 +4,6 @@ import { useTranslation } from 'react-i18next'
 import { useToast } from '../../../contexts/ToastContext'
 import { useWebSocket } from '../../../contexts/WebSocketContext'
 import api from '../../../services/api'
-import Toggle from '../../Toggle/Toggle'
 import VPNStatusCard from './VPNStatusCard'
 import VPNPeersList from './VPNPeersList'
 
@@ -40,7 +39,7 @@ const VPNView = () => {
   const [authUrl, setAuthUrl] = useState(null)
   const [authPolling, setAuthPolling] = useState(false)
   const [vpnPreferences, setVpnPreferences] = useState({ auto_connect: false })
-  const [savingPreferences, setSavingPreferences] = useState(false)
+  const [_savingPreferences, setSavingPreferences] = useState(false)
 
   // Refs to avoid stale closures in callbacks
   const authPollingRef = useRef(false)
@@ -360,7 +359,7 @@ const VPNView = () => {
     [showToast, t]
   )
 
-  const handleAutoConnectChange = async (enabled) => {
+  const _handleAutoConnectChange = async (enabled) => {
     const newPrefs = { ...vpnPreferences, auto_connect: enabled }
     setVpnPreferences(newPrefs)
     await savePreferences(newPrefs)
@@ -465,17 +464,6 @@ const VPNView = () => {
               >
                 {connecting ? '⏳' : '🚪'} {t('vpn.logout')}
               </button>
-            </div>
-
-            <div className="vpn-section-divider" />
-
-            <div className="form-group auto-start-toggle">
-              <Toggle
-                checked={vpnPreferences.auto_connect || false}
-                onChange={(e) => handleAutoConnectChange(e.target.checked)}
-                disabled={savingPreferences}
-                label={t('vpn.autoConnect')}
-              />
             </div>
           </div>
         </div>
