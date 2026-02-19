@@ -10,23 +10,51 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 
 // ---------- Hoisted mocks (accessible inside vi.mock factories) ----------
-const { mockMessages, mockApi } = vi.hoisted(() => {
+const { mockMessages, mockApi, resetApiMock } = vi.hoisted(() => {
   const routeData = {
-    '/api/system/video-devices': { devices: [], count: 0, last_scan: null },
-    '/api/video/codecs': { codecs: [] },
+    '/api/system/video-devices': {
+      devices: [
+        {
+          device_path: '/dev/video0',
+          name: 'Test Camera',
+          resolutions: ['1920x1080', '1280x720'],
+          fps_by_resolution: {
+            '1920x1080': [30, 24],
+            '1280x720': [60, 30],
+          },
+          compatible_codecs: ['h264', 'mjpeg'],
+        },
+      ],
+      count: 1,
+      last_scan: Date.now(),
+    },
+    '/api/video/codecs': { codecs: ['h264', 'mjpeg'] },
     '/api/video/network/ip': { ip: '127.0.0.1', rtsp_url: 'rtsp://127.0.0.1:8554/stream' },
   }
+
+  const mockApi = {
+    get: vi.fn((url) =>
+      Promise.resolve({
+        ok: true,
+        json: async () => routeData[url] || {},
+      })
+    ),
+    post: vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true }) }),
+  }
+
+  const resetApiMock = () => {
+    mockApi.get.mockImplementation((url) =>
+      Promise.resolve({
+        ok: true,
+        json: async () => routeData[url] || {},
+      })
+    )
+  }
+
   return {
     mockMessages: { video_status: null },
-    mockApi: {
-      get: vi.fn((url) =>
-        Promise.resolve({
-          ok: true,
-          json: async () => routeData[url] || {},
-        })
-      ),
-      post: vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true }) }),
-    },
+    mockApi,
+    resetApiMock,
   }
 })
 
@@ -67,6 +95,7 @@ import VideoView from './VideoView'
 
 beforeEach(() => {
   vi.clearAllMocks()
+  resetApiMock() // Restore correct API mock implementation
   mockMessages.video_status = null
 })
 
@@ -110,6 +139,53 @@ describe('VideoView Component', () => {
       await waitFor(() => {
         expect(screen.getByText('views.video.gstreamerNotAvailable')).toBeInTheDocument()
       })
+    })
+
+    it('shows no camera message when no devices available', async () => {
+      // Override mock to return empty devices array
+      mockApi.get.mockImplementation((url) => {
+        if (url === '/api/system/video-devices') {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ devices: [], count: 0, last_scan: null }),
+          })
+        }
+        if (url === '/api/video/codecs') {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ codecs: ['h264', 'mjpeg'] }),
+          })
+        }
+        if (url === '/api/video/network/ip') {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ ip: '127.0.0.1', rtsp_url: 'rtsp://127.0.0.1:8554/stream' }),
+          })
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({}),
+        })
+      })
+
+      mockMessages.video_status = { available: true, streaming: false }
+      render(<VideoView />)
+
+      await waitFor(() => {
+        expect(screen.getByText('views.video.noCameraDetected')).toBeInTheDocument()
+        expect(screen.getByText('views.video.checkCameraConnection')).toBeInTheDocument()
+        // Search by partial text match (ignoring emoji before text)
+        expect(
+          screen.getByText((content, element) => {
+            return element.tagName.toLowerCase() === 'button' && content.includes('retry')
+          })
+        ).toBeInTheDocument()
+      })
+
+      // Should NOT show normal UI elements
+      expect(screen.queryByTestId('status-banner')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('video-source-card')).not.toBeInTheDocument()
+      // Mock will be restored by beforeEach in next test
     })
 
     it('shows stats card only when streaming', async () => {
