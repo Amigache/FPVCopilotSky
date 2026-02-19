@@ -17,6 +17,16 @@ const StatusView = () => {
   const [statusData, setStatusData] = useState(null)
   const [_resettingPrefs, setResettingPrefs] = useState(false)
 
+  // Version state
+  const [version, setVersion] = useState(null)
+  const [updateInfo, setUpdateInfo] = useState(null)
+  const [checkingUpdates, setCheckingUpdates] = useState(false)
+  const [showUpdateModal, setShowUpdateModal] = useState(false)
+  const [isUpdating, setIsUpdating] = useState(false)
+  const [rollbackInfo, setRollbackInfo] = useState(null)
+  const [showRollbackModal, setShowRollbackModal] = useState(false)
+  const [isRollingBack, setIsRollingBack] = useState(false)
+
   // Flight session state
   const [flightSession, setFlightSession] = useState(null)
   const [samplingInterval, setSamplingInterval] = useState(null)
@@ -302,6 +312,145 @@ const StatusView = () => {
     }
   }
 
+  const loadVersion = async () => {
+    try {
+      const response = await api.get('/api/system/version/current')
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success) {
+          setVersion(data.version)
+        }
+      }
+    } catch (error) {
+      console.error('Error loading version:', error)
+    }
+  }
+
+  const checkForUpdates = async () => {
+    setCheckingUpdates(true)
+    try {
+      const response = await api.get('/api/system/version/check')
+      if (response.ok) {
+        const data = await response.json()
+        setUpdateInfo(data)
+
+        if (data.success) {
+          if (data.update_available) {
+            showToast(
+              `${t('status.version.newVersionAvailable')}: v${data.latest_version}`,
+              'info'
+            )
+          } else {
+            showToast(t('status.version.alreadyUpToDate'), 'success')
+          }
+        } else {
+          showToast(data.error || t('status.version.checkError'), 'error')
+        }
+      } else {
+        showToast(t('status.version.checkError'), 'error')
+      }
+    } catch (error) {
+      console.error('Error checking for updates:', error)
+      showToast(t('status.version.checkError'), 'error')
+    } finally {
+      setCheckingUpdates(false)
+    }
+  }
+
+  const applyUpdate = async () => {
+    setIsUpdating(true)
+    setShowUpdateModal(false)
+
+    try {
+      showToast(t('status.version.updateStarting'), 'info')
+
+      const response = await api.post('/api/system/version/update')
+      
+      if (response.ok) {
+        const data = await response.json()
+
+        if (data.success) {
+          showToast(
+            `${t('status.version.updateSuccess')}: v${data.updated_to}`,
+            'success'
+          )
+          
+          // Reload version info after update
+          setTimeout(() => {
+            loadVersion()
+            checkForUpdates()
+            checkCanRollback()
+          }, 2000)
+        } else {
+          showToast(
+            `${t('status.version.updateFailed')}: ${data.error || 'Unknown error'}`,
+            'error'
+          )
+        }
+      } else {
+        showToast(t('status.version.updateFailed'), 'error')
+      }
+    } catch (error) {
+      console.error('Error applying update:', error)
+      showToast(t('status.version.updateFailed'), 'error')
+    } finally {
+      setIsUpdating(false)
+    }
+  }
+
+  const checkCanRollback = async () => {
+    try {
+      const response = await api.get('/api/system/version/can-rollback')
+      if (response.ok) {
+        const data = await response.json()
+        setRollbackInfo(data)
+      }
+    } catch (error) {
+      console.error('Error checking rollback availability:', error)
+    }
+  }
+
+  const performRollback = async () => {
+    setIsRollingBack(true)
+    setShowRollbackModal(false)
+
+    try {
+      showToast(t('status.version.rollbackStarting'), 'info')
+
+      const response = await api.post('/api/system/version/rollback')
+      
+      if (response.ok) {
+        const data = await response.json()
+
+        if (data.success) {
+          showToast(
+            `${t('status.version.rollbackSuccess')}: v${data.rolled_back_to}`,
+            'success'
+          )
+          
+          // Reload version info after rollback
+          setTimeout(() => {
+            loadVersion()
+            checkForUpdates()
+            checkCanRollback()
+          }, 2000)
+        } else {
+          showToast(
+            `${t('status.version.rollbackFailed')}: ${data.error || 'Unknown error'}`,
+            'error'
+          )
+        }
+      } else {
+        showToast(t('status.version.rollbackFailed'), 'error')
+      }
+    } catch (error) {
+      console.error('Error performing rollback:', error)
+      showToast(t('status.version.rollbackFailed'), 'error')
+    } finally {
+      setIsRollingBack(false)
+    }
+  }
+
   const _handleToggleAutoAdaptive = async (enabled) => {
     setSavingBitrateSetting(true)
     try {
@@ -445,6 +594,8 @@ const StatusView = () => {
     loadFlightPreferences()
     loadAutoAdaptiveBitrate()
     loadAutoAdaptiveResolution()
+    loadVersion()
+    checkCanRollback()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -557,6 +708,112 @@ const StatusView = () => {
   return (
     <div className="monitor-columns">
       <div className="monitor-col">
+        {/* System Version */}
+        <div className="card">
+          <h2>🔄 {t('status.version.title')}</h2>
+          <div className="info-section">
+            <InfoRow
+              label={t('status.version.currentVersion')}
+              value={version ? `v${version}` : t('common.loading')}
+            />
+
+            {/* Update info */}
+            {updateInfo && updateInfo.success && (
+              <>
+                {updateInfo.update_available ? (
+                  <>
+                    <InfoRow
+                      label={t('status.version.latestVersion')}
+                      value={`v${updateInfo.latest_version} 🎉`}
+                    />
+                    {updateInfo.release_name && (
+                      <div className="update-info">
+                        <p className="update-title">
+                          <strong>{updateInfo.release_name}</strong>
+                        </p>
+                        {updateInfo.release_notes && (
+                          <div className="update-notes">
+                            {updateInfo.release_notes.split('\n').slice(0, 3).join('\n')}
+                            {updateInfo.release_notes.split('\n').length > 3 && '...'}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <InfoRow
+                    label={t('status.version.latestVersion')}
+                    value={`v${updateInfo.latest_version || version}`}
+                  />
+                )}
+              </>
+            )}
+
+            <div className="version-status">
+              {updateInfo && updateInfo.success && updateInfo.update_available ? (
+                <span className="version-badge version-badge-update">
+                  🎉 {t('status.version.updateAvailable')}
+                </span>
+              ) : (
+                <span className="version-badge">✅ {t('status.version.upToDate')}</span>
+              )}
+            </div>
+          </div>
+
+          <div className="info-section">
+            <button
+              className="btn-check-updates"
+              onClick={checkForUpdates}
+              disabled={checkingUpdates || isUpdating}
+            >
+              {checkingUpdates ? (
+                <>
+                  <div className="spinner-small"></div>
+                  {t('status.version.checking')}
+                </>
+              ) : (
+                <>🔍 {t('status.version.checkForUpdates')}</>
+              )}
+            </button>
+
+            {/* Update button - only shown when update is available */}
+            {updateInfo && updateInfo.success && updateInfo.update_available && (
+              <button
+                className="btn-apply-update"
+                onClick={() => setShowUpdateModal(true)}
+                disabled={isUpdating || isRollingBack}
+              >
+                {isUpdating ? (
+                  <>
+                    <div className="spinner-small"></div>
+                    {t('status.version.updating')}
+                  </>
+                ) : (
+                  <>⬇️ {t('status.version.updateNow')}</>
+                )}
+              </button>
+            )}
+
+            {/* Rollback button - only shown when rollback is available */}
+            {rollbackInfo && rollbackInfo.can_rollback && (
+              <button
+                className="btn-rollback"
+                onClick={() => setShowRollbackModal(true)}
+                disabled={isRollingBack || isUpdating}
+              >
+                {isRollingBack ? (
+                  <>
+                    <div className="spinner-small"></div>
+                    {t('status.version.rollingBack')}
+                  </>
+                ) : (
+                  <>↩️ {t('status.version.rollbackButton')}</>
+                )}
+              </button>
+            )}
+          </div>
+        </div>
+
         {/* APP Status */}
         <div className="card">
           <h2>{t('status.sections.backend')}</h2>
@@ -824,6 +1081,83 @@ const StatusView = () => {
               {wasDisconnected && (
                 <p className="restarting-status">{t('status.restart.reconnecting')}</p>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Update Confirmation Modal */}
+      {showUpdateModal && (
+        <div className="modal-overlay" onClick={() => setShowUpdateModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h2>⚠️ {t('status.version.confirmUpdate')}</h2>
+            <p>{t('status.version.updateWarning')}</p>
+            
+            {updateInfo && (
+              <div className="update-modal-info">
+                <p>
+                  <strong>{t('status.version.currentVersion')}:</strong> v{version}
+                </p>
+                <p>
+                  <strong>{t('status.version.newVersion')}:</strong> v{updateInfo.latest_version}
+                </p>
+                {updateInfo.release_name && (
+                  <p>
+                    <strong>{t('status.version.releaseName')}:</strong> {updateInfo.release_name}
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div className="modal-actions">
+              <button
+                className="btn-cancel"
+                onClick={() => setShowUpdateModal(false)}
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                className="btn-confirm-update"
+                onClick={applyUpdate}
+              >
+                {t('status.version.confirmUpdateButton')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Rollback Confirmation Modal */}
+      {showRollbackModal && (
+        <div className="modal-overlay" onClick={() => setShowRollbackModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h2>⚠️ {t('status.version.confirmRollback')}</h2>
+            <p>{t('status.version.rollbackWarning')}</p>
+            
+            {rollbackInfo && rollbackInfo.previous_version && (
+              <div className="update-modal-info">
+                <p>
+                  <strong>{t('status.version.currentVersion')}:</strong> v{version}
+                </p>
+                <p>
+                  <strong>{t('status.version.previousVersion')}:</strong> v{rollbackInfo.previous_version}
+                </p>
+              </div>
+            )}
+
+            <div className="modal-actions">
+              <button
+                className="btn-cancel"
+                onClick={() => setShowRollbackModal(false)}
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                className="btn-confirm-rollback"
+                onClick={performRollback}
+              >
+                {t('status.version.confirmRollbackButton')}
+              </button>
             </div>
           </div>
         </div>

@@ -10,6 +10,58 @@ from app.i18n import get_language_from_request, translate
 router = APIRouter()
 
 
+@router.get("/version/current")
+async def get_current_version():
+    """Get current installed version"""
+    return SystemService.get_version()
+
+
+@router.get("/version/check")
+async def check_for_updates():
+    """Check for updates on GitHub"""
+    return SystemService.check_for_updates()
+
+
+@router.get("/version/can-rollback")
+async def can_rollback():
+    """Check if rollback to previous version is available"""
+    return SystemService.can_rollback()
+
+
+@router.post("/version/update")
+async def apply_system_update():
+    """
+    Apply system update to the latest version from GitHub.
+    
+    This endpoint:
+    - Verifies update availability
+    - Checks repository status
+    - Downloads and applies the update
+    - Rebuilds frontend
+    - Restarts the service
+    
+    Note: The service will restart during this process.
+    """
+    return SystemService.apply_update()
+
+
+@router.post("/version/rollback")
+async def rollback_to_previous_version():
+    """
+    Rollback to the previous version of the system.
+    
+    This endpoint:
+    - Checks if a previous version exists
+    - Checks repository status
+    - Checks out the previous version from git
+    - Rebuilds frontend
+    - Restarts the service
+    
+    Note: The service will restart during this process.
+    """
+    return SystemService.rollback_to_previous_version()
+
+
 @router.get("/info")
 async def get_system_info():
     """Get system information"""
