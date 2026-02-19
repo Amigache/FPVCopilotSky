@@ -212,7 +212,7 @@ class SystemService:
 
             # Step 2: Verify git repository status
             try:
-                # Check if there are uncommitted changes (excluding VERSION and .previous_version)
+                # Check if there are uncommitted changes
                 result = subprocess.run(
                     ["git", "status", "--porcelain"],
                     cwd=project_root,
@@ -222,21 +222,12 @@ class SystemService:
                 )
 
                 if result.stdout.strip():
-                    # Filter out VERSION and .previous_version files
-                    uncommitted = result.stdout.strip().split("\n")
-                    uncommitted_filtered = [
-                        line
-                        for line in uncommitted
-                        if not line.endswith("VERSION") and not line.endswith(".previous_version")
-                    ]
-
-                    if uncommitted_filtered:
-                        return {
-                            "success": False,
-                            "step": "git_status",
-                            "error": "Repository has uncommitted changes. Please commit or stash them first.",
-                            "uncommitted_files": uncommitted_filtered,
-                        }
+                    return {
+                        "success": False,
+                        "step": "git_status",
+                        "error": "Repository has uncommitted changes. Please commit or stash them first.",
+                        "uncommitted_files": result.stdout.strip().split("\n"),
+                    }
 
             except subprocess.TimeoutExpired:
                 return {
@@ -280,6 +271,19 @@ class SystemService:
                     "success": False,
                     "step": "git_fetch",
                     "error": f"Failed to fetch updates: {str(e)}",
+                }
+
+            # Step 3: Save current version BEFORE checkout (for rollback)
+            original_version = None
+            try:
+                current_version_data = SystemService.get_version()
+                if current_version_data.get("success"):
+                    original_version = current_version_data["version"]
+            except Exception as e:
+                return {
+                    "success": False,
+                    "step": "save_original_version",
+                    "error": f"Failed to read original version: {str(e)}",
                 }
 
             # Step 4: Checkout target version tag
@@ -331,17 +335,14 @@ class SystemService:
                     "error": f"Failed to checkout version: {str(e)}",
                 }
 
-            # Step 5: Save current version for rollback and update VERSION file
+            # Step 5: Save original version to .previous_version for rollback
             try:
-                # Read current version before updating
-                current_version_data = SystemService.get_version()
-                if current_version_data.get("success"):
-                    current_version = current_version_data["version"]
-                    # Save current version to .previous_version for rollback
+                if original_version:
+                    # Save original version to .previous_version for rollback
                     with open(SystemService.PREVIOUS_VERSION_FILE, "w") as f:
-                        f.write(current_version)
+                        f.write(original_version)
 
-                # Update VERSION file to new version
+                # Update VERSION file to new version (ensure it matches target version)
                 with open(SystemService.VERSION_FILE, "w") as f:
                     f.write(target_version)
             except Exception as e:
@@ -563,21 +564,12 @@ class SystemService:
                 )
 
                 if result.stdout.strip():
-                    # Filter out VERSION and .previous_version files
-                    uncommitted = result.stdout.strip().split("\n")
-                    uncommitted_filtered = [
-                        line
-                        for line in uncommitted
-                        if not line.endswith("VERSION") and not line.endswith(".previous_version")
-                    ]
-
-                    if uncommitted_filtered:
-                        return {
-                            "success": False,
-                            "step": "git_status",
-                            "error": "Repository has uncommitted changes. Please commit or stash them first.",
-                            "uncommitted_files": uncommitted_filtered,
-                        }
+                    return {
+                        "success": False,
+                        "step": "git_status",
+                        "error": "Repository has uncommitted changes. Please commit or stash them first.",
+                        "uncommitted_files": result.stdout.strip().split("\n"),
+                    }
 
             except subprocess.TimeoutExpired:
                 return {
@@ -626,10 +618,7 @@ class SystemService:
                     return {
                         "success": False,
                         "step": "git_checkout",
-                        "error": (
-                            f"Tag {tag_name} not found in repository. "
-                            f"Cannot rollback to version {previous_version}."
-                        ),
+                        "error": f"Tag {tag_name} not found in repository. Cannot rollback to version {previous_version}.",
                     }
 
                 # Checkout the tag

@@ -336,10 +336,7 @@ const StatusView = () => {
 
         if (data.success) {
           if (data.update_available) {
-            showToast(
-              `${t('status.version.newVersionAvailable')}: v${data.latest_version}`,
-              'info'
-            )
+            showToast(`${t('status.version.newVersionAvailable')}: v${data.latest_version}`, 'info')
           } else {
             showToast(t('status.version.alreadyUpToDate'), 'success')
           }
@@ -364,17 +361,14 @@ const StatusView = () => {
     try {
       showToast(t('status.version.updateStarting'), 'info')
 
-      const response = await api.post('/api/system/version/update')
-      
+      const response = await api.post('/api/system/version/update', {}, 180000) // 3 minutos
+
       if (response.ok) {
         const data = await response.json()
 
         if (data.success) {
-          showToast(
-            `${t('status.version.updateSuccess')}: v${data.updated_to}`,
-            'success'
-          )
-          
+          showToast(`${t('status.version.updateSuccess')}: v${data.updated_to}`, 'success')
+
           // Reload version info after update
           setTimeout(() => {
             loadVersion()
@@ -417,17 +411,14 @@ const StatusView = () => {
     try {
       showToast(t('status.version.rollbackStarting'), 'info')
 
-      const response = await api.post('/api/system/version/rollback')
-      
+      const response = await api.post('/api/system/version/rollback', {}, 180000) // 3 minutos
+
       if (response.ok) {
         const data = await response.json()
 
         if (data.success) {
-          showToast(
-            `${t('status.version.rollbackSuccess')}: v${data.rolled_back_to}`,
-            'success'
-          )
-          
+          showToast(`${t('status.version.rollbackSuccess')}: v${data.rolled_back_to}`, 'success')
+
           // Reload version info after rollback
           setTimeout(() => {
             loadVersion()
@@ -1092,7 +1083,7 @@ const StatusView = () => {
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <h2>⚠️ {t('status.version.confirmUpdate')}</h2>
             <p>{t('status.version.updateWarning')}</p>
-            
+
             {updateInfo && (
               <div className="update-modal-info">
                 <p>
@@ -1110,16 +1101,10 @@ const StatusView = () => {
             )}
 
             <div className="modal-actions">
-              <button
-                className="btn-cancel"
-                onClick={() => setShowUpdateModal(false)}
-              >
+              <button className="btn-cancel" onClick={() => setShowUpdateModal(false)}>
                 {t('common.cancel')}
               </button>
-              <button
-                className="btn-confirm-update"
-                onClick={applyUpdate}
-              >
+              <button className="btn-confirm-update" onClick={applyUpdate}>
                 {t('status.version.confirmUpdateButton')}
               </button>
             </div>
@@ -1133,29 +1118,24 @@ const StatusView = () => {
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <h2>⚠️ {t('status.version.confirmRollback')}</h2>
             <p>{t('status.version.rollbackWarning')}</p>
-            
+
             {rollbackInfo && rollbackInfo.previous_version && (
               <div className="update-modal-info">
                 <p>
                   <strong>{t('status.version.currentVersion')}:</strong> v{version}
                 </p>
                 <p>
-                  <strong>{t('status.version.previousVersion')}:</strong> v{rollbackInfo.previous_version}
+                  <strong>{t('status.version.previousVersion')}:</strong> v
+                  {rollbackInfo.previous_version}
                 </p>
               </div>
             )}
 
             <div className="modal-actions">
-              <button
-                className="btn-cancel"
-                onClick={() => setShowRollbackModal(false)}
-              >
+              <button className="btn-cancel" onClick={() => setShowRollbackModal(false)}>
                 {t('common.cancel')}
               </button>
-              <button
-                className="btn-confirm-rollback"
-                onClick={performRollback}
-              >
+              <button className="btn-confirm-rollback" onClick={performRollback}>
                 {t('status.version.confirmRollbackButton')}
               </button>
             </div>
