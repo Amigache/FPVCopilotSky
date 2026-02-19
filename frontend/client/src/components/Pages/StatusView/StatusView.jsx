@@ -26,6 +26,7 @@ const StatusView = () => {
   const [rollbackInfo, setRollbackInfo] = useState(null)
   const [showRollbackModal, setShowRollbackModal] = useState(false)
   const [isRollingBack, setIsRollingBack] = useState(false)
+  const [reloadModal, setReloadModal] = useState(null) // {type: 'update'|'rollback', version: '1.0.x'}
 
   // Flight session state
   const [flightSession, setFlightSession] = useState(null)
@@ -357,7 +358,7 @@ const StatusView = () => {
   // Poll until the service is back online after a restart
   const waitForServiceRestart = async (maxWaitMs = 120000) => {
     // Wait a moment before polling - service needs time to stop and restart
-    await new Promise(r => setTimeout(r, 4000))
+    await new Promise((r) => setTimeout(r, 4000))
     const startTime = Date.now()
     while (Date.now() - startTime < maxWaitMs) {
       try {
@@ -366,7 +367,7 @@ const StatusView = () => {
       } catch {
         // Not ready yet, keep polling
       }
-      await new Promise(r => setTimeout(r, 3000))
+      await new Promise((r) => setTimeout(r, 3000))
     }
     return false
   }
@@ -387,10 +388,7 @@ const StatusView = () => {
           // Response received successfully - service will restart in background
           showToast(t('status.version.serviceRestarting', 'Reiniciando servicio...'), 'info')
           await waitForServiceRestart()
-          showToast(`${t('status.version.updateSuccess')}: v${data.updated_to}`, 'success')
-          loadVersion()
-          checkForUpdates()
-          checkCanRollback()
+          setReloadModal({ type: 'update', version: data.updated_to })
         } else {
           showToast(
             `${t('status.version.updateFailed')}: ${data.error || 'Unknown error'}`,
@@ -406,10 +404,7 @@ const StatusView = () => {
       showToast(t('status.version.serviceRestarting', 'Reconectando...'), 'info')
       const restored = await waitForServiceRestart()
       if (restored) {
-        loadVersion()
-        checkForUpdates()
-        checkCanRollback()
-        showToast(t('status.version.updateSuccess'), 'success')
+        setReloadModal({ type: 'update', version: null })
       } else {
         showToast(t('status.version.updateFailed'), 'error')
       }
@@ -446,10 +441,7 @@ const StatusView = () => {
           // Response received successfully - service will restart in background
           showToast(t('status.version.serviceRestarting', 'Reiniciando servicio...'), 'info')
           await waitForServiceRestart()
-          showToast(`${t('status.version.rollbackSuccess')}: v${data.rolled_back_to}`, 'success')
-          loadVersion()
-          checkForUpdates()
-          checkCanRollback()
+          setReloadModal({ type: 'rollback', version: data.rolled_back_to })
         } else {
           showToast(
             `${t('status.version.rollbackFailed')}: ${data.error || 'Unknown error'}`,
@@ -465,10 +457,7 @@ const StatusView = () => {
       showToast(t('status.version.serviceRestarting', 'Reconectando...'), 'info')
       const restored = await waitForServiceRestart()
       if (restored) {
-        loadVersion()
-        checkForUpdates()
-        checkCanRollback()
-        showToast(t('status.version.rollbackSuccess'), 'success')
+        setReloadModal({ type: 'rollback', version: null })
       } else {
         showToast(t('status.version.rollbackFailed'), 'error')
       }
@@ -1172,6 +1161,27 @@ const StatusView = () => {
               </button>
               <button className="btn-confirm-rollback" onClick={performRollback}>
                 {t('status.version.confirmRollbackButton')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reload Required Modal - non-dismissible, shown after update/rollback */}
+      {reloadModal && (
+        <div className="modal-overlay reload-modal-overlay">
+          <div className="modal-content reload-modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="reload-modal-icon">✅</div>
+            <h2>
+              {reloadModal.type === 'update'
+                ? t('status.version.updateSuccess')
+                : t('status.version.rollbackSuccess')}
+            </h2>
+            {reloadModal.version && <p className="reload-modal-version">v{reloadModal.version}</p>}
+            <p>{t('status.version.reloadRequired')}</p>
+            <div className="modal-actions modal-actions-centered">
+              <button className="btn-reload" onClick={() => window.location.reload()}>
+                🔄 {t('status.version.reloadButton')}
               </button>
             </div>
           </div>

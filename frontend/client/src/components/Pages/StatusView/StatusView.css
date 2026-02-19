@@ -944,3 +944,53 @@
   background: rgba(244, 67, 54, 0.3);
   border-color: rgba(244, 67, 54, 0.6);
 }
+
+/* Reload Required Modal */
+.reload-modal-overlay {
+  z-index: 1100;
+}
+
+.reload-modal-content {
+  text-align: center;
+  max-width: 420px;
+}
+
+.reload-modal-icon {
+  font-size: 3rem;
+  margin-bottom: 12px;
+}
+
+.reload-modal-content h2 {
+  color: #66bb6a;
+  margin: 0 0 8px 0;
+  font-size: 1.3rem;
+}
+
+.reload-modal-version {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #64b5f6 !important;
+  margin-bottom: 8px !important;
+}
+
+.modal-actions-centered {
+  justify-content: center;
+}
+
+.btn-reload {
+  padding: 12px 28px;
+  background: rgba(76, 175, 80, 0.2);
+  border: 1px solid rgba(76, 175, 80, 0.5);
+  border-radius: 6px;
+  color: #66bb6a;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-reload:hover {
+  background: rgba(76, 175, 80, 0.35);
+  border-color: rgba(76, 175, 80, 0.8);
+  transform: scale(1.03);
+}

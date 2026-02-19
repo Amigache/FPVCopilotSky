@@ -680,7 +680,9 @@
       "confirmRollback": "Confirm Rollback",
       "rollbackWarning": "This will revert the system to the previous version. The service will restart.",
       "confirmRollbackButton": "Yes, rollback",
-      "previousVersion": "Previous Version"
+      "previousVersion": "Previous Version",
+      "reloadRequired": "The interface may have changed. Reload the page to apply the updates.",
+      "reloadButton": "Reload page"
     },
     "backend": {
       "version": "Version",

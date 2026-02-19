@@ -682,7 +682,9 @@
       "confirmRollback": "Confirmar Reversión",
       "rollbackWarning": "Esto revertirá el sistema a la versión anterior. El servicio se reiniciará.",
       "confirmRollbackButton": "Sí, revertir",
-      "previousVersion": "Versión Anterior"
+      "previousVersion": "Versión Anterior",
+      "reloadRequired": "La interfaz puede haber cambiado. Recarga la página para aplicar los cambios.",
+      "reloadButton": "Recargar página"
     },
     "backend": {
       "version": "Versión",

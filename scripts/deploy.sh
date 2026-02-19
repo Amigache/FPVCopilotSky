@@ -17,6 +17,9 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
+# Resolve the actual invoking user (handles: sudo bash deploy.sh, bash deploy.sh, root)
+ACTUAL_USER="${SUDO_USER:-$USER}"
+
 cd "$PROJECT_DIR"
 
 # Ensure local data directory exists
@@ -47,7 +50,7 @@ if [ ! -f "$DATA_DIR/version" ]; then
     fi
     echo "$INITIAL_VERSION" > "$DATA_DIR/version.tmp"
     sudo mv "$DATA_DIR/version.tmp" "$DATA_DIR/version"
-    
+
     # Set proper ownership
     if id "fpvcopilotsky" &>/dev/null; then
         sudo chown fpvcopilotsky:fpvcopilotsky "$DATA_DIR/version"
@@ -104,10 +107,17 @@ if command -v nginx &> /dev/null; then
         sudo rm /etc/nginx/sites-enabled/default
     fi
 
-    # Fix permissions for frontend build
-    # dist/ is owned by hector (can rebuild) and www-data (can read)
-    sudo chown -R $USER:www-data "$PROJECT_DIR/frontend/client/dist"
-    sudo chmod -R 755 "$PROJECT_DIR/frontend/client/dist"
+    # Fix permissions for frontend build:
+    # - Owner: ACTUAL_USER so the dev user can rebuild without sudo
+    # - Group: fpvcopilotsky (if it exists) so the service can overwrite files during git-based updates
+    # - Mode: 775/664 so group members can write; other (nginx/www-data) gets read-only
+    if id "fpvcopilotsky" &>/dev/null; then
+        sudo chown -R "$ACTUAL_USER:fpvcopilotsky" "$PROJECT_DIR/frontend/client/dist"
+    else
+        sudo chown -R "$ACTUAL_USER:$ACTUAL_USER" "$PROJECT_DIR/frontend/client/dist"
+    fi
+    sudo chmod -R 775 "$PROJECT_DIR/frontend/client/dist"
+    sudo find "$PROJECT_DIR/frontend/client/dist" -type f -exec chmod 664 {} \;
 
     # Test nginx config
     if sudo nginx -t; then
