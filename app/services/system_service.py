@@ -24,27 +24,58 @@ class SystemService:
     # Cache service instance
     _cache = get_cache_service()
 
-    # Version file path
-    VERSION_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "VERSION")
+    # Local data directory for installation-specific files
+    DATA_DIR = "/var/lib/fpvcopilot-sky"
+
+    # Version file path (local to installation)
+    VERSION_FILE = os.path.join(DATA_DIR, "version")
 
     # Previous version file (for rollback)
-    PREVIOUS_VERSION_FILE = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".previous_version"
-    )
+    PREVIOUS_VERSION_FILE = os.path.join(DATA_DIR, "previous_version")
+
+    @staticmethod
+    def _ensure_data_directory():
+        """Ensure the data directory exists with proper permissions"""
+        try:
+            os.makedirs(SystemService.DATA_DIR, mode=0o755, exist_ok=True)
+        except Exception as e:
+            print(f"Warning: Failed to create data directory: {str(e)}")
 
     @staticmethod
     def get_version() -> Dict[str, str]:
         """
-        Get current installed version from VERSION file.
+        Get current installed version from local version file.
+        If local file doesn't exist, read from git tag.
 
         Returns:
             Dictionary with version string
         """
+        SystemService._ensure_data_directory()
+
         try:
+            # Try local version file first
             if os.path.exists(SystemService.VERSION_FILE):
                 with open(SystemService.VERSION_FILE, "r") as f:
                     version = f.read().strip()
-                    return {"version": version, "success": True}
+                    if version:
+                        return {"version": version, "success": True}
+
+            # Fallback: get version from git tag
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+            result = subprocess.run(
+                ["git", "describe", "--tags", "--exact-match", "HEAD"],
+                cwd=project_root,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+
+            if result.returncode == 0:
+                git_version = result.stdout.strip().lstrip("v")
+                # Save to local file for future use
+                with open(SystemService.VERSION_FILE, "w") as f:
+                    f.write(git_version)
+                return {"version": git_version, "success": True}
             else:
                 return {
                     "version": "unknown",
@@ -342,7 +373,7 @@ class SystemService:
                     with open(SystemService.PREVIOUS_VERSION_FILE, "w") as f:
                         f.write(original_version)
 
-                # Update VERSION file to new version (ensure it matches target version)
+                # Update VERSION file to new version
                 with open(SystemService.VERSION_FILE, "w") as f:
                     f.write(target_version)
             except Exception as e:

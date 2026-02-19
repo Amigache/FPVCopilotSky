@@ -576,6 +576,30 @@ echo "  ✓ Network buffers optimized for 4G streaming"
 echo "  ✓ BBR congestion control enabled"
 echo "  ✓ UDP/TCP tuning applied"
 
+# Setup local data directory
+echo ""
+echo "📁 Setting up local data directory..."
+DATA_DIR="/var/lib/fpvcopilot-sky"
+sudo mkdir -p "$DATA_DIR"
+sudo chown fpvcopilotsky:fpvcopilotsky "$DATA_DIR"
+sudo chmod 755 "$DATA_DIR"
+
+# Initialize version file if it doesn't exist
+if [ ! -f "$DATA_DIR/version" ]; then
+    # Try to get version from git tag, fallback to 1.0.0
+    if cd /opt/FPVCopilotSky && git describe --tags --exact-match HEAD 2>/dev/null; then
+        INITIAL_VERSION=$(git describe --tags --exact-match HEAD 2>/dev/null | sed 's/^v//')
+    else
+        INITIAL_VERSION="1.0.0"
+    fi
+    echo "$INITIAL_VERSION" | sudo tee "$DATA_DIR/version" > /dev/null
+    sudo chown fpvcopilotsky:fpvcopilotsky "$DATA_DIR/version"
+    echo "  ✓ Version file initialized: $INITIAL_VERSION"
+else
+    echo "  ✓ Version file already exists"
+fi
+echo "  ✓ Data directory configured: $DATA_DIR"
+
 # Deploy to production (build frontend, install systemd service, start)
 echo ""
 echo "🚀 Deploying to production..."

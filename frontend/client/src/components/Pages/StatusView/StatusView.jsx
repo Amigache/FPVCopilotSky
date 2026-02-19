@@ -361,7 +361,7 @@ const StatusView = () => {
     try {
       showToast(t('status.version.updateStarting'), 'info')
 
-      const response = await api.post('/api/system/version/update', {}, 180000) // 3 minutos
+      const response = await api.post('/api/system/version/update', {}, 300000) // 5 minutes
 
       if (response.ok) {
         const data = await response.json()
@@ -411,7 +411,7 @@ const StatusView = () => {
     try {
       showToast(t('status.version.rollbackStarting'), 'info')
 
-      const response = await api.post('/api/system/version/rollback', {}, 180000) // 3 minutos
+      const response = await api.post('/api/system/version/rollback', {}, 300000) // 5 minutes
 
       if (response.ok) {
         const data = await response.json()
