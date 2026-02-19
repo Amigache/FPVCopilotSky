@@ -494,7 +494,7 @@ sudo bash scripts/configure-modem.sh   # Si modem no funciona
 
 ---
 
-## 5. Advanced Networking Setup (FASE 1-3)
+## 5. Advanced Networking Setup
 
 Esta sección cubre la configuración de red avanzada — detección multi-modem, policy routing y VPN health checks — que se instala **automáticamente** con `install.sh`. No se requieren pasos manuales en una instalación limpia.
 

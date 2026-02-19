@@ -53,6 +53,34 @@ async def get_system_resources():
     }
 
 
+@router.get("/processes/cpu")
+async def get_top_cpu_processes(limit: int = 10):
+    """
+    Get top processes by CPU usage
+
+    Args:
+        limit: Maximum number of processes to return (default: 10, max: 50)
+    """
+    # Limit the limit parameter to prevent excessive processing
+    limit = min(limit, 50)
+    processes = SystemService.get_top_processes_by_cpu(limit)
+    return {"processes": processes, "count": len(processes)}
+
+
+@router.get("/processes/memory")
+async def get_top_memory_processes(limit: int = 10):
+    """
+    Get top processes by memory (RAM) usage
+
+    Args:
+        limit: Maximum number of processes to return (default: 10, max: 50)
+    """
+    # Limit the limit parameter to prevent excessive processing
+    limit = min(limit, 50)
+    processes = SystemService.get_top_processes_by_memory(limit)
+    return {"processes": processes, "count": len(processes)}
+
+
 @router.get("/preferences")
 async def get_preferences_all():
     """Get all preferences"""

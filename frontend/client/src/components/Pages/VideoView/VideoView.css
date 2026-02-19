@@ -1015,3 +1015,46 @@
   font-size: 0.75rem;
   word-break: break-word;
 }
+
+/* No Camera State */
+.video-no-camera {
+  text-align: center;
+  padding: 2rem;
+}
+
+.no-camera-message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.no-camera-icon {
+  font-size: 3rem;
+}
+
+.no-camera-message p {
+  margin: 0;
+  color: var(--color-text-secondary);
+}
+
+.no-camera-hint {
+  font-size: 0.85rem;
+  color: #7a8299;
+}
+
+.btn-primary {
+  padding: 10px 20px;
+  background: linear-gradient(135deg, #4f7dff, #3b5fc9);
+  border: none;
+  border-radius: 6px;
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-primary:hover {
+  background: linear-gradient(135deg, #6b92ff, #4a6ed8);
+  transform: translateY(-1px);
+}

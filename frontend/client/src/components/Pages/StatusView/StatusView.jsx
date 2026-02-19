@@ -464,21 +464,21 @@ const StatusView = () => {
       const isArmed = telemetry.system.armed || false
 
       // Debug log
-      if (isArmed !== prevArmed) {
-        console.log(
-          `[Auto-start] Armed state changed: ${prevArmed} -> ${isArmed}, autoStartOnArm=${autoStartOnArm}, sessionActive=${flightSession?.active}`
-        )
-      }
+      // if (isArmed !== prevArmed) {
+      //   console.log(
+      //     `[Auto-start] Armed state changed: ${prevArmed} -> ${isArmed}, autoStartOnArm=${autoStartOnArm}, sessionActive=${flightSession?.active}`
+      //   )
+      // }
 
       // Detect arm transition (false -> true)
       if (autoStartOnArm && !prevArmed && isArmed && !flightSession?.active) {
-        console.log('[Auto-start] Conditions met, starting flight session...')
+        // console.log('[Auto-start] Conditions met, starting flight session...')
         handleStartFlightSession()
       }
 
       // Detect disarm transition (true -> false)
       if (prevArmed && !isArmed && flightSession?.active) {
-        console.log('[Auto-start] Drone disarmed, stopping flight session...')
+        // console.log('[Auto-start] Drone disarmed, stopping flight session...')
         handleStopFlightSession(true)
       }
 

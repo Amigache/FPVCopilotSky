@@ -188,7 +188,7 @@ const NetworkView = () => {
     try {
       const response = await api.post('/api/network/bridge/start')
       if (response.ok) {
-        console.log('Bridge started successfully')
+        // console.log('Bridge started successfully')
         // Wait a bit and refresh status
         await new Promise((resolve) => setTimeout(resolve, 1000))
         const statusResponse = await api.get('/api/network/bridge/status', 5000)
@@ -220,7 +220,7 @@ const NetworkView = () => {
             }
             // Auto-start if inactive (only once)
             if (data.active === false && !bridgeStartAttemptRef.current) {
-              console.log('Bridge inactive, auto-starting...')
+              // console.log('Bridge inactive, auto-starting...')
               startBridge()
             }
           }

@@ -952,7 +952,14 @@ class WebRTCService:
                 self.global_stats["active_peers"] = sum(1 for p in self.peers.values() if p.state == "connected")
 
     def _broadcast_status(self):
+        """Broadcast WebRTC status via WebSocket.
+
+        OPTIMIZATION: Skip if no clients connected.
+        """
         if not self.websocket_manager or not self.event_loop:
+            return
+        # Skip broadcast if no clients (save CPU for video encoding)
+        if not self.websocket_manager.has_clients:
             return
         try:
             asyncio.run_coroutine_threadsafe(

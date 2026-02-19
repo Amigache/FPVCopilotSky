@@ -493,6 +493,25 @@ const VideoView = () => {
     )
   }
 
+  // No cameras available
+  if (videoDevices.length === 0) {
+    return (
+      <div className="video-view">
+        <div className="card video-no-camera">
+          <h2>{t('views.video.title')}</h2>
+          <div className="no-camera-message">
+            <span className="no-camera-icon">❌</span>
+            <p>{t('views.video.noCameraDetected')}</p>
+            <p className="no-camera-hint">{t('views.video.checkCameraConnection')}</p>
+            <button className="btn-primary" onClick={loadVideoDevices}>
+              🔄 {t('common.retry')}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="video-view">
       <StatusBanner status={status} config={config} />

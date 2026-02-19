@@ -396,7 +396,6 @@ class VideoStreamInfoService:
                 packed_msg = msg.pack(mav_sender_camera)
 
                 # Debug: log when we send VIDEO_STREAM_INFORMATION
-                # print(f"📹 Sending VIDEO_STREAM_INFORMATION from CompID=100: {self.stream_name}, URI={uri}")
 
                 acquired = self.mavlink_bridge.serial_lock.acquire(timeout=0.1)
                 if acquired:

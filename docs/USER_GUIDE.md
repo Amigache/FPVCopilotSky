@@ -83,6 +83,13 @@ La barra de estado superior muestra en todo momento:
 2. **Resolución**: las resoluciones disponibles se adaptan a cada cámara
 3. **FPS**: framerate del stream (se adapta según las capacidades de la cámara)
 
+> ℹ️ **Resoluciones y FPS disponibles**
+> La aplicación muestra exactamente lo que la cámara declara al sistema operativo vía V4L2. No se filtran ni añaden modos artificialmente.
+>
+> Las cámaras de acción con modo **PC Cam / UVC** suelen ofrecer menos opciones que en su modo de grabación interno. Por ejemplo, la **Hawkeye Firefly Split V6 LITE** en modo PC Cam reporta únicamente `3840×2160 @ 30fps` y `1920×1080 @ 30fps` por USB — que es exactamente su especificación para streaming USB, independientemente de lo que grabe internamente en tarjeta SD.
+>
+> Si ves menos resoluciones o FPS de los esperados, consulta la ficha técnica de tu cámara específicamente para el modo PC Cam / USB Video Class (UVC).
+
 ### Codificación
 
 - **Codec**: seleccionado automáticamente entre los disponibles en el sistema (H.264 hardware, H.264 software, MJPEG…)

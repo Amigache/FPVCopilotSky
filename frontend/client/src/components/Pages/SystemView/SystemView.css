@@ -446,3 +446,147 @@
   border: 1px solid rgba(102, 102, 102, 0.15);
   opacity: 0.7;
 }
+
+/* Process list styles */
+.process-toggle-btn {
+  width: 100%;
+  background: rgba(45, 45, 63, 0.5);
+  border: 1px solid rgba(127, 163, 255, 0.2);
+  color: #c5d2ff;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.2s;
+}
+
+.process-toggle-btn:hover {
+  background: rgba(45, 45, 63, 0.8);
+  border-color: rgba(127, 163, 255, 0.4);
+  transform: translateY(-1px);
+}
+
+.process-toggle-btn:active {
+  transform: translateY(0);
+}
+
+.process-list {
+  margin-top: 10px;
+  animation: slideDown 0.2s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.process-loading,
+.process-empty {
+  text-align: center;
+  padding: 15px;
+  color: #9aa6c3;
+  font-size: 0.85rem;
+}
+
+.process-table {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.process-header {
+  display: grid;
+  grid-template-columns: 1fr 80px 100px;
+  gap: 8px;
+  padding: 8px 10px;
+  background: rgba(20, 20, 30, 0.5);
+  border-radius: 4px 4px 0 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #9aa6c3;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.process-row {
+  display: grid;
+  grid-template-columns: 1fr 80px 100px;
+  gap: 8px;
+  padding: 8px 10px;
+  background: rgba(45, 45, 63, 0.3);
+  border-radius: 4px;
+  font-size: 0.85rem;
+  transition: background 0.15s;
+}
+
+.process-row:hover {
+  background: rgba(45, 45, 63, 0.5);
+}
+
+.process-col-name {
+  overflow: hidden;
+}
+
+.process-name {
+  color: #e0e6ff;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 0.85rem;
+}
+
+.process-pid {
+  color: #9aa6c3;
+  font-size: 0.72rem;
+  margin-top: 2px;
+  font-family: 'Monaco', 'Menlo', monospace;
+}
+
+.process-col-cpu,
+.process-col-mem {
+  text-align: right;
+  color: #c5d2ff;
+  font-weight: 600;
+  font-family: 'Monaco', 'Menlo', monospace;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  .process-header,
+  .process-row {
+    grid-template-columns: 1fr 70px 85px;
+    gap: 6px;
+    padding: 6px 8px;
+  }
+
+  .process-toggle-btn {
+    font-size: 0.8rem;
+    padding: 7px 10px;
+  }
+
+  .process-name {
+    font-size: 0.8rem;
+  }
+
+  .process-pid {
+    font-size: 0.68rem;
+  }
+
+  .process-col-cpu,
+  .process-col-mem {
+    font-size: 0.8rem;
+  }
+}

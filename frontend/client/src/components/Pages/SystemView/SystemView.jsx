@@ -22,6 +22,12 @@ const SystemView = () => {
   const [videoDevices, setVideoDevices] = useState([])
   const [videoDevicesLoading, setVideoDevicesLoading] = useState(true)
   const [activeDevicePath, setActiveDevicePath] = useState('')
+  const [cpuProcesses, setCpuProcesses] = useState([])
+  const [memProcesses, setMemProcesses] = useState([])
+  const [showCpuProcesses, setShowCpuProcesses] = useState(false)
+  const [showMemProcesses, setShowMemProcesses] = useState(false)
+  const [loadingCpuProcesses, setLoadingCpuProcesses] = useState(false)
+  const [loadingMemProcesses, setLoadingMemProcesses] = useState(false)
 
   const loadStatus = async () => {
     try {
@@ -93,6 +99,50 @@ const SystemView = () => {
     } finally {
       setVideoDevicesLoading(false)
     }
+  }
+
+  const loadCpuProcesses = async () => {
+    setLoadingCpuProcesses(true)
+    try {
+      const response = await api.get('/api/system/processes/cpu?limit=10')
+      if (response.ok) {
+        const data = await response.json()
+        setCpuProcesses(data.processes || [])
+      }
+    } catch (error) {
+      console.error('Error loading CPU processes:', error)
+    } finally {
+      setLoadingCpuProcesses(false)
+    }
+  }
+
+  const loadMemProcesses = async () => {
+    setLoadingMemProcesses(true)
+    try {
+      const response = await api.get('/api/system/processes/memory?limit=10')
+      if (response.ok) {
+        const data = await response.json()
+        setMemProcesses(data.processes || [])
+      }
+    } catch (error) {
+      console.error('Error loading memory processes:', error)
+    } finally {
+      setLoadingMemProcesses(false)
+    }
+  }
+
+  const toggleCpuProcesses = () => {
+    if (!showCpuProcesses && cpuProcesses.length === 0) {
+      loadCpuProcesses()
+    }
+    setShowCpuProcesses(!showCpuProcesses)
+  }
+
+  const toggleMemProcesses = () => {
+    if (!showMemProcesses && memProcesses.length === 0) {
+      loadMemProcesses()
+    }
+    setShowMemProcesses(!showMemProcesses)
   }
 
   // Load initial status
@@ -445,6 +495,51 @@ const SystemView = () => {
                 }}
               ></div>
             </div>
+
+            {/* Process list toggle */}
+            <button
+              onClick={toggleMemProcesses}
+              className="process-toggle-btn"
+              style={{ marginTop: '12px' }}
+            >
+              <span>{showMemProcesses ? '▲' : '▼'}</span>
+              <span>
+                {showMemProcesses
+                  ? t('views.system.hideProcesses')
+                  : t('views.system.showProcesses')}
+              </span>
+            </button>
+
+            {/* Process list */}
+            {showMemProcesses && (
+              <div className="process-list">
+                {loadingMemProcesses ? (
+                  <div className="process-loading">{t('common.loading')}</div>
+                ) : memProcesses.length === 0 ? (
+                  <div className="process-empty">{t('views.system.noProcessData')}</div>
+                ) : (
+                  <div className="process-table">
+                    <div className="process-header">
+                      <div className="process-col-name">{t('views.system.process')}</div>
+                      <div className="process-col-cpu">CPU</div>
+                      <div className="process-col-mem">{t('views.system.memory')}</div>
+                    </div>
+                    {memProcesses.map((proc) => (
+                      <div key={proc.pid} className="process-row">
+                        <div className="process-col-name" title={proc.cmdline || proc.name}>
+                          <div className="process-name">{proc.name}</div>
+                          <div className="process-pid">
+                            {t('views.system.pid')}: {proc.pid}
+                          </div>
+                        </div>
+                        <div className="process-col-cpu">{proc.cpu_percent.toFixed(1)}%</div>
+                        <div className="process-col-mem">{proc.mem_mb.toFixed(1)} MB</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -543,6 +638,51 @@ const SystemView = () => {
                 }}
               ></div>
             </div>
+
+            {/* Process list toggle */}
+            <button
+              onClick={toggleCpuProcesses}
+              className="process-toggle-btn"
+              style={{ marginTop: '12px' }}
+            >
+              <span>{showCpuProcesses ? '▲' : '▼'}</span>
+              <span>
+                {showCpuProcesses
+                  ? t('views.system.hideProcesses')
+                  : t('views.system.showProcesses')}
+              </span>
+            </button>
+
+            {/* Process list */}
+            {showCpuProcesses && (
+              <div className="process-list">
+                {loadingCpuProcesses ? (
+                  <div className="process-loading">{t('common.loading')}</div>
+                ) : cpuProcesses.length === 0 ? (
+                  <div className="process-empty">{t('views.system.noProcessData')}</div>
+                ) : (
+                  <div className="process-table">
+                    <div className="process-header">
+                      <div className="process-col-name">{t('views.system.process')}</div>
+                      <div className="process-col-cpu">CPU</div>
+                      <div className="process-col-mem">{t('views.system.memory')}</div>
+                    </div>
+                    {cpuProcesses.map((proc) => (
+                      <div key={proc.pid} className="process-row">
+                        <div className="process-col-name" title={proc.cmdline || proc.name}>
+                          <div className="process-name">{proc.name}</div>
+                          <div className="process-pid">
+                            {t('views.system.pid')}: {proc.pid}
+                          </div>
+                        </div>
+                        <div className="process-col-cpu">{proc.cpu_percent.toFixed(1)}%</div>
+                        <div className="process-col-mem">{proc.mem_mb.toFixed(1)} MB</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

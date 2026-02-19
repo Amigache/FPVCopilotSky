@@ -927,8 +927,14 @@ class MAVLinkBridge:
         }
 
     def _broadcast_status(self):
-        """Broadcast status via WebSocket."""
+        """Broadcast MAVLink connection status via WebSocket.
+
+        OPTIMIZATION: Skip if no clients connected.
+        """
         if not self.websocket_manager or not self.event_loop:
+            return
+        # Skip broadcast if no clients (save CPU for video encoding)
+        if not self.websocket_manager.has_clients:
             return
         try:
             asyncio.run_coroutine_threadsafe(

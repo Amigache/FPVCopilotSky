@@ -1344,8 +1344,16 @@ class NetworkEventBridge:
     # ======================
 
     async def _broadcast_status(self):
-        """Broadcast bridge status via WebSocket"""
+        """Broadcast bridge status via WebSocket.
+
+        OPTIMIZATION: Skip broadcast if no clients connected to save CPU.
+        The monitoring and adaptive adjustments continue regardless.
+        """
         if not self._websocket_manager:
+            return
+
+        # Skip broadcast if no clients (monitoring continues, just don't send to UI)
+        if not self._websocket_manager.has_clients:
             return
 
         try:

@@ -552,3 +552,98 @@ class SystemService:
             return "Error: Log fetching timed out"
         except Exception as e:
             return f"Error fetching frontend logs: {str(e)}"
+
+    @staticmethod
+    def _get_all_processes_info() -> List[Dict[str, Any]]:
+        """
+        Get information for all running processes.
+
+        Returns:
+            List of dictionaries with process information (pid, name, cmdline, cpu_percent, mem_mb)
+        """
+        processes = []
+
+        try:
+            proc_dirs = [d for d in os.listdir("/proc") if d.isdigit()]
+
+            for pid_str in proc_dirs:
+                try:
+                    pid = int(pid_str)
+
+                    # Read process name
+                    with open(f"/proc/{pid}/comm", "r") as f:
+                        name = f.read().strip()
+
+                    # Read command line
+                    cmdline = ""
+                    try:
+                        with open(f"/proc/{pid}/cmdline", "r") as f:
+                            cmdline = f.read().replace("\x00", " ").strip()
+                    except:
+                        pass
+
+                    # Get CPU usage
+                    cpu_percent = SystemService._get_process_cpu(pid) or 0
+
+                    # Get memory usage
+                    mem_mb = 0
+                    try:
+                        with open(f"/proc/{pid}/status", "r") as f:
+                            for line in f:
+                                if line.startswith("VmRSS:"):
+                                    mem_kb = int(line.split()[1])
+                                    mem_mb = round(mem_kb / 1024, 1)
+                                    break
+                    except:
+                        pass
+
+                    processes.append(
+                        {
+                            "pid": pid,
+                            "name": name,
+                            "cmdline": cmdline[:100] if cmdline else name,
+                            "cpu_percent": round(cpu_percent, 1),
+                            "mem_mb": mem_mb,
+                        }
+                    )
+
+                except (FileNotFoundError, ProcessLookupError, PermissionError):
+                    continue
+                except Exception:
+                    continue
+
+            return processes
+
+        except Exception as e:
+            print(f"⚠️ Error getting process information: {e}")
+            return []
+
+    @staticmethod
+    def get_top_processes_by_cpu(limit: int = 10) -> List[Dict[str, Any]]:
+        """
+        Get top processes by CPU usage.
+
+        Args:
+            limit: Maximum number of processes to return (default: 10)
+
+        Returns:
+            List of dictionaries with process information sorted by CPU usage
+        """
+        processes = SystemService._get_all_processes_info()
+        processes.sort(key=lambda p: p["cpu_percent"], reverse=True)
+        return processes[:limit]
+
+    @staticmethod
+    def get_top_processes_by_memory(limit: int = 10) -> List[Dict[str, Any]]:
+        """
+        Get top processes by memory (RAM) usage.
+
+        Args:
+            limit: Maximum number of processes to return (default: 10)
+
+        Returns:
+            List of dictionaries with process information sorted by memory usage
+        """
+        processes = SystemService._get_all_processes_info()
+        processes.sort(key=lambda p: p["mem_mb"], reverse=True)
+        return processes[:limit]
