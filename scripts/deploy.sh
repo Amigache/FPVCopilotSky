@@ -17,12 +17,65 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
+# Resolve the actual invoking user (handles: sudo bash deploy.sh, bash deploy.sh, root)
+ACTUAL_USER="${SUDO_USER:-$USER}"
+
 cd "$PROJECT_DIR"
+
+# Ensure local data directory exists
+echo -e "\n${BLUE}📁 Ensuring data directory...${NC}"
+DATA_DIR="/var/lib/fpvcopilot-sky"
+sudo mkdir -p "$DATA_DIR"
+
+# Set proper ownership if fpvcopilotsky user exists
+if id "fpvcopilotsky" &>/dev/null; then
+    sudo chown fpvcopilotsky:fpvcopilotsky "$DATA_DIR"
+else
+    # Fallback: use current user or www-data
+    if [ -n "$SUDO_USER" ]; then
+        sudo chown "$SUDO_USER:$SUDO_USER" "$DATA_DIR"
+    else
+        sudo chown www-data:www-data "$DATA_DIR"
+    fi
+fi
+sudo chmod 755 "$DATA_DIR"
+
+# Initialize version file if it doesn't exist
+if [ ! -f "$DATA_DIR/version" ]; then
+    # Try to get version from git tag, fallback to 1.0.0
+    if git describe --tags --exact-match HEAD 2>/dev/null; then
+        INITIAL_VERSION=$(git describe --tags --exact-match HEAD 2>/dev/null | sed 's/^v//')
+    else
+        INITIAL_VERSION="1.0.0"
+    fi
+    echo "$INITIAL_VERSION" > "$DATA_DIR/version.tmp"
+    sudo mv "$DATA_DIR/version.tmp" "$DATA_DIR/version"
+
+    # Set proper ownership
+    if id "fpvcopilotsky" &>/dev/null; then
+        sudo chown fpvcopilotsky:fpvcopilotsky "$DATA_DIR/version"
+    else
+        if [ -n "$SUDO_USER" ]; then
+            sudo chown "$SUDO_USER:$SUDO_USER" "$DATA_DIR/version"
+        else
+            sudo chown www-data:www-data "$DATA_DIR/version"
+        fi
+    fi
+    echo -e "${GREEN}✅ Version file initialized: $INITIAL_VERSION${NC}"
+else
+    echo -e "${GREEN}✅ Version file already exists${NC}"
+fi
 
 # Step 1: Build Frontend
 echo -e "\n${BLUE}📦 Building frontend...${NC}"
 cd frontend/client
 npm run build
+# Fix ownership so the service user (fpvcopilotsky) can overwrite dist on future updates
+if id "fpvcopilotsky" &>/dev/null; then
+    chown -R fpvcopilotsky:fpvcopilotsky dist
+elif [ -n "$SUDO_USER" ]; then
+    chown -R "$SUDO_USER:$SUDO_USER" dist
+fi
 echo -e "${GREEN}✅ Frontend built successfully${NC}"
 
 # Step 2: Install systemd service
@@ -54,10 +107,17 @@ if command -v nginx &> /dev/null; then
         sudo rm /etc/nginx/sites-enabled/default
     fi
 
-    # Fix permissions for frontend build
-    # dist/ is owned by hector (can rebuild) and www-data (can read)
-    sudo chown -R $USER:www-data "$PROJECT_DIR/frontend/client/dist"
-    sudo chmod -R 755 "$PROJECT_DIR/frontend/client/dist"
+    # Fix permissions for frontend build:
+    # - Owner: ACTUAL_USER so the dev user can rebuild without sudo
+    # - Group: fpvcopilotsky (if it exists) so the service can overwrite files during git-based updates
+    # - Mode: 775/664 so group members can write; other (nginx/www-data) gets read-only
+    if id "fpvcopilotsky" &>/dev/null; then
+        sudo chown -R "$ACTUAL_USER:fpvcopilotsky" "$PROJECT_DIR/frontend/client/dist"
+    else
+        sudo chown -R "$ACTUAL_USER:$ACTUAL_USER" "$PROJECT_DIR/frontend/client/dist"
+    fi
+    sudo chmod -R 775 "$PROJECT_DIR/frontend/client/dist"
+    sudo find "$PROJECT_DIR/frontend/client/dist" -type f -exec chmod 664 {} \;
 
     # Test nginx config
     if sudo nginx -t; then

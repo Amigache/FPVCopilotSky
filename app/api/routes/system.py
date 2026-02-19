@@ -3,11 +3,61 @@ System API Routes
 Endpoints for system information
 """
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, BackgroundTasks, Request
 from app.services.system_service import SystemService
 from app.i18n import get_language_from_request, translate
 
 router = APIRouter()
+
+
+@router.get("/version/current")
+async def get_current_version():
+    """Get current installed version"""
+    return SystemService.get_version()
+
+
+@router.get("/version/check")
+async def check_for_updates():
+    """Check for updates on GitHub"""
+    return SystemService.check_for_updates()
+
+
+@router.get("/version/can-rollback")
+async def can_rollback():
+    """Check if rollback to previous version is available"""
+    return SystemService.can_rollback()
+
+
+@router.post("/version/update")
+async def apply_system_update(background_tasks: BackgroundTasks):
+    """
+    Apply system update to the latest version from GitHub.
+
+    The update process runs synchronously (git fetch, checkout, pip install,
+    npm build) and returns a response BEFORE restarting the service.
+    The restart is scheduled as a BackgroundTask so the client receives
+    the success response first.
+    """
+    result = SystemService.apply_update(do_restart=False)
+    if result.get("success"):
+        background_tasks.add_task(SystemService._restart_service_delayed)
+    return result
+
+
+@router.post("/version/rollback")
+async def rollback_to_previous_version(background_tasks: BackgroundTasks):
+    """
+    Rollback to the previous version of the system.
+
+    The rollback process runs synchronously (git checkout, pip install,
+    npm build) and returns a response BEFORE restarting the service.
+    The restart is scheduled as a BackgroundTask so the client receives
+    the success response first.
+    """
+    result = SystemService.rollback_to_previous_version(do_restart=False)
+    if result.get("success"):
+        background_tasks.add_task(SystemService._restart_service_delayed)
+    return result
 
 
 @router.get("/info")

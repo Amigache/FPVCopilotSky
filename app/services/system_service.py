@@ -8,6 +8,7 @@ import os
 import platform
 import subprocess
 import time
+import requests
 from typing import List, Dict, Any
 from app.services.cache_service import get_cache_service
 
@@ -22,6 +23,798 @@ class SystemService:
 
     # Cache service instance
     _cache = get_cache_service()
+
+    # Local data directory for installation-specific files
+    DATA_DIR = "/var/lib/fpvcopilot-sky"
+
+    # Version file path (local to installation)
+    VERSION_FILE = os.path.join(DATA_DIR, "version")
+
+    # Previous version file (for rollback)
+    PREVIOUS_VERSION_FILE = os.path.join(DATA_DIR, "previous_version")
+
+    @staticmethod
+    def _ensure_data_directory():
+        """Ensure the data directory exists with proper permissions"""
+        try:
+            os.makedirs(SystemService.DATA_DIR, mode=0o755, exist_ok=True)
+        except Exception as e:
+            print(f"Warning: Failed to create data directory: {str(e)}")
+
+    @staticmethod
+    def get_version() -> Dict[str, str]:
+        """
+        Get current installed version from local version file.
+        If local file doesn't exist, read from git tag.
+
+        Returns:
+            Dictionary with version string
+        """
+        SystemService._ensure_data_directory()
+
+        try:
+            # Try local version file first
+            if os.path.exists(SystemService.VERSION_FILE):
+                with open(SystemService.VERSION_FILE, "r") as f:
+                    version = f.read().strip()
+                    if version:
+                        return {"version": version, "success": True}
+
+            # Fallback: get version from git tag
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+            result = subprocess.run(
+                ["git", "describe", "--tags", "--exact-match", "HEAD"],
+                cwd=project_root,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+
+            if result.returncode == 0:
+                git_version = result.stdout.strip().lstrip("v")
+                # Save to local file for future use
+                with open(SystemService.VERSION_FILE, "w") as f:
+                    f.write(git_version)
+                return {"version": git_version, "success": True}
+            else:
+                return {
+                    "version": "unknown",
+                    "success": False,
+                    "error": "VERSION file not found",
+                }
+        except Exception as e:
+            return {"version": "unknown", "success": False, "error": str(e)}
+
+    @staticmethod
+    def check_for_updates() -> Dict[str, Any]:
+        """
+        Check for updates by comparing local version with GitHub releases.
+
+        Returns:
+            Dictionary with update information
+        """
+        try:
+            # Get current version
+            current_version_data = SystemService.get_version()
+            if not current_version_data.get("success"):
+                return {
+                    "success": False,
+                    "error": "Could not read current version",
+                    "current_version": "unknown",
+                }
+
+            current_version = current_version_data["version"]
+
+            # GitHub API URL for latest release
+            # Format: https://api.github.com/repos/OWNER/REPO/releases/latest
+            github_api_url = "https://api.github.com/repos/Amigache/FPVCopilotSky/releases/latest"
+
+            # Make request with timeout
+            response = requests.get(github_api_url, timeout=10)
+
+            if response.status_code == 404:
+                # No releases yet
+                return {
+                    "success": True,
+                    "update_available": False,
+                    "current_version": current_version,
+                    "latest_version": current_version,
+                    "message": "No releases published yet",
+                }
+
+            if response.status_code != 200:
+                return {
+                    "success": False,
+                    "error": f"GitHub API returned status {response.status_code}",
+                    "current_version": current_version,
+                }
+
+            release_data = response.json()
+
+            # Extract version from tag_name (removes 'v' prefix if present)
+            latest_version = release_data.get("tag_name", "").lstrip("v")
+            release_name = release_data.get("name", "")
+            release_notes = release_data.get("body", "")
+            published_at = release_data.get("published_at", "")
+            html_url = release_data.get("html_url", "")
+
+            # Compare versions (simple string comparison for semantic versioning)
+            update_available = SystemService._compare_versions(current_version, latest_version)
+
+            return {
+                "success": True,
+                "update_available": update_available,
+                "current_version": current_version,
+                "latest_version": latest_version,
+                "release_name": release_name,
+                "release_notes": release_notes,
+                "published_at": published_at,
+                "url": html_url,
+            }
+
+        except requests.exceptions.Timeout:
+            return {
+                "success": False,
+                "error": "GitHub API timeout",
+                "current_version": current_version_data.get("version", "unknown"),
+            }
+        except requests.exceptions.RequestException as e:
+            return {
+                "success": False,
+                "error": f"Network error: {str(e)}",
+                "current_version": current_version_data.get("version", "unknown"),
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Unexpected error: {str(e)}",
+                "current_version": current_version_data.get("version", "unknown"),
+            }
+
+    @staticmethod
+    def _compare_versions(current: str, latest: str) -> bool:
+        """
+        Compare two semantic version strings.
+
+        Returns:
+            True if latest > current, False otherwise
+        """
+        try:
+            # Split versions into parts (e.g., "1.2.3" -> [1, 2, 3])
+            current_parts = [int(x) for x in current.split(".")]
+            latest_parts = [int(x) for x in latest.split(".")]
+
+            # Pad shorter version with zeros
+            max_len = max(len(current_parts), len(latest_parts))
+            current_parts += [0] * (max_len - len(current_parts))
+            latest_parts += [0] * (max_len - len(latest_parts))
+
+            # Compare part by part
+            return latest_parts > current_parts
+        except (ValueError, AttributeError):
+            # If parsing fails, do simple string comparison
+            return latest > current
+
+    @staticmethod
+    def _restart_service_delayed(delay_seconds: int = 2) -> None:
+        """
+        Restart the service after a short delay.
+        Called as a BackgroundTask so the HTTP response is sent BEFORE the restart.
+        """
+        time.sleep(delay_seconds)
+        subprocess.run(
+            ["sudo", "systemctl", "restart", "fpvcopilot-sky"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+    @staticmethod
+    def apply_update(target_version: str = None, do_restart: bool = True) -> Dict[str, Any]:
+        """
+        Apply system update by checking out a specific version tag from git.
+
+        This method:
+        1. Verifies update availability
+        2. Checks git repository status
+        3. Fetches latest changes and checks out the target version tag
+        4. Updates dependencies
+        5. Updates VERSION file
+        6. Rebuilds frontend
+        7. Restarts backend service
+
+        Args:
+            target_version: Version to update to (e.g., "1.0.1"). If None, uses latest from GitHub.
+
+        Returns:
+            Dictionary with update status and progress information
+        """
+        # Get project root directory
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+
+        try:
+            # Step 1: Check for updates
+            if target_version is None:
+                update_info = SystemService.check_for_updates()
+                if not update_info.get("success"):
+                    return {
+                        "success": False,
+                        "step": "check_updates",
+                        "error": "Failed to check for updates",
+                        "details": update_info.get("error", "Unknown error"),
+                    }
+
+                if not update_info.get("update_available"):
+                    return {
+                        "success": False,
+                        "step": "check_updates",
+                        "error": "No update available",
+                        "current_version": update_info.get("current_version"),
+                        "latest_version": update_info.get("latest_version"),
+                    }
+
+                target_version = update_info.get("latest_version")
+
+            # Step 2: Reset any local changes (users cannot commit in installed apps)
+            try:
+                subprocess.run(
+                    ["git", "reset", "--hard"],
+                    cwd=project_root,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+            except Exception as e:
+                # Non-fatal, force checkout will handle it
+                print(f"Warning: git reset had issues: {str(e)}")
+
+            # Step 3: Fetch latest changes from GitHub
+            try:
+                result = subprocess.run(
+                    ["git", "fetch", "origin", "--tags"],
+                    cwd=project_root,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+
+                if result.returncode != 0:
+                    return {
+                        "success": False,
+                        "step": "git_fetch",
+                        "error": "Git fetch failed",
+                        "details": result.stderr,
+                    }
+
+            except subprocess.TimeoutExpired:
+                return {
+                    "success": False,
+                    "step": "git_fetch",
+                    "error": "Git fetch timed out (network issue?)",
+                }
+            except Exception as e:
+                return {
+                    "success": False,
+                    "step": "git_fetch",
+                    "error": f"Failed to fetch updates: {str(e)}",
+                }
+
+            # Step 3: Save current version BEFORE checkout (for rollback)
+            original_version = None
+            try:
+                current_version_data = SystemService.get_version()
+                if current_version_data.get("success"):
+                    original_version = current_version_data["version"]
+            except Exception as e:
+                return {
+                    "success": False,
+                    "step": "save_original_version",
+                    "error": f"Failed to read original version: {str(e)}",
+                }
+
+            # Step 4: Checkout target version tag
+            tag_name = f"v{target_version}"
+            try:
+                # First verify the tag exists
+                result = subprocess.run(
+                    ["git", "tag", "-l", tag_name],
+                    cwd=project_root,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+
+                if not result.stdout.strip():
+                    return {
+                        "success": False,
+                        "step": "git_checkout",
+                        "error": f"Tag {tag_name} not found in repository",
+                    }
+
+                # Force checkout the tag (discard any local changes)
+                result = subprocess.run(
+                    ["git", "checkout", "--force", tag_name],
+                    cwd=project_root,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+
+                if result.returncode != 0:
+                    return {
+                        "success": False,
+                        "step": "git_checkout",
+                        "error": f"Failed to checkout {tag_name}",
+                        "details": result.stderr,
+                    }
+
+            except subprocess.TimeoutExpired:
+                return {
+                    "success": False,
+                    "step": "git_checkout",
+                    "error": "Git checkout timed out",
+                }
+            except Exception as e:
+                return {
+                    "success": False,
+                    "step": "git_checkout",
+                    "error": f"Failed to checkout version: {str(e)}",
+                }
+
+            # Step 5: Save original version to .previous_version for rollback
+            try:
+                if original_version:
+                    # Save original version to .previous_version for rollback
+                    with open(SystemService.PREVIOUS_VERSION_FILE, "w") as f:
+                        f.write(original_version)
+
+                # Update VERSION file to new version
+                with open(SystemService.VERSION_FILE, "w") as f:
+                    f.write(target_version)
+            except Exception as e:
+                return {
+                    "success": False,
+                    "step": "update_version_file",
+                    "error": f"Failed to update VERSION file: {str(e)}",
+                }
+
+            # Step 6: Install Python dependencies
+            try:
+                venv_python = os.path.join(project_root, "venv", "bin", "python3")
+                requirements_file = os.path.join(project_root, "requirements.txt")
+
+                result = subprocess.run(
+                    [venv_python, "-m", "pip", "install", "-r", requirements_file],
+                    cwd=project_root,
+                    capture_output=True,
+                    text=True,
+                    timeout=300,  # 5 minutes for pip install
+                )
+
+                if result.returncode != 0:
+                    # Non-fatal, continue with update
+                    print(f"Warning: pip install had issues: {result.stderr}")  # Log but don't fail
+
+            except subprocess.TimeoutExpired:
+                return {
+                    "success": False,
+                    "step": "install_dependencies",
+                    "error": "Dependencies installation timed out",
+                }
+            except Exception as e:
+                # Non-fatal, log and continue
+                print(f"Warning: Failed to install dependencies: {str(e)}")
+
+            # Step 7: Rebuild frontend
+            try:
+                frontend_dir = os.path.join(project_root, "frontend", "client")
+
+                # Run npm install (in case there are new dependencies)
+                result = subprocess.run(
+                    ["npm", "install"],
+                    cwd=frontend_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=300,  # 5 minutes
+                )
+
+                # Run npm build
+                result = subprocess.run(
+                    ["npm", "run", "build"],
+                    cwd=frontend_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=300,  # 5 minutes
+                )
+
+                if result.returncode != 0:
+                    return {
+                        "success": False,
+                        "step": "build_frontend",
+                        "error": "Frontend build failed",
+                        "details": result.stderr,
+                    }
+
+            except subprocess.TimeoutExpired:
+                return {
+                    "success": False,
+                    "step": "build_frontend",
+                    "error": "Frontend build timed out",
+                }
+            except Exception as e:
+                return {
+                    "success": False,
+                    "step": "build_frontend",
+                    "error": f"Failed to build frontend: {str(e)}",
+                }
+
+            # Step 8: Restart backend service (only if not delegated to BackgroundTasks)
+            if do_restart:
+                try:
+                    result = subprocess.run(
+                        ["sudo", "systemctl", "restart", "fpvcopilot-sky"],
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                    )
+
+                    if result.returncode != 0:
+                        return {
+                            "success": False,
+                            "step": "restart_service",
+                            "error": "Failed to restart backend service",
+                            "details": result.stderr,
+                        }
+
+                except subprocess.TimeoutExpired:
+                    return {
+                        "success": False,
+                        "step": "restart_service",
+                        "error": "Service restart timed out",
+                    }
+                except Exception as e:
+                    return {
+                        "success": False,
+                        "step": "restart_service",
+                        "error": f"Failed to restart service: {str(e)}",
+                    }
+
+            # Success!
+            return {
+                "success": True,
+                "updated_to": target_version,
+                "message": f"Successfully updated to version {target_version}",
+                "steps_completed": [
+                    "check_updates",
+                    "git_reset",
+                    "git_fetch",
+                    "git_checkout",
+                    "update_version_file",
+                    "install_dependencies",
+                    "build_frontend",
+                    "restart_service",
+                ],
+            }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "step": "unknown",
+                "error": f"Unexpected error during update: {str(e)}",
+            }
+
+    @staticmethod
+    def can_rollback() -> Dict[str, Any]:
+        """
+        Check if rollback is available (i.e., if there's a previous version saved).
+
+        Returns:
+            Dictionary with rollback availability info
+        """
+        try:
+            if os.path.exists(SystemService.PREVIOUS_VERSION_FILE):
+                with open(SystemService.PREVIOUS_VERSION_FILE, "r") as f:
+                    previous_version = f.read().strip()
+
+                if previous_version:
+                    # Get current version for comparison
+                    current_version_data = SystemService.get_version()
+                    if current_version_data.get("success"):
+                        current_version = current_version_data["version"]
+
+                        # Don't allow rollback to the same version
+                        if previous_version == current_version:
+                            # Remove invalid .previous_version file
+                            try:
+                                os.remove(SystemService.PREVIOUS_VERSION_FILE)
+                            except OSError:
+                                pass
+                            return {
+                                "can_rollback": False,
+                                "success": True,
+                                "message": "No previous version available",
+                            }
+
+                    return {
+                        "can_rollback": True,
+                        "previous_version": previous_version,
+                        "success": True,
+                    }
+
+            return {
+                "can_rollback": False,
+                "success": True,
+                "message": "No previous version available",
+            }
+        except Exception as e:
+            return {
+                "can_rollback": False,
+                "success": False,
+                "error": str(e),
+            }
+
+    @staticmethod
+    def rollback_to_previous_version(do_restart: bool = True) -> Dict[str, Any]:
+        """
+        Rollback to the previous version of the system.
+
+        This method:
+        1. Checks if a previous version exists
+        2. Performs git checkout to the previous version tag
+        3. Updates VERSION file
+        4. Rebuilds frontend
+        5. Restarts backend service
+
+        Returns:
+            Dictionary with rollback status
+        """
+        # Get project root directory
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+
+        try:
+            # Step 1: Check if previous version file exists
+            if not os.path.exists(SystemService.PREVIOUS_VERSION_FILE):
+                return {
+                    "success": False,
+                    "step": "check_previous_version",
+                    "error": "No previous version found. Cannot rollback.",
+                }
+
+            # Read previous version
+            try:
+                with open(SystemService.PREVIOUS_VERSION_FILE, "r") as f:
+                    previous_version = f.read().strip()
+
+                if not previous_version:
+                    return {
+                        "success": False,
+                        "step": "check_previous_version",
+                        "error": "Previous version file is empty",
+                    }
+            except Exception as e:
+                return {
+                    "success": False,
+                    "step": "check_previous_version",
+                    "error": f"Failed to read previous version: {str(e)}",
+                }
+
+            # Step 2: Reset any local changes (users cannot commit in installed apps)
+            try:
+                subprocess.run(
+                    ["git", "reset", "--hard"],
+                    cwd=project_root,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+            except Exception as e:
+                # Non-fatal, force checkout will handle it
+                print(f"Warning: git reset had issues: {str(e)}")
+
+            # Step 3: Fetch latest changes (to ensure we have all tags)
+            try:
+                result = subprocess.run(
+                    ["git", "fetch", "origin", "--tags"],
+                    cwd=project_root,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+
+                if result.returncode != 0:
+                    # Non-fatal, continue anyway
+                    print(f"Warning: git fetch had issues: {result.stderr}")
+
+            except Exception as e:
+                # Non-fatal
+                print(f"Warning: Failed to fetch: {str(e)}")
+
+            # Step 4: Checkout previous version tag
+            tag_name = f"v{previous_version}"
+            try:
+                # Verify tag exists
+                result = subprocess.run(
+                    ["git", "tag", "-l", tag_name],
+                    cwd=project_root,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+
+                if not result.stdout.strip():
+                    return {
+                        "success": False,
+                        "step": "git_checkout",
+                        "error": f"Tag {tag_name} not found in repository. "
+                        f"Cannot rollback to version {previous_version}.",
+                    }
+
+                # Force checkout the tag (discard any local changes)
+                result = subprocess.run(
+                    ["git", "checkout", "--force", tag_name],
+                    cwd=project_root,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+
+                if result.returncode != 0:
+                    return {
+                        "success": False,
+                        "step": "git_checkout",
+                        "error": f"Failed to checkout {tag_name}",
+                        "details": result.stderr,
+                    }
+
+            except subprocess.TimeoutExpired:
+                return {
+                    "success": False,
+                    "step": "git_checkout",
+                    "error": "Git checkout timed out",
+                }
+            except Exception as e:
+                return {
+                    "success": False,
+                    "step": "git_checkout",
+                    "error": f"Failed to checkout version: {str(e)}",
+                }
+
+            # Step 5: Update VERSION file
+            try:
+                with open(SystemService.VERSION_FILE, "w") as f:
+                    f.write(previous_version)
+            except Exception as e:
+                return {
+                    "success": False,
+                    "step": "update_version_file",
+                    "error": f"Failed to update VERSION file: {str(e)}",
+                }
+
+            # Step 6: Install Python dependencies
+            try:
+                venv_python = os.path.join(project_root, "venv", "bin", "python3")
+                requirements_file = os.path.join(project_root, "requirements.txt")
+
+                result = subprocess.run(
+                    [venv_python, "-m", "pip", "install", "-r", requirements_file],
+                    cwd=project_root,
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                )
+
+                # Non-fatal
+                if result.returncode != 0:
+                    print(f"Warning: pip install had issues: {result.stderr}")
+
+            except Exception as e:
+                # Non-fatal
+                print(f"Warning: Failed to install dependencies: {str(e)}")
+
+            # Step 7: Rebuild frontend
+            try:
+                frontend_dir = os.path.join(project_root, "frontend", "client")
+
+                # Run npm install
+                result = subprocess.run(
+                    ["npm", "install"],
+                    cwd=frontend_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                )
+
+                # Run npm build
+                result = subprocess.run(
+                    ["npm", "run", "build"],
+                    cwd=frontend_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                )
+
+                if result.returncode != 0:
+                    return {
+                        "success": False,
+                        "step": "build_frontend",
+                        "error": "Frontend build failed during rollback",
+                        "details": result.stderr,
+                    }
+
+            except subprocess.TimeoutExpired:
+                return {
+                    "success": False,
+                    "step": "build_frontend",
+                    "error": "Frontend build timed out",
+                }
+            except Exception as e:
+                return {
+                    "success": False,
+                    "step": "build_frontend",
+                    "error": f"Failed to build frontend: {str(e)}",
+                }
+
+            # Step 8: Restart backend service (only if not delegated to BackgroundTasks)
+            if do_restart:
+                try:
+                    result = subprocess.run(
+                        ["sudo", "systemctl", "restart", "fpvcopilot-sky"],
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                    )
+
+                    if result.returncode != 0:
+                        return {
+                            "success": False,
+                            "step": "restart_service",
+                            "error": "Failed to restart backend service",
+                            "details": result.stderr,
+                        }
+
+                except subprocess.TimeoutExpired:
+                    return {
+                        "success": False,
+                        "step": "restart_service",
+                        "error": "Service restart timed out",
+                    }
+                except Exception as e:
+                    return {
+                        "success": False,
+                        "step": "restart_service",
+                        "error": f"Failed to restart service: {str(e)}",
+                    }
+
+            # Step 9: Remove previous version file (rollback complete)
+            try:
+                if os.path.exists(SystemService.PREVIOUS_VERSION_FILE):
+                    os.remove(SystemService.PREVIOUS_VERSION_FILE)
+            except Exception as e:
+                # Non-fatal
+                print(f"Warning: Failed to remove previous version file: {str(e)}")
+
+            # Success!
+            return {
+                "success": True,
+                "rolled_back_to": previous_version,
+                "message": f"Successfully rolled back to version {previous_version}",
+                "steps_completed": [
+                    "check_previous_version",
+                    "git_reset",
+                    "git_checkout",
+                    "update_version_file",
+                    "install_dependencies",
+                    "build_frontend",
+                    "restart_service",
+                ],
+            }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "step": "unknown",
+                "error": f"Unexpected error during rollback: {str(e)}",
+            }
 
     @staticmethod
     def get_memory_info() -> Dict[str, Any]:
@@ -579,7 +1372,7 @@ class SystemService:
                     try:
                         with open(f"/proc/{pid}/cmdline", "r") as f:
                             cmdline = f.read().replace("\x00", " ").strip()
-                    except:
+                    except Exception:
                         pass
 
                     # Get CPU usage
@@ -594,7 +1387,7 @@ class SystemService:
                                     mem_kb = int(line.split()[1])
                                     mem_mb = round(mem_kb / 1024, 1)
                                     break
-                    except:
+                    except Exception:
                         pass
 
                     processes.append(
