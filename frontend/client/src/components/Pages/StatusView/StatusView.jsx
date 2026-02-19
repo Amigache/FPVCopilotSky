@@ -354,6 +354,23 @@ const StatusView = () => {
     }
   }
 
+  // Poll until the service is back online after a restart
+  const waitForServiceRestart = async (maxWaitMs = 120000) => {
+    // Wait a moment before polling - service needs time to stop and restart
+    await new Promise(r => setTimeout(r, 4000))
+    const startTime = Date.now()
+    while (Date.now() - startTime < maxWaitMs) {
+      try {
+        const response = await api.get('/api/system/version/current', 5000)
+        if (response.ok) return true
+      } catch {
+        // Not ready yet, keep polling
+      }
+      await new Promise(r => setTimeout(r, 3000))
+    }
+    return false
+  }
+
   const applyUpdate = async () => {
     setIsUpdating(true)
     setShowUpdateModal(false)
@@ -367,14 +384,13 @@ const StatusView = () => {
         const data = await response.json()
 
         if (data.success) {
+          // Response received successfully - service will restart in background
+          showToast(t('status.version.serviceRestarting', 'Reiniciando servicio...'), 'info')
+          await waitForServiceRestart()
           showToast(`${t('status.version.updateSuccess')}: v${data.updated_to}`, 'success')
-
-          // Reload version info after update
-          setTimeout(() => {
-            loadVersion()
-            checkForUpdates()
-            checkCanRollback()
-          }, 2000)
+          loadVersion()
+          checkForUpdates()
+          checkCanRollback()
         } else {
           showToast(
             `${t('status.version.updateFailed')}: ${data.error || 'Unknown error'}`,
@@ -386,7 +402,17 @@ const StatusView = () => {
       }
     } catch (error) {
       console.error('Error applying update:', error)
-      showToast(t('status.version.updateFailed'), 'error')
+      // Connection drop may mean the service restarted - try to reconnect
+      showToast(t('status.version.serviceRestarting', 'Reconectando...'), 'info')
+      const restored = await waitForServiceRestart()
+      if (restored) {
+        loadVersion()
+        checkForUpdates()
+        checkCanRollback()
+        showToast(t('status.version.updateSuccess'), 'success')
+      } else {
+        showToast(t('status.version.updateFailed'), 'error')
+      }
     } finally {
       setIsUpdating(false)
     }
@@ -417,14 +443,13 @@ const StatusView = () => {
         const data = await response.json()
 
         if (data.success) {
+          // Response received successfully - service will restart in background
+          showToast(t('status.version.serviceRestarting', 'Reiniciando servicio...'), 'info')
+          await waitForServiceRestart()
           showToast(`${t('status.version.rollbackSuccess')}: v${data.rolled_back_to}`, 'success')
-
-          // Reload version info after rollback
-          setTimeout(() => {
-            loadVersion()
-            checkForUpdates()
-            checkCanRollback()
-          }, 2000)
+          loadVersion()
+          checkForUpdates()
+          checkCanRollback()
         } else {
           showToast(
             `${t('status.version.rollbackFailed')}: ${data.error || 'Unknown error'}`,
@@ -436,7 +461,17 @@ const StatusView = () => {
       }
     } catch (error) {
       console.error('Error performing rollback:', error)
-      showToast(t('status.version.rollbackFailed'), 'error')
+      // Connection drop may mean the service restarted - try to reconnect
+      showToast(t('status.version.serviceRestarting', 'Reconectando...'), 'info')
+      const restored = await waitForServiceRestart()
+      if (restored) {
+        loadVersion()
+        checkForUpdates()
+        checkCanRollback()
+        showToast(t('status.version.rollbackSuccess'), 'success')
+      } else {
+        showToast(t('status.version.rollbackFailed'), 'error')
+      }
     } finally {
       setIsRollingBack(false)
     }

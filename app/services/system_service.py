@@ -196,7 +196,21 @@ class SystemService:
             return latest > current
 
     @staticmethod
-    def apply_update(target_version: str = None) -> Dict[str, Any]:
+    def _restart_service_delayed(delay_seconds: int = 2) -> None:
+        """
+        Restart the service after a short delay.
+        Called as a BackgroundTask so the HTTP response is sent BEFORE the restart.
+        """
+        time.sleep(delay_seconds)
+        subprocess.run(
+            ["sudo", "systemctl", "restart", "fpvcopilot-sky"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+    @staticmethod
+    def apply_update(target_version: str = None, do_restart: bool = True) -> Dict[str, Any]:
         """
         Apply system update by checking out a specific version tag from git.
 
@@ -434,35 +448,36 @@ class SystemService:
                     "error": f"Failed to build frontend: {str(e)}",
                 }
 
-            # Step 8: Restart backend service
-            try:
-                result = subprocess.run(
-                    ["sudo", "systemctl", "restart", "fpvcopilot-sky"],
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                )
+            # Step 8: Restart backend service (only if not delegated to BackgroundTasks)
+            if do_restart:
+                try:
+                    result = subprocess.run(
+                        ["sudo", "systemctl", "restart", "fpvcopilot-sky"],
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                    )
 
-                if result.returncode != 0:
+                    if result.returncode != 0:
+                        return {
+                            "success": False,
+                            "step": "restart_service",
+                            "error": "Failed to restart backend service",
+                            "details": result.stderr,
+                        }
+
+                except subprocess.TimeoutExpired:
                     return {
                         "success": False,
                         "step": "restart_service",
-                        "error": "Failed to restart backend service",
-                        "details": result.stderr,
+                        "error": "Service restart timed out",
                     }
-
-            except subprocess.TimeoutExpired:
-                return {
-                    "success": False,
-                    "step": "restart_service",
-                    "error": "Service restart timed out",
-                }
-            except Exception as e:
-                return {
-                    "success": False,
-                    "step": "restart_service",
-                    "error": f"Failed to restart service: {str(e)}",
-                }
+                except Exception as e:
+                    return {
+                        "success": False,
+                        "step": "restart_service",
+                        "error": f"Failed to restart service: {str(e)}",
+                    }
 
             # Success!
             return {
@@ -539,7 +554,7 @@ class SystemService:
             }
 
     @staticmethod
-    def rollback_to_previous_version() -> Dict[str, Any]:
+    def rollback_to_previous_version(do_restart: bool = True) -> Dict[str, Any]:
         """
         Rollback to the previous version of the system.
 
@@ -739,35 +754,36 @@ class SystemService:
                     "error": f"Failed to build frontend: {str(e)}",
                 }
 
-            # Step 8: Restart backend service
-            try:
-                result = subprocess.run(
-                    ["sudo", "systemctl", "restart", "fpvcopilot-sky"],
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                )
+            # Step 8: Restart backend service (only if not delegated to BackgroundTasks)
+            if do_restart:
+                try:
+                    result = subprocess.run(
+                        ["sudo", "systemctl", "restart", "fpvcopilot-sky"],
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                    )
 
-                if result.returncode != 0:
+                    if result.returncode != 0:
+                        return {
+                            "success": False,
+                            "step": "restart_service",
+                            "error": "Failed to restart backend service",
+                            "details": result.stderr,
+                        }
+
+                except subprocess.TimeoutExpired:
                     return {
                         "success": False,
                         "step": "restart_service",
-                        "error": "Failed to restart backend service",
-                        "details": result.stderr,
+                        "error": "Service restart timed out",
                     }
-
-            except subprocess.TimeoutExpired:
-                return {
-                    "success": False,
-                    "step": "restart_service",
-                    "error": "Service restart timed out",
-                }
-            except Exception as e:
-                return {
-                    "success": False,
-                    "step": "restart_service",
-                    "error": f"Failed to restart service: {str(e)}",
-                }
+                except Exception as e:
+                    return {
+                        "success": False,
+                        "step": "restart_service",
+                        "error": f"Failed to restart service: {str(e)}",
+                    }
 
             # Step 9: Remove previous version file (rollback complete)
             try:
