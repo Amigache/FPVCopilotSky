@@ -490,6 +490,24 @@ class SystemService:
                     previous_version = f.read().strip()
 
                 if previous_version:
+                    # Get current version for comparison
+                    current_version_data = SystemService.get_version()
+                    if current_version_data.get("success"):
+                        current_version = current_version_data["version"]
+
+                        # Don't allow rollback to the same version
+                        if previous_version == current_version:
+                            # Remove invalid .previous_version file
+                            try:
+                                os.remove(SystemService.PREVIOUS_VERSION_FILE)
+                            except OSError:
+                                pass
+                            return {
+                                "can_rollback": False,
+                                "success": True,
+                                "message": "No previous version available",
+                            }
+
                     return {
                         "can_rollback": True,
                         "previous_version": previous_version,
@@ -618,7 +636,8 @@ class SystemService:
                     return {
                         "success": False,
                         "step": "git_checkout",
-                        "error": f"Tag {tag_name} not found in repository. Cannot rollback to version {previous_version}.",
+                        "error": f"Tag {tag_name} not found in repository. "
+                        f"Cannot rollback to version {previous_version}.",
                     }
 
                 # Checkout the tag
@@ -1343,7 +1362,7 @@ class SystemService:
                     try:
                         with open(f"/proc/{pid}/cmdline", "r") as f:
                             cmdline = f.read().replace("\x00", " ").strip()
-                    except:
+                    except Exception:
                         pass
 
                     # Get CPU usage
@@ -1358,7 +1377,7 @@ class SystemService:
                                     mem_kb = int(line.split()[1])
                                     mem_mb = round(mem_kb / 1024, 1)
                                     break
-                    except:
+                    except Exception:
                         pass
 
                     processes.append(
