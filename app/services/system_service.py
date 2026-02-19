@@ -25,10 +25,8 @@ class SystemService:
     _cache = get_cache_service()
 
     # Version file path
-    VERSION_FILE = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "VERSION"
-    )
-    
+    VERSION_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "VERSION")
+
     # Previous version file (for rollback)
     PREVIOUS_VERSION_FILE = os.path.join(
         os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".previous_version"
@@ -78,9 +76,7 @@ class SystemService:
 
             # GitHub API URL for latest release
             # Format: https://api.github.com/repos/OWNER/REPO/releases/latest
-            github_api_url = (
-                "https://api.github.com/repos/Amigache/FPVCopilotSky/releases/latest"
-            )
+            github_api_url = "https://api.github.com/repos/Amigache/FPVCopilotSky/releases/latest"
 
             # Make request with timeout
             response = requests.get(github_api_url, timeout=10)
@@ -112,9 +108,7 @@ class SystemService:
             html_url = release_data.get("html_url", "")
 
             # Compare versions (simple string comparison for semantic versioning)
-            update_available = SystemService._compare_versions(
-                current_version, latest_version
-            )
+            update_available = SystemService._compare_versions(current_version, latest_version)
 
             return {
                 "success": True,
@@ -279,6 +273,19 @@ class SystemService:
                     "error": f"Failed to fetch updates: {str(e)}",
                 }
 
+            # Step 3: Save current version BEFORE checkout (for rollback)
+            original_version = None
+            try:
+                current_version_data = SystemService.get_version()
+                if current_version_data.get("success"):
+                    original_version = current_version_data["version"]
+            except Exception as e:
+                return {
+                    "success": False,
+                    "step": "save_original_version",
+                    "error": f"Failed to read original version: {str(e)}",
+                }
+
             # Step 4: Checkout target version tag
             tag_name = f"v{target_version}"
             try:
@@ -328,17 +335,14 @@ class SystemService:
                     "error": f"Failed to checkout version: {str(e)}",
                 }
 
-            # Step 5: Save current version for rollback and update VERSION file
+            # Step 5: Save original version to .previous_version for rollback
             try:
-                # Read current version before updating
-                current_version_data = SystemService.get_version()
-                if current_version_data.get("success"):
-                    current_version = current_version_data["version"]
-                    # Save current version to .previous_version for rollback
+                if original_version:
+                    # Save original version to .previous_version for rollback
                     with open(SystemService.PREVIOUS_VERSION_FILE, "w") as f:
-                        f.write(current_version)
-                
-                # Update VERSION file to new version
+                        f.write(original_version)
+
+                # Update VERSION file to new version (ensure it matches target version)
                 with open(SystemService.VERSION_FILE, "w") as f:
                     f.write(target_version)
             except Exception as e:
@@ -363,9 +367,7 @@ class SystemService:
 
                 if result.returncode != 0:
                     # Non-fatal, continue with update
-                    print(
-                        f"Warning: pip install had issues: {result.stderr}"
-                    )  # Log but don't fail
+                    print(f"Warning: pip install had issues: {result.stderr}")  # Log but don't fail
 
             except subprocess.TimeoutExpired:
                 return {
@@ -478,7 +480,7 @@ class SystemService:
     def can_rollback() -> Dict[str, Any]:
         """
         Check if rollback is available (i.e., if there's a previous version saved).
-        
+
         Returns:
             Dictionary with rollback availability info
         """
@@ -486,14 +488,14 @@ class SystemService:
             if os.path.exists(SystemService.PREVIOUS_VERSION_FILE):
                 with open(SystemService.PREVIOUS_VERSION_FILE, "r") as f:
                     previous_version = f.read().strip()
-                    
+
                 if previous_version:
                     return {
                         "can_rollback": True,
                         "previous_version": previous_version,
                         "success": True,
                     }
-            
+
             return {
                 "can_rollback": False,
                 "success": True,
@@ -510,20 +512,20 @@ class SystemService:
     def rollback_to_previous_version() -> Dict[str, Any]:
         """
         Rollback to the previous version of the system.
-        
+
         This method:
         1. Checks if a previous version exists
         2. Performs git checkout to the previous version tag
         3. Updates VERSION file
         4. Rebuilds frontend
         5. Restarts backend service
-        
+
         Returns:
             Dictionary with rollback status
         """
         # Get project root directory
         project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-        
+
         try:
             # Step 1: Check if previous version file exists
             if not os.path.exists(SystemService.PREVIOUS_VERSION_FILE):
@@ -532,12 +534,12 @@ class SystemService:
                     "step": "check_previous_version",
                     "error": "No previous version found. Cannot rollback.",
                 }
-            
+
             # Read previous version
             try:
                 with open(SystemService.PREVIOUS_VERSION_FILE, "r") as f:
                     previous_version = f.read().strip()
-                    
+
                 if not previous_version:
                     return {
                         "success": False,
@@ -550,7 +552,7 @@ class SystemService:
                     "step": "check_previous_version",
                     "error": f"Failed to read previous version: {str(e)}",
                 }
-            
+
             # Step 2: Verify git repository status
             try:
                 result = subprocess.run(
@@ -560,7 +562,7 @@ class SystemService:
                     text=True,
                     timeout=10,
                 )
-                
+
                 if result.stdout.strip():
                     return {
                         "success": False,
@@ -568,7 +570,7 @@ class SystemService:
                         "error": "Repository has uncommitted changes. Please commit or stash them first.",
                         "uncommitted_files": result.stdout.strip().split("\n"),
                     }
-                    
+
             except subprocess.TimeoutExpired:
                 return {
                     "success": False,
@@ -581,7 +583,7 @@ class SystemService:
                     "step": "git_status",
                     "error": f"Failed to check git status: {str(e)}",
                 }
-            
+
             # Step 3: Fetch latest changes (to ensure we have all tags)
             try:
                 result = subprocess.run(
@@ -591,15 +593,15 @@ class SystemService:
                     text=True,
                     timeout=30,
                 )
-                
+
                 if result.returncode != 0:
                     # Non-fatal, continue anyway
                     print(f"Warning: git fetch had issues: {result.stderr}")
-                    
+
             except Exception as e:
                 # Non-fatal
                 print(f"Warning: Failed to fetch: {str(e)}")
-            
+
             # Step 4: Checkout previous version tag
             tag_name = f"v{previous_version}"
             try:
@@ -611,14 +613,14 @@ class SystemService:
                     text=True,
                     timeout=10,
                 )
-                
+
                 if not result.stdout.strip():
                     return {
                         "success": False,
                         "step": "git_checkout",
                         "error": f"Tag {tag_name} not found in repository. Cannot rollback to version {previous_version}.",
                     }
-                
+
                 # Checkout the tag
                 result = subprocess.run(
                     ["git", "checkout", tag_name],
@@ -627,7 +629,7 @@ class SystemService:
                     text=True,
                     timeout=30,
                 )
-                
+
                 if result.returncode != 0:
                     return {
                         "success": False,
@@ -635,7 +637,7 @@ class SystemService:
                         "error": f"Failed to checkout {tag_name}",
                         "details": result.stderr,
                     }
-                    
+
             except subprocess.TimeoutExpired:
                 return {
                     "success": False,
@@ -648,7 +650,7 @@ class SystemService:
                     "step": "git_checkout",
                     "error": f"Failed to checkout version: {str(e)}",
                 }
-            
+
             # Step 5: Update VERSION file
             try:
                 with open(SystemService.VERSION_FILE, "w") as f:
@@ -659,12 +661,12 @@ class SystemService:
                     "step": "update_version_file",
                     "error": f"Failed to update VERSION file: {str(e)}",
                 }
-            
+
             # Step 6: Install Python dependencies
             try:
                 venv_python = os.path.join(project_root, "venv", "bin", "python3")
                 requirements_file = os.path.join(project_root, "requirements.txt")
-                
+
                 result = subprocess.run(
                     [venv_python, "-m", "pip", "install", "-r", requirements_file],
                     cwd=project_root,
@@ -672,19 +674,19 @@ class SystemService:
                     text=True,
                     timeout=300,
                 )
-                
+
                 # Non-fatal
                 if result.returncode != 0:
                     print(f"Warning: pip install had issues: {result.stderr}")
-                    
+
             except Exception as e:
                 # Non-fatal
                 print(f"Warning: Failed to install dependencies: {str(e)}")
-            
+
             # Step 7: Rebuild frontend
             try:
                 frontend_dir = os.path.join(project_root, "frontend", "client")
-                
+
                 # Run npm install
                 result = subprocess.run(
                     ["npm", "install"],
@@ -693,7 +695,7 @@ class SystemService:
                     text=True,
                     timeout=300,
                 )
-                
+
                 # Run npm build
                 result = subprocess.run(
                     ["npm", "run", "build"],
@@ -702,7 +704,7 @@ class SystemService:
                     text=True,
                     timeout=300,
                 )
-                
+
                 if result.returncode != 0:
                     return {
                         "success": False,
@@ -710,7 +712,7 @@ class SystemService:
                         "error": "Frontend build failed during rollback",
                         "details": result.stderr,
                     }
-                    
+
             except subprocess.TimeoutExpired:
                 return {
                     "success": False,
@@ -723,7 +725,7 @@ class SystemService:
                     "step": "build_frontend",
                     "error": f"Failed to build frontend: {str(e)}",
                 }
-            
+
             # Step 8: Restart backend service
             try:
                 result = subprocess.run(
@@ -732,7 +734,7 @@ class SystemService:
                     text=True,
                     timeout=30,
                 )
-                
+
                 if result.returncode != 0:
                     return {
                         "success": False,
@@ -740,7 +742,7 @@ class SystemService:
                         "error": "Failed to restart backend service",
                         "details": result.stderr,
                     }
-                    
+
             except subprocess.TimeoutExpired:
                 return {
                     "success": False,
@@ -753,7 +755,7 @@ class SystemService:
                     "step": "restart_service",
                     "error": f"Failed to restart service: {str(e)}",
                 }
-            
+
             # Step 9: Remove previous version file (rollback complete)
             try:
                 if os.path.exists(SystemService.PREVIOUS_VERSION_FILE):
@@ -761,7 +763,7 @@ class SystemService:
             except Exception as e:
                 # Non-fatal
                 print(f"Warning: Failed to remove previous version file: {str(e)}")
-            
+
             # Success!
             return {
                 "success": True,
@@ -777,7 +779,7 @@ class SystemService:
                     "restart_service",
                 ],
             }
-            
+
         except Exception as e:
             return {
                 "success": False,
