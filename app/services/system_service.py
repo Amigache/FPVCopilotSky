@@ -241,37 +241,18 @@ class SystemService:
 
                 target_version = update_info.get("latest_version")
 
-            # Step 2: Verify git repository status
+            # Step 2: Reset any local changes (users cannot commit in installed apps)
             try:
-                # Check if there are uncommitted changes
-                result = subprocess.run(
-                    ["git", "status", "--porcelain"],
+                subprocess.run(
+                    ["git", "reset", "--hard"],
                     cwd=project_root,
                     capture_output=True,
                     text=True,
                     timeout=10,
                 )
-
-                if result.stdout.strip():
-                    return {
-                        "success": False,
-                        "step": "git_status",
-                        "error": "Repository has uncommitted changes. Please commit or stash them first.",
-                        "uncommitted_files": result.stdout.strip().split("\n"),
-                    }
-
-            except subprocess.TimeoutExpired:
-                return {
-                    "success": False,
-                    "step": "git_status",
-                    "error": "Git status check timed out",
-                }
             except Exception as e:
-                return {
-                    "success": False,
-                    "step": "git_status",
-                    "error": f"Failed to check git status: {str(e)}",
-                }
+                # Non-fatal, force checkout will handle it
+                print(f"Warning: git reset had issues: {str(e)}")
 
             # Step 3: Fetch latest changes from GitHub
             try:
@@ -336,9 +317,9 @@ class SystemService:
                         "error": f"Tag {tag_name} not found in repository",
                     }
 
-                # Checkout the tag
+                # Force checkout the tag (discard any local changes)
                 result = subprocess.run(
-                    ["git", "checkout", tag_name],
+                    ["git", "checkout", "--force", tag_name],
                     cwd=project_root,
                     capture_output=True,
                     text=True,
@@ -490,7 +471,7 @@ class SystemService:
                 "message": f"Successfully updated to version {target_version}",
                 "steps_completed": [
                     "check_updates",
-                    "git_status",
+                    "git_reset",
                     "git_fetch",
                     "git_checkout",
                     "update_version_file",
@@ -602,36 +583,18 @@ class SystemService:
                     "error": f"Failed to read previous version: {str(e)}",
                 }
 
-            # Step 2: Verify git repository status
+            # Step 2: Reset any local changes (users cannot commit in installed apps)
             try:
-                result = subprocess.run(
-                    ["git", "status", "--porcelain"],
+                subprocess.run(
+                    ["git", "reset", "--hard"],
                     cwd=project_root,
                     capture_output=True,
                     text=True,
                     timeout=10,
                 )
-
-                if result.stdout.strip():
-                    return {
-                        "success": False,
-                        "step": "git_status",
-                        "error": "Repository has uncommitted changes. Please commit or stash them first.",
-                        "uncommitted_files": result.stdout.strip().split("\n"),
-                    }
-
-            except subprocess.TimeoutExpired:
-                return {
-                    "success": False,
-                    "step": "git_status",
-                    "error": "Git status check timed out",
-                }
             except Exception as e:
-                return {
-                    "success": False,
-                    "step": "git_status",
-                    "error": f"Failed to check git status: {str(e)}",
-                }
+                # Non-fatal, force checkout will handle it
+                print(f"Warning: git reset had issues: {str(e)}")
 
             # Step 3: Fetch latest changes (to ensure we have all tags)
             try:
@@ -671,9 +634,9 @@ class SystemService:
                         f"Cannot rollback to version {previous_version}.",
                     }
 
-                # Checkout the tag
+                # Force checkout the tag (discard any local changes)
                 result = subprocess.run(
-                    ["git", "checkout", tag_name],
+                    ["git", "checkout", "--force", tag_name],
                     cwd=project_root,
                     capture_output=True,
                     text=True,
@@ -821,7 +784,7 @@ class SystemService:
                 "message": f"Successfully rolled back to version {previous_version}",
                 "steps_completed": [
                     "check_previous_version",
-                    "git_status",
+                    "git_reset",
                     "git_checkout",
                     "update_version_file",
                     "install_dependencies",
