@@ -42,11 +42,12 @@ sudo chmod 755 "$DATA_DIR"
 
 # Initialize version file if it doesn't exist
 if [ ! -f "$DATA_DIR/version" ]; then
-    # Try to get version from git tag, fallback to 1.0.0
-    if git describe --tags --exact-match HEAD 2>/dev/null; then
-        INITIAL_VERSION=$(git describe --tags --exact-match HEAD 2>/dev/null | sed 's/^v//')
+    # Get version from git tag on current HEAD
+    if INITIAL_VERSION=$(git describe --tags --exact-match HEAD 2>/dev/null | sed 's/^v//'); then
+        echo -e "${GREEN}✅ Version detected from git tag: $INITIAL_VERSION${NC}"
     else
-        INITIAL_VERSION="1.0.0"
+        INITIAL_VERSION="unknown"
+        echo -e "${YELLOW}⚠️  No git tag on HEAD, version set to 'unknown'${NC}"
     fi
     echo "$INITIAL_VERSION" > "$DATA_DIR/version.tmp"
     sudo mv "$DATA_DIR/version.tmp" "$DATA_DIR/version"
