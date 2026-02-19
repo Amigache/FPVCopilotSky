@@ -67,6 +67,12 @@ fi
 echo -e "\n${BLUE}📦 Building frontend...${NC}"
 cd frontend/client
 npm run build
+# Fix ownership so the service user (fpvcopilotsky) can overwrite dist on future updates
+if id "fpvcopilotsky" &>/dev/null; then
+    chown -R fpvcopilotsky:fpvcopilotsky dist
+elif [ -n "$SUDO_USER" ]; then
+    chown -R "$SUDO_USER:$SUDO_USER" dist
+fi
 echo -e "${GREEN}✅ Frontend built successfully${NC}"
 
 # Step 2: Install systemd service
