@@ -5,11 +5,19 @@ Detects and uses SoC hardware video encoding (V4L2 M2M, meson_venc, etc.)
 
 import subprocess
 import glob
+import os
 import logging
-from typing import Dict
+from typing import Dict, Optional
 from ..base.video_encoder_provider import VideoEncoderProvider
 
 logger = logging.getLogger(__name__)
+
+# Module-level detection cache — populated on first use, shared across all instances.
+# Avoids running v4l2-ctl / gst-inspect on every HardwareH264Encoder() instantiation.
+_cached_encoder_element: Optional[str] = None  # "" means checked but not found
+_cached_encoder_device: Optional[str] = None
+_cached_hw_jpegdec: Optional[bool] = None
+_detection_done: bool = False
 
 
 class HardwareH264Encoder(VideoEncoderProvider):
@@ -34,31 +42,80 @@ class HardwareH264Encoder(VideoEncoderProvider):
         self.display_name = "H.264 (Hardware)"
         self.codec_family = "h264"
         self.encoder_type = "hardware"
-        self.gst_encoder_element = self._detect_encoder_element()
         self.rtp_payload_type = 96
         self.priority = 100  # Highest priority - hardware is always best
-        self.encoder_device = self._detect_encoder_device()
-        self._hw_jpegdec_available = self._check_hw_jpegdec()
+        # Detection is lazy — populated on first call to is_available() or build_pipeline_elements()
+        # This keeps __init__ fast and avoids blocking gst-inspect/v4l2-ctl during startup.
+        self._detection_done = False
+
+    # --- Lazy accessor properties -------------------------------------------------
+
+    @property
+    def gst_encoder_element(self) -> str:
+        self._ensure_detected()
+        return _cached_encoder_element or ""
+
+    @gst_encoder_element.setter
+    def gst_encoder_element(self, value):
+        # Allow parent class to set this; we override via property
+        pass
+
+    @property
+    def encoder_device(self) -> str:
+        self._ensure_detected()
+        return _cached_encoder_device or ""
+
+    @encoder_device.setter
+    def encoder_device(self, value):
+        pass
+
+    @property
+    def _hw_jpegdec_available(self) -> bool:
+        self._ensure_detected()
+        return _cached_hw_jpegdec or False
+
+    @_hw_jpegdec_available.setter
+    def _hw_jpegdec_available(self, value):
+        pass
+
+    def _ensure_detected(self):
+        """Populate module-level cache on first access (runs once per process)."""
+        global _cached_encoder_element, _cached_encoder_device, _cached_hw_jpegdec, _detection_done
+        if _detection_done:
+            return
+        _detection_done = True
+        _cached_encoder_element = self._detect_encoder_element()
+        _cached_encoder_device = self._detect_encoder_device()
+        _cached_hw_jpegdec = self._check_hw_jpegdec()
+        logger.info(
+            f"HardwareH264Encoder detected: element={_cached_encoder_element!r} "
+            f"device={_cached_encoder_device!r} hw_jpegdec={_cached_hw_jpegdec}"
+        )
 
     def _detect_encoder_device(self) -> str:
         """
-        Detect V4L2 M2M encoder device.
+        Detect hardware encoder device.
 
-        Looks for:
-        - /dev/video* with H.264 encoding capability
-        - Common names: meson_venc, rk_venc, etc.
+        For MPP-based elements (mpph264enc): /dev/mpp_service is the device.
+        For V4L2 M2M elements: look for /dev/video* with H.264 encoding capability.
         """
+        # If MPP element was detected, the device is mpp_service
+        if _cached_encoder_element in ("mpph264enc", "mppvideoenc"):
+            if os.path.exists("/dev/mpp_service"):
+                logger.info("MPP encoder device: /dev/mpp_service")
+                return "/dev/mpp_service"
+            return ""
         try:
             devices = glob.glob("/dev/video*")
 
             for device in devices:
                 try:
-                    # Query device capabilities
+                    # Query device capabilities (tight timeout — detection must not block startup)
                     result = subprocess.run(
                         ["v4l2-ctl", "-d", device, "--info"],
                         capture_output=True,
                         text=True,
-                        timeout=2,
+                        timeout=1,
                     )
 
                     if result.returncode != 0:
@@ -73,7 +130,7 @@ class HardwareH264Encoder(VideoEncoderProvider):
                             ["v4l2-ctl", "-d", device, "--list-formats-out"],
                             capture_output=True,
                             text=True,
-                            timeout=2,
+                            timeout=1,
                         )
 
                         if "h264" in caps_result.stdout.lower() or "h.264" in caps_result.stdout.lower():
@@ -107,7 +164,7 @@ class HardwareH264Encoder(VideoEncoderProvider):
         """
         from app.utils.gstreamer import is_gst_element_available
 
-        elements_to_try = ["v4l2h264enc", "mppvideoenc", "v4l2video11h264enc"]
+        elements_to_try = ["mpph264enc", "mppvideoenc", "v4l2h264enc", "v4l2video11h264enc"]
 
         for element in elements_to_try:
             if is_gst_element_available(element):
@@ -118,16 +175,19 @@ class HardwareH264Encoder(VideoEncoderProvider):
 
     def is_available(self) -> bool:
         """Check if hardware H.264 encoder is available"""
-        # Need both encoder element and encoder device
         if not self.gst_encoder_element:
             logger.debug("No hardware encoder GStreamer element found")
             return False
 
-        if not self.encoder_device:
-            logger.debug("No hardware encoder device found")
+        # MPP-based encoders (mpph264enc / mppvideoenc) use /dev/mpp_service directly —
+        # they don't expose a V4L2 M2M device node, so skip the device check.
+        is_mpp = self.gst_encoder_element in ("mpph264enc", "mppvideoenc")
+        if not is_mpp and not self.encoder_device:
+            logger.debug("No hardware encoder V4L2 device found")
             return False
 
-        logger.info(f"Hardware H.264 encoder available: {self.gst_encoder_element} on {self.encoder_device}")
+        device_info = self.encoder_device or "/dev/mpp_service (MPP)"
+        logger.info(f"Hardware H.264 encoder available: {self.gst_encoder_element} on {device_info}")
         return True
 
     def get_capabilities(self) -> Dict:
@@ -212,19 +272,58 @@ class HardwareH264Encoder(VideoEncoderProvider):
                 # Raw format (YUYV, NV12, etc.) - no decoder needed
                 logger.info(f"HW encoder: Source is {source_format}, no decoder needed")
 
-            # ── Build V4L2 M2M extra-controls string ──
-            # V4L2 M2M encoders accept configuration via the extra-controls
-            # property using the s-type (struct) control format.
-            extra_controls_parts = [f"video_bitrate={bitrate * 1000}"]
+            # ── Build encoder properties ──
+            # mpph264enc (gst-rkmpp): uses bps / gop properties directly
+            # v4l2h264enc / mppvideoenc (V4L2 M2M): uses extra-controls string
+            enc_element = self.gst_encoder_element
+            is_mpp = enc_element in ("mpph264enc", "mppvideoenc")
 
-            # GOP size → video_gop_size (keyframe interval)
-            if gop_size and gop_size > 0:
-                extra_controls_parts.append(f"video_gop_size={gop_size}")
+            if is_mpp:
+                # ── Level: match H.264 level cap to the requested resolution ──
+                # 4K@30fps needs level 5.0 (50); 1080p@30fps fits in level 4.0 (40)
+                pixel_count = width * height
+                if pixel_count > 1920 * 1080 or framerate > 30:
+                    mpp_level = 50  # 4K@30 or 1080p@60
+                else:
+                    mpp_level = 40  # 1080p@30 and below
 
-            # B-frames disabled for low-latency FPV
-            extra_controls_parts.append("video_b_frames=0")
-
-            extra_controls_str = "s," + ",".join(extra_controls_parts)
+                encoder_props = {
+                    # Bitrate control — VBR lets the encoder allocate more bits to
+                    # detail-rich frames (sharp edges, grass, FPV motion) without
+                    # constantly hitting the CBR ceiling and raising the QP.  This
+                    # is the primary reason HW encoding looks "softer" than passthrough
+                    # at equal average bitrate: CBR forces the same bit budget even
+                    # on a detailed I-frame that needs 3× more bits.
+                    "bps": bitrate * 1000,  # target bitrate
+                    "bps-max": int(bitrate * 1000 * 1.5),  # 50% burst headroom for I-frames
+                    "rc-mode": 0,  # 0 = VBR, 1 = CBR
+                    "gop": gop_size,
+                    # Level: cap must cover the chosen resolution
+                    "level": mpp_level,
+                    # Profile: 'high' enables CABAC + 8×8 DCT transform
+                    # (better sharpness/detail at same bitrate vs main/baseline)
+                    "profile": "high",
+                    # header-mode=1 (each-idr): repeat SPS/PPS inside every IDR
+                    # at the encoder level, complementing the h264parse setting.
+                    "header-mode": 1,
+                    # QP ceiling: without this the encoder can use QP=51 on hard
+                    # scenes, producing a blurry/gray look.  QP 38 is the usual
+                    # "acceptable" ceiling for broadcast H.264.
+                    "qp-max": 38,
+                    # Prevent over-spending bits on trivially simple frames
+                    "qp-min": 20,
+                }
+                logger.info(
+                    f"HW encoder: MPP props bps={bitrate*1000} bps-max={int(bitrate*1000*1.5)} "
+                    f"rc=VBR gop={gop_size} profile=high level={mpp_level} qp-max=38"
+                )
+            else:
+                extra_controls_parts = [f"video_bitrate={bitrate * 1000}"]
+                if gop_size and gop_size > 0:
+                    extra_controls_parts.append(f"video_gop_size={gop_size}")
+                extra_controls_parts.append("video_b_frames=0")
+                encoder_props = {"extra-controls": "s," + ",".join(extra_controls_parts)}
+                logger.info("HW encoder: using V4L2 M2M extra-controls")
 
             elements.extend(
                 [
@@ -249,8 +348,8 @@ class HardwareH264Encoder(VideoEncoderProvider):
                     },
                     {
                         "name": "encoder",
-                        "element": self.gst_encoder_element,
-                        "properties": {"extra-controls": extra_controls_str},
+                        "element": enc_element,
+                        "properties": encoder_props,
                     },
                     {
                         "name": "queue_post",
@@ -278,7 +377,7 @@ class HardwareH264Encoder(VideoEncoderProvider):
                 "rtp_payloader": "rtph264pay",
                 "rtp_payloader_properties": {
                     "pt": self.rtp_payload_type,
-                    "mtu": 1400,
+                    "mtu": 1300,  # Conservative MTU: leaves room for DTLS/SRTP overhead
                     "config-interval": -1,
                 },
             }
@@ -296,27 +395,50 @@ class HardwareH264Encoder(VideoEncoderProvider):
 
     def get_live_adjustable_properties(self) -> Dict[str, Dict]:
         """Hardware encoder properties that can be adjusted without pipeline restart"""
-        return {
-            "bitrate": {
-                "element": "encoder",
-                "property": "extra-controls",
-                "min": 500,
-                "max": 20000,
-                "default": 3000,
-                "description": "Bitrate H.264 hardware en kbps",
-                "multiplier": 1000,  # Convert to bps
-                "format": "s,video_bitrate={value}",  # V4L2 control format string
-            },
-            "gop-size": {
-                "element": "encoder",
-                "property": "extra-controls",
-                "min": 1,
-                "max": 300,
-                "default": 30,
-                "description": "Keyframe interval (frames). Menor = mejor recuperación ante pérdida de paquetes",
-                "format": "s,video_gop_size={value}",
-            },
-        }
+        is_mpp = self.gst_encoder_element in ("mpph264enc", "mppvideoenc")
+
+        if is_mpp:
+            return {
+                "bitrate": {
+                    "element": "encoder",
+                    "property": "bps",
+                    "min": 500,
+                    "max": 20000,
+                    "default": 3000,
+                    "description": "Bitrate H.264 hardware en kbps",
+                    "multiplier": 1000,
+                },
+                "gop-size": {
+                    "element": "encoder",
+                    "property": "gop",
+                    "min": 1,
+                    "max": 300,
+                    "default": 30,
+                    "description": "Keyframe interval (frames)",
+                },
+            }
+        else:
+            return {
+                "bitrate": {
+                    "element": "encoder",
+                    "property": "extra-controls",
+                    "min": 500,
+                    "max": 20000,
+                    "default": 3000,
+                    "description": "Bitrate H.264 hardware en kbps",
+                    "multiplier": 1000,
+                    "format": "s,video_bitrate={value}",
+                },
+                "gop-size": {
+                    "element": "encoder",
+                    "property": "extra-controls",
+                    "min": 1,
+                    "max": 300,
+                    "default": 30,
+                    "description": "Keyframe interval (frames)",
+                    "format": "s,video_gop_size={value}",
+                },
+            }
 
     def validate_config(self, config: Dict) -> Dict:
         """Validate configuration for hardware encoder"""

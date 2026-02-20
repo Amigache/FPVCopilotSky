@@ -64,9 +64,16 @@ $CURRENT_USER ALL=(ALL) NOPASSWD: /usr/sbin/tc filter *
 
 # Allow $CURRENT_USER to manage iptables (VPN policy routing marks)
 $CURRENT_USER ALL=(ALL) NOPASSWD: /usr/sbin/iptables -t mangle *
+# Allow batch iptables rule management (policy_routing_manager.py)
+$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/sbin/iptables-save
+$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/sbin/iptables-save -t mangle
+$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/sbin/iptables-restore
+$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/sbin/iptables-restore --noflush
 
 # Allow $CURRENT_USER to manage policy routing rules
 $CURRENT_USER ALL=(ALL) NOPASSWD: /usr/sbin/ip rule *
+# Batch mode: single sudo call for all ip rule del+add (policy_routing_manager.py)
+$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/sbin/ip -force -batch *
 
 # Allow $CURRENT_USER to manage MPTCP (multi-path TCP)
 $CURRENT_USER ALL=(ALL) NOPASSWD: /usr/sbin/ip mptcp *

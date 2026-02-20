@@ -210,7 +210,7 @@ class SystemService:
         )
 
     @staticmethod
-    def apply_update(target_version: str = None, do_restart: bool = True) -> Dict[str, Any]:
+    def apply_update(target_version: str = None, do_restart: bool = True) -> Dict[str, Any]:  # noqa: C901
         """
         Apply system update by checking out a specific version tag from git.
 
@@ -1308,15 +1308,15 @@ class SystemService:
 
         # Cache miss or expired - fetch fresh logs
         try:
-            # Try to get nginx error logs (access_log is off in our config)
             nginx_error = ""
+            nginx_access = ""
 
-            # Check for fpvcopilot-sky nginx error log (access_log is off in our config)
-            nginx_log_paths = [
-                "/var/log/nginx/fpvcopilot-sky-error.log",  # Custom log from our nginx config
-                "/var/log/nginx/error.log",                  # Fallback generic nginx error log
+            # Error log paths
+            nginx_error_log_paths = [
+                "/var/log/nginx/fpvcopilot-sky-error.log",
+                "/var/log/nginx/error.log",
             ]
-            for log_path in nginx_log_paths:
+            for log_path in nginx_error_log_paths:
                 if os.path.exists(log_path):
                     result = subprocess.run(
                         ["tail", "-n", str(lines), log_path],
@@ -1325,10 +1325,33 @@ class SystemService:
                         timeout=2,
                     )
                     if result.returncode == 0 and result.stdout.strip():
-                        nginx_error = f"=== Nginx Error Log ({log_path}) ===\\n" + result.stdout
+                        nginx_error = f"=== Nginx Error Log ({log_path}) ===\n" + result.stdout
                     break
 
-            combined = nginx_error
+            # Access log paths
+            nginx_access_log_paths = [
+                "/var/log/nginx/fpvcopilot-sky-access.log",
+                "/var/log/nginx/access.log",
+            ]
+            for log_path in nginx_access_log_paths:
+                if os.path.exists(log_path):
+                    result = subprocess.run(
+                        ["tail", "-n", str(lines), log_path],
+                        capture_output=True,
+                        text=True,
+                        timeout=2,
+                    )
+                    if result.returncode == 0 and result.stdout.strip():
+                        nginx_access = f"=== Nginx Access Log ({log_path}) ===\n" + result.stdout
+                    break
+
+            combined = "".join(
+                [
+                    nginx_error if nginx_error else "",
+                    ("\n" if nginx_error and nginx_access else ""),
+                    nginx_access if nginx_access else "",
+                ]
+            )
             logs = combined if combined else "No frontend logs available"
 
             # Update cache with 2 second TTL

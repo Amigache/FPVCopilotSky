@@ -805,23 +805,46 @@ class GStreamerService:
 
     def force_keyframe(self):
         """Force the GStreamer H264 encoder to produce an IDR keyframe.
-        Called when a new WebRTC peer connects so it gets SPS/PPS/IDR."""
+        Called when a new WebRTC peer connects so it gets SPS/PPS/IDR.
+
+        Two cases:
+        - Software/hardware encoder (webrtc_h264enc): send GstForceKeyUnit
+          event upstream from the encoder's srcpad.
+        - Passthrough mode (no encoder): send GstForceKeyUnit upstream from
+          the h264parse sinkpad so v4l2src passes it to the UVC camera via
+          V4L2_CID_MPEG_VIDEO_FORCE_KEY_FRAME. This requests an immediate IDR
+          from the Firefly instead of waiting up to 2-5s for the next natural one.
+        """
         if not self.pipeline or not GSTREAMER_AVAILABLE:
             return False
         try:
+            # ── Case 1: active software/HW encoder ──────────────────────
             encoder = self.pipeline.get_by_name("webrtc_h264enc")
             if encoder:
-                # Send force-keyunit event on the encoder's srcpad (upstream event
-                # must be sent on a downstream-facing pad to travel into the encoder)
                 result = Gst.Structure.new_from_string("GstForceKeyUnit, all-headers=(boolean)true")
                 structure = result[0] if isinstance(result, tuple) else result
                 event = Gst.Event.new_custom(Gst.EventType.CUSTOM_UPSTREAM, structure)
                 srcpad = encoder.get_static_pad("src")
                 success = srcpad.send_event(event)
-                print(f"🔑 Force keyframe requested → {success}")
+                logger.debug(f"🔑 Force keyframe requested → {success}")
+                return success
+
+            # ── Case 2: passthrough mode (h264parse element present) ─────
+            # Send GstForceKeyUnit upstream from h264parse's sinkpad.
+            # GStreamer's v4l2src will handle the event and invoke
+            # V4L2_CID_MPEG_VIDEO_FORCE_KEY_FRAME on the UVC camera, triggering
+            # an IDR frame from the Firefly's built-in H.264 encoder.
+            h264parse = self.pipeline.get_by_name("h264parse")
+            if h264parse:
+                result = Gst.Structure.new_from_string("GstForceKeyUnit, all-headers=(boolean)true")
+                structure = result[0] if isinstance(result, tuple) else result
+                event = Gst.Event.new_custom(Gst.EventType.CUSTOM_UPSTREAM, structure)
+                sinkpad = h264parse.get_static_pad("sink")
+                success = sinkpad.send_event(event)
+                logger.debug(f"🔑 Force keyframe (passthrough→UVC camera) requested → {success}")
                 return success
         except Exception as e:
-            print(f"⚠️ Force keyframe failed: {e}")
+            logger.warning(f"⚠️ Force keyframe failed: {e}")
         return False
 
     def _install_encoder_probes(self, encoder_element):

@@ -437,9 +437,47 @@ class NetworkEventBridge:
                                 "p95_latency": latency_data_raw.p95_latency,
                                 "packet_loss": latency_data_raw.packet_loss,
                                 "available": True,
+                                "source": "internet",
                             }
                     except Exception:
                         latency_data = None
+
+                # --- Gateway fallback for WiFi/Ethernet without internet access ---
+                # When all internet pings fail (avg_rtt=0, packet_loss≈100%), try pinging
+                # the local gateway instead. In FPV setups wlan0 connects to a local AP
+                # with no internet, so this is the only meaningful RTT measurement.
+                #
+                # Three outcomes:
+                #  a) Gateway responds       → use its RTT as quality signal
+                #  b) Gateway doesn't respond → can't measure; latency_data=None → keep previous score
+                #  c) No gateway found        → same: latency_data=None → keep previous score
+                if self._primary_type in ("wifi", "ethernet", "unknown"):
+                    internet_unreachable = latency_data is None or (
+                        latency_data.get("avg_rtt", 0) == 0 and latency_data.get("packet_loss", 0) > 95
+                    )
+                    if internet_unreachable:
+                        gw_data = await self._get_gateway_latency(self._primary_interface)
+                        if gw_data and gw_data.get("available"):
+                            # Gateway responded — use RTT as quality signal
+                            latency_data = gw_data
+                            if _cycle_count % 15 == 1:
+                                logger.info(
+                                    f"[Bridge] Using gateway RTT for {self._primary_interface}: "
+                                    f"rtt={gw_data.get('avg_rtt', 0):.1f}ms "
+                                    f"loss={gw_data.get('packet_loss', 0):.0f}% "
+                                    f"gw={gw_data.get('gateway', '?')}"
+                                )
+                        else:
+                            # Gateway also unreachable (ICMP blocked or no route) — cannot
+                            # determine quality; clear latency_data so we keep the previous
+                            # score rather than scoring 100% loss as 0/Crítico.
+                            latency_data = None
+                            if _cycle_count % 15 == 1:
+                                gw = (gw_data or {}).get("gateway", "none")
+                                logger.debug(
+                                    f"[Bridge] No internet and gateway ({gw}) unreachable on "
+                                    f"{self._primary_interface} — keeping previous score"
+                                )
 
                 # Diagnostic log every ~30s
                 if _cycle_count % 15 == 1:
@@ -455,12 +493,14 @@ class NetworkEventBridge:
                 has_any_data = cell_data is not None or latency_data is not None
 
                 if not has_any_data:
-                    # No data at all - skip score update, keep previous values
-                    # This prevents resetting to 100/0 when data is temporarily unavailable
-                    if _cycle_count % 15 == 0:
-                        logger.warning(
-                            f"[Bridge] No data available for {self._primary_interface} - "
-                            f"keeping previous score {self._quality_score.score}"
+                    # No measurable data — keep previous score unchanged.
+                    # Common causes for WiFi:
+                    #   - LatencyMonitor still warming up (no samples yet)
+                    #   - No internet AND local gateway doesn't respond to ICMP
+                    if _cycle_count % 30 == 0:  # Log every ~5 minutes instead of every minute
+                        logger.debug(
+                            f"[Bridge] No measurable latency for {self._primary_interface} "
+                            f"(no internet / ICMP blocked) — keeping score {self._quality_score.score}"
                         )
                     await self._broadcast_status()
                     await asyncio.sleep(self.config.poll_interval_s)
@@ -579,6 +619,88 @@ class NetworkEventBridge:
         except Exception:
             # logger.debug(f"Error getting cell metrics: {e}")  # Comentado
             return None
+
+    def _get_gateway_for_interface(self, interface: str) -> Optional[str]:
+        """Get the default gateway IP for a network interface via 'ip route'."""
+        import subprocess
+        import re as _re
+
+        try:
+            result = subprocess.run(
+                ["ip", "route", "show", "dev", interface],
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+            if result.returncode == 0:
+                for line in result.stdout.splitlines():
+                    if "default via" in line:
+                        m = _re.search(r"default via (\d+\.\d+\.\d+\.\d+)", line)
+                        if m:
+                            return m.group(1)
+        except Exception:
+            pass
+        return None
+
+    async def _get_gateway_latency(self, interface: str) -> Optional[Dict]:
+        """
+        Ping the local gateway of *interface* 3 times and return latency_data dict.
+
+        Used as a fallback when internet-facing pings (8.8.8.8 etc.) all fail –
+        a common situation in FPV setups where wlan0 connects to a local AP with
+        no internet.  Pings are bound to the interface via '-I'.
+        """
+        gateway = self._get_gateway_for_interface(interface)
+        if not gateway:
+            return None
+
+        from app.services.latency_monitor import _PING_PREFIX
+
+        latencies = []
+        attempts = 3
+        for _ in range(attempts):
+            try:
+                ping_cmd = _PING_PREFIX + ["ping", "-c", "1", "-W", "2", "-I", interface, gateway]
+                proc = await asyncio.create_subprocess_exec(
+                    *ping_cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=3.0)
+                if proc.returncode == 0:
+                    import re as _re
+
+                    m = _re.search(r"time[=:](\d+\.?\d*)\s*ms", stdout.decode())
+                    if m:
+                        latencies.append(float(m.group(1)))
+            except Exception:
+                pass
+
+        if not latencies:
+            # Gateway completely unreachable
+            return {
+                "avg_rtt": 0.0,
+                "jitter": 0.0,
+                "p95_latency": 0.0,
+                "packet_loss": 100.0,
+                "available": False,
+                "source": "gateway",
+                "gateway": gateway,
+            }
+
+        avg_rtt = sum(latencies) / len(latencies)
+        variance = sum((x - avg_rtt) ** 2 for x in latencies) / len(latencies)
+        jitter = variance**0.5
+        packet_loss = (1 - len(latencies) / attempts) * 100
+        return {
+            "avg_rtt": round(avg_rtt, 2),
+            "jitter": round(jitter, 2),
+            "p95_latency": round(max(latencies), 2),
+            "packet_loss": round(packet_loss, 1),
+            "available": True,
+            "source": "gateway",
+            "gateway": gateway,
+        }
 
     async def _get_latency_metrics(self) -> Optional[Dict]:
         """Get current latency metrics from latency monitor"""
@@ -860,9 +982,19 @@ class NetworkEventBridge:
             components["sinr"] = 0
             components["rsrq"] = 0
 
+        # Detect "all pings failed" scenario: rtt=0 AND near-100% loss.
+        # In this case rtt/jitter measurements are not meaningful (no successful samples),
+        # so we must NOT reward them with a perfect score of 100.
+        # We cap rtt_norm and jitter_norm at 0 to reflect "unknown / unreachable".
+        all_pings_failed = (
+            latency_data is not None
+            and latency_data.get("avg_rtt", 0) == 0
+            and latency_data.get("packet_loss", 0) >= 95
+        )
+
         # Jitter component (0-100, inverse)
         jitter = latency_data.get("jitter", 0) if latency_data else 0
-        jitter_norm = max(0, min(100, 100 - jitter))
+        jitter_norm = 0 if all_pings_failed else max(0, min(100, 100 - jitter))
         components["jitter"] = jitter_norm
 
         # Packet loss component (0-100, inverse)
@@ -872,7 +1004,7 @@ class NetworkEventBridge:
 
         # RTT component for WiFi/Ethernet (0-100, inverse)
         rtt = latency_data.get("avg_rtt", 0) if latency_data else 0
-        rtt_norm = max(0, min(100, 100 - rtt / 4))  # 0ms=100, 400ms=0
+        rtt_norm = 0 if all_pings_failed else max(0, min(100, 100 - rtt / 4))  # 0ms=100, 400ms=0
         components["rtt"] = rtt_norm
 
         # Weighted composite score - different weights based on connection type
@@ -915,9 +1047,12 @@ class NetworkEventBridge:
             trend = "stable"
 
         # Map score to recommendations
+        # Use encoder-aware ceiling: MPP hardware encoder is ~20 % more efficient than x264,
+        # so allow lower peak without sacrificing visible quality.
+        effective_max = self._get_effective_max_bitrate()
         recommended_bitrate = int(
             self.config.min_bitrate_kbps
-            + (self.config.max_bitrate_kbps - self.config.min_bitrate_kbps)
+            + (effective_max - self.config.min_bitrate_kbps)
             * (new_score / 100) ** 1.5  # Power curve for more aggressive low-end reduction
         )
 
@@ -1157,7 +1292,7 @@ class NetworkEventBridge:
                 return  # Too small to bother
 
             new_bitrate = current_bitrate + max(-max_change, min(max_change, diff))
-            new_bitrate = max(self.config.min_bitrate_kbps, min(self.config.max_bitrate_kbps, new_bitrate))
+            new_bitrate = max(self.config.min_bitrate_kbps, min(self._get_effective_max_bitrate(), new_bitrate))
 
             # Apply via live property update
             result = self._gstreamer_service.update_live_property("bitrate", new_bitrate)
@@ -1315,6 +1450,29 @@ class NetworkEventBridge:
             self._gstreamer_service.force_keyframe()
             self._last_keyframe_time = now
 
+    # ── Encoder-aware bitrate helpers ──────────────────────────────────────────
+
+    def _is_hardware_encoder_active(self) -> bool:
+        """Return True when the Rockchip MPP hardware encoder (mpph264enc) is active.
+
+        MPP produces equivalent visual quality at ~20 % lower bitrate vs x264,
+        so we can lower the effective bitrate ceiling without sacrificing quality.
+        """
+        if not self._gstreamer_service:
+            return False
+        provider = getattr(self._gstreamer_service, "current_encoder_provider", None)
+        return bool(provider and "Hardware" in provider)
+
+    def _get_effective_max_bitrate(self) -> int:
+        """Return the bitrate ceiling adjusted for encoder efficiency.
+
+        When MPP hardware encoding is active the ceiling is reduced by 20 %
+        because the encoder needs fewer bits to achieve the same quality as x264.
+        """
+        if self._is_hardware_encoder_active():
+            return int(self.config.max_bitrate_kbps * 0.80)
+        return self.config.max_bitrate_kbps
+
     def _adjust_bitrate_percent(self, percent: float):
         """Adjust bitrate by percentage (negative = reduce)"""
         if not self._gstreamer_service or not self._gstreamer_service.is_streaming:
@@ -1323,7 +1481,7 @@ class NetworkEventBridge:
         try:
             current = getattr(self._gstreamer_service.video_config, "h264_bitrate", 1500) or 1500
             new_bitrate = int(current * (1 + percent / 100))
-            new_bitrate = max(self.config.min_bitrate_kbps, min(self.config.max_bitrate_kbps, new_bitrate))
+            new_bitrate = max(self.config.min_bitrate_kbps, min(self._get_effective_max_bitrate(), new_bitrate))
             self._gstreamer_service.update_live_property("bitrate", new_bitrate)
         except Exception:
             pass  # logger.debug(f"Bitrate adjustment error: {e}")

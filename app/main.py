@@ -10,9 +10,11 @@ from contextlib import asynccontextmanager
 import asyncio
 import threading
 import time
-import logging
 
-logger = logging.getLogger(__name__)
+from app.utils.logger import get_logger  # noqa: E402
+
+# Use bare message format — journald already prefixes timestamp and identifier
+logger = get_logger(__name__, fmt="%(message)s")
 
 # Modular providers system
 from app.providers import init_provider_registry, get_provider_registry  # noqa: E402
@@ -178,9 +180,30 @@ def _auto_start_video():
         logger.warning(f" Video auto-start exception: {e}")
 
 
+def _read_version() -> str:
+    """Read version from pyproject.toml, fallback to 'unknown'."""
+    try:
+        import re
+        from pathlib import Path
+
+        pyproject = Path(__file__).parent.parent / "pyproject.toml"
+        m = re.search(r'version\s*=\s*["\']([^"\']+)["\']', pyproject.read_text())
+        return m.group(1) if m else "unknown"
+    except Exception:
+        return "unknown"
+
+
+def _log_banner(msg: str) -> None:
+    """Print a visually distinct banner line to the application log."""
+    sep = "━" * 60
+    logger.info(sep)
+    logger.info(msg)
+    logger.info(sep)
+
+
 async def _lifespan_shutdown():
     """Clean shutdown of all application services."""
-    logger.info("\U0001f6d1 FPV Copilot Sky shutting down...")
+    _log_banner("🛑  FPV COPILOT SKY  —  SHUTTING DOWN")
     try:
         from app.services.modem_pool import get_modem_pool
 
@@ -216,6 +239,9 @@ async def lifespan(app: FastAPI):
     # Startup
     global mavlink_service, router_service, preferences_service, video_service, detected_board
     loop = asyncio.get_event_loop()
+    _startup_t0 = time.monotonic()
+
+    _log_banner(f"🚀  FPV COPILOT SKY  —  STARTING  (v{_read_version()})")
 
     # Initialize preferences first
     preferences_service = get_preferences()
@@ -265,15 +291,12 @@ async def lifespan(app: FastAPI):
     logger.info("   - Modem: Huawei E3372h")
     logger.info("   - Network Interfaces: Ethernet, WiFi, VPN, Modem")
     logger.info("   - Video Sources: V4L2, LibCamera, HDMI Capture, Network Stream")
-    logger.info("   - Video Encoders: Hardware H.264, MJPEG, x264, OpenH264")
+    logger.info("   - Video Encoders: (probing in background, non-blocking)")
 
-    # Log available encoders
-    available_encoders = provider_registry.get_available_video_encoders()
-    encoder_names = [e["display_name"] for e in available_encoders if e["available"]]
-    if encoder_names:
-        logger.info(f"   - Video Encoders: {', '.join(encoder_names)}")
-    else:
-        logger.info("   - Video Encoders: None available (GStreamer plugins may be missing)")
+    # NOTE: get_available_video_encoders() is intentionally NOT called here.
+    # It runs gst-inspect-1.0 / v4l2-ctl subprocess chains that can block the
+    # event loop for several minutes on first boot while GStreamer rebuilds its
+    # plugin registry.  The background task below handles this after startup.
 
     # Create router for additional outputs (uses preferences for config)
     router_service = get_router()
@@ -338,7 +361,6 @@ async def lifespan(app: FastAPI):
     mavlink.set_mavlink_service(mavlink_service)
     router_routes.set_router_service(router_service)
 
-    logger.info("🚀 FPV Copilot Sky starting up...")
     logger.info(" Router ready for outputs")
     logger.info(" VPN service initialized")
 
@@ -352,6 +374,22 @@ async def lifespan(app: FastAPI):
     # Start background auto-connect threads
     threading.Thread(target=auto_connect_vpn, daemon=True, name="VPNAutoConnect").start()
     threading.Thread(target=auto_connect_serial, daemon=True, name="AutoConnect").start()
+
+    # Probe encoder availability in a thread pool so gst-inspect-1.0 / v4l2-ctl
+    # subprocess chains never block the event loop.
+    async def _probe_encoders_background():
+        try:
+            _loop = asyncio.get_event_loop()
+            available = await _loop.run_in_executor(None, provider_registry.get_available_video_encoders)
+            names = [e["display_name"] for e in available if e["available"]]
+            logger.info(f" Video encoders ready: {', '.join(names) if names else 'none available'}")
+        except Exception as _e:
+            logger.warning(f"  Encoder probe error (non-fatal): {_e}")
+
+    asyncio.create_task(_probe_encoders_background())
+
+    _startup_elapsed = time.monotonic() - _startup_t0
+    _log_banner(f"✅  FPV COPILOT SKY  —  READY  (startup: {_startup_elapsed:.1f}s)")
 
     yield  # Application is running
 
