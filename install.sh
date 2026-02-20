@@ -72,9 +72,10 @@ setup_fpvcopilotsky_user() {
         sudo usermod -a -G video "$USERNAME"       # Camera access
         sudo usermod -a -G netdev "$USERNAME"      # Network device access
         sudo usermod -a -G sudo "$USERNAME"        # Sudo access for system management
+        sudo usermod -a -G adm "$USERNAME"         # Read system journal (journalctl)
 
         echo -e "${GREEN}✓${NC} User '$USERNAME' created and configured"
-        echo -e "${GREEN}✓${NC} Groups: dialout, video, netdev, sudo"
+        echo -e "${GREEN}✓${NC} Groups: dialout, video, netdev, sudo, adm"
         echo ""
     fi
 

@@ -13,7 +13,7 @@ import api from './services/api'
 function App() {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState('dashboard')
-  const [experimentalTabEnabled, setExperimentalTabEnabled] = useState(true)
+  const [experimentalTabEnabled, setExperimentalTabEnabled] = useState(false)
 
   // Load preferences to check if experimental tab is enabled
   useEffect(() => {

@@ -16,7 +16,7 @@ class SerialConfig:
 
     port: str = ""
     baudrate: int = 115200
-    auto_connect: bool = True
+    auto_connect: bool = False
     last_successful: bool = False
 
 
@@ -65,10 +65,16 @@ class PreferencesService:
         self._load()
 
     def _get_config_path(self) -> str:
-        """Get path to preferences file."""
-        # Store in FPVCopilotSky root directory
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        return os.path.join(base_dir, "..", self.PREFERENCES_FILE)
+        """Get path to preferences file.
+
+        Stores in /var/lib/fpvcopilot-sky/ (owned by fpvcopilotsky) so the
+        service user can always write preferences regardless of who owns the
+        source tree (/opt/FPVCopilotSky may be owned by a different user
+        during development).
+        """
+        data_dir = "/var/lib/fpvcopilot-sky"
+        os.makedirs(data_dir, mode=0o755, exist_ok=True)
+        return os.path.join(data_dir, self.PREFERENCES_FILE)
 
     def _default_preferences(self) -> Dict[str, Any]:
         """Return default preferences structure."""
@@ -76,7 +82,7 @@ class PreferencesService:
             "serial": {
                 "port": "",
                 "baudrate": 115200,
-                "auto_connect": True,
+                "auto_connect": False,
                 "last_successful": False,
             },
             "router": {"outputs": []},  # No outputs by default, user creates them
@@ -111,6 +117,9 @@ class PreferencesService:
             },
             "ui": {"language": "es", "theme": "dark"},
             "system": {"version": "1.0.0", "first_run": True},
+            "extras": {
+                "experimental_tab_enabled": False,  # Hidden by default
+            },
         }
 
     def _load(self):
@@ -167,7 +176,7 @@ class PreferencesService:
             return SerialConfig(
                 port=cfg.get("port", ""),
                 baudrate=cfg.get("baudrate", 115200),
-                auto_connect=cfg.get("auto_connect", True),
+                auto_connect=cfg.get("auto_connect", False),
                 last_successful=cfg.get("last_successful", False),
             )
 

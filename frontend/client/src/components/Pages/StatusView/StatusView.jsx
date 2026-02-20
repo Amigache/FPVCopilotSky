@@ -1007,12 +1007,14 @@ const StatusView = () => {
             <h3 className="subsection-title">{t('status.permissions.filePermissions')}</h3>
             <div className="permission-check">
               <div className={permissions?.permissions?.can_read_opt ? 'check-ok' : 'check-fail'}>
-                {permissions?.permissions?.can_read_opt ? '✅' : '❌'}{' '}
-                {t('status.permissions.canRead')} /opt/FPVCopilotSky
+                {permissions?.permissions?.can_read_opt
+                  ? `✅ ${t('status.permissions.canRead')} /opt/FPVCopilotSky`
+                  : `❌ ${t('status.permissions.cannotRead')} /opt/FPVCopilotSky`}
               </div>
               <div className={permissions?.permissions?.can_write_opt ? 'check-ok' : 'check-fail'}>
-                {permissions?.permissions?.can_write_opt ? '✅' : '❌'}{' '}
-                {t('status.permissions.canWrite')} /opt/FPVCopilotSky
+                {permissions?.permissions?.can_write_opt
+                  ? `✅ ${t('status.permissions.canWrite')} /opt/FPVCopilotSky`
+                  : `❌ ${t('status.permissions.cannotWrite')} /opt/FPVCopilotSky`}
               </div>
             </div>
           </div>

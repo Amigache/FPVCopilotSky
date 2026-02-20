@@ -709,7 +709,9 @@
       "groups": "Grupos del Usuario",
       "filePermissions": "Permisos de Archivos",
       "canRead": "Puede leer",
+      "cannotRead": "Sin acceso de lectura en",
       "canWrite": "Puede escribir en",
+      "cannotWrite": "Sin acceso de escritura en",
       "sudoPermissions": "Permisos Sudo"
     },
     "preferences": {

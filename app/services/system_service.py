@@ -1308,33 +1308,27 @@ class SystemService:
 
         # Cache miss or expired - fetch fresh logs
         try:
-            # Try to get nginx error logs
+            # Try to get nginx error logs (access_log is off in our config)
             nginx_error = ""
-            nginx_access = ""
 
-            # Check for nginx error log
-            if os.path.exists("/var/log/nginx/error.log"):
-                result = subprocess.run(
-                    ["tail", "-n", str(lines // 2), "/var/log/nginx/error.log"],
-                    capture_output=True,
-                    text=True,
-                    timeout=2,  # Reduced timeout from 3 to 2 seconds
-                )
-                if result.returncode == 0:
-                    nginx_error = "=== Nginx Error Log ===\\n" + result.stdout
+            # Check for fpvcopilot-sky nginx error log (access_log is off in our config)
+            nginx_log_paths = [
+                "/var/log/nginx/fpvcopilot-sky-error.log",  # Custom log from our nginx config
+                "/var/log/nginx/error.log",                  # Fallback generic nginx error log
+            ]
+            for log_path in nginx_log_paths:
+                if os.path.exists(log_path):
+                    result = subprocess.run(
+                        ["tail", "-n", str(lines), log_path],
+                        capture_output=True,
+                        text=True,
+                        timeout=2,
+                    )
+                    if result.returncode == 0 and result.stdout.strip():
+                        nginx_error = f"=== Nginx Error Log ({log_path}) ===\\n" + result.stdout
+                    break
 
-            # Check for nginx access log
-            if os.path.exists("/var/log/nginx/access.log"):
-                result = subprocess.run(
-                    ["tail", "-n", str(lines // 2), "/var/log/nginx/access.log"],
-                    capture_output=True,
-                    text=True,
-                    timeout=2,  # Reduced timeout from 3 to 2 seconds
-                )
-                if result.returncode == 0:
-                    nginx_access = "\\n=== Nginx Access Log ===\\n" + result.stdout
-
-            combined = nginx_error + nginx_access
+            combined = nginx_error
             logs = combined if combined else "No frontend logs available"
 
             # Update cache with 2 second TTL

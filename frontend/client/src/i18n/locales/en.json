@@ -707,7 +707,9 @@
       "groups": "User Groups",
       "filePermissions": "File Permissions",
       "canRead": "Can read",
+      "cannotRead": "No read access to",
       "canWrite": "Can write to",
+      "cannotWrite": "No write access to",
       "sudoPermissions": "Sudo Permissions"
     },
     "preferences": {

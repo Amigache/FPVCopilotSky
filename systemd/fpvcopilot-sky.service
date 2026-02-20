@@ -8,7 +8,7 @@ Type=simple
 User=fpvcopilotsky
 Group=fpvcopilotsky
 # Ensure we have access to serial ports and video devices
-SupplementaryGroups=dialout video
+SupplementaryGroups=dialout video adm
 WorkingDirectory=/opt/FPVCopilotSky
 Environment="PATH=/opt/FPVCopilotSky/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
