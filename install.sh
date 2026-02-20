@@ -44,44 +44,43 @@ setup_fpvcopilotsky_user() {
 
     if id "$USERNAME" &>/dev/null; then
         echo -e "${GREEN}✓${NC} User '$USERNAME' already exists"
-        return 0
+    else
+        echo ""
+        echo -e "${BLUE}👤 Setting up FPVCopilotSky system user...${NC}"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+        echo "The FPVCopilotSky service runs as a dedicated system user for security."
+        echo "This user needs access to hardware (serial ports, cameras, network)."
+        echo ""
+
+        # Create user with home directory
+        echo -e "${BLUE}Creating user '$USERNAME'...${NC}"
+        sudo useradd -m -s /bin/bash "$USERNAME" || {
+            echo -e "${RED}✗ Failed to create user '$USERNAME'${NC}"
+            return 1
+        }
+
+        # Set password
+        echo ""
+        echo -e "${YELLOW}Please set a password for user '$USERNAME':${NC}"
+        sudo passwd "$USERNAME"
+
+        # Add user to required groups
+        echo ""
+        echo -e "${BLUE}Adding '$USERNAME' to system groups...${NC}"
+        sudo usermod -a -G dialout "$USERNAME"     # Serial port access
+        sudo usermod -a -G video "$USERNAME"       # Camera access
+        sudo usermod -a -G netdev "$USERNAME"      # Network device access
+        sudo usermod -a -G sudo "$USERNAME"        # Sudo access for system management
+
+        echo -e "${GREEN}✓${NC} User '$USERNAME' created and configured"
+        echo -e "${GREEN}✓${NC} Groups: dialout, video, netdev, sudo"
+        echo ""
     fi
 
-    echo ""
-    echo -e "${BLUE}👤 Setting up FPVCopilotSky system user...${NC}"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo ""
-    echo "The FPVCopilotSky service runs as a dedicated system user for security."
-    echo "This user needs access to hardware (serial ports, cameras, network)."
-    echo ""
-
-    # Create user with home directory
-    echo -e "${BLUE}Creating user '$USERNAME'...${NC}"
-    sudo useradd -m -s /bin/bash "$USERNAME" || {
-        echo -e "${RED}✗ Failed to create user '$USERNAME'${NC}"
-        return 1
-    }
-
-    # Set password
-    echo ""
-    echo -e "${YELLOW}Please set a password for user '$USERNAME':${NC}"
-    sudo passwd "$USERNAME"
-
-    # Add user to required groups
-    echo ""
-    echo -e "${BLUE}Adding '$USERNAME' to system groups...${NC}"
-    sudo usermod -a -G dialout "$USERNAME"     # Serial port access
-    sudo usermod -a -G video "$USERNAME"       # Camera access
-    sudo usermod -a -G netdev "$USERNAME"      # Network device access
-    sudo usermod -a -G sudo "$USERNAME"        # Sudo access for system management
-
-    echo -e "${GREEN}✓${NC} User '$USERNAME' created and configured"
-    echo -e "${GREEN}✓${NC} Groups: dialout, video, netdev, sudo"
-    echo ""
-
-    # Set ownership of project directory
+    # Always ensure correct ownership of project directory (new or existing user)
     if [ -d "/opt/FPVCopilotSky" ]; then
-        echo -e "${BLUE}Setting ownership of /opt/FPVCopilotSky...${NC}"
+        echo -e "${BLUE}Setting ownership of /opt/FPVCopilotSky to $USERNAME...${NC}"
         sudo chown -R "$USERNAME:$USERNAME" /opt/FPVCopilotSky
         echo -e "${GREEN}✓${NC} Directory ownership updated"
     fi
