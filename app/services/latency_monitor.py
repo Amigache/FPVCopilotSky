@@ -7,12 +7,47 @@ for intelligent network switching decisions.
 
 import asyncio
 import logging
+import subprocess
 import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 from collections import deque
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Detect at module-load time whether the ping binary has cap_net_raw / setuid.
+# On some boards (e.g. Radxa) ping ships without either, so we must prefix
+# the command with "sudo" as a fallback (sudoers entry: NOPASSWD: /usr/bin/ping).
+# The result is cached in _PING_PREFIX so the check runs only once.
+# ---------------------------------------------------------------------------
+_PING_PREFIX: List[str] = []  # [] → plain "ping"; ["sudo"] → "sudo ping"
+
+
+def _detect_ping_prefix() -> List[str]:
+    """Return [] if ping can create raw sockets, ['sudo'] otherwise."""
+    try:
+        result = subprocess.run(
+            ["ping", "-c", "1", "-W", "1", "127.0.0.1"],
+            capture_output=True,
+            timeout=3,
+        )
+        if result.returncode == 0:
+            return []
+        # returncode=2 on permission error ("Operation not permitted")
+        stderr = result.stderr.decode(errors="replace")
+        if "permitted" in stderr or "capability" in stderr or "setuid" in stderr:
+            logger.warning(
+                "ping lacks cap_net_raw — using 'sudo ping' fallback. "
+                "Fix permanently with: sudo setcap cap_net_raw+ep /usr/bin/ping"
+            )
+            return ["sudo"]
+        return []
+    except Exception:
+        return []
+
+
+_PING_PREFIX = _detect_ping_prefix()
 
 
 @dataclass
@@ -167,7 +202,7 @@ class LatencyMonitor:
                 interface=interface,
             )
 
-        cmd = ["ping", "-c", "1", "-W", str(int(self.timeout))]
+        cmd = _PING_PREFIX + ["ping", "-c", "1", "-W", str(int(self.timeout))]
 
         # Bind to specific interface if provided
         if interface:
@@ -295,21 +330,26 @@ class LatencyMonitor:
         all_losses = []
 
         for target_stats in stats.values():
-            if target_stats.avg_latency > 0:
-                all_latencies.append(target_stats.avg_latency)
+            # Always include entries that have samples (even if avg_latency==0 due to all pings failing)
+            # This captures packet_loss=100% when there is no internet but the monitor IS running
+            if target_stats.sample_count > 0:
                 all_samples += target_stats.sample_count
                 all_losses.append(target_stats.packet_loss)
+                if target_stats.avg_latency > 0:
+                    all_latencies.append(target_stats.avg_latency)
 
-        if not all_latencies:
+        if not all_losses:
+            # No samples at all – monitor has not collected data yet
             return None
 
+        avg_rtt = sum(all_latencies) / len(all_latencies) if all_latencies else 0.0
         return LatencyStats(
             target=f"aggregate ({len(stats)} targets)",
             interface=interface,
-            avg_latency=sum(all_latencies) / len(all_latencies),
-            min_latency=min(all_latencies),
-            max_latency=max(all_latencies),
-            packet_loss=sum(all_losses) / len(all_losses) if all_losses else 0,
+            avg_latency=avg_rtt,
+            min_latency=min(all_latencies) if all_latencies else 0.0,
+            max_latency=max(all_latencies) if all_latencies else 0.0,
+            packet_loss=sum(all_losses) / len(all_losses) if all_losses else 0.0,
             sample_count=all_samples,
             last_update=time.time(),
         )

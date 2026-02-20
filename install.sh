@@ -79,11 +79,23 @@ setup_fpvcopilotsky_user() {
         echo ""
     fi
 
-    # Always ensure correct ownership of project directory (new or existing user)
+    # Always ensure correct ownership and group permissions of project directory
     if [ -d "/opt/FPVCopilotSky" ]; then
         echo -e "${BLUE}Setting ownership of /opt/FPVCopilotSky to $USERNAME...${NC}"
         sudo chown -R "$USERNAME:$USERNAME" /opt/FPVCopilotSky
-        echo -e "${GREEN}✓${NC} Directory ownership updated"
+        # Allow group members to read/write (developer user will join the group)
+        sudo chmod -R g+rw /opt/FPVCopilotSky
+        sudo find /opt/FPVCopilotSky -type d -exec chmod g+s {} \;
+        echo -e "${GREEN}✓${NC} Directory ownership and group permissions updated"
+    fi
+
+    # Add the user who ran the install (via sudo) to the fpvcopilotsky group
+    # so they can still read/write the repository after installation
+    INSTALLER_USER="${SUDO_USER:-}"
+    if [ -n "$INSTALLER_USER" ] && [ "$INSTALLER_USER" != "$USERNAME" ]; then
+        echo -e "${BLUE}Adding installer user '$INSTALLER_USER' to '$USERNAME' group...${NC}"
+        sudo usermod -a -G "$USERNAME" "$INSTALLER_USER"
+        echo -e "${GREEN}✓${NC} '$INSTALLER_USER' added to '$USERNAME' group (re-login required to apply)"
     fi
 
     echo ""
@@ -156,7 +168,9 @@ sudo apt-get install -y \
     iproute2 \
     ethtool \
     curl \
-    iptables
+    iptables \
+    libcap2-bin \
+    wireguard-tools
 
 # Install CAKE qdisc and tc for bufferbloat control (Flight Mode)
 echo "⚙️  Installing traffic control tools for CAKE bufferbloat mitigation..."
@@ -347,6 +361,21 @@ else
     echo "  ⚠ Sudoers setup script not found (scripts/setup-sudoers.sh)"
 fi
 
+# Grant cap_net_raw to ping so the service user can measure network latency
+# without running as root. setup-sudoers.sh does this too, but running it
+# here ensures it is applied even if the user re-runs install.sh independently.
+echo "🏓 Configuring ping permissions (cap_net_raw for latency monitoring)..."
+PING_BIN="$(command -v ping 2>/dev/null || echo /usr/bin/ping)"
+if [ -x "$PING_BIN" ]; then
+    if sudo setcap cap_net_raw+ep "$PING_BIN" 2>/dev/null; then
+        echo "  ✅ cap_net_raw granted to $PING_BIN — non-root ping enabled"
+    else
+        echo "  ⚠️  setcap failed (libcap2-bin missing?). sudo ping fallback will be used."
+    fi
+else
+    echo "  ⚠️  ping binary not found at $PING_BIN"
+fi
+
 # Configure network priority management (VPN-aware routing)
 echo "🌐 Configuring network priority management..."
 
@@ -508,6 +537,29 @@ if gst-inspect-1.0 rtph264pay > /dev/null 2>&1; then
     echo "  ✓ RTP H.264 payloader found"
 else
     echo "  ⚠ RTP H.264 payloader not found"
+fi
+
+# Hardware H.264 encoder — Rockchip MPP (RK3566 / RK3568 / RK3588)
+# Only installs on ARM systems with /dev/mpp_service (MPP kernel driver)
+if [ -e /dev/mpp_service ]; then
+    echo ""
+    echo "🔧 Rockchip MPP detected — installing hardware H.264 encoder..."
+    # udev rule: give 'video' group access to /dev/mpp_service (default is root-only)
+    echo 'SUBSYSTEM=="misc", KERNEL=="mpp_service", GROUP="video", MODE="0660"' \
+        | sudo tee /etc/udev/rules.d/99-rockchip-mpp.rules > /dev/null
+    sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=mpp_service || true
+    echo "  ✓ udev rule applied: /dev/mpp_service accessible to 'video' group"
+    sudo apt-get install -y software-properties-common 2>&1 | tail -2
+    sudo add-apt-repository -y ppa:liujianfeng1994/rockchip-multimedia 2>&1 | tail -3
+    sudo apt-get update -qq 2>&1 | tail -3
+    sudo apt-get install -y librockchip-mpp1 librockchip-mpp-dev gstreamer1.0-rockchip1 2>&1 | tail -5
+    if gst-inspect-1.0 mpph264enc > /dev/null 2>&1; then
+        echo "  ✅ Hardware H.264 encoder (mpph264enc) ready — CPU usage <10%"
+    else
+        echo "  ⚠ mpph264enc not found after install — hardware encoding unavailable"
+    fi
+else
+    echo "  ℹ️  Rockchip MPP not detected — skipping hardware encoder (x264 software will be used)"
 fi
 
 # Check for camera

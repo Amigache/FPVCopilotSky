@@ -100,8 +100,21 @@ fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/sbin/tc filter *
 
 # --- iptables mangle (network_optimizer.py — DSCP marking for VPN policy routing) ---
 fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/sbin/iptables -t mangle *
+# --- iptables-save / iptables-restore (policy_routing_manager.py — batch rule management) ---
+fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/sbin/iptables-save
+fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/sbin/iptables-save -t mangle
+fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/sbin/iptables-restore
+fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/sbin/iptables-restore --noflush
+# --- WireGuard status (vpn_health_checker.py — VPN peer detection & health monitoring) ---
+fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/bin/wg show all
+fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/bin/wg show all *
+
+# --- ping (latency_monitor.py — fallback when cap_net_raw not set on binary) ---
+fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/bin/ping
 
 # --- Policy routing rules (policy_routing_manager.py, network_optimizer.py) ---
+# Batch mode: a single call replaces 6 individual ip rule del/add sudo calls
+fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/sbin/ip -force -batch *
 fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/sbin/ip rule *
 
 # --- MPTCP (mptcp.py) ---
@@ -148,6 +161,21 @@ chmod 440 "$SUDOERS_FILE"
 # Verify syntax
 if visudo -c -f "$SUDOERS_FILE" > /dev/null 2>&1; then
     echo "  ✅ Unified sudoers file created: $SUDOERS_FILE"
+
+    # --- ping capability ---
+    # ping needs cap_net_raw to create ICMP raw sockets as non-root.
+    # Most distros ship ping with setuid or this capability; this board does not.
+    # We set it here so the latency monitor works without sudo prefix.
+    # setcap survives reboots but is lost when iputils-ping is upgraded.
+    # The sudoers entry above (sudo ping) acts as a drop-in fallback.
+    PING_BIN="$(command -v ping 2>/dev/null || echo /usr/bin/ping)"
+    if [ -x "$PING_BIN" ]; then
+        if setcap cap_net_raw+ep "$PING_BIN" 2>/dev/null; then
+            echo "  ✅ cap_net_raw granted to $PING_BIN (non-root ping enabled)"
+        else
+            echo "  ⚠️  setcap failed — sudo ping fallback will be used (check libcap2-bin is installed)"
+        fi
+    fi
     echo ""
     echo "  Permissions configured:"
     echo "    - Service management (fpvcopilot-sky, nginx)"

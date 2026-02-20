@@ -21,7 +21,7 @@ Traffic marks (fwmark):
 
 import asyncio
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -275,148 +275,159 @@ class PolicyRoutingManager:
     # ──────────────────────────────────────────────────────────────────────
 
     async def _setup_iptables_marks(self):
-        """Install iptables mangle MARK rules for all traffic classes (idempotent)."""
-        from app.api.routes.network.common import run_command
+        """Install iptables mangle MARK rules for all traffic classes.
 
+        Uses a single ``sudo iptables-restore --noflush`` call instead of one
+        ``sudo iptables`` invocation per rule.  This reduces ~20 separate sudo
+        sessions to 2 (remove stale + add new).
+        """
         # First remove any stale FPV marks to ensure idempotency
         await self._remove_iptables_marks()
 
+        # Build rules in iptables-restore format and apply atomically
+        lines = ["*mangle"]
         for tc in TRAFFIC_CLASSES:
             proto = tc["proto"]
             fwmark = tc["fwmark"]
             for dport in tc["dports"]:
-                _, _, rc = await run_command(
-                    [
-                        "sudo",
-                        "iptables",
-                        "-t",
-                        "mangle",
-                        "-A",
-                        "OUTPUT",
-                        "-p",
-                        proto,
-                        "--dport",
-                        dport,
-                        "-j",
-                        "MARK",
-                        "--set-mark",
-                        fwmark,
-                        "-m",
-                        "comment",
-                        "--comment",
-                        f"fpv_{tc['name']}",
-                    ]
+                lines.append(
+                    f"-A OUTPUT -p {proto} --dport {dport} "
+                    f"-j MARK --set-mark {fwmark} "
+                    f"-m comment --comment fpv_{tc['name']}"
                 )
-                if rc != 0:
-                    logger.warning(f"PolicyRoutingManager: iptables rule failed for " f"{tc['name']} {proto}/{dport}")
+        lines.append("COMMIT")
+        rules_input = "\n".join(lines) + "\n"
 
-        logger.info("PolicyRoutingManager: iptables mangle marks installed")
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "sudo",
+                "iptables-restore",
+                "--noflush",
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            _, stderr = await asyncio.wait_for(proc.communicate(rules_input.encode()), timeout=10)
+            if proc.returncode != 0:
+                logger.warning(f"PolicyRoutingManager: iptables-restore failed: {stderr.decode().strip()}")
+            else:
+                rule_count = sum(len(tc["dports"]) for tc in TRAFFIC_CLASSES)
+                logger.info(f"PolicyRoutingManager: {rule_count} iptables mangle marks installed (1 sudo call)")
+        except Exception as e:
+            logger.error(f"PolicyRoutingManager: iptables-restore error: {e}")
 
     async def _remove_iptables_marks(self):
-        """Remove all FPV-tagged iptables mangle marks."""
-        from app.api.routes.network.common import run_command
+        """Remove all FPV-tagged iptables mangle marks.
 
-        # List all OUTPUT mangle rules and delete ones tagged fpv_*
-        stdout, _, rc = await run_command(
-            [
+        Uses ``iptables-save | filter | iptables-restore`` — just 2 sudo calls
+        regardless of how many fpv_ rules exist.
+        """
+        try:
+            # Dump current mangle table
+            proc = await asyncio.create_subprocess_exec(
                 "sudo",
-                "iptables",
+                "iptables-save",
                 "-t",
                 "mangle",
-                "-L",
-                "OUTPUT",
-                "--line-numbers",
-                "-n",
-            ]
-        )
-        if rc != 0:
-            return
-
-        # Parse lines in reverse so line numbers stay valid when deleting
-        lines_to_del = []
-        for line in stdout.splitlines():
-            if "fpv_" in line:
-                parts = line.split()
-                if parts and parts[0].isdigit():
-                    lines_to_del.append(int(parts[0]))
-
-        for num in sorted(lines_to_del, reverse=True):
-            await run_command(
-                [
-                    "sudo",
-                    "iptables",
-                    "-t",
-                    "mangle",
-                    "-D",
-                    "OUTPUT",
-                    str(num),
-                ]
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5)
+            if proc.returncode != 0:
+                return
 
-        if lines_to_del:
-            logger.info(f"PolicyRoutingManager: removed {len(lines_to_del)} iptables marks")
+            current = stdout.decode()
+            # Strip any line that contains our fpv_ comment marker
+            filtered_lines = [line for line in current.splitlines() if "fpv_" not in line]
+            filtered = "\n".join(filtered_lines) + "\n"
+
+            if filtered == current:
+                return  # Nothing to remove — skip the restore call entirely
+
+            removed = len(current.splitlines()) - len(filtered_lines)
+
+            # Atomically restore the filtered state (flushes + re-applies in one call)
+            proc2 = await asyncio.create_subprocess_exec(
+                "sudo",
+                "iptables-restore",
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            _, stderr = await asyncio.wait_for(proc2.communicate(filtered.encode()), timeout=10)
+            if proc2.returncode != 0:
+                logger.warning(f"PolicyRoutingManager: iptables-restore (remove) failed: {stderr.decode().strip()}")
+            else:
+                logger.info(f"PolicyRoutingManager: removed {removed} iptables marks (2 sudo calls)")
+        except Exception as e:
+            logger.warning(f"PolicyRoutingManager: _remove_iptables_marks error (non-fatal): {e}")
 
     # ──────────────────────────────────────────────────────────────────────
     # Internal — ip rules
     # ──────────────────────────────────────────────────────────────────────
 
     async def _setup_ip_rules(self):
-        """Install ip rule fwmark→table mappings (idempotent)."""
-        from app.api.routes.network.common import run_command
+        """
+        Install ip rule fwmark→table mappings (idempotent).
 
-        # Remove first to ensure idempotency
-        await self._remove_ip_rules()
-
-        rules: List[Tuple[int, str, int]] = [
-            (PRIO_VPN, MARK_VPN, TABLE_VPN),
-            (PRIO_VIDEO, MARK_VIDEO, TABLE_VIDEO),
-            (PRIO_MAVLINK, MARK_MAVLINK, TABLE_VIDEO),
+        Uses a single ``sudo ip -force -batch -`` call instead of one
+        ``sudo ip rule`` invocation per rule, reducing 6 sudo calls to 1.
+        The -force flag suppresses errors from the delete pass (rules may
+        not exist on a fresh boot).
+        """
+        # Build batch: delete existing rules first (idempotency), then add.
+        # -force ensures the batch continues even if a del fails (rule absent).
+        del_lines = [
+            f"rule del fwmark {MARK_VPN} lookup {TABLE_VPN}",
+            f"rule del fwmark {MARK_VIDEO} lookup {TABLE_VIDEO}",
+            f"rule del fwmark {MARK_MAVLINK} lookup {TABLE_VIDEO}",
         ]
+        add_lines = [
+            f"rule add fwmark {MARK_VPN} lookup {TABLE_VPN} prio {PRIO_VPN}",
+            f"rule add fwmark {MARK_VIDEO} lookup {TABLE_VIDEO} prio {PRIO_VIDEO}",
+            f"rule add fwmark {MARK_MAVLINK} lookup {TABLE_VIDEO} prio {PRIO_MAVLINK}",
+        ]
+        batch_input = "\n".join(del_lines + add_lines) + "\n"
 
-        for prio, fwmark, table in rules:
-            _, _, rc = await run_command(
-                [
-                    "sudo",
-                    "ip",
-                    "rule",
-                    "add",
-                    "fwmark",
-                    fwmark,
-                    "lookup",
-                    str(table),
-                    "prio",
-                    str(prio),
-                ]
-            )
-            if rc != 0:
-                logger.warning(f"PolicyRoutingManager: ip rule failed — " f"prio={prio} fwmark={fwmark} table={table}")
+        proc = await asyncio.create_subprocess_exec(
+            "sudo",
+            "ip",
+            "-force",
+            "-batch",
+            "-",
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await proc.communicate(batch_input.encode())
+        if proc.returncode not in (0, 1):  # 1 = some dels skipped, non-fatal
+            logger.warning(f"PolicyRoutingManager: ip rule batch errors: {stderr.decode().strip()}")
 
-        logger.info("PolicyRoutingManager: ip rules installed")
+        logger.info("PolicyRoutingManager: ip rules installed (1 batch sudo call)")
 
     async def _remove_ip_rules(self):
-        """Remove FPV policy rules (by fwmark/table combo)."""
-        from app.api.routes.network.common import run_command
+        """
+        Remove FPV policy rules using a single ``sudo ip -force -batch -`` call.
+        -force suppresses 'not found' errors when rules were never installed.
+        """
+        batch_input = (
+            f"rule del fwmark {MARK_VPN} lookup {TABLE_VPN}\n"
+            f"rule del fwmark {MARK_VIDEO} lookup {TABLE_VIDEO}\n"
+            f"rule del fwmark {MARK_MAVLINK} lookup {TABLE_VIDEO}\n"
+        )
 
-        rules_to_remove = [
-            (MARK_VPN, TABLE_VPN),
-            (MARK_VIDEO, TABLE_VIDEO),
-            (MARK_MAVLINK, TABLE_VIDEO),
-        ]
-
-        for fwmark, table in rules_to_remove:
-            # Try to delete (may not exist — suppress errors)
-            await run_command(
-                [
-                    "sudo",
-                    "ip",
-                    "rule",
-                    "del",
-                    "fwmark",
-                    fwmark,
-                    "lookup",
-                    str(table),
-                ]
-            )
+        proc = await asyncio.create_subprocess_exec(
+            "sudo",
+            "ip",
+            "-force",
+            "-batch",
+            "-",
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        await proc.communicate(batch_input.encode())
+        # Ignore return code — errors are expected when rules don't exist
 
     # ──────────────────────────────────────────────────────────────────────
     # Internal — routing tables

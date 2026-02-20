@@ -139,17 +139,22 @@ echo -e "\n${BLUE}🚀 Starting service...${NC}"
 sudo systemctl enable fpvcopilot-sky.service
 sudo systemctl restart fpvcopilot-sky.service
 
-# Wait for service to fully start (backend takes ~30-45s on cold start due to GStreamer registry build)
+# Wait for service to fully start (backend typically ready in ~25s)
 echo -e "\n${BLUE}🏥 Health check...${NC}"
 
 HEALTH_OK=false
-for i in $(seq 1 12); do
-    sleep 5
-    if curl -s --connect-timeout 3 http://127.0.0.1:8000/api/status/health > /dev/null 2>&1; then
+MAX_WAIT=60
+INTERVAL=2
+ELAPSED=0
+while [ "$ELAPSED" -lt "$MAX_WAIT" ]; do
+    if curl -s --connect-timeout 2 http://127.0.0.1:8000/api/status/health > /dev/null 2>&1; then
         HEALTH_OK=true
+        echo -e "   Backend ready in ${ELAPSED}s"
         break
     fi
-    echo -e "   Waiting for backend... (${i}/12)"
+    sleep "$INTERVAL"
+    ELAPSED=$((ELAPSED + INTERVAL))
+    echo -e "   Waiting for backend... (${ELAPSED}s / ${MAX_WAIT}s max)"
 done
 
 # Step 5: Health check results

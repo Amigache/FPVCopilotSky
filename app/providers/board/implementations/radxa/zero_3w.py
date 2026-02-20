@@ -104,6 +104,7 @@ class RadxaZero3WProvider(BoardProvider):
                 VideoSourceFeature.LIBCAMERA,
             ],
             video_encoders=[
+                VideoEncoderFeature.HARDWARE_H264,
                 VideoEncoderFeature.MJPEG,
                 VideoEncoderFeature.X264_SOFTWARE,
             ],
@@ -157,7 +158,9 @@ class RadxaZero3WProvider(BoardProvider):
                 variant.name = f"Debian {distro_version}"
                 logger.info(f"Detected Radxa Zero 3W on Debian {distro_version}, kernel {kernel_version}")
             else:
-                logger.warning(f"Unknown distro on Radxa Zero 3W: {distro_name} {distro_version}, using default variant")
+                logger.warning(
+                    f"Unknown distro on Radxa Zero 3W: {distro_name} {distro_version}, using default variant"
+                )
 
             return variant
 

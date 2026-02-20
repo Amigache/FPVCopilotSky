@@ -210,7 +210,7 @@ class SystemService:
         )
 
     @staticmethod
-    def apply_update(target_version: str = None, do_restart: bool = True) -> Dict[str, Any]:
+    def apply_update(target_version: str = None, do_restart: bool = True) -> Dict[str, Any]:  # noqa: C901
         """
         Apply system update by checking out a specific version tag from git.
 
@@ -1314,7 +1314,7 @@ class SystemService:
             # Check for fpvcopilot-sky nginx error log (access_log is off in our config)
             nginx_log_paths = [
                 "/var/log/nginx/fpvcopilot-sky-error.log",  # Custom log from our nginx config
-                "/var/log/nginx/error.log",                  # Fallback generic nginx error log
+                "/var/log/nginx/error.log",  # Fallback generic nginx error log
             ]
             for log_path in nginx_log_paths:
                 if os.path.exists(log_path):
