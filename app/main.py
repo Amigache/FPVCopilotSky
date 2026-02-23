@@ -738,7 +738,6 @@ async def _broadcast_modem_status():
             "success": True,
             "available": available,
             "connected": conn_status == "Connected",
-            "video_mode_active": getattr(modem_provider, "video_mode_active", False),
         }
 
         if device_info:

@@ -128,6 +128,7 @@ class ModemPool:
         self._running = False
         self._task: Optional[asyncio.Task] = None
         self._lock = asyncio.Lock()
+        self._flight_mode_active: bool = False  # Track whether flight mode was applied
         self._last_auto_switch: float = 0.0
         self._modem_provider = None  # Huawei/other modem provider
         self._latency_monitor = None  # LatencyMonitor instance
@@ -210,6 +211,21 @@ class ModemPool:
                         self._active_modem = iface
                         self._modems[iface].is_active = True
                         logger.info(f"ModemPool: {iface} set as initial active modem")
+
+                    # Auto-enable flight mode on first modem appearance
+                    if not self._flight_mode_active:
+                        try:
+                            from app.services.network_optimizer import get_network_optimizer
+
+                            optimizer = get_network_optimizer()
+                            result = await asyncio.get_event_loop().run_in_executor(None, optimizer.enable_flight_mode)
+                            if result.get("success"):
+                                self._flight_mode_active = True
+                                logger.info(f"ModemPool: flight mode auto-enabled on {iface}")
+                            else:
+                                logger.warning(f"ModemPool: flight mode auto-enable failed: {result.get('message')}")
+                        except Exception as e:
+                            logger.warning(f"ModemPool: could not auto-enable flight mode: {e}")
                 else:
                     # Update connectivity
                     gw = await get_gateway_for_interface(iface)
@@ -226,6 +242,18 @@ class ModemPool:
                     if modem.is_active:
                         modem.is_active = False
                         self._active_modem = None
+
+            # Auto-disable flight mode when all modems are gone
+            if self._flight_mode_active and not any(m.is_connected for m in self._modems.values()):
+                try:
+                    from app.services.network_optimizer import get_network_optimizer
+
+                    optimizer = get_network_optimizer()
+                    await asyncio.get_event_loop().run_in_executor(None, optimizer.disable_flight_mode)
+                    self._flight_mode_active = False
+                    logger.info("ModemPool: flight mode auto-disabled (no modems connected)")
+                except Exception as e:
+                    logger.warning(f"ModemPool: could not auto-disable flight mode: {e}")
 
     async def _get_interface_ip(self, interface: str) -> Optional[str]:
         """Get IP address for interface"""

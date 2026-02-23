@@ -8,7 +8,6 @@ export const MODEM_API_TIMEOUTS = {
   STATUS_ENHANCED: 15000, // Enhanced modem status
   BAND_CHANGE: 20000, // LTE band configuration changes
   MODE_CHANGE: 20000, // Network mode changes
-  VIDEO_MODE_TOGGLE: 20000, // Video mode enable/disable
   REBOOT: 5000, // Modem reboot command
   STATUS_CHECK: 5000, // Quick status check during reboot
 }

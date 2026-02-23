@@ -101,16 +101,34 @@ async def detect_modem_interface() -> Optional[str]:
 
 
 async def get_gateway_for_interface(interface: str) -> Optional[str]:
-    """Get gateway for a specific interface"""
+    """Get gateway for a specific interface.
+
+    Tries in order:
+    1. Explicit default route: 'default via <gw> dev <iface>'
+    2. Any DHCP 'via' route (e.g. Tailscale / host routes injected on DHCP):
+       '100.x.x.x via <gw> proto dhcp'
+    3. .1 inference from the interface's own IP address.
+    """
     stdout, _, returncode = await run_command(["ip", "route", "show", "dev", interface])
     if returncode == 0:
+        # 1. Explicit default route
         for line in stdout.split("\n"):
-            if "default" in line or line.startswith("default"):
+            if line.startswith("default") or "default" in line:
                 match = re.search(r"via\s+(\d+\.\d+\.\d+\.\d+)", line)
                 if match:
                     return match.group(1)
-        # Fallback: try to infer gateway from interface IP
-        match = re.search(r"inet\s+(\d+\.\d+\.\d+)\.\d+", stdout)
-        if match:
-            return f"{match.group(1)}.1"
+
+        # 2. Any DHCP 'via' entry (covers wlan0 that has host/tailscale routes but no default)
+        for line in stdout.split("\n"):
+            match = re.search(r"via\s+(\d+\.\d+\.\d+\.\d+)", line)
+            if match:
+                return match.group(1)
+
+        # 3. Infer gateway from interface IP (.1 assumption)
+        addr_stdout, _, addr_rc = await run_command(["ip", "addr", "show", "dev", interface])
+        if addr_rc == 0:
+            match = re.search(r"inet\s+(\d+\.\d+\.\d+)\.\d+", addr_stdout)
+            if match:
+                return f"{match.group(1)}.1"
+
     return None

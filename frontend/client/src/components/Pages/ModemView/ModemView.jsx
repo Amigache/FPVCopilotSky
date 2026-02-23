@@ -6,7 +6,6 @@ import { useModal } from '../../../contexts/ModalContext'
 import { useWebSocket } from '../../../contexts/WebSocketContext'
 import api from '../../../services/api'
 import { MODEM_API_TIMEOUTS, REBOOT_CONFIG } from './modemConstants'
-import { formatBitrate } from '../../../utils/formatters'
 
 const ModemView = () => {
   const { t } = useTranslation()
@@ -18,14 +17,10 @@ const ModemView = () => {
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState(null)
   const [bandPresets, setBandPresets] = useState(null)
-  const [videoQuality, setVideoQuality] = useState(null)
-  const [latency, setLatency] = useState(null)
 
   // Loading states
   const [changingBand, setChangingBand] = useState(false)
   const [changingMode, setChangingMode] = useState(false)
-  const [togglingVideoMode, setTogglingVideoMode] = useState(false)
-  const [testingLatency, setTestingLatency] = useState(false)
   const [modemRebooting, setModemRebooting] = useState(false)
 
   // Load modem status
@@ -38,8 +33,6 @@ const ModemView = () => {
       if (response.ok) {
         const data = await response.json()
         setStatus(data)
-        if (data.video_quality) setVideoQuality(data.video_quality)
-        if (data.latency) setLatency(data.latency)
       } else {
         setStatus({ available: false })
       }
@@ -61,43 +54,20 @@ const ModemView = () => {
     }
   }, [])
 
-  // Test latency
-  const handleTestLatency = async () => {
-    setTestingLatency(true)
-    try {
-      const response = await api.get('/api/modem/latency/huawei_e3372h')
-      if (response.ok) {
-        const data = await response.json()
-        setLatency(data)
-      } else {
-        const data = await response.json()
-        showToast(data.detail || 'Error en test de latencia', 'error')
-      }
-    } catch (error) {
-      showToast(error.message, 'error')
-    }
-    setTestingLatency(false)
-  }
-
   // Initial load (one-time HTTP for first paint, then WS takes over)
   useEffect(() => {
     const loadAll = async () => {
       setLoading(true)
       await Promise.all([loadStatus(), loadBandPresets()])
       setLoading(false)
-      // Auto-test latency on first load
-      handleTestLatency()
     }
     loadAll()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadStatus, loadBandPresets])
 
   // WebSocket: update modem data from server push (replaces polling)
   useEffect(() => {
     if (wsMessages?.modem_status) {
-      const data = wsMessages.modem_status
-      setStatus(data)
-      if (data.video_quality) setVideoQuality(data.video_quality)
+      setStatus(wsMessages.modem_status)
     }
   }, [wsMessages?.modem_status])
 
@@ -146,31 +116,6 @@ const ModemView = () => {
       showToast(error.message, 'error')
     }
     setChangingMode(false)
-  }
-
-  // Toggle video mode
-  const handleToggleVideoMode = async () => {
-    setTogglingVideoMode(true)
-    const actionMsg = status?.video_mode_active ? 'Desactivando' : 'Activando'
-    showToast(`⏳ ${actionMsg} modo video...`, 'info')
-    try {
-      const endpoint = status?.video_mode_active
-        ? '/api/modem/video-mode/disable/huawei_e3372h'
-        : '/api/modem/video-mode/enable/huawei_e3372h'
-
-      const response = await api.post(endpoint, {}, MODEM_API_TIMEOUTS.VIDEO_MODE_TOGGLE)
-      if (response.ok) {
-        const data = await response.json()
-        showToast(`✅ ${data.message}`, 'success')
-        await loadStatus()
-      } else {
-        const data = await response.json()
-        showToast(data.detail || 'Error', 'error')
-      }
-    } catch (error) {
-      showToast(error.message, 'error')
-    }
-    setTogglingVideoMode(false)
   }
 
   // Reboot modem
@@ -234,24 +179,6 @@ const ModemView = () => {
     })
   }
 
-  // Get quality color class
-  const getQualityColorClass = (level) => {
-    switch (level) {
-      case 'excellent':
-        return 'quality-excellent'
-      case 'good':
-        return 'quality-good'
-      case 'moderate':
-        return 'quality-moderate'
-      case 'poor':
-        return 'quality-poor'
-      case 'critical':
-        return 'quality-critical'
-      default:
-        return 'quality-unknown'
-    }
-  }
-
   if (loading) {
     return (
       <div className="card">
@@ -290,32 +217,6 @@ const ModemView = () => {
 
   return (
     <div className="modem-view">
-      {/* Video Mode Banner */}
-      <div className={`video-mode-banner ${status.video_mode_active ? 'active' : 'inactive'}`}>
-        <div className="banner-info">
-          <span className="banner-icon">{status.video_mode_active ? '🎬' : '📶'}</span>
-          <div className="banner-text">
-            <span className="banner-title">
-              {status.video_mode_active ? t('modem.videoModeActive') : t('modem.normalMode')}
-            </span>
-            <span className="banner-description">
-              {status.video_mode_active ? t('modem.videoModeDesc') : t('modem.normalModeDesc')}
-            </span>
-          </div>
-        </div>
-        <button
-          className={`btn-video-mode ${status.video_mode_active ? 'active' : ''}`}
-          onClick={handleToggleVideoMode}
-          disabled={togglingVideoMode}
-        >
-          {togglingVideoMode
-            ? '⏳'
-            : status.video_mode_active
-              ? `⏹️ ${t('modem.deactivate')}`
-              : `🎬 ${t('modem.activateVideoMode')}`}
-        </button>
-      </div>
-
       <div className="modem-sections">
         {/* === CARD 1: INFO - Información del Dispositivo === */}
         <div className="card info-card">
@@ -378,67 +279,6 @@ const ModemView = () => {
           <h2>📊 {t('modem.performanceMetrics')}</h2>
 
           <div className="kpi-sections">
-            {/* Video Quality Section */}
-            <div className="kpi-section">
-              <div className="kpi-header">
-                <span className="kpi-title">🎬 {t('modem.videoQuality')}</span>
-              </div>
-              {videoQuality?.available ? (
-                <div className="kpi-content">
-                  <div className={`quality-badge ${getQualityColorClass(videoQuality.quality)}`}>
-                    <span className="quality-text">{videoQuality.label}</span>
-                    <span className="quality-bitrate">
-                      {formatBitrate(videoQuality.max_bitrate_kbps)}
-                    </span>
-                  </div>
-                  <div className="quality-rec">
-                    {t('modem.resolution')}: <strong>{videoQuality.recommended_resolution}</strong>
-                  </div>
-                  {videoQuality.warnings?.length > 0 && (
-                    <div className="quality-warnings">
-                      {videoQuality.warnings.map((w, i) => (
-                        <span key={i} className="warning-tag">
-                          ⚠️ {w}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="kpi-no-data">{t('modem.noData')}</div>
-              )}
-            </div>
-
-            {/* Latency Section */}
-            <div className="kpi-section">
-              <div className="kpi-header">
-                <span className="kpi-title">⏱️ {t('modem.latency')}</span>
-                <button className="btn-mini" onClick={handleTestLatency} disabled={testingLatency}>
-                  {testingLatency ? '...' : '🔄'}
-                </button>
-              </div>
-              {testingLatency && !latency?.success ? (
-                <div className="kpi-no-data">
-                  <div className="spinner-small"></div>
-                  {t('modem.testing')}...
-                </div>
-              ) : latency?.success ? (
-                <div className="kpi-content">
-                  <div className={`latency-badge ${getQualityColorClass(latency.quality?.level)}`}>
-                    <span className="latency-main">{latency.avg_ms} ms</span>
-                    <span className="latency-label">{latency.quality?.label}</span>
-                  </div>
-                  <div className="latency-details">
-                    <span>Min: {latency.min_ms}ms</span>
-                    <span>Max: {latency.max_ms}ms</span>
-                    <span>Jitter: {latency.jitter_ms}ms</span>
-                  </div>
-                </div>
-              ) : (
-                <div className="kpi-no-data">{t('modem.noData')}</div>
-              )}
-            </div>
-
             {/* Signal Section */}
             <div className="kpi-section signal-section">
               <div className="kpi-header">

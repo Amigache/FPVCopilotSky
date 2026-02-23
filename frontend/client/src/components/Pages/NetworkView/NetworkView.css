@@ -84,25 +84,25 @@
   cursor: not-allowed;
 }
 
-/* Flight Mode Button - Special styling */
-.mode-btn.flight-mode-btn {
-  background: linear-gradient(135deg, rgba(255, 87, 34, 0.2), rgba(244, 67, 54, 0.2));
-  border: 1px solid rgba(255, 87, 34, 0.4);
-  color: #ff9c8c;
+/* Flight Mode Status Badge - informational only (auto-managed) */
+.flight-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 12px;
+  font-size: 0.78rem;
   font-weight: 600;
-  position: relative;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #7a8299;
+  white-space: nowrap;
+  user-select: none;
+  cursor: default;
 }
 
-.mode-btn.flight-mode-btn:hover:not(:disabled) {
-  background: linear-gradient(135deg, rgba(255, 87, 34, 0.3), rgba(244, 67, 54, 0.3));
-  border-color: rgba(255, 87, 34, 0.6);
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(255, 87, 34, 0.3);
-}
-
-.mode-btn.flight-mode-btn.active {
-  background: linear-gradient(135deg, rgba(76, 175, 80, 0.3), rgba(56, 142, 60, 0.3));
-  border-color: rgba(76, 175, 80, 0.6);
+.flight-mode-badge.active {
+  background: rgba(76, 175, 80, 0.15);
+  border-color: rgba(76, 175, 80, 0.4);
   color: #81c784;
   animation: pulse-flight 2s ease-in-out infinite;
 }
@@ -110,10 +110,10 @@
 @keyframes pulse-flight {
   0%,
   100% {
-    box-shadow: 0 0 5px rgba(76, 175, 80, 0.3);
+    box-shadow: 0 0 4px rgba(76, 175, 80, 0.2);
   }
   50% {
-    box-shadow: 0 0 15px rgba(76, 175, 80, 0.6);
+    box-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
   }
 }
 
@@ -1230,7 +1230,7 @@
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 6px;
-  margin-top: 16px;
+  margin-top: 25px;
   margin-bottom: 10px;
 }
 
