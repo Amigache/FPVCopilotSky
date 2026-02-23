@@ -1125,6 +1125,21 @@ class SystemService:
             List of dictionaries with port information
         """
         ports = []
+        kernel_console_ports = set()
+
+        # Exclude ports used as kernel console (e.g., console=ttyS2,1500000)
+        # because they are typically not usable for MAVLink.
+        try:
+            with open("/proc/cmdline", "r") as f:
+                cmdline = f.read().strip()
+            for token in cmdline.split():
+                if token.startswith("console="):
+                    value = token.split("=", 1)[1]
+                    dev = value.split(",", 1)[0]
+                    if dev.startswith("tty"):
+                        kernel_console_ports.add(f"/dev/{dev}")
+        except Exception:
+            pass
 
         # Check common serial port patterns (Linux)
         patterns = [
@@ -1138,6 +1153,8 @@ class SystemService:
 
         for pattern in patterns:
             for port_path in sorted(glob.glob(pattern)):
+                if port_path in kernel_console_ports:
+                    continue
                 # Check if port exists and is accessible
                 if os.path.exists(port_path):
                     try:

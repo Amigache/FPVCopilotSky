@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 import asyncio
 import threading
 import time
+import os
 
 from app.utils.logger import get_logger  # noqa: E402
 
@@ -335,6 +336,37 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Board detection failed: {e}")
         logger.warning("  Board detection error - using generic configuration")
+
+    # Pre-configure a sensible default serial port for Radxa Zero 3W when
+    # no explicit serial preference exists yet.
+    try:
+        serial_cfg = preferences_service.get_serial_config()
+        if detected_board and detected_board.board_identifier == "radxa_zero_3w" and not serial_cfg.port:
+            kernel_console_ports = set()
+            try:
+                with open("/proc/cmdline", "r") as f:
+                    cmdline = f.read().strip()
+                for token in cmdline.split():
+                    if token.startswith("console="):
+                        dev = token.split("=", 1)[1].split(",", 1)[0]
+                        if dev.startswith("tty"):
+                            kernel_console_ports.add(f"/dev/{dev}")
+            except Exception:
+                pass
+
+            for candidate in ["/dev/ttyS4", "/dev/ttyS0", "/dev/ttyAML0", "/dev/ttyS1"]:
+                if candidate in kernel_console_ports:
+                    continue
+                if os.path.exists(candidate):
+                    preferences_service.set_serial_config(
+                        port=candidate,
+                        baudrate=serial_cfg.baudrate or 115200,
+                        successful=False,
+                    )
+                    logger.info(f" Serial default for Radxa Zero 3W set to: {candidate}")
+                    break
+    except Exception as e:
+        logger.debug(f"Serial default preconfiguration skipped: {e}")
 
     # Initialize provider registry (VPN, Modem, Network providers)
     provider_registry = init_provider_registry()

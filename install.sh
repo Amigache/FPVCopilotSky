@@ -672,6 +672,61 @@ else
 fi
 echo "  ✓ Data directory configured: $DATA_DIR"
 
+# Preconfigure serial defaults for Radxa Zero 3W so Flight Controller tab
+# has a usable port selected on first boot.
+echo ""
+echo "🔌 Applying serial defaults..."
+if [ -f "/proc/device-tree/model" ] && tr -d '\000' < /proc/device-tree/model 2>/dev/null | grep -qi "Radxa ZERO 3"; then
+    PREFS_FILE="$DATA_DIR/preferences.json"
+    python3 - "$PREFS_FILE" <<'PY'
+import json
+import os
+import sys
+
+prefs_path = sys.argv[1]
+data = {}
+
+if os.path.exists(prefs_path):
+    try:
+        with open(prefs_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        data = {}
+
+serial_cfg = data.setdefault("serial", {})
+if not serial_cfg.get("port"):
+    kernel_console_ports = set()
+    try:
+        with open("/proc/cmdline", "r", encoding="utf-8") as f:
+            for token in f.read().strip().split():
+                if token.startswith("console="):
+                    dev = token.split("=", 1)[1].split(",", 1)[0]
+                    if dev.startswith("tty"):
+                        kernel_console_ports.add(f"/dev/{dev}")
+    except Exception:
+        pass
+
+    for candidate in ("/dev/ttyS4", "/dev/ttyS0", "/dev/ttyAML0", "/dev/ttyS1"):
+        if candidate in kernel_console_ports:
+            continue
+        if os.path.exists(candidate):
+            serial_cfg["port"] = candidate
+            serial_cfg["baudrate"] = int(serial_cfg.get("baudrate", 115200) or 115200)
+            serial_cfg["auto_connect"] = bool(serial_cfg.get("auto_connect", False))
+            serial_cfg["last_successful"] = bool(serial_cfg.get("last_successful", False))
+            print(candidate)
+            break
+
+os.makedirs(os.path.dirname(prefs_path), exist_ok=True)
+with open(prefs_path, "w", encoding="utf-8") as f:
+    json.dump(data, f, indent=2)
+PY
+    sudo chown fpvcopilotsky:fpvcopilotsky "$PREFS_FILE" 2>/dev/null || true
+    echo "  ✓ Radxa Zero 3W serial default initialized in preferences"
+else
+    echo "  ℹ️ Non-Radxa Zero 3 board detected — keeping generic serial defaults"
+fi
+
 # Deploy to production (build frontend, install systemd service, start)
 echo ""
 echo "🚀 Deploying to production..."

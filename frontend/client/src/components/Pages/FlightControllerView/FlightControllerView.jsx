@@ -70,6 +70,9 @@ const FlightControllerView = () => {
         const data = await response.json()
         const ports = data.ports?.length > 0 ? data.ports : []
         setAvailablePorts(ports)
+        if (ports.length > 0) {
+          setSerialPort((prev) => prev || ports[0].path)
+        }
       } catch (error) {
         console.error('Error fetching ports:', error)
         setAvailablePorts([])

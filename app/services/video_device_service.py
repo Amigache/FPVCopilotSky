@@ -149,6 +149,12 @@ class VideoDeviceService:
         """
         if self._scan_timestamp is None:
             return self.scan_devices()
+
+        # Refresh inventory periodically to detect hotplug events
+        # (USB camera connected/disconnected after startup).
+        if (time.time() - self._scan_timestamp) >= self._cache_ttl:
+            return self.scan_devices()
+
         return self._devices
 
     def invalidate_cache(self) -> None:
