@@ -52,6 +52,8 @@ MemoryMax=512M
 # --- CPU governor: lock to 'performance' while service is running ---
 # '+' prefix runs as root (needed for sysfs writes) even though service runs as fpvcopilotsky
 ExecStartPre=+/bin/sh -c 'for g in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo performance > "$$g" 2>/dev/null || true; done'
+# Ensure Rockchip MPP device is accessible by service user via 'video' group
+ExecStartPre=+/bin/sh -c 'if [ -e /dev/mpp_service ]; then chgrp video /dev/mpp_service 2>/dev/null || true; chmod 660 /dev/mpp_service 2>/dev/null || true; fi'
 ExecStopPost=+/bin/sh -c 'for g in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo ondemand > "$$g" 2>/dev/null || true; done'
 
 [Install]

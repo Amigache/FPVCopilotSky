@@ -111,6 +111,12 @@ class PreferencesService:
                 "auto_connect": False,  # Don't auto-connect on startup
                 "provider_settings": {},  # Provider-specific settings (e.g., exit_node, etc.)
             },
+            "network": {
+                "policy_routing_enabled": True,
+                "vpn_health_check_enabled": True,
+                "auto_failover_enabled": False,
+                "auto_failover_preferred_mode": "modem",  # modem|wifi
+            },
             "flight_session": {
                 "auto_start_on_arm": False,  # Auto-start flight session when drone arms
                 "log_directory": os.path.expanduser("~/flight-records"),  # Default log directory
@@ -463,6 +469,25 @@ class PreferencesService:
             if "vpn" not in self._preferences:
                 self._preferences["vpn"] = {}
             self._preferences["vpn"]["auto_connect"] = auto_connect
+            self._save()
+
+    # ==================== Network Configuration ====================
+
+    def get_network_config(self) -> Dict[str, Any]:
+        """Get network configuration."""
+        with self._lock:
+            defaults = self._default_preferences().get("network", {})
+            current = self._preferences.get("network", {})
+            merged = defaults.copy()
+            merged.update(current)
+            return merged
+
+    def set_network_config(self, config: Dict[str, Any]):
+        """Set network configuration."""
+        with self._lock:
+            if "network" not in self._preferences:
+                self._preferences["network"] = self._default_preferences()["network"].copy()
+            self._preferences["network"].update(config)
             self._save()
 
     # ==================== Auto-Detection ====================

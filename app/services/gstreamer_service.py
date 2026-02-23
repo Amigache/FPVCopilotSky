@@ -74,6 +74,7 @@ class GStreamerService:
 
         # Provider tracking
         self.current_encoder_provider: Optional[str] = None
+        self.current_encoder_codec_id: Optional[str] = None
         self.current_source_provider: Optional[str] = None
 
         # RTSP Server for RTSP streaming mode
@@ -108,6 +109,7 @@ class GStreamerService:
             "last_frames_count": 0,
             "last_bytes_count": 0,
             "current_fps": 0,
+            "fps_ema": None,
             "current_bitrate": 0,
         }
 
@@ -1166,6 +1168,7 @@ class GStreamerService:
 
             # Store encoder provider name for status reporting
             self.current_encoder_provider = provider.display_name
+            self.current_encoder_codec_id = codec_id
 
             # Create source element
             source_cfg = source_config_result["source_element"]
@@ -1508,15 +1511,30 @@ class GStreamerService:
                 if elapsed >= 0.5:
                     frames_delta = self.stats["frames_sent"] - self.stats["last_frames_count"]
 
-                    self.stats["current_fps"] = int(frames_delta / elapsed)
+                    target_fps = max(1, int(self.video_config.framerate or 30))
+                    instant_fps = max(0.0, frames_delta / max(elapsed, 1e-3))
+                    instant_fps = min(instant_fps, target_fps * 1.05)
+
+                    previous_ema = self.stats.get("fps_ema")
+                    if previous_ema is None:
+                        fps_ema = instant_fps
+                    else:
+                        alpha = 0.22
+                        fps_ema = (1.0 - alpha) * float(previous_ema) + alpha * instant_fps
+
+                    if fps_ema >= (target_fps - 0.35):
+                        fps_ema = float(target_fps)
+
+                    smoothed_fps = int(round(min(fps_ema, float(target_fps))))
+                    self.stats["fps_ema"] = fps_ema
+                    self.stats["current_fps"] = smoothed_fps
 
                     # Estimate bitrate from configured value (byte queries not
                     # supported by udpsink/rtppay in TIME-based pipelines)
                     bitrate = self.video_config.h264_bitrate or 0
                     if self.stats["current_fps"] > 0 and bitrate > 0:
                         # Scale configured bitrate by actual/target FPS ratio
-                        target_fps = self.video_config.framerate or 30
-                        ratio = self.stats["current_fps"] / target_fps
+                        ratio = min(1.0, max(0.0, fps_ema / target_fps))
                         self.stats["current_bitrate"] = int(bitrate * ratio)
                     else:
                         self.stats["current_bitrate"] = bitrate
@@ -1767,6 +1785,7 @@ class GStreamerService:
             self.stats["last_frames_count"] = 0
             self.stats["last_bytes_count"] = 0
             self.stats["current_fps"] = 0
+            self.stats["fps_ema"] = None
             self.stats["current_bitrate"] = 0
 
             # Reset encoder stats
@@ -1929,6 +1948,7 @@ class GStreamerService:
 
         self.is_streaming = False
         self.current_encoder_provider = None
+        self.current_encoder_codec_id = None
         self.current_source_provider = None
         self._stop_stats_broadcast()
         self._restore_cpu_mode()
@@ -2068,7 +2088,7 @@ class GStreamerService:
         if not encoder:
             return {"success": False, "message": "Encoder element not found"}
 
-        codec_id = self.video_config.codec.lower()
+        codec_id = self.current_encoder_codec_id or self._adapt_codec_to_board(self.video_config.codec.lower())
 
         try:
             # Import here to avoid circular dependency
@@ -2097,7 +2117,14 @@ class GStreamerService:
                 actual_value = value * prop_info.get("multiplier", 1)
 
                 # Set the property on the encoder
-                encoder.set_property(prop_info["property"], actual_value)
+                encoder_property = prop_info["property"]
+                if encoder.find_property(encoder_property) is None:
+                    return {
+                        "success": False,
+                        "message": f"Encoder does not support live property '{encoder_property}'",
+                    }
+
+                encoder.set_property(encoder_property, actual_value)
 
                 # Update config
                 if property_name == "quality":

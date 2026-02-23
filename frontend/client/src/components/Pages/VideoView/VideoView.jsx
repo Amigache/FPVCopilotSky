@@ -156,13 +156,16 @@ const VideoView = () => {
   useEffect(() => {
     const loadData = async () => {
       setLoading(true)
-      await Promise.all([
-        loadVideoDevices(),
-        loadCodecs(),
-        loadNetworkIp(),
-        loadAutoAdaptiveBitrate(),
-      ])
-      setLoading(false)
+      try {
+        // Load critical data first so the page becomes interactive quickly.
+        await Promise.all([loadCodecs(), loadNetworkIp(), loadAutoAdaptiveBitrate()])
+      } finally {
+        setLoading(false)
+      }
+
+      // Device inventory can be slow on cold boot (v4l2/libcamera probing),
+      // so fetch it after rendering instead of blocking the whole tab.
+      loadVideoDevices()
     }
     loadData()
   }, [loadVideoDevices, loadCodecs, loadNetworkIp, loadAutoAdaptiveBitrate])

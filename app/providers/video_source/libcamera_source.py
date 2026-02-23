@@ -6,10 +6,14 @@ Handles CSI cameras via libcamera (modern Raspberry Pi, some Radxa boards)
 import re
 import subprocess
 import logging
+import time
 from typing import Dict, List, Optional, Any
 from ..base.video_source_provider import VideoSourceProvider
 
 logger = logging.getLogger(__name__)
+
+_libcamera_available_cache: Optional[bool] = None
+_libcamera_available_cache_ts: float = 0.0
 
 
 class LibCameraSource(VideoSourceProvider):
@@ -33,20 +37,32 @@ class LibCameraSource(VideoSourceProvider):
 
     def is_available(self) -> bool:
         """Check if libcamera and GStreamer element are available"""
+        global _libcamera_available_cache, _libcamera_available_cache_ts
+
+        now = time.time()
+        if _libcamera_available_cache is not None:
+            return _libcamera_available_cache
+
         try:
             # Check if libcamera-hello exists (indicates libcamera is installed)
             result = subprocess.run(["which", "libcamera-hello"], capture_output=True, timeout=2)
 
             if result.returncode != 0:
+                _libcamera_available_cache = False
+                _libcamera_available_cache_ts = now
                 return False
 
             # Check if GStreamer libcamerasrc element is available
             gst_result = subprocess.run(["gst-inspect-1.0", "libcamerasrc"], capture_output=True, timeout=2)
 
-            return gst_result.returncode == 0
+            _libcamera_available_cache = gst_result.returncode == 0
+            _libcamera_available_cache_ts = now
+            return _libcamera_available_cache
 
         except Exception as e:
             logger.debug(f"LibCamera not available: {e}")
+            _libcamera_available_cache = False
+            _libcamera_available_cache_ts = now
             return False
 
     def discover_sources(self) -> List[Dict[str, Any]]:

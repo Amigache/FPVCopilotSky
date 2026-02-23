@@ -138,15 +138,16 @@ class VideoDeviceService:
 
     def get_devices(self) -> List[Dict[str, Any]]:
         """
-        Get cached device list.  Scans on first call or when the cache
-        has expired (TTL = 30 s by default).
+        Get cached device list.
+
+        Scans on first call only. Subsequent refreshes are explicit via
+        invalidate_cache() or /api/system/video-devices/scan to avoid
+        expensive periodic probing in background loops.
 
         Returns:
             List of video devices.
         """
         if self._scan_timestamp is None:
-            return self.scan_devices()
-        if (time.time() - self._scan_timestamp) >= self._cache_ttl:
             return self.scan_devices()
         return self._devices
 
