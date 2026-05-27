@@ -41,6 +41,7 @@ NC='\033[0m' # No Color
 # Function to create fpvcopilotsky user if it doesn't exist
 setup_fpvcopilotsky_user() {
     local USERNAME="fpvcopilotsky"
+    local REQUIRED_GROUPS=(dialout video netdev sudo adm)
 
     if id "$USERNAME" &>/dev/null; then
         echo -e "${GREEN}✓${NC} User '$USERNAME' already exists"
@@ -69,7 +70,7 @@ setup_fpvcopilotsky_user() {
         echo ""
         echo -e "${BLUE}Adding '$USERNAME' to system groups...${NC}"
         sudo usermod -a -G dialout "$USERNAME"     # Serial port access
-        sudo usermod -a -G video "$USERNAME"       # Camera access
+        sudo usermod -a -G video "$USERNAME"       # Camera + MPP access
         sudo usermod -a -G netdev "$USERNAME"      # Network device access
         sudo usermod -a -G sudo "$USERNAME"        # Sudo access for system management
         sudo usermod -a -G adm "$USERNAME"         # Read system journal (journalctl)
@@ -78,6 +79,14 @@ setup_fpvcopilotsky_user() {
         echo -e "${GREEN}✓${NC} Groups: dialout, video, netdev, sudo, adm"
         echo ""
     fi
+
+    # Always enforce required groups (also when user already existed)
+    for grp in "${REQUIRED_GROUPS[@]}"; do
+        if ! id -nG "$USERNAME" | tr ' ' '\n' | grep -qx "$grp"; then
+            sudo usermod -a -G "$grp" "$USERNAME"
+            echo -e "${GREEN}✓${NC} Added '$USERNAME' to group '$grp'"
+        fi
+    done
 
     # Always ensure correct ownership and group permissions of project directory
     if [ -d "/opt/FPVCopilotSky" ]; then
@@ -95,6 +104,11 @@ setup_fpvcopilotsky_user() {
     if [ -n "$INSTALLER_USER" ] && [ "$INSTALLER_USER" != "$USERNAME" ]; then
         echo -e "${BLUE}Adding installer user '$INSTALLER_USER' to '$USERNAME' group...${NC}"
         sudo usermod -a -G "$USERNAME" "$INSTALLER_USER"
+        # Also ensure installer can access /dev/mpp_service when testing locally
+        if ! id -nG "$INSTALLER_USER" | tr ' ' '\n' | grep -qx "video"; then
+            sudo usermod -a -G video "$INSTALLER_USER"
+            echo -e "${GREEN}✓${NC} '$INSTALLER_USER' added to 'video' group"
+        fi
         echo -e "${GREEN}✓${NC} '$INSTALLER_USER' added to '$USERNAME' group (re-login required to apply)"
     fi
 
@@ -548,6 +562,11 @@ if [ -e /dev/mpp_service ]; then
     echo 'SUBSYSTEM=="misc", KERNEL=="mpp_service", GROUP="video", MODE="0660"' \
         | sudo tee /etc/udev/rules.d/99-rockchip-mpp.rules > /dev/null
     sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=mpp_service || true
+    # Apply permissions immediately in current session too
+    sudo chgrp video /dev/mpp_service 2>/dev/null || true
+    sudo chmod 660 /dev/mpp_service 2>/dev/null || true
+    # Ensure service user keeps access (even on upgrades where user already existed)
+    sudo usermod -a -G video fpvcopilotsky 2>/dev/null || true
     echo "  ✓ udev rule applied: /dev/mpp_service accessible to 'video' group"
     sudo apt-get install -y software-properties-common 2>&1 | tail -2
     sudo add-apt-repository -y ppa:liujianfeng1994/rockchip-multimedia 2>&1 | tail -3
@@ -652,6 +671,61 @@ else
     echo "  ✓ Version file already exists"
 fi
 echo "  ✓ Data directory configured: $DATA_DIR"
+
+# Preconfigure serial defaults for Radxa Zero 3W so Flight Controller tab
+# has a usable port selected on first boot.
+echo ""
+echo "🔌 Applying serial defaults..."
+if [ -f "/proc/device-tree/model" ] && tr -d '\000' < /proc/device-tree/model 2>/dev/null | grep -qi "Radxa ZERO 3"; then
+    PREFS_FILE="$DATA_DIR/preferences.json"
+    python3 - "$PREFS_FILE" <<'PY'
+import json
+import os
+import sys
+
+prefs_path = sys.argv[1]
+data = {}
+
+if os.path.exists(prefs_path):
+    try:
+        with open(prefs_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        data = {}
+
+serial_cfg = data.setdefault("serial", {})
+if not serial_cfg.get("port"):
+    kernel_console_ports = set()
+    try:
+        with open("/proc/cmdline", "r", encoding="utf-8") as f:
+            for token in f.read().strip().split():
+                if token.startswith("console="):
+                    dev = token.split("=", 1)[1].split(",", 1)[0]
+                    if dev.startswith("tty"):
+                        kernel_console_ports.add(f"/dev/{dev}")
+    except Exception:
+        pass
+
+    for candidate in ("/dev/ttyS4", "/dev/ttyS0", "/dev/ttyAML0", "/dev/ttyS1"):
+        if candidate in kernel_console_ports:
+            continue
+        if os.path.exists(candidate):
+            serial_cfg["port"] = candidate
+            serial_cfg["baudrate"] = int(serial_cfg.get("baudrate", 115200) or 115200)
+            serial_cfg["auto_connect"] = bool(serial_cfg.get("auto_connect", False))
+            serial_cfg["last_successful"] = bool(serial_cfg.get("last_successful", False))
+            print(candidate)
+            break
+
+os.makedirs(os.path.dirname(prefs_path), exist_ok=True)
+with open(prefs_path, "w", encoding="utf-8") as f:
+    json.dump(data, f, indent=2)
+PY
+    sudo chown fpvcopilotsky:fpvcopilotsky "$PREFS_FILE" 2>/dev/null || true
+    echo "  ✓ Radxa Zero 3W serial default initialized in preferences"
+else
+    echo "  ℹ️ Non-Radxa Zero 3 board detected — keeping generic serial defaults"
+fi
 
 # Deploy to production (build frontend, install systemd service, start)
 echo ""

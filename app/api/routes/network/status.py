@@ -309,14 +309,9 @@ async def get_dashboard():
             optimizer = get_network_optimizer()
             optimizer_status = optimizer.get_status()
 
-            registry = get_provider_registry()
-            provider = registry.get_modem_provider("huawei_e3372h")
-            modem_video_active = getattr(provider, "video_mode_active", False) if provider else False
-
             flight_mode_status = {
-                "active": optimizer_status["active"] and modem_video_active,
+                "active": optimizer_status["active"],
                 "network_optimizer": optimizer_status["active"],
-                "modem_video_mode": modem_video_active,
             }
         except Exception as e:
             logger.debug(f"Could not get flight mode status: {e}")

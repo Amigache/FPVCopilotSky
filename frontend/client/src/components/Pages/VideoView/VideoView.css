@@ -498,6 +498,7 @@
 .stats-grid-main .stat-value {
   font-size: 1.4rem;
   color: var(--color-accent);
+  white-space: nowrap;
 }
 
 .stat-unit {

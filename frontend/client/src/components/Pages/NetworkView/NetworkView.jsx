@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useToast } from '../../../contexts/ToastContext'
 import { useWebSocket } from '../../../contexts/WebSocketContext'
+import { useArmedState } from '../../../hooks/useArmedState'
 import api from '../../../services/api'
 import { API_TIMEOUTS, getSignalBars } from './networkConstants'
 import { formatBitrate } from '../../../utils/formatters'
@@ -12,6 +13,7 @@ const NetworkView = () => {
   const { t } = useTranslation()
   const { showToast } = useToast()
   const { messages } = useWebSocket()
+  const isArmed = useArmedState()
 
   // Video stats from WebSocket (as in VideoView)
   const videoStatus = messages.video_status || {}
@@ -28,7 +30,6 @@ const NetworkView = () => {
 
   // Flight Mode
   const [flightMode, setFlightMode] = useState(null)
-  const [togglingFlightMode, setTogglingFlightMode] = useState(false)
 
   // Network Quality Bridge (Self-healing streaming)
   const [bridgeStatus, setBridgeStatus] = useState({
@@ -115,35 +116,6 @@ const NetworkView = () => {
     loadAll()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  // Toggle Flight Mode
-  const handleToggleFlightMode = async () => {
-    const isActive = flightMode?.flight_mode_active
-    setTogglingFlightMode(true)
-
-    try {
-      const endpoint = isActive
-        ? '/api/network/flight-mode/disable'
-        : '/api/network/flight-mode/enable'
-
-      const response = await api.post(endpoint)
-      if (response.ok) {
-        const data = await response.json()
-        showToast(
-          data.message || (isActive ? 'Flight Mode desactivado' : 'Flight Mode activado'),
-          data.success ? 'success' : 'warning'
-        )
-        // Reload dashboard to get updated state
-        await loadDashboard(true)
-      } else {
-        const data = await response.json()
-        showToast(data.detail || 'Error al cambiar Flight Mode', 'error')
-      }
-    } catch (error) {
-      showToast(error.message || 'Error al cambiar Flight Mode', 'error')
-    }
-    setTogglingFlightMode(false)
-  }
 
   // Update from WebSocket - network status
   useEffect(() => {
@@ -373,29 +345,27 @@ const NetworkView = () => {
           <button
             className={`mode-btn ${currentMode === 'wifi' ? 'active' : ''}`}
             onClick={() => handleSetMode('wifi')}
-            disabled={changingMode || currentMode === 'wifi' || !status?.wifi_interface}
+            disabled={changingMode || currentMode === 'wifi' || !status?.wifi?.interface || isArmed}
           >
             📡 WiFi
           </button>
           <button
             className={`mode-btn ${currentMode === 'modem' ? 'active' : ''}`}
             onClick={() => handleSetMode('modem')}
-            disabled={changingMode || currentMode === 'modem' || !modem.detected}
+            disabled={changingMode || currentMode === 'modem' || !modem.detected || isArmed}
           >
             📶 4G
           </button>
-          <button
-            className={`mode-btn flight-mode-btn ${flightMode?.flight_mode_active ? 'active' : ''}`}
-            onClick={handleToggleFlightMode}
-            disabled={togglingFlightMode || !modem.detected}
+          <span
+            className={`flight-mode-badge ${flightMode?.flight_mode_active ? 'active' : ''}`}
             title={
               flightMode?.flight_mode_active
-                ? 'Flight Mode: Optimizaciones activas'
-                : 'Activar Flight Mode (Optimización completa)'
+                ? 'Flight Mode activo (automático)'
+                : 'Flight Mode inactivo'
             }
           >
-            {togglingFlightMode ? '⏳' : flightMode?.flight_mode_active ? '🚀✓' : '🚀'} Flight
-          </button>
+            🚀 Flight {flightMode?.flight_mode_active ? '✓' : '–'}
+          </span>
         </div>
       </div>
 
@@ -881,7 +851,7 @@ const NetworkView = () => {
                   <div
                     key={network.ssid}
                     className={`wifi-network ${network.connected ? 'connected' : ''}`}
-                    onClick={() => handleWifiClick(network)}
+                    onClick={() => !isArmed && handleWifiClick(network)}
                   >
                     <div className="wifi-info">
                       <div className="wifi-signal">

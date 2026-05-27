@@ -131,8 +131,10 @@ video    # Acceso a cámaras
 
 **Puertos serie**:
 
-- Reglas udev para `/dev/ttyAML*`
-- `serial-getty@ttyAML0` deshabilitado (evita conflictos con MAVLink)
+- Reglas udev para `/dev/ttyAML*`, `/dev/ttyS*`, `/dev/ttyUSB*`, `/dev/ttyACM*`
+- `serial-getty@ttyAML0` y `serial-getty@ttyS4` deshabilitados (evita conflictos con MAVLink)
+- En **Radxa Zero 3W (Armbian)** se habilita automáticamente el overlay `rk3568-uart4-m1`
+  para exponer UART4_M1 (requiere reinicio)
 
 > **Nota**: El entorno virtual se crea con `--system-site-packages` para acceder a GStreamer (PyGObject).
 > Requiere **reiniciar sesión** después de la instalación para que los grupos dialout/video tomen efecto.

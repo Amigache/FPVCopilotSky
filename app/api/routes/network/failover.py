@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from fastapi import APIRouter, HTTPException
 from app.services.auto_failover import get_auto_failover, stop_auto_failover, NetworkMode
 from app.services.latency_monitor import start_latency_monitoring
+from app.services.preferences import get_preferences
 from .common import PriorityModeRequest
 from app.utils.logger import get_logger
 
@@ -104,6 +105,11 @@ class FailoverConfigRequest(BaseModel):
     preferred_mode: Optional[str] = None
 
 
+class FailoverStartupPreferencesRequest(BaseModel):
+    enabled: Optional[bool] = None
+    preferred_mode: Optional[str] = None
+
+
 @router.post("/failover/config")
 async def update_failover_config(config: FailoverConfigRequest):
     """
@@ -139,6 +145,55 @@ async def update_failover_config(config: FailoverConfigRequest):
 
     except Exception as e:
         logger.error(f"Error updating failover config: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/failover/preferences")
+async def get_failover_startup_preferences():
+    """Get persisted startup preferences for auto-failover."""
+    try:
+        prefs = get_preferences()
+        net = prefs.get_network_config()
+        return {
+            "success": True,
+            "enabled": bool(net.get("auto_failover_enabled", False)),
+            "preferred_mode": str(net.get("auto_failover_preferred_mode", "modem")),
+        }
+    except Exception as e:
+        logger.error(f"Error getting failover startup preferences: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/failover/preferences")
+async def set_failover_startup_preferences(config: FailoverStartupPreferencesRequest):
+    """Set persisted startup preferences for auto-failover."""
+    try:
+        updates = {}
+        if config.enabled is not None:
+            updates["auto_failover_enabled"] = bool(config.enabled)
+        if config.preferred_mode is not None:
+            mode = config.preferred_mode.lower()
+            if mode not in ("wifi", "modem"):
+                raise HTTPException(status_code=400, detail="preferred_mode must be 'wifi' or 'modem'")
+            updates["auto_failover_preferred_mode"] = mode
+
+        if not updates:
+            raise HTTPException(status_code=400, detail="No valid fields provided")
+
+        prefs = get_preferences()
+        prefs.set_network_config(updates)
+        net = prefs.get_network_config()
+
+        return {
+            "success": True,
+            "enabled": bool(net.get("auto_failover_enabled", False)),
+            "preferred_mode": str(net.get("auto_failover_preferred_mode", "modem")),
+            "message": "Failover startup preferences saved",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error setting failover startup preferences: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

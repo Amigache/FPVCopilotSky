@@ -2,6 +2,7 @@ import './App.css'
 import './components/Modal.css'
 import Header from './components/Header/Header'
 import TabBar from './components/TabBar/TabBar'
+import ArmedBanner from './components/ArmedBanner/ArmedBanner'
 import Content from './components/Content/Content'
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -71,6 +72,7 @@ function App() {
           <div className="app">
             <Header />
             <TabBar tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
+            <ArmedBanner />
             <Content activeTab={activeTab} />
           </div>
         </WebSocketProvider>

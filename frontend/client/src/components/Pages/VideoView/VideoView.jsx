@@ -13,6 +13,7 @@ import StreamControlCard from './StreamControlCard'
 import PipelineCard from './PipelineCard'
 import StatsCard from './StatsCard'
 import WebRTCViewerCard from './WebRTCViewerCard'
+import { useArmedState } from '../../../hooks/useArmedState'
 
 const VideoView = () => {
   const { t } = useTranslation()
@@ -81,6 +82,7 @@ const VideoView = () => {
   // ── WebSocket status ───────────────────────────────────────────────────────
   const status = messages.video_status || EMPTY_STATUS
   const webrtcStatus = messages.webrtc_status || null
+  const isArmed = useArmedState()
 
   // Sync remote config → local when no pending changes
   useEffect(() => {
@@ -156,13 +158,16 @@ const VideoView = () => {
   useEffect(() => {
     const loadData = async () => {
       setLoading(true)
-      await Promise.all([
-        loadVideoDevices(),
-        loadCodecs(),
-        loadNetworkIp(),
-        loadAutoAdaptiveBitrate(),
-      ])
-      setLoading(false)
+      try {
+        // Load critical data first so the page becomes interactive quickly.
+        await Promise.all([loadCodecs(), loadNetworkIp(), loadAutoAdaptiveBitrate()])
+      } finally {
+        setLoading(false)
+      }
+
+      // Device inventory can be slow on cold boot (v4l2/libcamera probing),
+      // so fetch it after rendering instead of blocking the whole tab.
+      loadVideoDevices()
     }
     loadData()
   }, [loadVideoDevices, loadCodecs, loadNetworkIp, loadAutoAdaptiveBitrate])
@@ -522,7 +527,7 @@ const VideoView = () => {
           <VideoSourceCard
             config={config}
             videoDevices={videoDevices}
-            streaming={status.streaming}
+            streaming={status.streaming || isArmed}
             handleCameraChange={handleCameraChange}
             handleResolutionChange={handleResolutionChange}
             updateConfig={updateConfig}
@@ -542,7 +547,7 @@ const VideoView = () => {
           )}
           <NetworkSettingsCard
             config={config}
-            streaming={status.streaming}
+            streaming={status.streaming || isArmed}
             updateConfig={updateConfig}
             webrtcStatus={webrtcStatus}
             onValidationChange={handleNetworkValidation}
@@ -559,6 +564,7 @@ const VideoView = () => {
             stopStream={stopStream}
             restartStream={restartStream}
             hasValidationErrors={networkValidationErrors}
+            isArmed={isArmed}
           />
           {/* WebRTC Viewer — shown when WebRTC mode is active and streaming */}
           {config.mode === 'webrtc' && status.streaming && (

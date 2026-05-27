@@ -26,8 +26,8 @@ const StatsCard = ({ status, webrtcVideoStats, autoAdaptiveBitrate }) => {
           <span className="stat-label">{t('views.video.fpsLabel')}</span>
           <span className="stat-value">
             {isWebRTC && webrtcVideoStats ? webrtcVideoStats.fps : stats.current_fps}
+            <span className="stat-auto-indicator"> /{config.framerate} fps</span>
           </span>
-          <span className="stat-unit">/{config.framerate} fps</span>
         </div>
         <div className="stat-item">
           <span className="stat-label">{t('views.video.bitrateLabel')}</span>

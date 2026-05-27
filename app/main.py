@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 import asyncio
 import threading
 import time
+import os
 
 from app.utils.logger import get_logger  # noqa: E402
 
@@ -44,6 +45,7 @@ from app.services.video_stream_info import (  # noqa: E402
     get_video_stream_info_service,
 )
 from app.services.opencv_service import init_opencv_service  # noqa: E402
+from app.services.auto_failover import get_auto_failover, stop_auto_failover, NetworkMode  # noqa: E402
 from app.api.routes import mavlink, system  # noqa: E402
 from app.api.routes import router as router_routes  # noqa: E402
 from app.api.routes import video as video_routes  # noqa: E402
@@ -147,6 +149,70 @@ async def _startup_init_optional_services(preferences_service, modem_provider, l
         logger.warning(f"  VPN Health Checker init error (non-fatal): {e}")
 
 
+async def _startup_init_auto_failover(preferences_service):
+    """Auto-start AutoFailover when enabled in persisted preferences."""
+    try:
+        network_cfg = preferences_service.get_network_config()
+        if not network_cfg.get("auto_failover_enabled", False):
+            logger.info(" Auto-Failover disabled in preferences")
+            return
+
+        preferred_mode_value = str(network_cfg.get("auto_failover_preferred_mode", "modem")).lower()
+        preferred_mode = NetworkMode.WIFI if preferred_mode_value == "wifi" else NetworkMode.MODEM
+
+        # Determine current topology and initial mode from network status.
+        initial_mode = NetworkMode.UNKNOWN
+        wifi_available = False
+        modem_available = False
+        try:
+            status = await network_routes.get_network_status()
+            mode = str(status.get("mode", "unknown")).lower()
+            if mode == "wifi":
+                initial_mode = NetworkMode.WIFI
+            elif mode == "modem":
+                initial_mode = NetworkMode.MODEM
+
+            wifi_status = status.get("wifi", {}) or {}
+            modem_status = status.get("modem", {}) or {}
+            wifi_available = bool(wifi_status.get("detected"))
+            modem_available = bool(modem_status.get("detected"))
+        except Exception as e:
+            logger.debug(f"Auto-Failover initial mode detection failed: {e}")
+
+        # Auto-failover needs both paths to make meaningful switch decisions.
+        if not (wifi_available and modem_available):
+            logger.info(
+                " Auto-Failover not started: both WiFi and modem must be detected "
+                f"(wifi={wifi_available}, modem={modem_available})"
+            )
+            return
+
+        # Callback uses same internal route logic as /api/network/priority.
+        from app.api.routes.network.common import PriorityModeRequest
+        from app.api.routes.network.status import set_priority_mode
+
+        async def switch_network(target_mode: NetworkMode) -> bool:
+            try:
+                request = PriorityModeRequest(mode=target_mode.value)
+                result = await set_priority_mode(request)
+                return bool(result.get("success", False))
+            except Exception as callback_error:
+                logger.error(f"Auto-Failover switch callback error: {callback_error}")
+                return False
+
+        failover = get_auto_failover()
+        failover.switch_callback = switch_network
+        await failover.update_config(preferred_mode=preferred_mode)
+        await failover.start(initial_mode=initial_mode)
+
+        logger.info(
+            " Auto-Failover started from preferences "
+            f"(preferred={preferred_mode.value}, initial={initial_mode.value})"
+        )
+    except Exception as e:
+        logger.warning(f"  Auto-Failover init error (non-fatal): {e}")
+
+
 def _broadcast_router_status(loop):
     """Broadcast router status changes via WebSocket."""
     try:
@@ -211,6 +277,10 @@ async def _lifespan_shutdown():
     except Exception:
         pass
     try:
+        await stop_auto_failover()
+    except Exception:
+        pass
+    try:
         from app.services.policy_routing_manager import get_policy_routing_manager
 
         policy_manager = get_policy_routing_manager()
@@ -266,6 +336,37 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Board detection failed: {e}")
         logger.warning("  Board detection error - using generic configuration")
+
+    # Pre-configure a sensible default serial port for Radxa Zero 3W when
+    # no explicit serial preference exists yet.
+    try:
+        serial_cfg = preferences_service.get_serial_config()
+        if detected_board and detected_board.board_identifier == "radxa_zero_3w" and not serial_cfg.port:
+            kernel_console_ports = set()
+            try:
+                with open("/proc/cmdline", "r") as f:
+                    cmdline = f.read().strip()
+                for token in cmdline.split():
+                    if token.startswith("console="):
+                        dev = token.split("=", 1)[1].split(",", 1)[0]
+                        if dev.startswith("tty"):
+                            kernel_console_ports.add(f"/dev/{dev}")
+            except Exception:
+                pass
+
+            for candidate in ["/dev/ttyS4", "/dev/ttyS0", "/dev/ttyAML0", "/dev/ttyS1"]:
+                if candidate in kernel_console_ports:
+                    continue
+                if os.path.exists(candidate):
+                    preferences_service.set_serial_config(
+                        port=candidate,
+                        baudrate=serial_cfg.baudrate or 115200,
+                        successful=False,
+                    )
+                    logger.info(f" Serial default for Radxa Zero 3W set to: {candidate}")
+                    break
+    except Exception as e:
+        logger.debug(f"Serial default preconfiguration skipped: {e}")
 
     # Initialize provider registry (VPN, Modem, Network providers)
     provider_registry = init_provider_registry()
@@ -344,10 +445,29 @@ async def lifespan(app: FastAPI):
         modem_provider, video_service, webrtc_service, websocket_manager
     )
     await _startup_init_optional_services(preferences_service, modem_provider, latency_monitor)
+    await _startup_init_auto_failover(preferences_service)
 
     # Load video config from preferences
     video_config = preferences_service.get_video_config()
     streaming_config = preferences_service.get_streaming_config()
+
+    # Prefer hardware H.264 by default when available.
+    # If preferences still store generic 'h264', migrate to explicit
+    # 'h264_hardware' so UI and runtime consistently use hardware path.
+    try:
+        requested_codec = (video_config or {}).get("codec")
+        if requested_codec in (None, "", "h264", "x264"):
+            hw_provider = provider_registry.get_video_encoder("h264_hardware")
+            if hw_provider and hw_provider.is_available():
+                if video_config is None:
+                    video_config = {}
+                if video_config.get("codec") != "h264_hardware":
+                    video_config["codec"] = "h264_hardware"
+                    preferences_service.set_video_config(video_config)
+                    logger.info("🚀 Default video codec set to H.264 (Hardware)")
+    except Exception as e:
+        logger.warning(f"Could not auto-select hardware H.264 as default: {e}")
+
     if video_config or streaming_config:
         video_service.configure(video_config=video_config, streaming_config=streaming_config)
 
@@ -387,6 +507,21 @@ async def lifespan(app: FastAPI):
             logger.warning(f"  Encoder probe error (non-fatal): {_e}")
 
     asyncio.create_task(_probe_encoders_background())
+
+    # Warm up video device inventory in background to reduce first-open latency
+    # in the Video tab after reboot.
+    async def _warm_video_devices_background():
+        try:
+            from app.services.video_device_service import get_video_device_service
+
+            _loop = asyncio.get_event_loop()
+            service = get_video_device_service()
+            await _loop.run_in_executor(None, service.scan_devices)
+            logger.info(" Video device inventory warmed in background")
+        except Exception as _e:
+            logger.warning(f"  Video device warmup error (non-fatal): {_e}")
+
+    asyncio.create_task(_warm_video_devices_background())
 
     _startup_elapsed = time.monotonic() - _startup_t0
     _log_banner(f"✅  FPV COPILOT SKY  —  READY  (startup: {_startup_elapsed:.1f}s)")
@@ -603,7 +738,6 @@ async def _broadcast_modem_status():
             "success": True,
             "available": available,
             "connected": conn_status == "Connected",
-            "video_mode_active": getattr(modem_provider, "video_mode_active", False),
         }
 
         if device_info:

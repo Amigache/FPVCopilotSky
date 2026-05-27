@@ -51,6 +51,10 @@ class FailoverConfig:
     jitter_threshold_ms: float = 60.0  # High jitter also triggers concern
     predictive_weight: float = 0.5  # How much predictive affects decision (0-1)
 
+    # Switch reliability
+    switch_retry_attempts: int = 3
+    switch_retry_backoff_s: float = 0.4
+
 
 @dataclass
 class FailoverState:
@@ -276,6 +280,9 @@ class AutoFailover:
             self.state.consecutive_bad_samples = 0
             logger.info(f"Switched to {target_mode.value} due to high latency")
         else:
+            # Throttle repeated failures (e.g., missing target interface) using
+            # the same cooldown gate as successful switches.
+            self.state.last_switch = time.time()
             logger.error(f"Failed to switch to {target_mode.value}")
 
     async def _check_restore_preferred(self):
@@ -314,6 +321,9 @@ class AutoFailover:
                 logger.info(
                     f"Restored to preferred mode {self.config.preferred_mode.value} " f"(latency: {avg_latency:.1f}ms)"
                 )
+            else:
+                # Throttle restore retries when preferred path is unavailable.
+                self.state.last_switch = time.time()
 
     async def _handle_connectivity_loss(self):
         """Handle complete connectivity loss"""
@@ -337,23 +347,31 @@ class AutoFailover:
             logger.warning("No switch callback configured")
             return False
 
-        try:
-            logger.info(f"Switching to {target_mode.value}: {reason}")
+        max_attempts = max(1, int(self.config.switch_retry_attempts))
+        backoff_s = max(0.0, float(self.config.switch_retry_backoff_s))
 
-            success = await self.switch_callback(target_mode)
+        for attempt in range(1, max_attempts + 1):
+            try:
+                logger.info(f"Switching to {target_mode.value}: {reason} (attempt {attempt}/{max_attempts})")
 
-            if success:
-                async with self._lock:
-                    self.state.current_mode = target_mode
-                    self.state.reason = reason
-                return True
-            else:
-                logger.error("Switch callback returned False")
-                return False
+                success = await self.switch_callback(target_mode)
 
-        except Exception as e:
-            logger.error(f"Error executing network switch: {e}")
-            return False
+                if success:
+                    async with self._lock:
+                        self.state.current_mode = target_mode
+                        self.state.reason = reason
+                    return True
+
+                logger.debug(
+                    f"Switch callback returned False on attempt {attempt}/{max_attempts} " f"for {target_mode.value}"
+                )
+            except Exception as e:
+                logger.error(f"Error executing network switch on attempt {attempt}/{max_attempts}: {e}")
+
+            if attempt < max_attempts and backoff_s > 0:
+                await asyncio.sleep(backoff_s * attempt)
+
+        return False
 
     async def get_state(self) -> dict:
         """Get current failover state"""

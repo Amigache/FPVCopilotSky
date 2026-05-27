@@ -8,6 +8,7 @@ const StreamControlCard = ({
   stopStream,
   restartStream,
   hasValidationErrors,
+  isArmed,
 }) => {
   const { t } = useTranslation()
 
@@ -35,13 +36,17 @@ const StreamControlCard = ({
         </div>
       ) : (
         <div className="button-group">
-          <button className="btn btn-stop" onClick={stopStream} disabled={actionLoading !== null}>
+          <button
+            className="btn btn-stop"
+            onClick={stopStream}
+            disabled={actionLoading !== null || isArmed}
+          >
             {actionLoading === 'stop' ? '⏳' : t('views.video.stop')}
           </button>
           <button
             className="btn btn-restart"
             onClick={restartStream}
-            disabled={actionLoading !== null}
+            disabled={actionLoading !== null || isArmed}
           >
             {actionLoading === 'restart' ? '⏳' : t('views.video.restart')}
           </button>

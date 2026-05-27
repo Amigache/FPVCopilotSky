@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useToast } from '../../../contexts/ToastContext'
 import { useModal } from '../../../contexts/ModalContext'
 import { useWebSocket } from '../../../contexts/WebSocketContext'
+import { useArmedState } from '../../../hooks/useArmedState'
 import LogsModal from '../../LogsModal/LogsModal'
 import api from '../../../services/api'
 
@@ -12,6 +13,7 @@ const StatusView = () => {
   const { showToast } = useToast()
   const { showModal } = useModal()
   const { messages, isConnected } = useWebSocket()
+  const isArmed = useArmedState()
 
   const [loading, setLoading] = useState(true)
   const [statusData, setStatusData] = useState(null)
@@ -779,7 +781,7 @@ const StatusView = () => {
             <button
               className="btn-check-updates"
               onClick={checkForUpdates}
-              disabled={checkingUpdates || isUpdating}
+              disabled={checkingUpdates || isUpdating || isArmed}
             >
               {checkingUpdates ? (
                 <>
@@ -796,7 +798,7 @@ const StatusView = () => {
               <button
                 className="btn-apply-update"
                 onClick={() => setShowUpdateModal(true)}
-                disabled={isUpdating || isRollingBack}
+                disabled={isUpdating || isRollingBack || isArmed}
               >
                 {isUpdating ? (
                   <>
@@ -814,7 +816,7 @@ const StatusView = () => {
               <button
                 className="btn-rollback"
                 onClick={() => setShowRollbackModal(true)}
-                disabled={isRollingBack || isUpdating}
+                disabled={isRollingBack || isUpdating || isArmed}
               >
                 {isRollingBack ? (
                   <>
@@ -828,7 +830,6 @@ const StatusView = () => {
             )}
           </div>
         </div>
-
         {/* APP Status */}
         <div className="card">
           <h2>{t('status.sections.backend')}</h2>
@@ -891,7 +892,11 @@ const StatusView = () => {
 
           <div className="info-section">
             <div className="system-controls">
-              <button className="btn-restart-backend" onClick={handleRestartBackend}>
+              <button
+                className="btn-restart-backend"
+                disabled={isArmed}
+                onClick={handleRestartBackend}
+              >
                 🔄 {t('status.restart.restartBackend')}
               </button>
 
@@ -901,7 +906,6 @@ const StatusView = () => {
             </div>
           </div>
         </div>
-
         {/* WebUI Status */}
         <div className="card">
           <h2>{t('status.sections.frontend')}</h2>
@@ -943,7 +947,11 @@ const StatusView = () => {
 
           <div className="info-section">
             <div className="system-controls">
-              <button className="btn-restart-frontend" onClick={handleRestartFrontend}>
+              <button
+                className="btn-restart-frontend"
+                disabled={isArmed}
+                onClick={handleRestartFrontend}
+              >
                 🌐 {t('status.restart.restartFrontend')}
               </button>
 

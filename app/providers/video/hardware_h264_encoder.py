@@ -182,6 +182,18 @@ class HardwareH264Encoder(VideoEncoderProvider):
         # MPP-based encoders (mpph264enc / mppvideoenc) use /dev/mpp_service directly —
         # they don't expose a V4L2 M2M device node, so skip the device check.
         is_mpp = self.gst_encoder_element in ("mpph264enc", "mppvideoenc")
+        if is_mpp:
+            mpp_dev = "/dev/mpp_service"
+            if not os.path.exists(mpp_dev):
+                logger.debug("MPP encoder selected but /dev/mpp_service is missing")
+                return False
+            if not os.access(mpp_dev, os.R_OK | os.W_OK):
+                logger.warning(
+                    "MPP encoder detected but %s is not accessible for current user; " "check group/udev permissions",
+                    mpp_dev,
+                )
+                return False
+
         if not is_mpp and not self.encoder_device:
             logger.debug("No hardware encoder V4L2 device found")
             return False

@@ -5,10 +5,14 @@ Handles remote video streams (RTSP, HTTP, HLS)
 
 import subprocess
 import logging
+import time
 from typing import Dict, List, Optional, Any
 from ..base.video_source_provider import VideoSourceProvider
 
 logger = logging.getLogger(__name__)
+
+_network_stream_available_cache: Optional[bool] = None
+_network_stream_available_cache_ts: float = 0.0
 
 
 class NetworkStreamSource(VideoSourceProvider):
@@ -37,20 +41,32 @@ class NetworkStreamSource(VideoSourceProvider):
 
     def is_available(self) -> bool:
         """Check if GStreamer network source elements are available"""
+        global _network_stream_available_cache, _network_stream_available_cache_ts
+
+        now = time.time()
+        if _network_stream_available_cache is not None:
+            return _network_stream_available_cache
+
         try:
             # Check for rtspsrc (most common)
             result = subprocess.run(["gst-inspect-1.0", "rtspsrc"], capture_output=True, timeout=2)
 
             if result.returncode != 0:
+                _network_stream_available_cache = False
+                _network_stream_available_cache_ts = now
                 return False
 
             # Check for urisourcebin (universal URI handler)
             result2 = subprocess.run(["gst-inspect-1.0", "urisourcebin"], capture_output=True, timeout=2)
 
-            return result2.returncode == 0
+            _network_stream_available_cache = result2.returncode == 0
+            _network_stream_available_cache_ts = now
+            return _network_stream_available_cache
 
         except Exception as e:
             logger.debug(f"Network stream elements not available: {e}")
+            _network_stream_available_cache = False
+            _network_stream_available_cache_ts = now
             return False
 
     def discover_sources(self) -> List[Dict[str, Any]]:

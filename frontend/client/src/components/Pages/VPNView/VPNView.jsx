@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useToast } from '../../../contexts/ToastContext'
 import { useWebSocket } from '../../../contexts/WebSocketContext'
+import { useArmedState } from '../../../hooks/useArmedState'
 import api from '../../../services/api'
 import VPNStatusCard from './VPNStatusCard'
 import VPNPeersList from './VPNPeersList'
@@ -26,6 +27,7 @@ const copyToClipboard = async (text) => {
 const VPNView = () => {
   const { t } = useTranslation()
   const { showToast } = useToast()
+  const isArmed = useArmedState()
   const { messages } = useWebSocket()
 
   // State
@@ -451,7 +453,7 @@ const VPNView = () => {
               <button
                 className="vpn-btn vpn-btn-danger"
                 onClick={handleDisconnect}
-                disabled={!isInstalled || !isConnected || connecting}
+                disabled={!isInstalled || !isConnected || connecting || isArmed}
               >
                 {connecting && isConnected ? '⏳' : '🔌'} {t('vpn.disconnect')}
               </button>
@@ -459,10 +461,10 @@ const VPNView = () => {
               <button
                 className="vpn-btn vpn-btn-warning"
                 onClick={handleLogout}
-                disabled={!isInstalled || !isAuthenticated || isConnected || connecting}
+                disabled={!isInstalled || !isAuthenticated || isConnected || connecting || isArmed}
                 title={t('vpn.logoutTooltip')}
               >
-                {connecting ? '⏳' : '🚪'} {t('vpn.logout')}
+                {connecting ? '⏳' : '🚶'} {t('vpn.logout')}
               </button>
             </div>
           </div>

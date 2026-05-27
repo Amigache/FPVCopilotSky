@@ -215,8 +215,6 @@ class HuaweiE3372hProvider(ModemProvider):
         # Flight session tracking
         self._flight_session: Optional[FlightSessionStats] = None
         self._flight_logger = None  # FlightDataLogger instance
-        self._video_mode_active: bool = False
-        self._original_settings: Dict = {}
 
         # Latency monitoring
         self._last_latency_ms: Optional[float] = None
@@ -226,6 +224,8 @@ class HuaweiE3372hProvider(ModemProvider):
         self._executor = None
 
         self.is_available = self.detect()
+        if self.is_available:
+            self._apply_default_config()
 
     def detect(self) -> bool:
         """Auto-detect if Huawei E3372h is available"""
@@ -243,6 +243,14 @@ class HuaweiE3372hProvider(ModemProvider):
             return "e3372" in model or "hilink" in model
         except Exception:
             return False
+
+    def _apply_default_config(self) -> None:
+        """Apply default configuration for maximum streaming performance (4G Only)."""
+        try:
+            self.set_network_mode("03")  # Force 4G Only
+            logger.info("Default config applied: 4G Only mode")
+        except Exception as e:
+            logger.warning(f"Could not apply default config: {e}")
 
     def set_flight_logger(self, flight_logger):
         """Set flight data logger for CSV recording"""
@@ -799,79 +807,6 @@ class HuaweiE3372hProvider(ModemProvider):
                 state = "activado" if enabled else "desactivado"
                 return {"success": True, "message": f"Roaming {state}"}
             return {"success": False, "message": msg or "Error configurando roaming"}
-        except Exception as e:
-            return {"success": False, "message": str(e)}
-
-    # ======================
-    # Video Mode
-    # ======================
-
-    @property
-    def video_mode_active(self) -> bool:
-        """Whether video-optimized mode is active"""
-        return self._video_mode_active
-
-    def enable_video_mode(self) -> Dict:
-        """Enable video-optimized modem settings (force 4G, optimize bands)"""
-        try:
-            if self._video_mode_active:
-                return {
-                    "success": True,
-                    "message": "Modo video ya activo",
-                    "video_mode_active": True,
-                }
-
-            # Save current settings
-            current_mode = self.get_network_mode()
-            current_band = self.get_current_band()
-            self._original_settings = {
-                "network_mode": (current_mode.get("network_mode", "00") if current_mode else "00"),
-                "lte_band_hex": (current_band.get("lte_band_hex", "") if current_band else ""),
-            }
-
-            # Force 4G Only mode
-            self.set_network_mode("03")
-
-            # Set urban bands (B3+B7) for lowest latency
-            self._set_lte_band_sync(LTE_BAND_PRESETS["urban"]["mask"])
-
-            self._video_mode_active = True
-            logger.info("Video mode enabled: 4G Only + B3+B7")
-
-            return {
-                "success": True,
-                "message": "Modo video activado: 4G Only + B3+B7 (baja latencia)",
-                "video_mode_active": True,
-            }
-        except Exception as e:
-            return {"success": False, "message": str(e)}
-
-    def disable_video_mode(self) -> Dict:
-        """Disable video mode and restore original settings"""
-        try:
-            if not self._video_mode_active:
-                return {
-                    "success": True,
-                    "message": "Modo video no estaba activo",
-                    "video_mode_active": False,
-                }
-
-            # Restore original settings
-            original_mode = self._original_settings.get("network_mode", "00")
-            self.set_network_mode(original_mode)
-
-            # Restore bands (all bands)
-            self._set_lte_band_sync(LTE_BAND_PRESETS["all"]["mask"])
-
-            self._video_mode_active = False
-            self._original_settings = {}
-            logger.info("Video mode disabled: settings restored")
-
-            return {
-                "success": True,
-                "message": "Modo video desactivado: configuración restaurada",
-                "video_mode_active": False,
-            }
         except Exception as e:
             return {"success": False, "message": str(e)}
 

@@ -467,7 +467,6 @@ async def get_enhanced_status(provider_name: str, request: Request):
             "success": True,
             "available": available,
             "connected": connected,
-            "video_mode_active": getattr(provider, "video_mode_active", False),
             "video_quality": None,
         }
 
@@ -917,111 +916,6 @@ async def set_roaming(provider_name: str, roaming_request: RoamingRequest, reque
             if result and result.get("success"):
                 return result
         raise HTTPException(status_code=500, detail="Failed to set roaming")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# =============================
-# Video Mode Profile
-# =============================
-
-
-@router.get("/video-mode/{provider_name}")
-async def get_video_mode_status(provider_name: str, request: Request):
-    """
-    Check if video mode is currently active
-
-    Args:
-        provider_name: Name of the modem provider
-
-    Returns:
-        Video mode status
-    """
-    lang = get_language_from_request(request)
-    try:
-        registry = get_provider_registry()
-        provider = registry.get_modem_provider(provider_name)
-
-        if not provider:
-            raise HTTPException(
-                status_code=404,
-                detail=translate("modem.provider_not_found", lang, provider=provider_name),
-            )
-
-        video_mode_active = getattr(provider, "video_mode_active", False)
-        return {"success": True, "video_mode_active": video_mode_active}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/video-mode/enable/{provider_name}")
-async def enable_video_mode(provider_name: str, request: Request):
-    """
-    Enable video-optimized modem settings:
-    - Forces 4G Only mode
-    - Optimizes for low latency
-
-    Args:
-        provider_name: Name of the modem provider
-
-    Returns:
-        Configuration result
-    """
-    lang = get_language_from_request(request)
-    try:
-        registry = get_provider_registry()
-        provider = registry.get_modem_provider(provider_name)
-
-        if not provider:
-            raise HTTPException(
-                status_code=404,
-                detail=translate("modem.provider_not_found", lang, provider=provider_name),
-            )
-
-        if hasattr(provider, "enable_video_mode"):
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(None, provider.enable_video_mode)
-            if result and result.get("success"):
-                return result
-        raise HTTPException(status_code=500, detail="Failed to enable video mode")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/video-mode/disable/{provider_name}")
-async def disable_video_mode(provider_name: str, request: Request):
-    """
-    Disable video mode and restore original settings
-
-    Args:
-        provider_name: Name of the modem provider
-
-    Returns:
-        Configuration result
-    """
-    lang = get_language_from_request(request)
-    try:
-        registry = get_provider_registry()
-        provider = registry.get_modem_provider(provider_name)
-
-        if not provider:
-            raise HTTPException(
-                status_code=404,
-                detail=translate("modem.provider_not_found", lang, provider=provider_name),
-            )
-
-        if hasattr(provider, "disable_video_mode"):
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(None, provider.disable_video_mode)
-            if result and result.get("success"):
-                return result
-        raise HTTPException(status_code=500, detail="Failed to disable video mode")
     except HTTPException:
         raise
     except Exception as e:

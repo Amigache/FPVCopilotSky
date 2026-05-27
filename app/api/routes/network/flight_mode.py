@@ -1,19 +1,25 @@
 """
-Flight Mode - Complete Network Optimization for FPV Streaming
+Flight Mode - Network Optimization for FPV Streaming
 
-This module handles all flight mode operations, combining modem and network
-optimizations for the best possible low-latency video streaming experience.
+This module handles network-level optimizations for low-latency video streaming.
+Flight mode is activated automatically by ModemPool when a modem is detected,
+and deactivated when all modems disconnect.
 
-Flight mode activates:
-1. Modem optimizations (4G Only, urban bands)
-2. Network optimizations (MTU, QoS, TCP tuning)
-3. Priority network switching (modem as primary)
+Manual endpoints are available for override/diagnostic purposes.
+
+Flight mode applies:
+1. MTU optimization (1420 bytes, optimal for LTE)
+2. QoS DSCP marking for video traffic (EF class, ports 5600/5601/8554)
+3. TCP tuning (BBR congestion control, increased buffers)
+4. Interface power saving disabled (txqueuelen 10000)
+5. CAKE bufferbloat mitigation (auto-calibrated uplink BW)
+6. VPN policy routing (video traffic bypasses tunnel)
+7. Modem set as primary network interface (metrics/routing)
 """
 
 import asyncio
 from fastapi import APIRouter, HTTPException
 from app.services.network_optimizer import get_network_optimizer
-from app.providers.registry import get_provider_registry
 from .common import detect_modem_interfaces, PriorityModeRequest
 from app.utils.logger import get_logger
 
@@ -44,34 +50,23 @@ async def set_priority_mode(request: PriorityModeRequest):
 @router.get("/flight-mode/status")
 async def get_flight_mode_status():
     """
-    Get Flight Mode status
+    Get Flight Mode status.
 
-    Flight Mode combines:
-    - Modem optimization (4G Only, urban bands)
-    - Network optimization (MTU, QoS, TCP tuning)
+    Flight Mode is auto-managed by ModemPool: enabled when a modem is detected,
+    disabled when all modems disconnect.
 
     Returns:
-        Status of both modem video mode and network optimizer
+        Current network optimizer state and active config
     """
     try:
         optimizer = get_network_optimizer()
         network_status = optimizer.get_status()
 
-        # Get modem video mode status from provider registry
-        registry = get_provider_registry()
-        provider = registry.get_modem_provider("huawei_e3372h")
-        modem_video_active = getattr(provider, "video_mode_active", False) if provider else False
-
-        # Flight Mode is fully active only if both are enabled
-        fully_active = network_status["active"] and modem_video_active
-
         return {
             "success": True,
-            "flight_mode_active": fully_active,
+            "flight_mode_active": network_status["active"],
             "network_optimizer": network_status,
-            "modem_video_mode": modem_video_active,
             "optimizations": {
-                "modem": "4G Only + Urban Bands (B3+B7)" if modem_video_active else "Not active",
                 "network": network_status.get("config", {}) if network_status["active"] else "Not active",
             },
         }
@@ -83,43 +78,25 @@ async def get_flight_mode_status():
 @router.post("/flight-mode/enable")
 async def enable_flight_mode():
     """
-    Enable Flight Mode - Full optimization for FPV streaming
+    Enable Flight Mode manually (normally auto-activated by ModemPool on modem detection).
 
-    Activates:
-    1. Modem optimizations:
-       - Force 4G Only mode
-       - Configure urban bands (B3+B7) for lowest latency
-
-    2. Network optimizations:
-       - Set MTU to 1420 (optimal for LTE)
-       - Enable QoS with DSCP marking (EF class)
-       - Optimize TCP (BBR, increased buffers)
-       - Disable power saving
+    Applies:
+    - MTU 1420 (optimal for LTE)
+    - QoS DSCP EF marking on video ports (5600, 5601, 8554)
+    - TCP BBR + increased buffers
+    - Interface power saving disabled
+    - CAKE bufferbloat mitigation
+    - VPN policy routing (video traffic isolation)
+    - Modem set as primary network
 
     Returns:
-        Combined result of all optimizations
+        Result of network optimizations applied
     """
     try:
-        results = {"modem": {"success": False}, "network": {"success": False}}
+        results = {"network": {"success": False}}
         errors = []
 
-        # 1. Enable modem video mode
-        try:
-            registry = get_provider_registry()
-            provider = registry.get_modem_provider("huawei_e3372h")
-            if provider and hasattr(provider, "enable_video_mode"):
-                loop = asyncio.get_event_loop()
-                modem_result = await loop.run_in_executor(None, provider.enable_video_mode)
-                results["modem"] = modem_result
-                if not modem_result.get("success"):
-                    errors.append(f"Modem: {modem_result.get('message', 'Unknown error')}")
-            elif not provider:
-                errors.append("Modem: Provider not available")
-        except Exception as e:
-            errors.append(f"Modem: {str(e)}")
-            logger.error(f"Error enabling modem video mode: {e}")
-
-        # 2. Enable network optimizer
+        # 1. Enable network optimizer
         try:
             optimizer = get_network_optimizer()
             loop = asyncio.get_event_loop()
@@ -148,15 +125,11 @@ async def enable_flight_mode():
             logger.error(f"Error setting modem priority in flight mode: {e}")
 
         # Determine overall success
-        modem_success = results["modem"].get("success", False)
         network_success = results["network"].get("success", False)
 
-        if modem_success and network_success:
-            message = "Flight Mode enabled: Full optimization active"
+        if network_success:
+            message = "Flight Mode enabled: Network optimization active"
             success = True
-        elif modem_success or network_success:
-            message = f"Flight Mode partially enabled. Issues: {', '.join(errors)}"
-            success = True  # Partial success
         else:
             message = f"Flight Mode failed: {', '.join(errors)}"
             success = False
@@ -164,7 +137,7 @@ async def enable_flight_mode():
         return {
             "success": success,
             "message": message,
-            "flight_mode_active": modem_success and network_success,
+            "flight_mode_active": network_success,
             "details": results,
             "errors": errors if errors else None,
         }
@@ -177,36 +150,22 @@ async def enable_flight_mode():
 @router.post("/flight-mode/disable")
 async def disable_flight_mode():
     """
-    Disable Flight Mode and restore original settings
+    Disable Flight Mode manually and restore original network settings.
 
     Restores:
-    - Modem to auto mode and all bands
-    - Network settings (MTU, TCP, QoS)
+    - MTU, TCP parameters to previous values
+    - Removes QoS iptables rules
+    - Removes CAKE qdisc
+    - Restores network priority to auto
 
     Returns:
-        Combined result of restoration
+        Result of restoration
     """
     try:
-        results = {"modem": {"success": False}, "network": {"success": False}}
+        results = {"network": {"success": False}}
         errors = []
 
-        # 1. Disable modem video mode
-        try:
-            registry = get_provider_registry()
-            provider = registry.get_modem_provider("huawei_e3372h")
-            if provider and hasattr(provider, "disable_video_mode"):
-                loop = asyncio.get_event_loop()
-                modem_result = await loop.run_in_executor(None, provider.disable_video_mode)
-                results["modem"] = modem_result
-                if not modem_result.get("success"):
-                    errors.append(f"Modem: {modem_result.get('message', 'Unknown error')}")
-            elif not provider:
-                errors.append("Modem: Provider not available")
-        except Exception as e:
-            errors.append(f"Modem: {str(e)}")
-            logger.error(f"Error disabling modem video mode: {e}")
-
-        # 2. Disable network optimizer
+        # 1. Disable network optimizer
         try:
             optimizer = get_network_optimizer()
             loop = asyncio.get_event_loop()
@@ -230,14 +189,10 @@ async def disable_flight_mode():
             logger.error(f"Error restoring priority after flight mode: {e}")
 
         # Determine overall success
-        modem_success = results["modem"].get("success", False)
         network_success = results["network"].get("success", False)
 
-        if modem_success and network_success:
+        if network_success:
             message = "Flight Mode disabled: Settings restored"
-            success = True
-        elif modem_success or network_success:
-            message = f"Flight Mode partially disabled. Issues: {', '.join(errors)}"
             success = True
         else:
             message = f"Flight Mode disable failed: {', '.join(errors)}"
