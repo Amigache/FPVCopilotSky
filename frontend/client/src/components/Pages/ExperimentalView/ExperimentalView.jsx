@@ -2,12 +2,14 @@ import './ExperimentalView.css'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useToast } from '../../../contexts/ToastContext'
+import { useArmedState } from '../../../hooks/useArmedState'
 import Toggle from '../../Toggle/Toggle'
 import api from '../../../services/api'
 
 const ExperimentalView = () => {
   const { t } = useTranslation()
   const { showToast } = useToast()
+  const isArmed = useArmedState()
 
   const [opencvEnabled, setOpencvEnabled] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -201,7 +203,7 @@ const ExperimentalView = () => {
             <Toggle
               checked={opencvEnabled}
               onChange={handleToggleOpenCV}
-              disabled={applying || restarting}
+              disabled={applying || restarting || isArmed}
             />
           </div>
 
@@ -217,7 +219,7 @@ const ExperimentalView = () => {
               <Toggle
                 checked={config.osd_enabled}
                 onChange={handleToggleOSD}
-                disabled={!opencvEnabled || applying || restarting}
+                disabled={!opencvEnabled || applying || restarting || isArmed}
               />
               <span className="toggle-description">{t('experimental.opencv.osdDescription')}</span>
             </div>
@@ -234,7 +236,7 @@ const ExperimentalView = () => {
                 applyConfigAuto(newConfig, true, true)
               }}
               className="control-select"
-              disabled={!opencvEnabled || applying || restarting}
+              disabled={!opencvEnabled || applying || restarting || isArmed}
             >
               {filters.map((filter) => (
                 <option key={filter.id} value={filter.id}>
@@ -263,7 +265,7 @@ const ExperimentalView = () => {
                     applyConfigAuto(newConfig)
                   }}
                   className="control-slider"
-                  disabled={!opencvEnabled || applying}
+                  disabled={!opencvEnabled || applying || isArmed}
                 />
               </div>
               <div className="control-group">
@@ -282,7 +284,7 @@ const ExperimentalView = () => {
                     applyConfigAuto(newConfig)
                   }}
                   className="control-slider"
-                  disabled={!opencvEnabled || applying}
+                  disabled={!opencvEnabled || applying || isArmed}
                 />
               </div>
             </>
@@ -306,7 +308,7 @@ const ExperimentalView = () => {
                   applyConfigAuto(newConfig)
                 }}
                 className="control-slider"
-                disabled={!opencvEnabled || applying}
+                disabled={!opencvEnabled || applying || isArmed}
               />
             </div>
           )}
@@ -328,7 +330,7 @@ const ExperimentalView = () => {
                   applyConfigAuto(newConfig)
                 }}
                 className="control-slider"
-                disabled={!opencvEnabled || applying}
+                disabled={!opencvEnabled || applying || isArmed}
               />
             </div>
           )}

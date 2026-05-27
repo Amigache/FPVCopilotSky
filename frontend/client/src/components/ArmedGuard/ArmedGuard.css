@@ -1,0 +1,53 @@
+/* ── ArmedGuard wrapper ─────────────────────────────────────────────────── */
+.armed-guard {
+  position: relative;
+}
+
+/* ── Blocking overlay ───────────────────────────────────────────────────── */
+.armed-guard__overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  border-radius: 8px;
+  background: rgba(10, 10, 20, 0.78);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  border: 1px solid rgba(255, 152, 0, 0.25);
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: not-allowed;
+  pointer-events: all;
+
+  /* Subtle animated pulse on the border */
+  animation: armed-guard-pulse 3s ease-in-out infinite;
+}
+
+@keyframes armed-guard-pulse {
+  0%,
+  100% {
+    border-color: rgba(255, 152, 0, 0.2);
+  }
+  50% {
+    border-color: rgba(255, 152, 0, 0.5);
+  }
+}
+
+.armed-guard__icon {
+  font-size: 1.3rem;
+  line-height: 1;
+  filter: drop-shadow(0 0 6px rgba(255, 152, 0, 0.6));
+}
+
+.armed-guard__message {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #ff9800;
+  text-align: center;
+  padding: 0 14px;
+  letter-spacing: 0.2px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}

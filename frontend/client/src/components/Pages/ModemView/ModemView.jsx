@@ -6,12 +6,14 @@ import { useModal } from '../../../contexts/ModalContext'
 import { useWebSocket } from '../../../contexts/WebSocketContext'
 import api from '../../../services/api'
 import { MODEM_API_TIMEOUTS, REBOOT_CONFIG } from './modemConstants'
+import { useArmedState } from '../../../hooks/useArmedState'
 
 const ModemView = () => {
   const { t } = useTranslation()
   const { showToast } = useToast()
   const { showModal } = useModal()
   const { messages: wsMessages } = useWebSocket()
+  const isArmed = useArmedState()
 
   // State
   const [loading, setLoading] = useState(true)
@@ -366,7 +368,7 @@ const ModemView = () => {
                       key={key}
                       className="btn-preset-compact"
                       onClick={() => handleSetBand(key)}
-                      disabled={changingBand}
+                      disabled={changingBand || isArmed}
                       title={preset.description}
                     >
                       {preset.name}
@@ -396,7 +398,7 @@ const ModemView = () => {
                     status.mode?.network_mode === '00' ? 'active' : ''
                   }`}
                   onClick={() => handleSetNetworkMode('00')}
-                  disabled={changingMode}
+                  disabled={changingMode || isArmed}
                 >
                   Auto
                 </button>
@@ -405,7 +407,7 @@ const ModemView = () => {
                     status.mode?.network_mode === '03' ? 'active' : ''
                   }`}
                   onClick={() => handleSetNetworkMode('03')}
-                  disabled={changingMode}
+                  disabled={changingMode || isArmed}
                 >
                   4G Only
                 </button>
@@ -414,7 +416,7 @@ const ModemView = () => {
                     status.mode?.network_mode === '02' ? 'active' : ''
                   }`}
                   onClick={() => handleSetNetworkMode('02')}
-                  disabled={changingMode}
+                  disabled={changingMode || isArmed}
                 >
                   3G Only
                 </button>
@@ -427,7 +429,11 @@ const ModemView = () => {
             <h3>🔄 {t('modem.rebootSection')}</h3>
             <div className="reboot-container">
               <span className="reboot-hint">{t('modem.rebootHint')}</span>
-              <button className="btn-reboot" onClick={handleRebootModem} disabled={modemRebooting}>
+              <button
+                className="btn-reboot"
+                onClick={handleRebootModem}
+                disabled={modemRebooting || isArmed}
+              >
                 {modemRebooting ? `⏳ ${t('modem.rebooting')}` : `🔄 ${t('modem.rebootModem')}`}
               </button>
             </div>

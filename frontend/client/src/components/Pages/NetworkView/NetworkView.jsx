@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useToast } from '../../../contexts/ToastContext'
 import { useWebSocket } from '../../../contexts/WebSocketContext'
+import { useArmedState } from '../../../hooks/useArmedState'
 import api from '../../../services/api'
 import { API_TIMEOUTS, getSignalBars } from './networkConstants'
 import { formatBitrate } from '../../../utils/formatters'
@@ -12,6 +13,7 @@ const NetworkView = () => {
   const { t } = useTranslation()
   const { showToast } = useToast()
   const { messages } = useWebSocket()
+  const isArmed = useArmedState()
 
   // Video stats from WebSocket (as in VideoView)
   const videoStatus = messages.video_status || {}
@@ -343,14 +345,14 @@ const NetworkView = () => {
           <button
             className={`mode-btn ${currentMode === 'wifi' ? 'active' : ''}`}
             onClick={() => handleSetMode('wifi')}
-            disabled={changingMode || currentMode === 'wifi' || !status?.wifi?.interface}
+            disabled={changingMode || currentMode === 'wifi' || !status?.wifi?.interface || isArmed}
           >
             📡 WiFi
           </button>
           <button
             className={`mode-btn ${currentMode === 'modem' ? 'active' : ''}`}
             onClick={() => handleSetMode('modem')}
-            disabled={changingMode || currentMode === 'modem' || !modem.detected}
+            disabled={changingMode || currentMode === 'modem' || !modem.detected || isArmed}
           >
             📶 4G
           </button>
@@ -849,7 +851,7 @@ const NetworkView = () => {
                   <div
                     key={network.ssid}
                     className={`wifi-network ${network.connected ? 'connected' : ''}`}
-                    onClick={() => handleWifiClick(network)}
+                    onClick={() => !isArmed && handleWifiClick(network)}
                   >
                     <div className="wifi-info">
                       <div className="wifi-signal">

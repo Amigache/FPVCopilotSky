@@ -16,10 +16,12 @@ import {
   buildRecommendedParams,
 } from './flightControllerConstants'
 import './FlightControllerView.css'
+import { useArmedState } from '../../../hooks/useArmedState'
 
 const FlightControllerView = () => {
   const { t } = useTranslation()
   const { messages } = useWebSocket()
+  const isArmed = useArmedState()
   const { showToast } = useToast()
   const { showModal } = useModal()
   const [serialPort, setSerialPort] = useState('')
@@ -453,7 +455,7 @@ const FlightControllerView = () => {
 
   // Check if inputs should be disabled (no connection OR no params loaded)
   const paramsLoaded = Object.keys(params).length > 0
-  const inputsDisabled = !isConnected || savingParams || loadingParams || !paramsLoaded
+  const inputsDisabled = !isConnected || savingParams || loadingParams || !paramsLoaded || isArmed
 
   // Check if parameter matches recommended value
   const isRecommendedValue = (paramName, recommended) => {
@@ -577,7 +579,11 @@ const FlightControllerView = () => {
               🔗 {t('views.flightController.connect')}
             </button>
           ) : (
-            <button onClick={handleDisconnect} disabled={loading} className="btn-disconnect">
+            <button
+              onClick={handleDisconnect}
+              disabled={loading || isArmed}
+              className="btn-disconnect"
+            >
               🔌 {t('views.flightController.disconnect')}
             </button>
           )}

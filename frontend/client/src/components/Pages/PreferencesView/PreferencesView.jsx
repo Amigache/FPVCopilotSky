@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useToast } from '../../../contexts/ToastContext'
 import { useModal } from '../../../contexts/ModalContext'
+import { useArmedState } from '../../../hooks/useArmedState'
 import Toggle from '../../Toggle/Toggle'
 import api from '../../../services/api'
 
@@ -10,6 +11,7 @@ const PreferencesView = () => {
   const { t } = useTranslation()
   const { showToast } = useToast()
   const { showModal } = useModal()
+  const isArmed = useArmedState()
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -164,21 +166,21 @@ const PreferencesView = () => {
               description={t('preferences.network.modemPoolDesc')}
               checked={prefs.network?.modem_pool_enabled !== false}
               onChange={setModemPoolEnabled}
-              disabled={saving}
+              disabled={saving || isArmed}
             />
             <PrefRow
               label={t('preferences.network.autoFailover')}
               description={t('preferences.network.autoFailoverDesc')}
               checked={prefs.network?.auto_failover_enabled !== false}
               onChange={setAutoFailover}
-              disabled={saving}
+              disabled={saving || isArmed}
             />
             <PrefRow
               label={t('preferences.network.policyRouting')}
               description={t('preferences.network.policyRoutingDesc')}
               checked={prefs.network?.policy_routing_enabled !== false}
               onChange={setPolicyRouting}
-              disabled={saving}
+              disabled={saving || isArmed}
             />
           </div>
 
@@ -264,14 +266,14 @@ const PreferencesView = () => {
             />
           </div>
 
-          {/* ── Attention / Reset card ───────────────────────────────── */}
+          {/* ── Attention / Reset card ────────────────────────────── */}
           <div className="card pref-reset-card">
             <h2>⚠️ {t('preferences.sections.attention')}</h2>
             <p className="pref-reset-desc">{t('status.preferences.description')}</p>
             <button
               className="btn-reset-preferences"
               onClick={handleResetPreferences}
-              disabled={resettingPrefs}
+              disabled={resettingPrefs || isArmed}
             >
               {resettingPrefs
                 ? t('status.preferences.resetting')
