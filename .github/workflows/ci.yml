@@ -79,8 +79,10 @@ jobs:
     name: 🧪 Test Python Backend
     runs-on: ubuntu-latest
     env:
-      COVERAGE_GATE_CURRENT: "36"
-      COVERAGE_GATE_NEXT: "40"
+      # Gate applies to CI-unit-testable backend scope configured in pyproject
+      # (hardware-coupled providers/bridges are excluded from this threshold).
+      COVERAGE_GATE_CURRENT: "50"
+      COVERAGE_GATE_NEXT: "55"
       COVERAGE_GATE_FINAL: "50"
     steps:
       - name: Checkout code

@@ -46,10 +46,16 @@ omit = [
     "*/__pycache__/*",
     "*/venv/*",
     "*/.venv/*",
+    "*/app/providers/*",
+    "*/app/providers/**/*",
+    "*/app/services/gstreamer_service.py",
+    "*/app/services/mavlink_bridge.py",
+    "*/app/services/mavlink_router.py",
+    "*/app/services/network_event_bridge.py",
 ]
 
 [tool.coverage.report]
-fail_under = 36
+fail_under = 50
 exclude_lines = [
     "pragma: no cover",
     "def __repr__",
