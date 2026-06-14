@@ -12,9 +12,9 @@ Features:
 - Status monitoring
 """
 
-import subprocess
 from fastapi import APIRouter, HTTPException
 from app.utils.logger import get_logger
+from app.utils.cmd import run_cmd
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -33,10 +33,10 @@ async def get_mptcp_status():
 
         # Check kernel support
         try:
-            proc = subprocess.run(["sysctl", "-n", "net.mptcp.enabled"], capture_output=True, text=True, timeout=5)
-            if proc.returncode == 0:
+            stdout, _, returncode = run_cmd(["sysctl", "-n", "net.mptcp.enabled"], timeout=5, check=False)
+            if returncode == 0:
                 result["kernel_support"] = True
-                result["enabled"] = proc.stdout.strip() == "1"
+                result["enabled"] = stdout.strip() == "1"
                 result["available"] = True
         except Exception:
             pass
@@ -51,19 +51,17 @@ async def get_mptcp_status():
                 "stale_loss_cnt",
             ]:
                 try:
-                    proc = subprocess.run(
-                        ["sysctl", "-n", f"net.mptcp.{param}"], capture_output=True, text=True, timeout=5
-                    )
-                    if proc.returncode == 0:
-                        result[param] = proc.stdout.strip()
+                    stdout, _, returncode = run_cmd(["sysctl", "-n", f"net.mptcp.{param}"], timeout=5, check=False)
+                    if returncode == 0:
+                        result[param] = stdout.strip()
                 except Exception:
                     pass
 
             # Check number of subflows
             try:
-                proc = subprocess.run(["ip", "mptcp", "limits", "show"], capture_output=True, text=True, timeout=5)
-                if proc.returncode == 0:
-                    result["subflow_limits"] = proc.stdout.strip()
+                stdout, _, returncode = run_cmd(["ip", "mptcp", "limits", "show"], timeout=5, check=False)
+                if returncode == 0:
+                    result["subflow_limits"] = stdout.strip()
             except Exception:
                 pass
 
@@ -84,19 +82,18 @@ async def enable_mptcp():
     """
     try:
         # Enable MPTCP
-        proc = subprocess.run(["sysctl", "-w", "net.mptcp.enabled=1"], capture_output=True, text=True, timeout=5)
-        if proc.returncode != 0:
-            raise HTTPException(status_code=500, detail=f"Failed to enable MPTCP: {proc.stderr}")
+        _, stderr, returncode = run_cmd(["sysctl", "-w", "net.mptcp.enabled=1"], timeout=5, check=False)
+        if returncode != 0:
+            raise HTTPException(status_code=500, detail=f"Failed to enable MPTCP: {stderr}")
 
         # Set reasonable defaults for streaming
-        limits_proc = subprocess.run(
+        _, limits_stderr, limits_returncode = run_cmd(
             ["ip", "mptcp", "limits", "set", "subflow", "2", "add_addr_accepted", "2"],
-            capture_output=True,
-            text=True,
             timeout=5,
+            check=False,
         )
-        if limits_proc.returncode != 0:
-            logger.warning(f"Failed to set MPTCP limits: {limits_proc.stderr}")
+        if limits_returncode != 0:
+            logger.warning(f"Failed to set MPTCP limits: {limits_stderr}")
 
         return {"success": True, "message": "MPTCP enabled"}
 
@@ -111,9 +108,9 @@ async def enable_mptcp():
 async def disable_mptcp():
     """Disable MPTCP"""
     try:
-        proc = subprocess.run(["sysctl", "-w", "net.mptcp.enabled=0"], capture_output=True, text=True, timeout=5)
-        if proc.returncode != 0:
-            raise HTTPException(status_code=500, detail=f"Failed to disable MPTCP: {proc.stderr}")
+        _, stderr, returncode = run_cmd(["sysctl", "-w", "net.mptcp.enabled=0"], timeout=5, check=False)
+        if returncode != 0:
+            raise HTTPException(status_code=500, detail=f"Failed to disable MPTCP: {stderr}")
 
         return {"success": True, "message": "MPTCP disabled"}
 

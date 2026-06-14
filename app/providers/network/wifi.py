@@ -5,9 +5,9 @@ Implementation for wireless WiFi connections
 
 from typing import Dict, Optional, List
 from ..base import NetworkInterface, InterfaceStatus, InterfaceType
-import subprocess
 import re
 import logging
+from app.utils.cmd import run_cmd
 
 logger = logging.getLogger(__name__)
 
@@ -25,23 +25,21 @@ class WiFiInterface(NetworkInterface):
     def detect(self) -> bool:
         """Detect if WiFi interface exists"""
         try:
-            result = subprocess.run(
+            _, _, returncode = run_cmd(
                 ["iw", "dev", self.interface_name, "info"],
-                capture_output=True,
-                text=True,
                 timeout=2,
+                check=False,
             )
-            return result.returncode == 0
+            return returncode == 0
         except Exception:
             # Fallback: check via ip link
             try:
-                result = subprocess.run(
+                _, _, returncode = run_cmd(
                     ["ip", "link", "show", self.interface_name],
-                    capture_output=True,
-                    text=True,
                     timeout=2,
+                    check=False,
                 )
-                return result.returncode == 0
+                return returncode == 0
             except Exception:
                 return False
 
@@ -57,22 +55,19 @@ class WiFiInterface(NetworkInterface):
 
         try:
             # Get interface state
-            result = subprocess.run(
+            output, _, returncode = run_cmd(
                 ["ip", "addr", "show", self.interface_name],
-                capture_output=True,
-                text=True,
                 timeout=2,
+                check=False,
             )
 
-            if result.returncode != 0:
+            if returncode != 0:
                 return {
                     "status": InterfaceStatus.ERROR,
                     "interface": self.interface_name,
                     "type": self.interface_type.value,
                     "error": "Failed to get interface status",
                 }
-
-            output = result.stdout
 
             # Determine status
             if "state UP" in output:
@@ -123,21 +118,20 @@ class WiFiInterface(NetworkInterface):
     def bring_up(self) -> Dict:
         """Bring WiFi interface up"""
         try:
-            result = subprocess.run(
+            _, stderr, returncode = run_cmd(
                 ["sudo", "ip", "link", "set", self.interface_name, "up"],
-                capture_output=True,
-                text=True,
                 timeout=5,
+                check=False,
             )
 
-            if result.returncode == 0:
+            if returncode == 0:
                 return {
                     "success": True,
                     "message": f"Interface {self.interface_name} brought up",
                 }
             return {
                 "success": False,
-                "error": result.stderr or "Failed to bring interface up",
+                "error": stderr or "Failed to bring interface up",
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
@@ -145,21 +139,20 @@ class WiFiInterface(NetworkInterface):
     def bring_down(self) -> Dict:
         """Bring WiFi interface down"""
         try:
-            result = subprocess.run(
+            _, stderr, returncode = run_cmd(
                 ["sudo", "ip", "link", "set", self.interface_name, "down"],
-                capture_output=True,
-                text=True,
                 timeout=5,
+                check=False,
             )
 
-            if result.returncode == 0:
+            if returncode == 0:
                 return {
                     "success": True,
                     "message": f"Interface {self.interface_name} brought down",
                 }
             return {
                 "success": False,
-                "error": result.stderr or "Failed to bring interface down",
+                "error": stderr or "Failed to bring interface down",
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
@@ -177,7 +170,7 @@ class WiFiInterface(NetworkInterface):
                 return {"success": False, "error": "No gateway found for interface"}
 
             # Delete old route
-            subprocess.run(
+            run_cmd(
                 [
                     "sudo",
                     "ip",
@@ -189,12 +182,12 @@ class WiFiInterface(NetworkInterface):
                     "dev",
                     self.interface_name,
                 ],
-                capture_output=True,
                 timeout=2,
+                check=False,
             )
 
             # Add route with new metric
-            result = subprocess.run(
+            _, stderr, returncode = run_cmd(
                 [
                     "sudo",
                     "ip",
@@ -208,18 +201,17 @@ class WiFiInterface(NetworkInterface):
                     "metric",
                     str(metric),
                 ],
-                capture_output=True,
-                text=True,
                 timeout=5,
+                check=False,
             )
 
-            if result.returncode == 0:
+            if returncode == 0:
                 return {
                     "success": True,
                     "message": f"Metric set to {metric} for {self.interface_name}",
                     "metric": metric,
                 }
-            return {"success": False, "error": result.stderr or "Failed to set metric"}
+            return {"success": False, "error": stderr or "Failed to set metric"}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -229,21 +221,20 @@ class WiFiInterface(NetworkInterface):
             # Get current SSID to mark connected network
             current_ssid = self._get_ssid()
 
-            result = subprocess.run(
+            output, _, returncode = run_cmd(
                 ["sudo", "iw", "dev", self.interface_name, "scan"],
-                capture_output=True,
-                text=True,
                 timeout=10,
+                check=False,
             )
 
-            if result.returncode != 0:
+            if returncode != 0:
                 return []
 
             networks = []
             seen_ssids = set()
             current_network = {}
 
-            for line in result.stdout.split("\n"):
+            for line in output.split("\n"):
                 line = line.strip()
 
                 if line.startswith("BSS "):
@@ -326,18 +317,15 @@ class WiFiInterface(NetworkInterface):
             if password:
                 cmd.extend(["password", password])
 
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+            _, stderr, returncode = run_cmd(cmd, timeout=15, check=False)
 
-            if result.returncode == 0:
+            if returncode == 0:
                 logger.info(f"Successfully connected to WiFi: {ssid}")
                 return {"success": True, "message": f"Connected to {ssid}", "ssid": ssid}
             else:
-                error_msg = result.stderr if result.stderr else "Unknown error"
+                error_msg = stderr if stderr else "Unknown error"
                 logger.error(f"Failed to connect to {ssid}: {error_msg}")
                 return {"success": False, "message": f"Failed to connect: {error_msg}", "error": error_msg}
-
-        except subprocess.TimeoutExpired:
-            return {"success": False, "message": "Connection timeout", "error": "Connection attempt timed out"}
         except Exception as e:
             logger.error(f"Error connecting to WiFi {ssid}: {e}")
             return {"success": False, "message": "Connection failed", "error": str(e)}
@@ -350,18 +338,17 @@ class WiFiInterface(NetworkInterface):
             Dict with success status and message
         """
         try:
-            result = subprocess.run(
+            _, stderr, returncode = run_cmd(
                 ["sudo", "nmcli", "device", "disconnect", self.interface_name],
-                capture_output=True,
-                text=True,
                 timeout=10,
+                check=False,
             )
 
-            if result.returncode == 0:
+            if returncode == 0:
                 logger.info(f"Disconnected WiFi interface: {self.interface_name}")
                 return {"success": True, "message": "Disconnected from WiFi", "interface": self.interface_name}
             else:
-                error_msg = result.stderr if result.stderr else "Unknown error"
+                error_msg = stderr if stderr else "Unknown error"
                 logger.error(f"Failed to disconnect WiFi: {error_msg}")
                 return {"success": False, "message": f"Failed to disconnect: {error_msg}", "error": error_msg}
 
@@ -372,15 +359,14 @@ class WiFiInterface(NetworkInterface):
     def _get_ssid(self) -> Optional[str]:
         """Get currently connected SSID"""
         try:
-            result = subprocess.run(
+            output, _, returncode = run_cmd(
                 ["iw", "dev", self.interface_name, "link"],
-                capture_output=True,
-                text=True,
                 timeout=2,
+                check=False,
             )
 
-            if result.returncode == 0:
-                for line in result.stdout.split("\n"):
+            if returncode == 0:
+                for line in output.split("\n"):
                     if "SSID:" in line:
                         return line.split("SSID:")[1].strip()
             return None
@@ -390,15 +376,14 @@ class WiFiInterface(NetworkInterface):
     def _get_signal_strength(self) -> Optional[int]:
         """Get current signal strength in percentage"""
         try:
-            result = subprocess.run(
+            output, _, returncode = run_cmd(
                 ["iw", "dev", self.interface_name, "link"],
-                capture_output=True,
-                text=True,
                 timeout=2,
+                check=False,
             )
 
-            if result.returncode == 0:
-                for line in result.stdout.split("\n"):
+            if returncode == 0:
+                for line in output.split("\n"):
                     if "signal:" in line:
                         match = re.search(r"(-?\d+) dBm", line)
                         if match:
@@ -417,15 +402,14 @@ class WiFiInterface(NetworkInterface):
     def _get_gateway(self) -> Optional[str]:
         """Get gateway for interface"""
         try:
-            result = subprocess.run(
+            output, _, returncode = run_cmd(
                 ["ip", "route", "show", "dev", self.interface_name],
-                capture_output=True,
-                text=True,
                 timeout=2,
+                check=False,
             )
 
-            if result.returncode == 0:
-                for line in result.stdout.split("\n"):
+            if returncode == 0:
+                for line in output.split("\n"):
                     if "default via" in line:
                         match = re.search(r"default via (\d+\.\d+\.\d+\.\d+)", line)
                         if match:
@@ -437,15 +421,14 @@ class WiFiInterface(NetworkInterface):
     def _get_metric(self) -> Optional[int]:
         """Get current route metric"""
         try:
-            result = subprocess.run(
+            output, _, returncode = run_cmd(
                 ["ip", "route", "show", "dev", self.interface_name],
-                capture_output=True,
-                text=True,
                 timeout=2,
+                check=False,
             )
 
-            if result.returncode == 0:
-                for line in result.stdout.split("\n"):
+            if returncode == 0:
+                for line in output.split("\n"):
                     if "default" in line and "metric" in line:
                         match = re.search(r"metric (\d+)", line)
                         if match:

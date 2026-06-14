@@ -7,11 +7,11 @@ for intelligent network switching decisions.
 
 import asyncio
 import logging
-import subprocess
 import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 from collections import deque
+from app.utils.cmd import run_cmd
 
 logger = logging.getLogger(__name__)
 
@@ -26,25 +26,20 @@ _PING_PREFIX: List[str] = []  # [] → plain "ping"; ["sudo"] → "sudo ping"
 
 def _detect_ping_prefix() -> List[str]:
     """Return [] if ping can create raw sockets, ['sudo'] otherwise."""
-    try:
-        result = subprocess.run(
-            ["ping", "-c", "1", "-W", "1", "127.0.0.1"],
-            capture_output=True,
-            timeout=3,
+    stdout, stderr, returncode = run_cmd(
+        ["ping", "-c", "1", "-W", "1", "127.0.0.1"],
+        timeout=5,
+        check=False,
+    )
+    if returncode == 0:
+        return []
+    if "permitted" in stderr or "capability" in stderr or "setuid" in stderr:
+        logger.warning(
+            "ping lacks cap_net_raw — using 'sudo ping' fallback. "
+            "Fix permanently with: sudo setcap cap_net_raw+ep /usr/bin/ping"
         )
-        if result.returncode == 0:
-            return []
-        # returncode=2 on permission error ("Operation not permitted")
-        stderr = result.stderr.decode(errors="replace")
-        if "permitted" in stderr or "capability" in stderr or "setuid" in stderr:
-            logger.warning(
-                "ping lacks cap_net_raw — using 'sudo ping' fallback. "
-                "Fix permanently with: sudo setcap cap_net_raw+ep /usr/bin/ping"
-            )
-            return ["sudo"]
-        return []
-    except Exception:
-        return []
+        return ["sudo"]
+    return []
 
 
 _PING_PREFIX = _detect_ping_prefix()

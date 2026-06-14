@@ -5,9 +5,9 @@ Implementation for USB/HiLink modem interfaces
 
 from typing import Dict, Optional
 from ..base import NetworkInterface, InterfaceStatus, InterfaceType
-import subprocess
 import re
 import logging
+from app.utils.cmd import run_cmd
 
 logger = logging.getLogger(__name__)
 
@@ -33,23 +33,22 @@ class ModemInterface(NetworkInterface):
             if not self.interface_name:
                 return False
 
-            result = subprocess.run(
+            _, _, returncode = run_cmd(
                 ["ip", "link", "show", self.interface_name],
-                capture_output=True,
-                text=True,
                 timeout=2,
+                check=False,
             )
-            return result.returncode == 0
+            return returncode == 0
         except Exception:
             return False
 
     def _find_modem_interface(self) -> Optional[str]:
         """Find modem interface by subnet pattern"""
         try:
-            result = subprocess.run(["ip", "-o", "addr", "show"], capture_output=True, text=True, timeout=2)
+            output, _, returncode = run_cmd(["ip", "-o", "addr", "show"], timeout=2, check=False)
 
-            if result.returncode == 0:
-                for line in result.stdout.split("\n"):
+            if returncode == 0:
+                for line in output.split("\n"):
                     # Look for interface with modem subnet (e.g., 192.168.8.x)
                     if self.subnet_pattern in line:
                         match = re.search(
@@ -74,22 +73,19 @@ class ModemInterface(NetworkInterface):
 
         try:
             # Get interface state
-            result = subprocess.run(
+            output, _, returncode = run_cmd(
                 ["ip", "addr", "show", self.interface_name],
-                capture_output=True,
-                text=True,
                 timeout=2,
+                check=False,
             )
 
-            if result.returncode != 0:
+            if returncode != 0:
                 return {
                     "status": InterfaceStatus.ERROR,
                     "interface": self.interface_name,
                     "type": self.interface_type.value,
                     "error": "Failed to get interface status",
                 }
-
-            output = result.stdout
 
             # Determine status
             if "state UP" in output:
@@ -138,21 +134,20 @@ class ModemInterface(NetworkInterface):
             return {"success": False, "error": "Interface not detected"}
 
         try:
-            result = subprocess.run(
+            _, stderr, returncode = run_cmd(
                 ["sudo", "ip", "link", "set", self.interface_name, "up"],
-                capture_output=True,
-                text=True,
                 timeout=5,
+                check=False,
             )
 
-            if result.returncode == 0:
+            if returncode == 0:
                 return {
                     "success": True,
                     "message": f"Interface {self.interface_name} brought up",
                 }
             return {
                 "success": False,
-                "error": result.stderr or "Failed to bring interface up",
+                "error": stderr or "Failed to bring interface up",
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
@@ -163,21 +158,20 @@ class ModemInterface(NetworkInterface):
             return {"success": False, "error": "Interface not detected"}
 
         try:
-            result = subprocess.run(
+            _, stderr, returncode = run_cmd(
                 ["sudo", "ip", "link", "set", self.interface_name, "down"],
-                capture_output=True,
-                text=True,
                 timeout=5,
+                check=False,
             )
 
-            if result.returncode == 0:
+            if returncode == 0:
                 return {
                     "success": True,
                     "message": f"Interface {self.interface_name} brought down",
                 }
             return {
                 "success": False,
-                "error": result.stderr or "Failed to bring interface down",
+                "error": stderr or "Failed to bring interface down",
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
@@ -198,7 +192,7 @@ class ModemInterface(NetworkInterface):
                 return {"success": False, "error": "No gateway found for interface"}
 
             # Delete old route
-            subprocess.run(
+            run_cmd(
                 [
                     "sudo",
                     "ip",
@@ -210,12 +204,12 @@ class ModemInterface(NetworkInterface):
                     "dev",
                     self.interface_name,
                 ],
-                capture_output=True,
                 timeout=2,
+                check=False,
             )
 
             # Add route with new metric
-            result = subprocess.run(
+            _, stderr, returncode = run_cmd(
                 [
                     "sudo",
                     "ip",
@@ -229,18 +223,17 @@ class ModemInterface(NetworkInterface):
                     "metric",
                     str(metric),
                 ],
-                capture_output=True,
-                text=True,
                 timeout=5,
+                check=False,
             )
 
-            if result.returncode == 0:
+            if returncode == 0:
                 return {
                     "success": True,
                     "message": f"Metric set to {metric} for {self.interface_name}",
                     "metric": metric,
                 }
-            return {"success": False, "error": result.stderr or "Failed to set metric"}
+            return {"success": False, "error": stderr or "Failed to set metric"}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -250,15 +243,14 @@ class ModemInterface(NetworkInterface):
             return None
 
         try:
-            result = subprocess.run(
+            output, _, returncode = run_cmd(
                 ["ip", "route", "show", "dev", self.interface_name],
-                capture_output=True,
-                text=True,
                 timeout=2,
+                check=False,
             )
 
-            if result.returncode == 0:
-                for line in result.stdout.split("\n"):
+            if returncode == 0:
+                for line in output.split("\n"):
                     if "default via" in line:
                         match = re.search(r"default via (\d+\.\d+\.\d+\.\d+)", line)
                         if match:
@@ -273,15 +265,14 @@ class ModemInterface(NetworkInterface):
             return None
 
         try:
-            result = subprocess.run(
+            output, _, returncode = run_cmd(
                 ["ip", "route", "show", "dev", self.interface_name],
-                capture_output=True,
-                text=True,
                 timeout=2,
+                check=False,
             )
 
-            if result.returncode == 0:
-                for line in result.stdout.split("\n"):
+            if returncode == 0:
+                for line in output.split("\n"):
                     if "default" in line and "metric" in line:
                         match = re.search(r"metric (\d+)", line)
                         if match:

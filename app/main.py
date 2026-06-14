@@ -533,13 +533,54 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="FPV Copilot Sky", version="1.0.0", lifespan=lifespan)
 
+
+def _parse_csv_env(value: str) -> list[str]:
+    """Parse comma-separated env values into a clean list."""
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _parse_cors_origins(value: str) -> list[str]:
+    """Parse and normalize CORS origins from env string."""
+    origins = _parse_csv_env(value)
+    if not origins:
+        return ["*"]
+    if "*" in origins:
+        return ["*"]
+    return origins
+
+
+def _is_env_true(value: str) -> bool:
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _build_cors_settings() -> dict:
+    """Build CORS settings from environment variables."""
+    origins = _parse_cors_origins(os.getenv("FPV_CORS_ALLOW_ORIGINS", "*"))
+    allow_credentials = _is_env_true(os.getenv("FPV_CORS_ALLOW_CREDENTIALS", "true"))
+    allow_methods = _parse_csv_env(os.getenv("FPV_CORS_ALLOW_METHODS", "*")) or ["*"]
+    allow_headers = _parse_csv_env(os.getenv("FPV_CORS_ALLOW_HEADERS", "*")) or ["*"]
+
+    # Browsers reject credentialed requests when Access-Control-Allow-Origin is '*'.
+    if origins == ["*"] and allow_credentials:
+        logger.warning("CORS: disabling credentials because allow_origins is wildcard")
+        allow_credentials = False
+
+    return {
+        "allow_origins": origins,
+        "allow_credentials": allow_credentials,
+        "allow_methods": allow_methods,
+        "allow_headers": allow_headers,
+    }
+
+
 # CORS middleware
+cors_settings = _build_cors_settings()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=cors_settings["allow_origins"],
+    allow_credentials=cors_settings["allow_credentials"],
+    allow_methods=cors_settings["allow_methods"],
+    allow_headers=cors_settings["allow_headers"],
 )
 
 # Include routers
@@ -793,47 +834,55 @@ async def _broadcast_modem_status():
 
 
 async def periodic_stats_broadcast():
-    """Periodically broadcast router stats via WebSocket.
+    """Periodically broadcast data via WebSocket.
 
-    OPTIMIZATION: Skip all processing when no WebSocket clients are connected.
-    This saves CPU for video encoding and telemetry when the UI is closed.
+    Optimizations applied (Issue #04):
+    - No work at all when no clients are connected.
+    - Tasks are staggered across different ticks to avoid CPU spikes.
+    - Blocking calls (psutil, subprocess) run in the thread-pool executor.
+    - Status health check moved to every 30 s (data is already cached).
+    - Counter is bounded to avoid unbounded int growth on long-running systems.
+
+    Tick schedule (seconds):
+      %2  → router_status, video_status (in-memory, cheap)
+      %3  → system_resources (psutil, executor)
+      %5  → network_status (async IP commands, 2 s cache)
+      %7  → system_services (systemctl subprocess, executor)
+      %10 → video_devices, vpn_status, modem_status, opencv_status
+      %30 → status_health (all results already cached ≥30 min)
     """
+    _COUNTER_RESET = 210  # LCM(2,3,5,7,10,30) — period resets cleanly
     counter = 0
+    _loop = asyncio.get_event_loop()
+
     while True:
         await asyncio.sleep(1)
-        counter += 1
+        counter = (counter % _COUNTER_RESET) + 1
 
         # Skip all processing if no clients connected (save CPU for video/telemetry)
         if not websocket_manager.has_clients:
             continue
 
         try:
-            # Router status every 2 seconds
+            # ── every 2 s: fast in-memory state ─────────────────────────────
             if counter % 2 == 0 and router_service:
                 outputs = router_service.get_outputs_list()
                 await websocket_manager.broadcast("router_status", outputs)
 
-            # Video status every 2 seconds (when streaming)
             if counter % 2 == 0 and video_service and video_service.is_streaming:
                 await websocket_manager.broadcast("video_status", video_service.get_status())
 
-            # System resources (CPU/Memory) every 3 seconds
+            # ── every 3 s: system resources (psutil — offloaded) ────────────
             if counter % 3 == 0:
                 from app.services.system_service import SystemService
 
-                await websocket_manager.broadcast(
-                    "system_resources",
-                    {
-                        "cpu": SystemService.get_cpu_info(),
-                        "memory": SystemService.get_memory_info(),
-                    },
+                cpu_info, mem_info = await asyncio.gather(
+                    _loop.run_in_executor(None, SystemService.get_cpu_info),
+                    _loop.run_in_executor(None, SystemService.get_memory_info),
                 )
+                await websocket_manager.broadcast("system_resources", {"cpu": cpu_info, "memory": mem_info})
 
-            # Status health check every 5 seconds
-            if counter % 5 == 0:
-                await _broadcast_status_health()
-
-            # Network status every 5 seconds
+            # ── every 5 s: network status (async, 2 s cache) ────────────────
             if counter % 5 == 0:
                 try:
                     from app.api.routes.network import get_network_status
@@ -843,14 +892,14 @@ async def periodic_stats_broadcast():
                 except Exception as e:
                     logger.debug(f"Network status broadcast error: {e}")
 
-            # Services status every 5 seconds
-            if counter % 5 == 0:
+            # ── every 7 s: services status (subprocess — offloaded) ──────────
+            if counter % 7 == 0:
                 from app.services.system_service import SystemService
 
-                services = SystemService.get_services_status()
+                services = await _loop.run_in_executor(None, SystemService.get_services_status)
                 await websocket_manager.broadcast("system_services", {"services": services, "count": len(services)})
 
-            # Video devices + VPN status every 10 seconds
+            # ── every 10 s: modem, VPN, video devices, OpenCV ───────────────
             if counter % 10 == 0:
                 try:
                     from app.services.video_device_service import get_video_device_service
@@ -862,13 +911,8 @@ async def periodic_stats_broadcast():
                     logger.debug(f"Video devices broadcast error: {e}")
 
                 await _broadcast_vpn_status()
-
-            # Modem status every 10 seconds (avoid hammering modem API)
-            if counter % 10 == 0:
                 await _broadcast_modem_status()
 
-            # OpenCV status every 10 seconds
-            if counter % 10 == 0:
                 try:
                     from app.services.opencv_service import get_opencv_service
 
@@ -879,9 +923,12 @@ async def periodic_stats_broadcast():
                 except Exception as e:
                     logger.debug(f"OpenCV status broadcast error: {e}")
 
-        except Exception as e:
-            logger.error(f"Error in periodic broadcast: {e}")
-            pass
+            # ── every 30 s: status health (all results already cached ≥30 min)
+            if counter % 30 == 0:
+                await _broadcast_status_health()
+
+        except Exception:
+            logger.error("Error in periodic broadcast", exc_info=True)
 
 
 def auto_connect_vpn():

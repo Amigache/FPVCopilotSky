@@ -4,13 +4,17 @@ Manages system-level operations
 """
 
 import glob
+import logging
 import os
 import platform
-import subprocess
 import time
 import requests
 from typing import List, Dict, Any
 from app.services.cache_service import get_cache_service
+from app.utils.cmd import run_cmd
+
+
+logger = logging.getLogger(__name__)
 
 
 class SystemService:
@@ -39,7 +43,7 @@ class SystemService:
         try:
             os.makedirs(SystemService.DATA_DIR, mode=0o755, exist_ok=True)
         except Exception as e:
-            print(f"Warning: Failed to create data directory: {str(e)}")
+            logger.warning("Failed to create data directory", extra={"path": SystemService.DATA_DIR, "error": str(e)})
 
     @staticmethod
     def get_version() -> Dict[str, str]:
@@ -61,17 +65,15 @@ class SystemService:
                         return {"version": version, "success": True}
 
             # Fallback: get version from git tag
-            project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-            result = subprocess.run(
+            _ = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+            stdout, _, returncode = run_cmd(
                 ["git", "describe", "--tags", "--exact-match", "HEAD"],
-                cwd=project_root,
-                capture_output=True,
-                text=True,
                 timeout=10,
+                check=False,
             )
 
-            if result.returncode == 0:
-                git_version = result.stdout.strip().lstrip("v")
+            if returncode == 0:
+                git_version = stdout.strip().lstrip("v")
                 # Save to local file for future use
                 with open(SystemService.VERSION_FILE, "w") as f:
                     f.write(git_version)
@@ -202,11 +204,10 @@ class SystemService:
         Called as a BackgroundTask so the HTTP response is sent BEFORE the restart.
         """
         time.sleep(delay_seconds)
-        subprocess.run(
+        run_cmd(
             ["sudo", "systemctl", "restart", "fpvcopilot-sky"],
-            capture_output=True,
-            text=True,
             timeout=30,
+            check=False,
         )
 
     @staticmethod
@@ -257,41 +258,31 @@ class SystemService:
 
             # Step 2: Reset any local changes (users cannot commit in installed apps)
             try:
-                subprocess.run(
+                run_cmd(
                     ["git", "reset", "--hard"],
-                    cwd=project_root,
-                    capture_output=True,
-                    text=True,
                     timeout=10,
+                    check=False,
                 )
             except Exception as e:
                 # Non-fatal, force checkout will handle it
-                print(f"Warning: git reset had issues: {str(e)}")
+                logger.warning("git reset had issues during update", extra={"operation": "git_reset", "error": str(e)})
 
             # Step 3: Fetch latest changes from GitHub
             try:
-                result = subprocess.run(
+                _, stderr, returncode = run_cmd(
                     ["git", "fetch", "origin", "--tags"],
-                    cwd=project_root,
-                    capture_output=True,
-                    text=True,
                     timeout=30,
+                    check=False,
                 )
 
-                if result.returncode != 0:
+                if returncode != 0:
                     return {
                         "success": False,
                         "step": "git_fetch",
                         "error": "Git fetch failed",
-                        "details": result.stderr,
+                        "details": stderr,
                     }
 
-            except subprocess.TimeoutExpired:
-                return {
-                    "success": False,
-                    "step": "git_fetch",
-                    "error": "Git fetch timed out (network issue?)",
-                }
             except Exception as e:
                 return {
                     "success": False,
@@ -316,15 +307,13 @@ class SystemService:
             tag_name = f"v{target_version}"
             try:
                 # First verify the tag exists
-                result = subprocess.run(
+                stdout, _, returncode = run_cmd(
                     ["git", "tag", "-l", tag_name],
-                    cwd=project_root,
-                    capture_output=True,
-                    text=True,
                     timeout=10,
+                    check=False,
                 )
 
-                if not result.stdout.strip():
+                if returncode != 0 or not stdout.strip():
                     return {
                         "success": False,
                         "step": "git_checkout",
@@ -332,28 +321,20 @@ class SystemService:
                     }
 
                 # Force checkout the tag (discard any local changes)
-                result = subprocess.run(
+                _, stderr, returncode = run_cmd(
                     ["git", "checkout", "--force", tag_name],
-                    cwd=project_root,
-                    capture_output=True,
-                    text=True,
                     timeout=30,
+                    check=False,
                 )
 
-                if result.returncode != 0:
+                if returncode != 0:
                     return {
                         "success": False,
                         "step": "git_checkout",
                         "error": f"Failed to checkout {tag_name}",
-                        "details": result.stderr,
+                        "details": stderr,
                     }
 
-            except subprocess.TimeoutExpired:
-                return {
-                    "success": False,
-                    "step": "git_checkout",
-                    "error": "Git checkout timed out",
-                }
             except Exception as e:
                 return {
                     "success": False,
@@ -383,64 +364,50 @@ class SystemService:
                 venv_python = os.path.join(project_root, "venv", "bin", "python3")
                 requirements_file = os.path.join(project_root, "requirements.txt")
 
-                result = subprocess.run(
+                _, stderr, returncode = run_cmd(
                     [venv_python, "-m", "pip", "install", "-r", requirements_file],
-                    cwd=project_root,
-                    capture_output=True,
-                    text=True,
                     timeout=300,  # 5 minutes for pip install
+                    check=False,
                 )
 
-                if result.returncode != 0:
+                if returncode != 0:
                     # Non-fatal, continue with update
-                    print(f"Warning: pip install had issues: {result.stderr}")  # Log but don't fail
+                    logger.warning(
+                        "pip install had issues during update",
+                        extra={"operation": "pip_install", "outcome": "non_fatal_error", "stderr": stderr},
+                    )
 
-            except subprocess.TimeoutExpired:
-                return {
-                    "success": False,
-                    "step": "install_dependencies",
-                    "error": "Dependencies installation timed out",
-                }
             except Exception as e:
                 # Non-fatal, log and continue
-                print(f"Warning: Failed to install dependencies: {str(e)}")
+                logger.warning(
+                    "Failed to install dependencies during update",
+                    extra={"operation": "pip_install", "outcome": "exception", "error": str(e)},
+                )
 
             # Step 7: Rebuild frontend
             try:
-                frontend_dir = os.path.join(project_root, "frontend", "client")
-
                 # Run npm install (in case there are new dependencies)
-                result = subprocess.run(
+                _, _, _ = run_cmd(
                     ["npm", "install"],
-                    cwd=frontend_dir,
-                    capture_output=True,
-                    text=True,
                     timeout=300,  # 5 minutes
+                    check=False,
                 )
 
                 # Run npm build
-                result = subprocess.run(
+                _, stderr, returncode = run_cmd(
                     ["npm", "run", "build"],
-                    cwd=frontend_dir,
-                    capture_output=True,
-                    text=True,
                     timeout=300,  # 5 minutes
+                    check=False,
                 )
 
-                if result.returncode != 0:
+                if returncode != 0:
                     return {
                         "success": False,
                         "step": "build_frontend",
                         "error": "Frontend build failed",
-                        "details": result.stderr,
+                        "details": stderr,
                     }
 
-            except subprocess.TimeoutExpired:
-                return {
-                    "success": False,
-                    "step": "build_frontend",
-                    "error": "Frontend build timed out",
-                }
             except Exception as e:
                 return {
                     "success": False,
@@ -451,27 +418,20 @@ class SystemService:
             # Step 8: Restart backend service (only if not delegated to BackgroundTasks)
             if do_restart:
                 try:
-                    result = subprocess.run(
+                    _, stderr, returncode = run_cmd(
                         ["sudo", "systemctl", "restart", "fpvcopilot-sky"],
-                        capture_output=True,
-                        text=True,
                         timeout=30,
+                        check=False,
                     )
 
-                    if result.returncode != 0:
+                    if returncode != 0:
                         return {
                             "success": False,
                             "step": "restart_service",
                             "error": "Failed to restart backend service",
-                            "details": result.stderr,
+                            "details": stderr,
                         }
 
-                except subprocess.TimeoutExpired:
-                    return {
-                        "success": False,
-                        "step": "restart_service",
-                        "error": "Service restart timed out",
-                    }
                 except Exception as e:
                     return {
                         "success": False,
@@ -600,48 +560,50 @@ class SystemService:
 
             # Step 2: Reset any local changes (users cannot commit in installed apps)
             try:
-                subprocess.run(
+                run_cmd(
                     ["git", "reset", "--hard"],
-                    cwd=project_root,
-                    capture_output=True,
-                    text=True,
                     timeout=10,
+                    check=False,
                 )
             except Exception as e:
                 # Non-fatal, force checkout will handle it
-                print(f"Warning: git reset had issues: {str(e)}")
+                logger.warning(
+                    "git reset had issues during rollback", extra={"operation": "git_reset", "error": str(e)}
+                )
 
             # Step 3: Fetch latest changes (to ensure we have all tags)
             try:
-                result = subprocess.run(
+                _, stderr, returncode = run_cmd(
                     ["git", "fetch", "origin", "--tags"],
-                    cwd=project_root,
-                    capture_output=True,
-                    text=True,
                     timeout=30,
+                    check=False,
                 )
 
-                if result.returncode != 0:
+                if returncode != 0:
                     # Non-fatal, continue anyway
-                    print(f"Warning: git fetch had issues: {result.stderr}")
+                    logger.warning(
+                        "git fetch had issues during rollback",
+                        extra={"operation": "git_fetch", "outcome": "non_fatal_error", "stderr": stderr},
+                    )
 
             except Exception as e:
                 # Non-fatal
-                print(f"Warning: Failed to fetch: {str(e)}")
+                logger.warning(
+                    "Failed to fetch during rollback",
+                    extra={"operation": "git_fetch", "outcome": "exception", "error": str(e)},
+                )
 
             # Step 4: Checkout previous version tag
             tag_name = f"v{previous_version}"
             try:
                 # Verify tag exists
-                result = subprocess.run(
+                stdout, _, returncode = run_cmd(
                     ["git", "tag", "-l", tag_name],
-                    cwd=project_root,
-                    capture_output=True,
-                    text=True,
                     timeout=10,
+                    check=False,
                 )
 
-                if not result.stdout.strip():
+                if returncode != 0 or not stdout.strip():
                     return {
                         "success": False,
                         "step": "git_checkout",
@@ -650,28 +612,20 @@ class SystemService:
                     }
 
                 # Force checkout the tag (discard any local changes)
-                result = subprocess.run(
+                _, stderr, returncode = run_cmd(
                     ["git", "checkout", "--force", tag_name],
-                    cwd=project_root,
-                    capture_output=True,
-                    text=True,
                     timeout=30,
+                    check=False,
                 )
 
-                if result.returncode != 0:
+                if returncode != 0:
                     return {
                         "success": False,
                         "step": "git_checkout",
                         "error": f"Failed to checkout {tag_name}",
-                        "details": result.stderr,
+                        "details": stderr,
                     }
 
-            except subprocess.TimeoutExpired:
-                return {
-                    "success": False,
-                    "step": "git_checkout",
-                    "error": "Git checkout timed out",
-                }
             except Exception as e:
                 return {
                     "success": False,
@@ -695,58 +649,50 @@ class SystemService:
                 venv_python = os.path.join(project_root, "venv", "bin", "python3")
                 requirements_file = os.path.join(project_root, "requirements.txt")
 
-                result = subprocess.run(
+                _, stderr, returncode = run_cmd(
                     [venv_python, "-m", "pip", "install", "-r", requirements_file],
-                    cwd=project_root,
-                    capture_output=True,
-                    text=True,
                     timeout=300,
+                    check=False,
                 )
 
                 # Non-fatal
-                if result.returncode != 0:
-                    print(f"Warning: pip install had issues: {result.stderr}")
+                if returncode != 0:
+                    logger.warning(
+                        "pip install had issues during rollback",
+                        extra={"operation": "pip_install", "outcome": "non_fatal_error", "stderr": stderr},
+                    )
 
             except Exception as e:
                 # Non-fatal
-                print(f"Warning: Failed to install dependencies: {str(e)}")
+                logger.warning(
+                    "Failed to install dependencies during rollback",
+                    extra={"operation": "pip_install", "outcome": "exception", "error": str(e)},
+                )
 
             # Step 7: Rebuild frontend
             try:
-                frontend_dir = os.path.join(project_root, "frontend", "client")
-
                 # Run npm install
-                result = subprocess.run(
+                _, _, _ = run_cmd(
                     ["npm", "install"],
-                    cwd=frontend_dir,
-                    capture_output=True,
-                    text=True,
                     timeout=300,
+                    check=False,
                 )
 
                 # Run npm build
-                result = subprocess.run(
+                _, stderr, returncode = run_cmd(
                     ["npm", "run", "build"],
-                    cwd=frontend_dir,
-                    capture_output=True,
-                    text=True,
                     timeout=300,
+                    check=False,
                 )
 
-                if result.returncode != 0:
+                if returncode != 0:
                     return {
                         "success": False,
                         "step": "build_frontend",
                         "error": "Frontend build failed during rollback",
-                        "details": result.stderr,
+                        "details": stderr,
                     }
 
-            except subprocess.TimeoutExpired:
-                return {
-                    "success": False,
-                    "step": "build_frontend",
-                    "error": "Frontend build timed out",
-                }
             except Exception as e:
                 return {
                     "success": False,
@@ -757,27 +703,20 @@ class SystemService:
             # Step 8: Restart backend service (only if not delegated to BackgroundTasks)
             if do_restart:
                 try:
-                    result = subprocess.run(
+                    _, stderr, returncode = run_cmd(
                         ["sudo", "systemctl", "restart", "fpvcopilot-sky"],
-                        capture_output=True,
-                        text=True,
                         timeout=30,
+                        check=False,
                     )
 
-                    if result.returncode != 0:
+                    if returncode != 0:
                         return {
                             "success": False,
                             "step": "restart_service",
                             "error": "Failed to restart backend service",
-                            "details": result.stderr,
+                            "details": stderr,
                         }
 
-                except subprocess.TimeoutExpired:
-                    return {
-                        "success": False,
-                        "step": "restart_service",
-                        "error": "Service restart timed out",
-                    }
                 except Exception as e:
                     return {
                         "success": False,
@@ -791,7 +730,10 @@ class SystemService:
                     os.remove(SystemService.PREVIOUS_VERSION_FILE)
             except Exception as e:
                 # Non-fatal
-                print(f"Warning: Failed to remove previous version file: {str(e)}")
+                logger.warning(
+                    "Failed to remove previous version file after rollback",
+                    extra={"path": SystemService.PREVIOUS_VERSION_FILE, "error": str(e)},
+                )
 
             # Success!
             return {
@@ -860,7 +802,7 @@ class SystemService:
                 "cached_mb": round(cached_kb / 1024, 1),
             }
         except Exception as e:
-            print(f"⚠️ Error getting memory info: {e}")
+            logger.warning("Error getting memory info", extra={"error": str(e)})
             return {
                 "total_mb": 0,
                 "used_mb": 0,
@@ -943,7 +885,7 @@ class SystemService:
                 "load_avg_15m": round(load_avg[2], 2),
             }
         except Exception as e:
-            print(f"⚠️ Error getting CPU info: {e}")
+            logger.warning("Error getting CPU info", extra={"error": str(e)})
             return {
                 "usage_percent": 0,
                 "cores": 0,
@@ -1019,32 +961,30 @@ class SystemService:
 
             try:
                 # Check if service is active
-                result = subprocess.run(
+                stdout, _, returncode = run_cmd(
                     ["systemctl", "is-active", service_name],
-                    capture_output=True,
-                    text=True,
                     timeout=5,
+                    check=False,
                 )
-                service_info["active"] = result.returncode == 0
-                service_info["status"] = result.stdout.strip()
+                service_info["active"] = returncode == 0
+                service_info["status"] = stdout.strip()
 
                 # Get service description, memory, and PID if active
                 if service_info["active"]:
                     # Get service properties
-                    show_result = subprocess.run(
+                    show_stdout, _, show_returncode = run_cmd(
                         [
                             "systemctl",
                             "show",
                             service_name,
                             "--property=Description,MemoryCurrent,ActiveEnterTimestamp,MainPID",
                         ],
-                        capture_output=True,
-                        text=True,
                         timeout=5,
+                        check=False,
                     )
 
-                    if show_result.returncode == 0:
-                        for line in show_result.stdout.strip().split("\n"):
+                    if show_returncode == 0:
+                        for line in show_stdout.strip().split("\n"):
                             if "=" in line:
                                 key, value = line.split("=", 1)
                                 if key == "Description":
@@ -1073,8 +1013,6 @@ class SystemService:
                         if cpu_percent is not None:
                             service_info["cpu_percent"] = round(cpu_percent, 1)
 
-            except subprocess.TimeoutExpired:
-                service_info["status"] = "timeout"
             except Exception as e:
                 service_info["status"] = f"error: {str(e)}"
 
@@ -1164,7 +1102,10 @@ class SystemService:
                         }
                         ports.append(port_info)
                     except Exception as e:
-                        print(f"⚠️ Error checking port {port_path}: {e}")
+                        logger.warning(
+                            "Error checking serial port",
+                            extra={"port_path": port_path, "error": str(e)},
+                        )
 
         # Remove duplicates (in case of symlinks)
         seen = set()
@@ -1208,7 +1149,7 @@ class SystemService:
                 "python_version": platform.python_version(),
             }
         except Exception as e:
-            print(f"⚠️ Error getting system info: {e}")
+            logger.warning("Error getting system info", extra={"error": str(e)})
             return {
                 "platform": "Unknown",
                 "machine": "Unknown",
@@ -1226,6 +1167,8 @@ class SystemService:
             Dictionary with success status and message
         """
         try:
+            import subprocess
+
             # Use nohup and background process to ensure restart completes
             # even after our process dies
             subprocess.Popen(
@@ -1252,6 +1195,8 @@ class SystemService:
             Dictionary with success status and message
         """
         try:
+            import subprocess
+
             # Use nohup and background process to ensure restart completes
             # even after connections are lost
             subprocess.Popen(
@@ -1286,24 +1231,21 @@ class SystemService:
 
         # Cache miss or expired - fetch fresh logs
         try:
-            result = subprocess.run(
+            stdout, stderr, returncode = run_cmd(
                 ["journalctl", "-u", "fpvcopilot-sky", "-n", str(lines), "--no-pager"],
-                capture_output=True,
-                text=True,
                 timeout=3,  # Reduced timeout from 5 to 3 seconds
+                check=False,
             )
 
-            if result.returncode == 0:
-                logs = result.stdout
+            if returncode == 0:
+                logs = stdout
             else:
-                logs = f"Error fetching logs: {result.stderr}"
+                logs = f"Error fetching logs: {stderr}"
 
             # Update cache with 2 second TTL
             SystemService._cache.set("logs_backend", logs, ttl=2)
 
             return logs
-        except subprocess.TimeoutExpired:
-            return "Error: Log fetching timed out"
         except Exception as e:
             return f"Error fetching logs: {str(e)}"
 
@@ -1335,14 +1277,13 @@ class SystemService:
             ]
             for log_path in nginx_error_log_paths:
                 if os.path.exists(log_path):
-                    result = subprocess.run(
+                    stdout, _, returncode = run_cmd(
                         ["tail", "-n", str(lines), log_path],
-                        capture_output=True,
-                        text=True,
                         timeout=2,
+                        check=False,
                     )
-                    if result.returncode == 0 and result.stdout.strip():
-                        nginx_error = f"=== Nginx Error Log ({log_path}) ===\n" + result.stdout
+                    if returncode == 0 and stdout.strip():
+                        nginx_error = f"=== Nginx Error Log ({log_path}) ===\n" + stdout
                     break
 
             # Access log paths
@@ -1352,14 +1293,13 @@ class SystemService:
             ]
             for log_path in nginx_access_log_paths:
                 if os.path.exists(log_path):
-                    result = subprocess.run(
+                    stdout, _, returncode = run_cmd(
                         ["tail", "-n", str(lines), log_path],
-                        capture_output=True,
-                        text=True,
                         timeout=2,
+                        check=False,
                     )
-                    if result.returncode == 0 and result.stdout.strip():
-                        nginx_access = f"=== Nginx Access Log ({log_path}) ===\n" + result.stdout
+                    if returncode == 0 and stdout.strip():
+                        nginx_access = f"=== Nginx Access Log ({log_path}) ===\n" + stdout
                     break
 
             combined = "".join(
@@ -1375,8 +1315,6 @@ class SystemService:
             SystemService._cache.set("logs_frontend", logs, ttl=2)
 
             return logs
-        except subprocess.TimeoutExpired:
-            return "Error: Log fetching timed out"
         except Exception as e:
             return f"Error fetching frontend logs: {str(e)}"
 
@@ -1442,7 +1380,7 @@ class SystemService:
             return processes
 
         except Exception as e:
-            print(f"⚠️ Error getting process information: {e}")
+            logger.warning("Error getting process information", extra={"error": str(e)})
             return []
 
     @staticmethod

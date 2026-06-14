@@ -1,12 +1,12 @@
 """Status endpoint for system and application information."""
 
-import subprocess
 import os
 import sys
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from importlib import metadata
 from app.services.cache_service import get_cache_service
+from app.utils.cmd import run_cmd
 
 router = APIRouter(prefix="/api/status", tags=["status"])
 
@@ -229,15 +229,16 @@ def get_frontend_version():
 def get_node_version():
     """Get Node.js version from the runtime if available."""
     try:
-        result = subprocess.run(["node", "-v"], capture_output=True, text=True, check=True, timeout=5)
-        version = result.stdout.strip()
+        stdout, stderr, returncode = run_cmd(["node", "-v"], timeout=5, check=False)
+        if returncode == -1:
+            return {"status": "warning", "version": "not available"}
+        if returncode != 0:
+            return {"status": "error", "message": stderr or "Failed to get Node.js version"}
+
+        version = stdout.strip()
         if version.startswith("v"):
             version = version[1:]
         return {"status": "ok", "version": version or "unknown"}
-    except FileNotFoundError:
-        return {"status": "warning", "version": "not installed"}
-    except subprocess.CalledProcessError as e:
-        return {"status": "error", "message": e.stderr.strip() or str(e)}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 

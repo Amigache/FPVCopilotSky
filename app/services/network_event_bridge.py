@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from typing import Optional, Dict, Any, List
 from enum import Enum
 from app.services.preferences import get_preferences
+from app.utils.cmd import run_cmd
 
 logger = logging.getLogger(__name__)
 
@@ -622,18 +623,16 @@ class NetworkEventBridge:
 
     def _get_gateway_for_interface(self, interface: str) -> Optional[str]:
         """Get the default gateway IP for a network interface via 'ip route'."""
-        import subprocess
         import re as _re
 
         try:
-            result = subprocess.run(
+            stdout, _, returncode = run_cmd(
                 ["ip", "route", "show", "dev", interface],
-                capture_output=True,
-                text=True,
                 timeout=2,
+                check=False,
             )
-            if result.returncode == 0:
-                for line in result.stdout.splitlines():
+            if returncode == 0:
+                for line in stdout.splitlines():
                     if "default via" in line:
                         m = _re.search(r"default via (\d+\.\d+\.\d+\.\d+)", line)
                         if m:

@@ -3,11 +3,11 @@ Network Stream Source Provider
 Handles remote video streams (RTSP, HTTP, HLS)
 """
 
-import subprocess
 import logging
 import time
 from typing import Dict, List, Optional, Any
 from ..base.video_source_provider import VideoSourceProvider
+from app.utils.cmd import run_cmd
 
 logger = logging.getLogger(__name__)
 
@@ -49,17 +49,17 @@ class NetworkStreamSource(VideoSourceProvider):
 
         try:
             # Check for rtspsrc (most common)
-            result = subprocess.run(["gst-inspect-1.0", "rtspsrc"], capture_output=True, timeout=2)
+            _, _, returncode = run_cmd(["gst-inspect-1.0", "rtspsrc"], timeout=5, check=False)
 
-            if result.returncode != 0:
+            if returncode != 0:
                 _network_stream_available_cache = False
                 _network_stream_available_cache_ts = now
                 return False
 
             # Check for urisourcebin (universal URI handler)
-            result2 = subprocess.run(["gst-inspect-1.0", "urisourcebin"], capture_output=True, timeout=2)
+            _, _, returncode2 = run_cmd(["gst-inspect-1.0", "urisourcebin"], timeout=5, check=False)
 
-            _network_stream_available_cache = result2.returncode == 0
+            _network_stream_available_cache = returncode2 == 0
             _network_stream_available_cache_ts = now
             return _network_stream_available_cache
 

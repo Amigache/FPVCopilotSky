@@ -78,6 +78,9 @@ jobs:
   test-backend:
     name: 🧪 Test Python Backend
     runs-on: ubuntu-latest
+    env:
+      COVERAGE_GATE_CURRENT: "17"
+      COVERAGE_GATE_NEXT: "20"
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -113,14 +116,45 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: |
-          # Run all tests with coverage
+          # Hard gate: enforce current minimum coverage.
           pytest tests/ \
             --cov=app \
+            --cov-fail-under=${COVERAGE_GATE_CURRENT} \
             --cov-report=xml \
             --cov-report=html \
             --cov-report=term-missing \
             -v \
             --tb=short
+
+      - name: Check next coverage target (non-blocking)
+        continue-on-error: true
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          import sys
+          import xml.etree.ElementTree as ET
+
+          current = float(os.environ.get("COVERAGE_GATE_CURRENT", "17"))
+          nxt = float(os.environ.get("COVERAGE_GATE_NEXT", "20"))
+
+          tree = ET.parse("coverage.xml")
+          root = tree.getroot()
+          line_rate = float(root.attrib.get("line-rate", 0.0))
+          total_pct = line_rate * 100.0
+
+          print(f"Current hard gate: {current:.1f}%")
+          print(f"Next target (warning-only): {nxt:.1f}%")
+          print(f"Measured coverage: {total_pct:.2f}%")
+
+          if total_pct < nxt:
+              print(
+                  f"::warning::Coverage {total_pct:.2f}% is below next target {nxt:.1f}% "
+                  "(non-blocking warning)."
+              )
+          else:
+              print("Next target reached. Safe to raise hard gate in next iteration.")
+          PY
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4

@@ -4,6 +4,7 @@ Endpoints for managing VPN connections
 """
 
 import asyncio
+import logging
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
@@ -11,6 +12,8 @@ from typing import Optional, Dict, Any
 from app.providers import get_provider_registry
 from app.services.preferences import get_preferences
 from app.i18n import get_language_from_request, translate
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/vpn", tags=["vpn"])
 
@@ -90,8 +93,9 @@ async def get_providers():
         registry = get_provider_registry()
         providers = registry.get_available_vpn_providers()
         return {"success": True, "providers": providers}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except (AttributeError, TypeError, ValueError, RuntimeError) as e:
+        logger.error("Error listing VPN providers (%s): %s", type(e).__name__, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to retrieve VPN providers")
 
 
 @router.get("/status")
@@ -114,8 +118,9 @@ async def get_status(request: Request, provider: Optional[str] = None):
                 "message": str(e.detail),
             }
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except (AttributeError, TypeError, ValueError, RuntimeError, KeyError) as e:
+        logger.error("Error retrieving VPN status (%s): %s", type(e).__name__, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to retrieve VPN status")
 
 
 @router.get("/peers")
@@ -139,8 +144,9 @@ async def get_peers(request: Request, provider: Optional[str] = None):
         if e.status_code in [400, 503]:
             return {"success": True, "peers": [], "count": 0}
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except (AttributeError, TypeError, ValueError, RuntimeError, KeyError) as e:
+        logger.error("Error retrieving VPN peers (%s): %s", type(e).__name__, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to retrieve VPN peers")
 
 
 @router.post("/connect")
@@ -166,8 +172,9 @@ async def connect_vpn(request: VPNConnectRequest, req: Request):
         return result
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except (AttributeError, TypeError, ValueError, RuntimeError, KeyError) as e:
+        logger.error("Error connecting VPN (%s): %s", type(e).__name__, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to connect VPN")
 
 
 @router.post("/disconnect")
@@ -190,8 +197,9 @@ async def disconnect_vpn(request: VPNDisconnectRequest, req: Request):
         return result
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except (AttributeError, TypeError, ValueError, RuntimeError, KeyError) as e:
+        logger.error("Error disconnecting VPN (%s): %s", type(e).__name__, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to disconnect VPN")
 
 
 @router.post("/logout")
@@ -217,8 +225,9 @@ async def logout_vpn(request: VPNDisconnectRequest, req: Request):
         return result
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except (AttributeError, TypeError, ValueError, RuntimeError, KeyError) as e:
+        logger.error("Error logging out VPN (%s): %s", type(e).__name__, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to logout VPN")
 
 
 @router.get("/preferences")
@@ -273,14 +282,12 @@ async def save_vpn_preferences(preferences: VPNPreferencesModel, request: Reques
                 "preferences": config,
             }
         else:
-            print("⚠️ VPN preferences verification failed")
+            logger.warning("VPN preferences verification failed")
             return {
                 "success": False,
                 "message": "Failed to verify saved preferences",
                 "preferences": saved_config,
             }
     except Exception as e:
-        import traceback
-
-        traceback.print_exc()
+        logger.exception("Unexpected error saving VPN preferences")
         raise HTTPException(status_code=500, detail=str(e))

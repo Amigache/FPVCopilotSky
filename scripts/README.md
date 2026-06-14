@@ -41,6 +41,7 @@ The `fpv` command provides a user-friendly menu to access all operations.
 
 - **test-network-management.sh** - Network management system tests
 - **test_network_features.sh** - Network feature tests
+- **collect-baseline.sh** - Baseline latency/system snapshot for weekly KPI tracking
 
 ### Maintenance & Recovery
 

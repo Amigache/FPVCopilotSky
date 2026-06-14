@@ -6,8 +6,11 @@ Captures encoded frames from the GStreamer pipeline and feeds them
 into the WebRTC peer connections.
 """
 
+import logging
 import threading
 import time
+
+logger = logging.getLogger(__name__)
 
 try:
     import gi
@@ -53,14 +56,17 @@ class WebRTCVideoAdapter:
             appsink_name: Name of the appsink element
         """
         if not GSTREAMER_AVAILABLE:
-            print("⚠️ GStreamer not available for WebRTC adapter")
+            logger.warning("GStreamer not available for WebRTC adapter")
             return
 
         self._pipeline = pipeline
         self._appsink = pipeline.get_by_name(appsink_name)
 
         if not self._appsink:
-            print(f"⚠️ appsink '{appsink_name}' not found in pipeline")
+            logger.warning(
+                "WebRTC adapter appsink not found in pipeline",
+                extra={"appsink_name": appsink_name},
+            )
             return
 
         # Connect new-sample signal
@@ -69,7 +75,10 @@ class WebRTCVideoAdapter:
         self._frame_count = 0
         self._bytes_count = 0
 
-        print(f"✅ WebRTC adapter attached to {appsink_name}")
+        logger.info(
+            "WebRTC adapter attached to pipeline",
+            extra={"appsink_name": appsink_name},
+        )
 
     def _on_new_sample(self, appsink):
         """Handle new video frame from GStreamer appsink"""
@@ -104,7 +113,10 @@ class WebRTCVideoAdapter:
                 self.webrtc_service.global_stats["total_bytes_sent"] = self._bytes_count
 
         except Exception as e:
-            print(f"⚠️ WebRTC adapter frame error: {e}")
+            logger.warning(
+                "WebRTC adapter frame processing error",
+                extra={"error": str(e)},
+            )
 
         return Gst.FlowReturn.OK
 
@@ -128,4 +140,4 @@ class WebRTCVideoAdapter:
         self._running = False
         self._appsink = None
         self._pipeline = None
-        print("✅ WebRTC adapter detached")
+        logger.info("WebRTC adapter detached from pipeline")

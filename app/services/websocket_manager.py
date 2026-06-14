@@ -4,8 +4,11 @@ Manages WebSocket connections and broadcasts messages to all clients
 """
 
 import json
+import logging
 from typing import List, Dict, Any
 from fastapi import WebSocket
+
+logger = logging.getLogger(__name__)
 
 
 class WebSocketManager:
@@ -26,13 +29,13 @@ class WebSocketManager:
         """Accept and register a new WebSocket connection"""
         await websocket.accept()
         self.active_connections.append(websocket)
-        print(f"✅ WebSocket client connected (total: {len(self.active_connections)})")
+        logger.info("WebSocket client connected", extra={"total_clients": len(self.active_connections)})
 
     def disconnect(self, websocket: WebSocket):
         """Remove a WebSocket connection"""
         try:
             self.active_connections.remove(websocket)
-            print(f"❌ WebSocket client disconnected (total: {len(self.active_connections)})")
+            logger.info("WebSocket client disconnected", extra={"total_clients": len(self.active_connections)})
         except ValueError:
             pass
 
@@ -54,7 +57,7 @@ class WebSocketManager:
             try:
                 await connection.send_text(message)
             except Exception as e:
-                print(f"⚠️ Error sending to WebSocket client: {e}")
+                logger.warning("Error sending to WebSocket client", extra={"error": str(e)})
                 disconnected.append(connection)
 
         # Remove disconnected clients

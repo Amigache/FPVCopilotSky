@@ -246,21 +246,18 @@ class PolicyRoutingManager:
 
         content = "".join(additions).encode()
         try:
-            import subprocess
-
-            loop = asyncio.get_event_loop()
-
-            def _write_rt_tables():
-                result = subprocess.run(
-                    ["sudo", "tee", "-a", "/etc/iproute2/rt_tables"],
-                    input=content,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.PIPE,
-                    timeout=5,
-                )
-                return result.returncode, result.stderr.decode().strip()
-
-            rc, err = await loop.run_in_executor(None, _write_rt_tables)
+            proc = await asyncio.create_subprocess_exec(
+                "sudo",
+                "tee",
+                "-a",
+                "/etc/iproute2/rt_tables",
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            _, stderr = await asyncio.wait_for(proc.communicate(content), timeout=5)
+            rc = proc.returncode
+            err = stderr.decode().strip()
             if rc == 0:
                 logger.info(f"PolicyRoutingManager: added rt_tables entries: {list(entries.values())}")
             else:

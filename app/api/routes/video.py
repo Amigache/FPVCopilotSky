@@ -3,12 +3,16 @@ Video Streaming API Routes
 Endpoints for controlling GStreamer video streaming
 """
 
+import logging
+
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional, Literal
 import ipaddress
 from app.i18n import get_language_from_request, translate
 from app.services.preferences import get_preferences
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/video", tags=["video"])
 
@@ -204,31 +208,35 @@ async def get_cameras(request: Request):
     if not _video_service:
         raise HTTPException(status_code=503, detail=translate("services.video_not_initialized", lang))
 
-    # Import here to avoid circular dependency
-    from app.providers.registry import get_provider_registry
+    try:
+        # Import here to avoid circular dependency
+        from app.providers.registry import get_provider_registry
 
-    registry = get_provider_registry()
-    sources = registry.get_available_video_sources()
+        registry = get_provider_registry()
+        sources = registry.get_available_video_sources()
 
-    # Format for frontend consumption (maintain compatibility)
-    cameras = []
-    for source in sources:
-        caps = source.get("capabilities", {})
-        cameras.append(
-            {
-                "device": source["device"],
-                "name": source["name"],
-                "type": caps.get("identity", {}).get("driver", source["type"]),
-                "driver": caps.get("identity", {}).get("driver", "unknown"),
-                "bus_info": caps.get("identity", {}).get("bus_info", ""),
-                "is_usb": caps.get("is_usb", False),
-                "resolutions": caps.get("supported_resolutions", []),
-                "resolutions_fps": caps.get("supported_framerates", {}),
-                "provider": source["provider"],
-            }
-        )
+        # Format for frontend consumption (maintain compatibility)
+        cameras = []
+        for source in sources:
+            caps = source.get("capabilities", {})
+            cameras.append(
+                {
+                    "device": source["device"],
+                    "name": source["name"],
+                    "type": caps.get("identity", {}).get("driver", source["type"]),
+                    "driver": caps.get("identity", {}).get("driver", "unknown"),
+                    "bus_info": caps.get("identity", {}).get("bus_info", ""),
+                    "is_usb": caps.get("is_usb", False),
+                    "resolutions": caps.get("supported_resolutions", []),
+                    "resolutions_fps": caps.get("supported_framerates", {}),
+                    "provider": source["provider"],
+                }
+            )
 
-    return {"cameras": cameras}
+        return {"cameras": cameras}
+    except (AttributeError, KeyError, TypeError) as e:
+        logger.error(f"Camera discovery error: {type(e).__name__}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to enumerate cameras")
 
 
 @router.get("/codecs")
@@ -238,35 +246,39 @@ async def get_codecs(request: Request):
     if not _video_service:
         raise HTTPException(status_code=503, detail=translate("services.video_not_initialized", lang))
 
-    # Import here to avoid circular dependency
-    from app.providers.registry import get_provider_registry
+    try:
+        # Import here to avoid circular dependency
+        from app.providers.registry import get_provider_registry
 
-    registry = get_provider_registry()
-    available_encoders = registry.get_available_video_encoders()
+        registry = get_provider_registry()
+        available_encoders = registry.get_available_video_encoders()
 
-    # Format for frontend consumption
-    codecs = []
-    for encoder in available_encoders:
-        if encoder["available"]:  # Only return actually available codecs
-            caps = encoder["capabilities"]
-            codecs.append(
-                {
-                    "id": encoder["codec_id"],
-                    "name": encoder["display_name"],
-                    "family": encoder["codec_family"],
-                    "type": encoder["encoder_type"],
-                    "description": caps.get("description", ""),
-                    "latency": caps.get("latency_estimate", "medium"),
-                    "cpu_usage": caps.get("cpu_usage", "medium"),
-                    "default_bitrate": caps.get("default_bitrate", 2000),
-                    "min_bitrate": caps.get("min_bitrate", 0),
-                    "max_bitrate": caps.get("max_bitrate", 10000),
-                    "quality_control": caps.get("quality_control", False),
-                    "priority": caps.get("priority", 50),
-                }
-            )
+        # Format for frontend consumption
+        codecs = []
+        for encoder in available_encoders:
+            if encoder["available"]:  # Only return actually available codecs
+                caps = encoder["capabilities"]
+                codecs.append(
+                    {
+                        "id": encoder["codec_id"],
+                        "name": encoder["display_name"],
+                        "family": encoder["codec_family"],
+                        "type": encoder["encoder_type"],
+                        "description": caps.get("description", ""),
+                        "latency": caps.get("latency_estimate", "medium"),
+                        "cpu_usage": caps.get("cpu_usage", "medium"),
+                        "default_bitrate": caps.get("default_bitrate", 2000),
+                        "min_bitrate": caps.get("min_bitrate", 0),
+                        "max_bitrate": caps.get("max_bitrate", 10000),
+                        "quality_control": caps.get("quality_control", False),
+                        "priority": caps.get("priority", 50),
+                    }
+                )
 
-    return {"codecs": codecs}
+        return {"codecs": codecs}
+    except (AttributeError, KeyError, TypeError) as e:
+        logger.error(f"Encoder discovery error: {type(e).__name__}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to enumerate codecs")
 
 
 @router.post("/start")
@@ -276,7 +288,11 @@ async def start_streaming(request: Request):
     if not _video_service:
         raise HTTPException(status_code=503, detail=translate("services.video_not_initialized", lang))
 
-    result = _video_service.start()
+    try:
+        result = _video_service.start()
+    except (AttributeError, TypeError, RuntimeError, ValueError, KeyError) as e:
+        logger.error(f"Video service error in start_streaming: {type(e).__name__}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to start video streaming")
 
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result["message"])
@@ -291,7 +307,11 @@ async def stop_streaming(request: Request):
     if not _video_service:
         raise HTTPException(status_code=503, detail=translate("services.video_not_initialized", lang))
 
-    result = _video_service.stop()
+    try:
+        result = _video_service.stop()
+    except (AttributeError, TypeError, RuntimeError, ValueError, KeyError) as e:
+        logger.error(f"Video service error in stop_streaming: {type(e).__name__}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to stop video streaming")
 
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result["message"])
@@ -306,7 +326,11 @@ async def restart_streaming(request: Request):
     if not _video_service:
         raise HTTPException(status_code=503, detail=translate("services.video_not_initialized", lang))
 
-    result = _video_service.restart()
+    try:
+        result = _video_service.restart()
+    except (AttributeError, TypeError, RuntimeError, ValueError, KeyError) as e:
+        logger.error(f"Video service error in restart_streaming: {type(e).__name__}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to restart video streaming")
 
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result["message"])
@@ -333,7 +357,11 @@ async def configure_video(config: VideoConfigRequest, request: Request):
         if field in config_dict:
             identity_fields[field] = config_dict.pop(field)
 
-    _video_service.configure(video_config=config_dict)
+    try:
+        _video_service.configure(video_config=config_dict)
+    except (AttributeError, TypeError, RuntimeError, ValueError, KeyError) as e:
+        logger.error(f"Video service error in configure_video: {type(e).__name__}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to update video configuration")
 
     # Save to preferences (including identity fields for smart matching)
     try:
@@ -355,20 +383,26 @@ async def configure_video(config: VideoConfigRequest, request: Request):
                 if identity:
                     current["device_name"] = identity.get("name", "")
                     current["device_bus_info"] = identity.get("bus_info", "")
-                    print(f"📹 Saved camera identity: {identity.get('name')} ({identity.get('bus_info', 'N/A')})")
+                    logger.info(
+                        "Camera identity saved",
+                        extra={"camera_name": identity.get("name"), "bus_info": identity.get("bus_info")},
+                    )
             except Exception as e:
-                print(f"⚠️ Failed to detect camera identity: {e}")
+                logger.warning("Failed to detect camera identity", extra={"error": str(e)})
 
         prefs.set_video_config(current)
 
         # Verify the save
         saved = prefs.get_video_config()
         if "device" in config_dict and saved.get("device") == config_dict["device"]:
-            print(f"✅ Video device preference verified: {saved.get('device')}")
+            logger.debug("Video device preference verified", extra={"device": saved.get("device")})
         elif "width" in config_dict and saved.get("width") == config_dict["width"]:
-            print(f"✅ Video config preference verified: {config_dict['width']}x{config_dict.get('height')}")
+            logger.debug(
+                "Video config preference verified",
+                extra={"width": config_dict["width"], "height": config_dict.get("height")},
+            )
     except Exception as e:
-        print(f"⚠️ Failed to save video config: {e}")
+        logger.error("Failed to save video config", extra={"error": str(e)})
 
     return {
         "success": True,
@@ -391,7 +425,11 @@ async def configure_streaming(config: StreamingConfigRequest, request: Request):
         raise HTTPException(status_code=400, detail="No configuration provided")
 
     # Update video service
-    _video_service.configure(streaming_config=config_dict)
+    try:
+        _video_service.configure(streaming_config=config_dict)
+    except (AttributeError, TypeError, ValueError, RuntimeError, KeyError) as e:
+        logger.error("Error updating streaming config (%s): %s", type(e).__name__, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to update streaming configuration")
 
     # Save to preferences
     try:
@@ -405,11 +443,11 @@ async def configure_streaming(config: StreamingConfigRequest, request: Request):
         # Verify the save
         saved = prefs.get_streaming_config()
         if saved.get("auto_start") == config_dict.get("auto_start", saved.get("auto_start")):
-            print(f"✅ Streaming auto_start preference verified: {saved.get('auto_start')}")
+            logger.debug("Streaming auto_start preference verified", extra={"auto_start": saved.get("auto_start")})
         else:
-            print("⚠️ Streaming preference save verification failed")
+            logger.warning("Streaming preference save verification failed")
     except Exception as e:
-        print(f"⚠️ Failed to save streaming config: {e}")
+        logger.error("Failed to save streaming config", extra={"error": str(e)})
 
     return {
         "success": True,
@@ -426,7 +464,11 @@ async def live_update(req: LivePropertyRequest, request: Request):
     if not _video_service:
         raise HTTPException(status_code=503, detail=translate("services.video_not_initialized", lang))
 
-    result = _video_service.update_live_property(req.property, req.value)
+    try:
+        result = _video_service.update_live_property(req.property, req.value)
+    except (AttributeError, TypeError, ValueError, RuntimeError, KeyError) as e:
+        logger.error("Error applying live update (%s): %s", type(e).__name__, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to apply live update")
 
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result["message"])
@@ -440,7 +482,7 @@ async def live_update(req: LivePropertyRequest, request: Request):
         current[req.property] = req.value
         prefs.set_video_config(current)
     except Exception as e:
-        print(f"⚠️ Failed to save live update: {e}")
+        logger.warning("Failed to save live update preference", extra={"property": req.property, "error": str(e)})
 
     return result
 

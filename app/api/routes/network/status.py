@@ -324,8 +324,8 @@ async def get_dashboard():
         }
 
     except Exception as e:
-        logger.error(f"Error getting dashboard data: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error getting dashboard data: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get network dashboard data")
 
 
 @router.get("/interfaces")
@@ -429,8 +429,8 @@ async def set_priority_mode(request: PriorityModeRequest):
             return {"success": False, "message": "No routes could be modified"}
 
     except Exception as e:
-        logger.error(f"Error setting priority: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Error setting network priority", extra={"mode": mode, "error": str(e)}, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to set network priority")
 
 
 @router.post("/priority/auto-adjust")

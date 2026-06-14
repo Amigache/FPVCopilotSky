@@ -6,9 +6,9 @@ every encoder / source provider does not shell out individually.
 """
 
 import logging
-import subprocess
 import threading
 from typing import Dict
+from app.utils.cmd import run_cmd
 
 logger = logging.getLogger(__name__)
 
@@ -64,26 +64,22 @@ def is_gst_element_available(element: str) -> bool:
         except Exception as e:
             logger.debug("Gst registry probe failed for %s, falling back to gst-inspect: %s", element, e)
 
-    try:
-        result = subprocess.run(
-            ["gst-inspect-1.0", element],
-            capture_output=True,
-            timeout=GST_INSPECT_TIMEOUT,
-        )
-        available = result.returncode == 0
-    except subprocess.TimeoutExpired:
+    stdout, stderr, returncode = run_cmd(
+        ["gst-inspect-1.0", element],
+        timeout=GST_INSPECT_TIMEOUT,
+        check=False,
+    )
+    available = returncode == 0
+    if not available and "Command timed out" in stderr:
         logger.warning(
             "gst-inspect-1.0 %s timed out after %ds (registry still building?)",
             element,
             GST_INSPECT_TIMEOUT,
         )
-        available = False
-    except FileNotFoundError:
+    elif not available and ("No such file or directory" in stderr or "not found" in stderr.lower()):
         logger.warning("gst-inspect-1.0 not found on PATH")
-        available = False
-    except Exception as e:  # pragma: no cover
-        logger.error("Error checking GStreamer element %s: %s", element, e)
-        available = False
+    elif not available and stderr:
+        logger.debug("gst-inspect-1.0 probe failed for %s: %s", element, stderr)
 
     with _gst_cache_lock:
         _gst_plugin_cache[element] = available

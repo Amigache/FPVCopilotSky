@@ -4,10 +4,14 @@ Stores serial connection, router outputs, and user preferences
 """
 
 import json
+import logging
 import os
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
+from app.utils.cmd import run_cmd
 import threading
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -140,15 +144,15 @@ class PreferencesService:
                 self._deep_merge(defaults, loaded)
                 self._preferences = defaults
 
-                print(f"✅ Loaded preferences from {self._config_path}")
+                logger.info("Preferences loaded", extra={"path": self._config_path})
             else:
                 # First run - create preferences file with defaults
-                print("📝 First run detected - creating preferences file")
+                logger.info("First run detected — creating preferences file")
                 self._preferences = self._default_preferences()
                 self._save()
-                print(f"✅ Created default preferences at {self._config_path}")
+                logger.info("Default preferences created", extra={"path": self._config_path})
         except Exception as e:
-            print(f"⚠️ Failed to load preferences: {e}")
+            logger.error("Failed to load preferences", extra={"error": str(e)})
             self._preferences = self._default_preferences()
 
     def _deep_merge(self, base: dict, override: dict):
@@ -171,7 +175,7 @@ class PreferencesService:
 
                     os.fsync(f.fileno())
         except Exception as e:
-            print(f"⚠️ Failed to save preferences: {e}")
+            logger.error("Failed to save preferences", extra={"error": str(e)})
 
     # ==================== Serial Configuration ====================
 
@@ -204,11 +208,13 @@ class PreferencesService:
                     and saved_config.get("baudrate") == baudrate
                     and saved_config.get("last_successful") == successful
                 ):
-                    print(f"✅ Serial preferences saved: {port} @ {baudrate} baud (successful={successful})")
+                    logger.info(
+                        "Serial config saved", extra={"port": port, "baudrate": baudrate, "successful": successful}
+                    )
                 else:
-                    print("⚠️ Serial preferences save verification failed")
+                    logger.warning("Serial config save verification failed", extra={"port": port})
         except Exception as e:
-            print(f"⚠️ Failed to save serial config: {e}")
+            logger.error("Failed to save serial config", extra={"error": str(e)})
 
     def set_serial_auto_connect(self, enabled: bool):
         """Enable/disable auto-connect."""
@@ -295,13 +301,19 @@ class PreferencesService:
                     # Find the camera by its name/bus_info
                     new_device = find_device_by_identity(saved_name, saved_bus)
                     if new_device:
-                        print(f"🔄 Camera '{saved_name}' moved: {device} → {new_device}")
+                        logger.info(
+                            "Camera device path updated",
+                            extra={"camera_name": saved_name, "old": device, "new": new_device},
+                        )
                         config["device"] = new_device
                         # Persist the corrected device path
                         self._preferences["video"]["device"] = new_device
                         self._save()
                     else:
-                        print(f"⚠️ Camera '{saved_name}' not found on any /dev/video* device")
+                        logger.warning(
+                            "Camera not found on any /dev/video* device",
+                            extra={"camera_name": saved_name},
+                        )
                         # Fallback: find any capture device
                         self._fallback_detect_device(config, device)
             elif device and not os.path.exists(device):
@@ -316,37 +328,35 @@ class PreferencesService:
     def _fallback_detect_device(self, config: Dict, old_device: str):
         """Fallback device detection when smart matching isn't possible."""
         import glob
-        import subprocess
 
         devices = sorted(glob.glob("/dev/video*"))
         if devices:
             for dev in devices:
                 try:
-                    result = subprocess.run(
+                    stdout, _, returncode = run_cmd(
                         ["v4l2-ctl", "--device", dev, "--info"],
-                        capture_output=True,
-                        text=True,
                         timeout=2,
+                        check=False,
                     )
-                    if result.returncode == 0 and "video capture" in result.stdout.lower():
+                    if returncode == 0 and "video capture" in stdout.lower():
                         config["device"] = dev
                         if old_device:
-                            print(f"⚠️ Video device {old_device} not found, using {dev}")
+                            logger.warning("Video device replaced", extra={"old": old_device, "new": dev})
                         else:
-                            print(f"ℹ️ Auto-detected video device: {dev}")
+                            logger.info("Video device auto-detected", extra={"device": dev})
                         break
                 except Exception:
                     continue
             else:
                 if old_device:
-                    print(f"⚠️ Video device {old_device} not found and no alternative detected")
+                    logger.warning("Video device not found, no alternative detected", extra={"device": old_device})
                 else:
-                    print("ℹ️ No video capture devices detected")
+                    logger.info("No video capture devices detected")
         else:
             if old_device:
-                print(f"⚠️ Video device {old_device} not found, no /dev/video* devices available")
+                logger.warning("Video device not found, no /dev/video* available", extra={"device": old_device})
             else:
-                print("ℹ️ No video devices detected")
+                logger.info("No video devices detected")
 
     def set_video_config(self, config: Dict[str, Any]):
         """Set video configuration."""
@@ -363,7 +373,7 @@ class PreferencesService:
                 self._preferences["video"] = self._default_preferences()["video"]
             self._preferences["video"]["auto_adaptive_bitrate"] = enabled
             self._save()
-            print(f"✅ Auto-adaptive bitrate: {'enabled' if enabled else 'disabled'}")
+            logger.info("Auto-adaptive bitrate updated", extra={"enabled": enabled})
 
     def get_auto_adaptive_bitrate(self) -> bool:
         """Get auto-adaptive bitrate setting."""
@@ -377,7 +387,7 @@ class PreferencesService:
                 self._preferences["video"] = self._default_preferences()["video"]
             self._preferences["video"]["auto_adaptive_resolution"] = enabled
             self._save()
-            print(f"✅ Auto-adaptive resolution: {'enabled' if enabled else 'disabled'}")
+            logger.info("Auto-adaptive resolution updated", extra={"enabled": enabled})
 
     def get_auto_adaptive_resolution(self) -> bool:
         """Get auto-adaptive resolution setting."""
@@ -406,11 +416,11 @@ class PreferencesService:
                 auto_start = config.get("auto_start", False)
 
                 if saved.get("enabled") == enabled and saved.get("auto_start") == auto_start:
-                    print(f"✅ Streaming preferences saved: enabled={enabled}, auto_start={auto_start}")
+                    logger.info("Streaming config saved", extra={"enabled": enabled, "auto_start": auto_start})
                 else:
-                    print("⚠️ Streaming preferences save verification failed")
+                    logger.warning("Streaming config save verification failed")
         except Exception as e:
-            print(f"⚠️ Failed to save streaming config: {e}")
+            logger.error("Failed to save streaming config", extra={"error": str(e)})
 
     # ==================== VPN Configuration ====================
 
@@ -439,13 +449,14 @@ class PreferencesService:
                     and saved.get("enabled") == enabled
                     and saved.get("auto_connect") == auto_connect
                 ):
-                    print(
-                        f"✅ VPN preferences saved: provider={provider}, enabled={enabled}, auto_connect={auto_connect}"
+                    logger.info(
+                        "VPN config saved",
+                        extra={"provider": provider, "enabled": enabled, "auto_connect": auto_connect},
                     )
                 else:
-                    print("⚠️ VPN preferences save verification failed")
+                    logger.warning("VPN config save verification failed", extra={"provider": provider})
         except Exception as e:
-            print(f"⚠️ Failed to save VPN config: {e}")
+            logger.error("Failed to save VPN config", extra={"error": str(e)})
 
     def set_vpn_provider(self, provider: str):
         """Set VPN provider (e.g., 'tailscale', 'zerotier', 'wireguard', or '' for none)."""
@@ -554,15 +565,15 @@ class PreferencesService:
                     import shutil
 
                     shutil.copy2(self._config_path, backup_path)
-                    print(f"📦 Backed up preferences to {backup_path}")
+                    logger.info("Preferences backed up", extra={"backup": backup_path})
 
                 # Reset to defaults
                 self._preferences = self._default_preferences()
                 self._save()
-                print("✅ Preferences reset to defaults")
+                logger.info("Preferences reset to defaults")
                 return True
         except Exception as e:
-            print(f"⚠️ Failed to reset preferences: {e}")
+            logger.error("Failed to reset preferences", extra={"error": str(e)})
             return False
 
 

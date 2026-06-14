@@ -11,6 +11,7 @@ Real WebRTC implementation using aiortc:
 """
 
 import asyncio
+import logging
 import time
 import threading
 import uuid
@@ -19,6 +20,8 @@ import math
 import queue as thread_queue
 from typing import Optional, Dict, Any, List
 from dataclasses import dataclass, field
+
+logger = logging.getLogger(__name__)
 
 try:
     from aiortc import RTCPeerConnection, RTCSessionDescription
@@ -343,9 +346,9 @@ class WebRTCService:
         self._adaptive_gop_interval: float = 2.0  # seconds between keyframes
 
         if AIORTC_AVAILABLE:
-            print("✅ WebRTC service initialized (aiortc available)")
+            logger.info("WebRTC service initialized with aiortc available")
         else:
-            print("⚠️ WebRTC service initialized (aiortc NOT available)")
+            logger.warning("WebRTC service initialized without aiortc available")
 
     # ── Video Track & H264 Queue ───────────────────────────────────────────
 
@@ -424,7 +427,7 @@ class WebRTCService:
         self.is_active = True
         self._start_stats_monitor()
         self._add_log("info", "WebRTC service activated")
-        print("🔗 WebRTC service activated")
+        logger.info("WebRTC service activated")
 
     def deactivate(self):
         self.is_active = False
@@ -451,7 +454,7 @@ class WebRTCService:
             self._h264_queue = None
 
         self._add_log("info", "WebRTC service deactivated")
-        print("🔗 WebRTC service deactivated")
+        logger.info("WebRTC service deactivated")
 
     # ── Peer Management (aiortc) ─────────────────────────────────────────────
 
@@ -622,7 +625,7 @@ class WebRTCService:
 
             return "\r\n".join(result)
         except Exception as e:
-            print(f"⚠️ SDP modification failed: {e}")
+            logger.warning("SDP modification failed", extra={"error": str(e)})
             return sdp
 
     def _install_passthrough_encoder(self, pc: "RTCPeerConnection"):
@@ -635,7 +638,7 @@ class WebRTCService:
         try:
             h264_queue = getattr(self, "_h264_queue", None)
             if not h264_queue:
-                print("⚠️ No H264 queue available for passthrough encoder")
+                logger.warning("No H264 queue available for passthrough encoder")
                 return
 
             for sender in pc.getSenders():
@@ -643,17 +646,14 @@ class WebRTCService:
                     passthrough = H264PassthroughEncoder(h264_queue)
                     # Access private attribute (name-mangled)
                     sender._RTCRtpSender__encoder = passthrough
-                    print("✅ Installed H264 passthrough encoder on sender")
+                    logger.info("Installed H264 passthrough encoder on sender")
 
             # Force keyframe so the new peer gets SPS/PPS/IDR immediately
             if self._gstreamer_service:
                 self._gstreamer_service.force_keyframe()
 
         except Exception as e:
-            print(f"⚠️ Failed to install passthrough encoder: {e}")
-            import traceback
-
-            traceback.print_exc()
+            logger.exception("Failed to install passthrough encoder", extra={"error": str(e)})
 
     async def add_ice_candidate(self, peer_id: str, candidate: Dict) -> Dict[str, Any]:
         """Add ICE candidate from browser to the aiortc peer connection."""
@@ -971,7 +971,7 @@ class WebRTCService:
 
     def shutdown(self):
         self.deactivate()
-        print("🛑 WebRTC service shutdown")
+        logger.info("WebRTC service shutdown")
 
 
 # Global instance
