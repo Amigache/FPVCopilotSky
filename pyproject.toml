@@ -36,6 +36,7 @@ markers = [
     "slow: mark test as slow running",
     "integration: mark test as integration test",
     "unit: mark test as unit test",
+    "e2e: mark test as end-to-end workflow test",
 ]
 asyncio_mode = "auto"
 

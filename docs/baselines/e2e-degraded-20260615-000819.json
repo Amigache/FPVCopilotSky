@@ -1,0 +1,43 @@
+{
+  "generated_at": "2026-06-15T00:08:34.908181",
+  "suite": "tests/test_e2e_degraded_workflows.py",
+  "total_scenarios": 4,
+  "passed_scenarios": 4,
+  "success_rate_pct": 100.0,
+  "recovery_time_ms": {
+    "p50": 65.564,
+    "p95": 102.314,
+    "mean": 93.399,
+    "max": 141.857
+  },
+  "scenarios": [
+    {
+      "scenario": "network_status_timeout_then_recovery",
+      "degradation_type": "connectivity_loss_timeout",
+      "success": true,
+      "attempts_to_recover": 3,
+      "recovery_ms": 141.857
+    },
+    {
+      "scenario": "failover_priority_timeout_then_recovery",
+      "degradation_type": "route_update_timeout",
+      "success": true,
+      "attempts_to_recover": 2,
+      "recovery_ms": 63.862
+    },
+    {
+      "scenario": "stream_start_timeout_then_recovery",
+      "degradation_type": "stream_recovery",
+      "success": true,
+      "attempts_to_recover": 3,
+      "recovery_ms": 102.314
+    },
+    {
+      "scenario": "vpn_reconnect_after_timeout",
+      "degradation_type": "reconnection_timeout",
+      "success": true,
+      "attempts_to_recover": 2,
+      "recovery_ms": 65.564
+    }
+  ]
+}
