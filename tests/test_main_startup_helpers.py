@@ -516,3 +516,148 @@ def test_auto_start_video_handles_failure(monkeypatch):
 
     main_module.video_service.start.assert_called_once()
     main_module.video_service.get_status.assert_not_called()
+
+
+# ── Tests for domain-scoped startup helpers (#33) ────────────────────────────
+
+
+def test_startup_init_board_returns_detected_board(monkeypatch):
+    """_startup_init_board returns the detected board when hardware is found."""
+    fake_board = types.SimpleNamespace(
+        board_name="Radxa Zero",
+        board_identifier="radxa_zero_amlogic_s905y2",
+        variant=types.SimpleNamespace(
+            name="Armbian 22.08",
+            storage_type=types.SimpleNamespace(value="emmc"),
+            video_sources=[],
+            video_encoders=[],
+        ),
+        hardware=types.SimpleNamespace(
+            cpu_cores=4,
+            cpu_model="S905Y2",
+            ram_gb=4,
+            storage_gb=16,
+        ),
+    )
+    monkeypatch.setattr(
+        main_module, "BoardRegistry", lambda: types.SimpleNamespace(get_detected_board=lambda: fake_board)
+    )
+    prefs = types.SimpleNamespace(get_serial_config=lambda: types.SimpleNamespace(port="/dev/ttyS0"))
+
+    result = main_module._startup_init_board(prefs)
+
+    assert result is fake_board
+
+
+def test_startup_init_board_returns_none_on_detection_failure(monkeypatch):
+    """_startup_init_board returns None without raising when board detection fails."""
+
+    def _raise():
+        raise RuntimeError("board error")
+
+    monkeypatch.setattr(main_module, "BoardRegistry", _raise)
+    prefs = types.SimpleNamespace(get_serial_config=lambda: types.SimpleNamespace(port=None))
+
+    result = main_module._startup_init_board(prefs)
+
+    assert result is None
+
+
+def test_startup_init_providers_registers_all(monkeypatch):
+    """_startup_init_providers registers VPN, Modem, Network, and Video providers."""
+    registry = types.SimpleNamespace(
+        register_vpn_provider=MagicMock(),
+        register_modem_provider=MagicMock(),
+        register_network_interface=MagicMock(),
+    )
+    monkeypatch.setattr(main_module, "init_provider_registry", lambda: registry)
+
+    result = main_module._startup_init_providers()
+
+    assert result is registry
+    registry.register_vpn_provider.assert_called_once_with("tailscale", main_module.TailscaleProvider)
+    registry.register_modem_provider.assert_called_once_with("huawei_e3372h", main_module.HuaweiE3372hProvider)
+    assert registry.register_network_interface.call_count == 4
+
+
+def test_startup_init_core_services_wires_all_routes(monkeypatch):
+    """_startup_init_core_services initialises and injects all core services into routes."""
+    router_svc = types.SimpleNamespace(set_status_callback=MagicMock())
+    mav_svc = types.SimpleNamespace(set_router=MagicMock())
+    vid_svc = types.SimpleNamespace(
+        set_opencv_service=MagicMock(),
+        configure=MagicMock(),
+    )
+    webrtc_svc = types.SimpleNamespace()
+    opencv_svc = types.SimpleNamespace(
+        set_telemetry_service=MagicMock(),
+    )
+    vid_stream_info = types.SimpleNamespace(start=MagicMock())
+    flight_logger = types.SimpleNamespace(log_directory="/tmp/logs")
+
+    monkeypatch.setattr(main_module, "get_router", lambda: router_svc)
+    monkeypatch.setattr(main_module, "MAVLinkBridge", lambda *_: mav_svc)
+    monkeypatch.setattr(main_module, "FlightDataLogger", lambda *_: flight_logger)
+    monkeypatch.setattr(main_module, "init_webrtc_service", lambda *_: webrtc_svc)
+    monkeypatch.setattr(main_module, "init_gstreamer_service", lambda *_: vid_svc)
+    monkeypatch.setattr(main_module, "init_video_stream_info_service", lambda *_: vid_stream_info)
+    monkeypatch.setattr(main_module, "init_opencv_service", lambda: opencv_svc)
+    monkeypatch.setattr(main_module.mavlink, "set_mavlink_service", MagicMock())
+    monkeypatch.setattr(main_module.router_routes, "set_router_service", MagicMock())
+    monkeypatch.setattr(main_module.webrtc_routes, "set_webrtc_service", MagicMock())
+    monkeypatch.setattr(main_module.video_routes, "set_video_service", MagicMock())
+    monkeypatch.setattr(main_module.experimental_routes, "set_opencv_service", MagicMock())
+
+    prefs = types.SimpleNamespace(
+        get_all_preferences=lambda: {},
+        get_video_config=lambda: None,
+        get_streaming_config=lambda: None,
+        set_video_config=MagicMock(),
+    )
+    registry = types.SimpleNamespace(
+        get_modem_provider=lambda _: None,
+        get_video_encoder=lambda _: None,
+    )
+
+    r, m, v, sc = main_module._startup_init_core_services(registry, prefs, object())
+
+    assert r is router_svc
+    assert m is mav_svc
+    assert v is vid_svc
+    assert sc is None
+    vid_stream_info.start.assert_called_once()
+    main_module.mavlink.set_mavlink_service.assert_called_once_with(mav_svc)
+    main_module.router_routes.set_router_service.assert_called_once_with(router_svc)
+
+
+@pytest.mark.asyncio
+async def test_lifespan_shutdown_stops_latency_and_webrtc(monkeypatch):
+    """_lifespan_shutdown calls latency_monitor.stop() and webrtc_service.shutdown()."""
+    monkeypatch.setattr(main_module, "stop_auto_failover", AsyncMock())
+
+    modem_pool = types.SimpleNamespace(stop=AsyncMock())
+    modem_pool_module = __import__("app.services.modem_pool", fromlist=["get_modem_pool"])
+    monkeypatch.setattr(modem_pool_module, "get_modem_pool", lambda: modem_pool)
+
+    policy_manager = types.SimpleNamespace(_initialized=False)
+    policy_module = __import__("app.services.policy_routing_manager", fromlist=["get_policy_routing_manager"])
+    monkeypatch.setattr(policy_module, "get_policy_routing_manager", lambda: policy_manager)
+
+    event_bridge = types.SimpleNamespace(stop=AsyncMock())
+    monkeypatch.setattr(main_module, "get_network_event_bridge", lambda: event_bridge)
+
+    latency_monitor = types.SimpleNamespace(stop=AsyncMock())
+    monkeypatch.setattr(main_module, "get_latency_monitor", lambda: latency_monitor)
+
+    webrtc_svc = types.SimpleNamespace(shutdown=MagicMock())
+    monkeypatch.setattr(main_module, "get_webrtc_service", lambda: webrtc_svc)
+
+    monkeypatch.setattr(main_module, "get_video_stream_info_service", lambda: None)
+    main_module.video_service = None
+    main_module.router_service = None
+    main_module.mavlink_service = None
+
+    await main_module._lifespan_shutdown()
+
+    latency_monitor.stop.assert_awaited_once()
+    webrtc_svc.shutdown.assert_called_once()

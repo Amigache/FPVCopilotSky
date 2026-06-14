@@ -39,7 +39,7 @@ from app.services.websocket_manager import websocket_manager  # noqa: E402
 from app.services.preferences import get_preferences  # noqa: E402
 from app.services.serial_detector import get_detector  # noqa: E402
 from app.services.gstreamer_service import init_gstreamer_service  # noqa: E402, F401
-from app.services.webrtc_service import init_webrtc_service  # noqa: E402
+from app.services.webrtc_service import init_webrtc_service, get_webrtc_service  # noqa: E402
 from app.services.video_stream_info import (  # noqa: E402
     init_video_stream_info_service,
     get_video_stream_info_service,
@@ -267,70 +267,26 @@ def _log_banner(msg: str) -> None:
     logger.info(sep)
 
 
-async def _lifespan_shutdown():
-    """Clean shutdown of all application services."""
-    _log_banner("🛑  FPV COPILOT SKY  —  SHUTTING DOWN")
-    try:
-        from app.services.modem_pool import get_modem_pool
-
-        await get_modem_pool().stop()
-    except Exception:
-        pass
-    try:
-        await stop_auto_failover()
-    except Exception:
-        pass
-    try:
-        from app.services.policy_routing_manager import get_policy_routing_manager
-
-        policy_manager = get_policy_routing_manager()
-        if policy_manager._initialized:
-            await policy_manager.cleanup()
-    except Exception:
-        pass
-    try:
-        await get_network_event_bridge().stop()
-    except Exception:
-        pass
-    svc = get_video_stream_info_service()
-    if svc:
-        svc.stop()
-    if video_service:
-        video_service.shutdown()
-    if router_service:
-        router_service.shutdown()
-    if mavlink_service and mavlink_service.is_connected():
-        mavlink_service.disconnect()
+# ── Domain-scoped startup helpers ────────────────────────────────────────────
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Application lifespan context manager for startup and shutdown"""
-    # Startup
-    global mavlink_service, router_service, preferences_service, video_service, detected_board
-    loop = asyncio.get_event_loop()
-    _startup_t0 = time.monotonic()
+def _startup_init_board(preferences_service):
+    """Detect hardware board and apply board-specific serial defaults.
 
-    _log_banner(f"🚀  FPV COPILOT SKY  —  STARTING  (v{_read_version()})")
-
-    # Initialize preferences first
-    preferences_service = get_preferences()
-
-    # Initialize Board Provider detection
-    # This detects the hardware platform and capabilities
+    Returns detected_board (or None on failure).
+    """
+    detected = None
     try:
         board_registry = BoardRegistry()
-        detected_board = board_registry.get_detected_board()
-        if detected_board:
-            logger.info(f" Board detected: {detected_board.board_name}")
-            logger.info(f"   - Variant: {detected_board.variant.name}")
-            logger.info(f"   - CPU: {detected_board.hardware.cpu_cores} cores @ {detected_board.hardware.cpu_model}")
-            logger.info(f"   - RAM: {detected_board.hardware.ram_gb}GB")
-            logger.info(
-                f"   - Storage: {detected_board.hardware.storage_gb}GB ({detected_board.variant.storage_type.value})"
-            )
-            logger.info(f"   - Video Sources: {', '.join([f.value for f in detected_board.variant.video_sources])}")
-            logger.info(f"   - Video Encoders: {', '.join([f.value for f in detected_board.variant.video_encoders])}")
+        detected = board_registry.get_detected_board()
+        if detected:
+            logger.info(f" Board detected: {detected.board_name}")
+            logger.info(f"   - Variant: {detected.variant.name}")
+            logger.info(f"   - CPU: {detected.hardware.cpu_cores} cores @ {detected.hardware.cpu_model}")
+            logger.info(f"   - RAM: {detected.hardware.ram_gb}GB")
+            logger.info(f"   - Storage: {detected.hardware.storage_gb}GB ({detected.variant.storage_type.value})")
+            logger.info(f"   - Video Sources: {', '.join([f.value for f in detected.variant.video_sources])}")
+            logger.info(f"   - Video Encoders: {', '.join([f.value for f in detected.variant.video_encoders])}")
         else:
             logger.warning("  No board detected - using generic configuration")
     except Exception as e:
@@ -341,7 +297,7 @@ async def lifespan(app: FastAPI):
     # no explicit serial preference exists yet.
     try:
         serial_cfg = preferences_service.get_serial_config()
-        if detected_board and detected_board.board_identifier == "radxa_zero_3w" and not serial_cfg.port:
+        if detected and detected.board_identifier == "radxa_zero_3w" and not serial_cfg.port:
             kernel_console_ports = set()
             try:
                 with open("/proc/cmdline", "r") as f:
@@ -368,24 +324,28 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.debug(f"Serial default preconfiguration skipped: {e}")
 
-    # Initialize provider registry (VPN, Modem, Network providers)
+    return detected
+
+
+def _startup_init_providers():
+    """Register all hardware and service providers.
+
+    Returns the initialised provider_registry.
+    """
     provider_registry = init_provider_registry()
-
-    # Register VPN providers
     provider_registry.register_vpn_provider("tailscale", TailscaleProvider)
-
-    # Register Modem providers
     provider_registry.register_modem_provider("huawei_e3372h", HuaweiE3372hProvider)
-
-    # Register Network Interface providers
     provider_registry.register_network_interface("ethernet", EthernetInterface)
     provider_registry.register_network_interface("wifi", WiFiInterface)
     provider_registry.register_network_interface("vpn", VPNInterface)
     provider_registry.register_network_interface("modem", ModemInterface)
 
-    # Initialize Video providers (auto-register from registry_init modules)
-    from app.providers import video_registry_init  # noqa: E402, F401
-    from app.providers import video_source_registry_init  # noqa: E402, F401
+    # Video providers auto-register via their registry_init module import.
+    # NOTE: get_available_video_encoders() is intentionally NOT called here —
+    # it runs gst-inspect-1.0 / v4l2-ctl chains that can block for minutes on
+    # first boot while GStreamer rebuilds its plugin registry.
+    from app.providers import video_registry_init  # noqa: F401
+    from app.providers import video_source_registry_init  # noqa: F401
 
     logger.info(" Provider registry initialized:")
     logger.info("   - VPN: Tailscale")
@@ -393,67 +353,48 @@ async def lifespan(app: FastAPI):
     logger.info("   - Network Interfaces: Ethernet, WiFi, VPN, Modem")
     logger.info("   - Video Sources: V4L2, LibCamera, HDMI Capture, Network Stream")
     logger.info("   - Video Encoders: (probing in background, non-blocking)")
+    return provider_registry
 
-    # NOTE: get_available_video_encoders() is intentionally NOT called here.
-    # It runs gst-inspect-1.0 / v4l2-ctl subprocess chains that can block the
-    # event loop for several minutes on first boot while GStreamer rebuilds its
-    # plugin registry.  The background task below handles this after startup.
 
-    # Create router for additional outputs (uses preferences for config)
-    router_service = get_router()
+def _startup_init_core_services(provider_registry, preferences_service, loop):
+    """Initialize routing, telemetry, and media services.
 
-    # Create MAVLink bridge
-    mavlink_service = MAVLinkBridge(websocket_manager, loop)
+    Returns (router_service, mavlink_service, video_service, streaming_config).
+    """
+    # ── Routing & telemetry ───────────────────────────────────────────────────
+    router_svc = get_router()
+    mav_svc = MAVLinkBridge(websocket_manager, loop)
+    mav_svc.set_router(router_svc)
 
-    # Connect router to bridge for forwarding
-    mavlink_service.set_router(router_service)
-
-    # Initialize flight data logger for CSV recording
     flight_prefs = preferences_service.get_all_preferences().get("flight_session", {})
     log_directory = flight_prefs.get("log_directory", "")
-    flight_logger = FlightDataLogger(mavlink_service, log_directory)
+    flight_logger = FlightDataLogger(mav_svc, log_directory)
 
-    # Configure modem provider with flight logger
     modem_provider = provider_registry.get_modem_provider("huawei_e3372h")
     if modem_provider:
         modem_provider.set_flight_logger(flight_logger)
         logger.info(f" Flight data logger configured: {flight_logger.log_directory}")
 
-    # Initialize WebRTC signaling service
-    webrtc_service = init_webrtc_service(websocket_manager, loop)
-    webrtc_routes.set_webrtc_service(webrtc_service)
+    # ── Media services ────────────────────────────────────────────────────────
+    webrtc_svc = init_webrtc_service(websocket_manager, loop)
+    webrtc_routes.set_webrtc_service(webrtc_svc)
 
-    # Initialize video streaming service
-    video_service = init_gstreamer_service(websocket_manager, loop, webrtc_service)
-    video_routes.set_video_service(video_service)
+    vid_svc = init_gstreamer_service(websocket_manager, loop, webrtc_svc)
+    video_routes.set_video_service(vid_svc)
 
-    # Initialize video stream information service (for MAVLink VIDEO_STREAM_INFORMATION)
-    video_stream_info_service = init_video_stream_info_service(mavlink_service, video_service)
-    video_stream_info_service.start()
+    vid_stream_info = init_video_stream_info_service(mav_svc, vid_svc)
+    vid_stream_info.start()
 
-    # Initialize OpenCV service for experimental video processing
-    opencv_service = init_opencv_service()
-    experimental_routes.set_opencv_service(opencv_service)
-    # Connect OpenCV service to video streaming
-    video_service.set_opencv_service(opencv_service)
-    # Connect OpenCV service to telemetry for OSD
-    opencv_service.set_telemetry_service(mavlink_service)
+    opencv_svc = init_opencv_service()
+    experimental_routes.set_opencv_service(opencv_svc)
+    vid_svc.set_opencv_service(opencv_svc)
+    opencv_svc.set_telemetry_service(mav_svc)
     logger.info(" OpenCV service initialized and connected to video stream and telemetry")
 
-    # Initialize Network Event Bridge + optional FASE services
-    latency_monitor = await _startup_init_network_bridge(
-        modem_provider, video_service, webrtc_service, websocket_manager
-    )
-    await _startup_init_optional_services(preferences_service, modem_provider, latency_monitor)
-    await _startup_init_auto_failover(preferences_service)
-
-    # Load video config from preferences
+    # ── Video configuration ───────────────────────────────────────────────────
     video_config = preferences_service.get_video_config()
     streaming_config = preferences_service.get_streaming_config()
 
-    # Prefer hardware H.264 by default when available.
-    # If preferences still store generic 'h264', migrate to explicit
-    # 'h264_hardware' so UI and runtime consistently use hardware path.
     try:
         requested_codec = (video_config or {}).get("codec")
         if requested_codec in (None, "", "h264", "x264"):
@@ -469,38 +410,97 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Could not auto-select hardware H.264 as default: {e}")
 
     if video_config or streaming_config:
-        video_service.configure(video_config=video_config, streaming_config=streaming_config)
+        vid_svc.configure(video_config=video_config, streaming_config=streaming_config)
 
-    # Set callback to broadcast router status changes via WebSocket (for immediate updates)
-    router_service.set_status_callback(lambda: _broadcast_router_status(loop))
-
-    # Start periodic stats broadcast task
-    asyncio.create_task(periodic_stats_broadcast())
-
-    # Inject services into routes
-    mavlink.set_mavlink_service(mavlink_service)
-    router_routes.set_router_service(router_service)
-
+    # ── Inject services into routes ───────────────────────────────────────────
+    mavlink.set_mavlink_service(mav_svc)
+    router_routes.set_router_service(router_svc)
     logger.info(" Router ready for outputs")
     logger.info(" VPN service initialized")
 
-    # Auto-start video if configured
-    if streaming_config and streaming_config.get("auto_start", False):
-        logger.info("📹 Video auto-start enabled in preferences")
-        threading.Thread(target=_auto_start_video, daemon=True, name="VideoAutoStart").start()
-    else:
-        logger.info(" Video auto-start disabled in preferences")
+    return router_svc, mav_svc, vid_svc, streaming_config
 
-    # Start background auto-connect threads
-    threading.Thread(target=auto_connect_vpn, daemon=True, name="VPNAutoConnect").start()
-    threading.Thread(target=auto_connect_serial, daemon=True, name="AutoConnect").start()
 
-    # Probe encoder availability in a thread pool so gst-inspect-1.0 / v4l2-ctl
-    # subprocess chains never block the event loop.
+async def _lifespan_shutdown():
+    """Clean shutdown of all application services."""
+    _log_banner("🛑  FPV COPILOT SKY  —  SHUTTING DOWN")
+    try:
+        from app.services.modem_pool import get_modem_pool
+
+        await get_modem_pool().stop()
+    except Exception:
+        pass
+    try:
+        await stop_auto_failover()
+    except Exception:
+        pass
+    try:
+        from app.services.policy_routing_manager import get_policy_routing_manager
+
+        policy_manager = get_policy_routing_manager()
+        if policy_manager._initialized:
+            await policy_manager.cleanup()
+    except Exception:
+        pass
+    try:
+        await get_network_event_bridge().stop()
+    except Exception:
+        pass
+    try:
+        await get_latency_monitor().stop()
+    except Exception:
+        pass
+    try:
+        ws = get_webrtc_service()
+        if ws:
+            ws.shutdown()
+    except Exception:
+        pass
+    svc = get_video_stream_info_service()
+    if svc:
+        svc.stop()
+    if video_service:
+        video_service.shutdown()
+    if router_service:
+        router_service.shutdown()
+    if mavlink_service and mavlink_service.is_connected():
+        mavlink_service.disconnect()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan context manager for startup and shutdown."""
+    global mavlink_service, router_service, preferences_service, video_service, detected_board
+    loop = asyncio.get_running_loop()
+    _startup_t0 = time.monotonic()
+
+    _log_banner(f"🚀  FPV COPILOT SKY  —  STARTING  (v{_read_version()})")
+
+    # ── Domain-scoped startup ─────────────────────────────────────────────────
+    preferences_service = get_preferences()
+    detected_board = _startup_init_board(preferences_service)
+    provider_registry = _startup_init_providers()
+    router_service, mavlink_service, video_service, streaming_config = _startup_init_core_services(
+        provider_registry, preferences_service, loop
+    )
+
+    modem_provider = provider_registry.get_modem_provider("huawei_e3372h")
+    latency_monitor = await _startup_init_network_bridge(
+        modem_provider, video_service, get_webrtc_service(), websocket_manager
+    )
+    await _startup_init_optional_services(preferences_service, modem_provider, latency_monitor)
+    await _startup_init_auto_failover(preferences_service)
+
+    # ── Background tasks ──────────────────────────────────────────────────────
+    router_service.set_status_callback(lambda: _broadcast_router_status(loop))
+    asyncio.create_task(periodic_stats_broadcast())
+
+    # Probe encoder availability — gst-inspect-1.0 / v4l2-ctl chains must not
+    # block the event loop so they run in the thread-pool executor.
     async def _probe_encoders_background():
         try:
-            _loop = asyncio.get_event_loop()
-            available = await _loop.run_in_executor(None, provider_registry.get_available_video_encoders)
+            _bg_loop = asyncio.get_running_loop()
+            available = await _bg_loop.run_in_executor(None, provider_registry.get_available_video_encoders)
             names = [e["display_name"] for e in available if e["available"]]
             logger.info(f" Video encoders ready: {', '.join(names) if names else 'none available'}")
         except Exception as _e:
@@ -508,20 +508,28 @@ async def lifespan(app: FastAPI):
 
     asyncio.create_task(_probe_encoders_background())
 
-    # Warm up video device inventory in background to reduce first-open latency
-    # in the Video tab after reboot.
+    # Warm up video device inventory in background to reduce first-open latency.
     async def _warm_video_devices_background():
         try:
             from app.services.video_device_service import get_video_device_service
 
-            _loop = asyncio.get_event_loop()
+            _bg_loop = asyncio.get_running_loop()
             service = get_video_device_service()
-            await _loop.run_in_executor(None, service.scan_devices)
+            await _bg_loop.run_in_executor(None, service.scan_devices)
             logger.info(" Video device inventory warmed in background")
         except Exception as _e:
             logger.warning(f"  Video device warmup error (non-fatal): {_e}")
 
     asyncio.create_task(_warm_video_devices_background())
+
+    if streaming_config and streaming_config.get("auto_start", False):
+        logger.info("📹 Video auto-start enabled in preferences")
+        threading.Thread(target=_auto_start_video, daemon=True, name="VideoAutoStart").start()
+    else:
+        logger.info(" Video auto-start disabled in preferences")
+
+    threading.Thread(target=auto_connect_vpn, daemon=True, name="VPNAutoConnect").start()
+    threading.Thread(target=auto_connect_serial, daemon=True, name="AutoConnect").start()
 
     _startup_elapsed = time.monotonic() - _startup_t0
     _log_banner(f"✅  FPV COPILOT SKY  —  READY  (startup: {_startup_elapsed:.1f}s)")
