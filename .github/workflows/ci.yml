@@ -79,8 +79,9 @@ jobs:
     name: 🧪 Test Python Backend
     runs-on: ubuntu-latest
     env:
-      COVERAGE_GATE_CURRENT: "17"
-      COVERAGE_GATE_NEXT: "20"
+      COVERAGE_GATE_CURRENT: "35"
+      COVERAGE_GATE_NEXT: "40"
+      COVERAGE_GATE_FINAL: "50"
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -131,12 +132,11 @@ jobs:
         run: |
           python3 - <<'PY'
           import os
-          import re
-          import sys
           import xml.etree.ElementTree as ET
 
           current = float(os.environ.get("COVERAGE_GATE_CURRENT", "17"))
           nxt = float(os.environ.get("COVERAGE_GATE_NEXT", "20"))
+          final = float(os.environ.get("COVERAGE_GATE_FINAL", "50"))
 
           tree = ET.parse("coverage.xml")
           root = tree.getroot()
@@ -145,6 +145,7 @@ jobs:
 
           print(f"Current hard gate: {current:.1f}%")
           print(f"Next target (warning-only): {nxt:.1f}%")
+            print(f"Final roadmap target: {final:.1f}%")
           print(f"Measured coverage: {total_pct:.2f}%")
 
           if total_pct < nxt:
@@ -154,6 +155,9 @@ jobs:
               )
           else:
               print("Next target reached. Safe to raise hard gate in next iteration.")
+
+            remaining = max(0.0, final - total_pct)
+            print(f"Remaining to final target: {remaining:.2f}%")
           PY
 
       - name: Upload coverage to Codecov
@@ -299,3 +303,20 @@ jobs:
           echo "Test Frontend: ${{ needs.test-frontend.result }}"
           echo "Build Frontend: ${{ needs.build-frontend.result }}"
           echo "Security Scan: ${{ needs.security-scan.result }}"
+
+          REQUIRED_RESULTS=(
+            "${{ needs.lint-backend.result }}"
+            "${{ needs.lint-frontend.result }}"
+            "${{ needs.test-backend.result }}"
+            "${{ needs.test-frontend.result }}"
+            "${{ needs.build-frontend.result }}"
+          )
+
+          for result in "${REQUIRED_RESULTS[@]}"; do
+            if [[ "$result" != "success" ]]; then
+              echo "❌ Mandatory CI checks failed"
+              exit 1
+            fi
+          done
+
+          echo "✅ Mandatory CI checks passed"
