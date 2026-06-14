@@ -37,6 +37,7 @@ markers = [
     "integration: mark test as integration test",
     "unit: mark test as unit test",
     "e2e: mark test as end-to-end workflow test",
+    "contract: mark provider/API contract conformance tests",
 ]
 asyncio_mode = "auto"
 
