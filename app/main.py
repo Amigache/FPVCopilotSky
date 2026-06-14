@@ -711,7 +711,7 @@ async def _broadcast_vpn_status():
         if provider_name:
             vpn_provider = registry.get_vpn_provider(provider_name)
             if vpn_provider:
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 vpn_status = await loop.run_in_executor(None, vpn_provider.get_status)
                 await websocket_manager.broadcast("vpn_status", vpn_status)
     except Exception as e:
@@ -814,7 +814,7 @@ async def _broadcast_modem_status():
             modem_data["traffic"] = traffic_info
 
         # Add band/mode data (single extra call, reuses connection)
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         band_data = await loop.run_in_executor(None, modem_provider.get_current_band)
         if band_data:
             modem_data["current_band"] = band_data
@@ -853,7 +853,7 @@ async def periodic_stats_broadcast():
     """
     _COUNTER_RESET = 210  # LCM(2,3,5,7,10,30) — period resets cleanly
     counter = 0
-    _loop = asyncio.get_event_loop()
+    _loop = asyncio.get_running_loop()
 
     while True:
         await asyncio.sleep(1)
@@ -863,6 +863,7 @@ async def periodic_stats_broadcast():
         if not websocket_manager.has_clients:
             continue
 
+        _tick_t0 = time.monotonic()
         try:
             # ── every 2 s: fast in-memory state ─────────────────────────────
             if counter % 2 == 0 and router_service:
@@ -929,6 +930,27 @@ async def periodic_stats_broadcast():
 
         except Exception:
             logger.error("Error in periodic broadcast", exc_info=True)
+        finally:
+            _tick_elapsed_ms = int((time.monotonic() - _tick_t0) * 1000)
+            _clients = websocket_manager.client_count
+            if _tick_elapsed_ms > 200:
+                logger.warning(
+                    "Slow broadcast tick",
+                    extra={
+                        "tick": counter,
+                        "elapsed_ms": _tick_elapsed_ms,
+                        "clients": _clients,
+                    },
+                )
+            else:
+                logger.debug(
+                    "Broadcast tick",
+                    extra={
+                        "tick": counter,
+                        "elapsed_ms": _tick_elapsed_ms,
+                        "clients": _clients,
+                    },
+                )
 
 
 def auto_connect_vpn():
