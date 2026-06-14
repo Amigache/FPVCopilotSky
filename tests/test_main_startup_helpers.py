@@ -318,3 +318,201 @@ async def test_lifespan_shutdown_calls_services(monkeypatch):
     main_module.video_service.shutdown.assert_called_once()
     main_module.router_service.shutdown.assert_called_once()
     main_module.mavlink_service.disconnect.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_startup_init_optional_services_all_enabled(monkeypatch):
+    prefs = types.SimpleNamespace(
+        get_all_preferences=lambda: {
+            "network": {
+                "policy_routing_enabled": True,
+                "vpn_health_check_enabled": True,
+            }
+        }
+    )
+
+    modem_pool = types.SimpleNamespace(set_services=MagicMock(), start=AsyncMock())
+    policy_manager = types.SimpleNamespace(initialize=AsyncMock(return_value=True))
+    vpn_checker = types.SimpleNamespace(
+        initialize=AsyncMock(return_value=True),
+        _vpn_type="tailscale",
+        _peer_ip="100.64.0.1",
+    )
+
+    modem_pool_module = __import__("app.services.modem_pool", fromlist=["get_modem_pool"])
+    monkeypatch.setattr(modem_pool_module, "get_modem_pool", lambda: modem_pool)
+
+    policy_module = __import__("app.services.policy_routing_manager", fromlist=["get_policy_routing_manager"])
+    monkeypatch.setattr(policy_module, "get_policy_routing_manager", lambda: policy_manager)
+
+    vpn_module = __import__("app.services.vpn_health_checker", fromlist=["get_vpn_health_checker"])
+    monkeypatch.setattr(vpn_module, "get_vpn_health_checker", lambda: vpn_checker)
+
+    await main_module._startup_init_optional_services(prefs, modem_provider=object(), latency_monitor=object())
+
+    modem_pool.set_services.assert_called_once()
+    modem_pool.start.assert_awaited_once()
+    policy_manager.initialize.assert_awaited_once()
+    vpn_checker.initialize.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_startup_init_optional_services_with_disabled_features(monkeypatch):
+    prefs = types.SimpleNamespace(
+        get_all_preferences=lambda: {
+            "network": {
+                "policy_routing_enabled": False,
+                "vpn_health_check_enabled": False,
+            }
+        }
+    )
+
+    modem_pool = types.SimpleNamespace(set_services=MagicMock(), start=AsyncMock())
+    policy_manager = types.SimpleNamespace(initialize=AsyncMock(return_value=True))
+    vpn_checker = types.SimpleNamespace(initialize=AsyncMock(return_value=True))
+
+    modem_pool_module = __import__("app.services.modem_pool", fromlist=["get_modem_pool"])
+    monkeypatch.setattr(modem_pool_module, "get_modem_pool", lambda: modem_pool)
+
+    policy_module = __import__("app.services.policy_routing_manager", fromlist=["get_policy_routing_manager"])
+    monkeypatch.setattr(policy_module, "get_policy_routing_manager", lambda: policy_manager)
+
+    vpn_module = __import__("app.services.vpn_health_checker", fromlist=["get_vpn_health_checker"])
+    monkeypatch.setattr(vpn_module, "get_vpn_health_checker", lambda: vpn_checker)
+
+    await main_module._startup_init_optional_services(prefs, modem_provider=None, latency_monitor=None)
+
+    modem_pool.start.assert_awaited_once()
+    policy_manager.initialize.assert_not_called()
+    vpn_checker.initialize.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_startup_init_optional_services_handles_failures(monkeypatch):
+    prefs = types.SimpleNamespace(
+        get_all_preferences=lambda: {
+            "network": {
+                "policy_routing_enabled": True,
+                "vpn_health_check_enabled": True,
+            }
+        }
+    )
+
+    modem_pool = types.SimpleNamespace(set_services=MagicMock(), start=AsyncMock(side_effect=RuntimeError("x")))
+    policy_manager = types.SimpleNamespace(initialize=AsyncMock(return_value=False))
+    vpn_checker = types.SimpleNamespace(initialize=AsyncMock(side_effect=RuntimeError("y")))
+
+    modem_pool_module = __import__("app.services.modem_pool", fromlist=["get_modem_pool"])
+    monkeypatch.setattr(modem_pool_module, "get_modem_pool", lambda: modem_pool)
+
+    policy_module = __import__("app.services.policy_routing_manager", fromlist=["get_policy_routing_manager"])
+    monkeypatch.setattr(policy_module, "get_policy_routing_manager", lambda: policy_manager)
+
+    vpn_module = __import__("app.services.vpn_health_checker", fromlist=["get_vpn_health_checker"])
+    monkeypatch.setattr(vpn_module, "get_vpn_health_checker", lambda: vpn_checker)
+
+    await main_module._startup_init_optional_services(prefs, modem_provider=None, latency_monitor=None)
+
+
+@pytest.mark.asyncio
+async def test_broadcast_vpn_status_autodetects_provider(monkeypatch):
+    provider = types.SimpleNamespace(get_status=lambda: {"connected": True})
+    registry = types.SimpleNamespace(
+        get_available_vpn_providers=lambda: [{"name": "tailscale", "installed": True}],
+        get_vpn_provider=lambda _name: provider,
+    )
+    prefs = types.SimpleNamespace(get_vpn_config=lambda: {"provider": ""})
+
+    loop = types.SimpleNamespace(run_in_executor=AsyncMock(return_value={"connected": True}))
+    monkeypatch.setattr(main_module.asyncio, "get_event_loop", lambda: loop)
+    monkeypatch.setattr(main_module, "get_provider_registry", lambda: registry)
+    monkeypatch.setattr(main_module, "get_preferences", lambda: prefs)
+
+    broadcast = AsyncMock()
+    monkeypatch.setattr(main_module.websocket_manager, "broadcast", broadcast)
+
+    await main_module._broadcast_vpn_status()
+
+    broadcast.assert_awaited_once_with("vpn_status", {"connected": True})
+
+
+@pytest.mark.asyncio
+async def test_broadcast_vpn_status_without_provider_does_nothing(monkeypatch):
+    registry = types.SimpleNamespace(
+        get_available_vpn_providers=lambda: [],
+        get_vpn_provider=lambda _name: None,
+    )
+    prefs = types.SimpleNamespace(get_vpn_config=lambda: {"provider": ""})
+
+    monkeypatch.setattr(main_module, "get_provider_registry", lambda: registry)
+    monkeypatch.setattr(main_module, "get_preferences", lambda: prefs)
+
+    broadcast = AsyncMock()
+    monkeypatch.setattr(main_module.websocket_manager, "broadcast", broadcast)
+
+    await main_module._broadcast_vpn_status()
+
+    broadcast.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_broadcast_status_health_payload(monkeypatch):
+    status_module = __import__("app.api.routes.status", fromlist=["check_python_dependencies"])
+
+    monkeypatch.setattr(status_module, "check_python_dependencies", lambda: {"ok": True})
+    monkeypatch.setattr(status_module, "check_npm_dependencies", lambda: {"ok": True})
+    monkeypatch.setattr(status_module, "check_system_info", lambda: {"os": "linux"})
+    monkeypatch.setattr(status_module, "get_app_version", lambda: "1.2.3")
+    monkeypatch.setattr(status_module, "get_frontend_version", lambda: "4.5.6")
+    monkeypatch.setattr(status_module, "get_user_permissions", lambda: {"sudo": False})
+    monkeypatch.setattr(status_module, "get_node_version", lambda: "20")
+
+    broadcast = AsyncMock()
+    monkeypatch.setattr(main_module.websocket_manager, "broadcast", broadcast)
+
+    await main_module._broadcast_status_health()
+
+    broadcast.assert_awaited_once()
+    event, payload = broadcast.await_args.args
+    assert event == "status"
+    assert payload["success"] is True
+    assert payload["backend"]["app_version"] == "1.2.3"
+
+
+def test_broadcast_router_status_uses_threadsafe_call(monkeypatch):
+    main_module.router_service = types.SimpleNamespace(get_outputs_list=MagicMock(return_value=[{"ok": True}]))
+    broadcast = MagicMock(return_value=object())
+    monkeypatch.setattr(main_module.websocket_manager, "broadcast", broadcast)
+
+    submit = MagicMock()
+    monkeypatch.setattr(main_module.asyncio, "run_coroutine_threadsafe", submit)
+
+    main_module._broadcast_router_status(loop=object())
+
+    submit.assert_called_once()
+
+
+def test_auto_start_video_success(monkeypatch):
+    monkeypatch.setattr(main_module.time, "sleep", lambda _x: None)
+    main_module.video_service = types.SimpleNamespace(
+        start=MagicMock(return_value={"success": True}),
+        get_status=MagicMock(return_value={"streaming": True}),
+    )
+
+    main_module._auto_start_video()
+
+    main_module.video_service.start.assert_called_once()
+    main_module.video_service.get_status.assert_called_once()
+
+
+def test_auto_start_video_handles_failure(monkeypatch):
+    monkeypatch.setattr(main_module.time, "sleep", lambda _x: None)
+    main_module.video_service = types.SimpleNamespace(
+        start=MagicMock(return_value={"success": False, "message": "nope"}),
+        get_status=MagicMock(),
+    )
+
+    main_module._auto_start_video()
+
+    main_module.video_service.start.assert_called_once()
+    main_module.video_service.get_status.assert_not_called()

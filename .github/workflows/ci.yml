@@ -79,7 +79,7 @@ jobs:
     name: 🧪 Test Python Backend
     runs-on: ubuntu-latest
     env:
-      COVERAGE_GATE_CURRENT: "35"
+      COVERAGE_GATE_CURRENT: "36"
       COVERAGE_GATE_NEXT: "40"
       COVERAGE_GATE_FINAL: "50"
     steps:
