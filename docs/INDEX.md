@@ -6,11 +6,12 @@ Bienvenido a la documentación de **FPV Copilot Sky**. Aquí encontrarás todo l
 
 ## Guías
 
-| #   | Documento                                   | Descripción                                                                                                 | Audiencia          |
-| --- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------ |
-| 1   | [📥 Guía de Instalación](INSTALLATION.md)   | Requisitos, instalación paso a paso, configuración de producción, verificación                              | Todos              |
-| 2   | [📖 Guía de Usuario](USER_GUIDE.md)         | Uso de la WebUI, cada pestaña explicada, configuración de video/telemetría/VPN/modem, solución de problemas | Pilotos / Usuarios |
-| 3   | [🛠️ Guía de Desarrollo](DEVELOPER_GUIDE.md) | Arquitectura, stack tecnológico, estructura del proyecto, cómo añadir proveedores, convenciones de código   | Desarrolladores    |
+| #   | Documento                                   | Descripción                                                                                                 | Audiencia            |
+| --- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | -------------------- |
+| 1   | [📥 Guía de Instalación](INSTALLATION.md)   | Requisitos, instalación paso a paso, configuración de producción, verificación                              | Todos                |
+| 2   | [📖 Guía de Usuario](USER_GUIDE.md)         | Uso de la WebUI, cada pestaña explicada, configuración de video/telemetría/VPN/modem, solución de problemas | Pilotos / Usuarios   |
+| 3   | [🛠️ Guía de Desarrollo](DEVELOPER_GUIDE.md) | Arquitectura, stack tecnológico, estructura del proyecto, cómo añadir proveedores, convenciones de código   | Desarrolladores      |
+| 4   | [🚨 Runbooks Operativos](RUNBOOKS.md)       | Procedimientos de diagnóstico y recuperación para incidencias críticas (MAVLink, modem, stream)             | Operadores / Pilotos |
 
 ---
 
