@@ -163,6 +163,46 @@ Esto:
 - Arranca el servicio
 - Ejecuta un health-check automático
 
+### 2.4 Configuración CORS por entorno
+
+FPVCopilotSky permite configurar CORS con variables de entorno para evitar
+defaults inseguros en producción.
+
+Variables soportadas:
+
+- `FPV_CORS_ALLOW_ORIGINS`: lista separada por comas de orígenes permitidos
+- `FPV_CORS_ALLOW_CREDENTIALS`: `true` o `false`
+- `FPV_CORS_ALLOW_METHODS`: métodos permitidos, separados por comas
+- `FPV_CORS_ALLOW_HEADERS`: headers permitidos, separados por comas
+
+Ejemplo para desarrollo:
+
+```bash
+export FPV_CORS_ALLOW_ORIGINS="http://localhost:5173,http://127.0.0.1:5173"
+export FPV_CORS_ALLOW_CREDENTIALS="true"
+export FPV_CORS_ALLOW_METHODS="GET,POST,PUT,DELETE,OPTIONS"
+export FPV_CORS_ALLOW_HEADERS="Authorization,Content-Type"
+```
+
+Ejemplo para producción (recomendado):
+
+```bash
+export FPV_CORS_ALLOW_ORIGINS="https://fpv.example.com"
+export FPV_CORS_ALLOW_CREDENTIALS="true"
+export FPV_CORS_ALLOW_METHODS="GET,POST,OPTIONS"
+export FPV_CORS_ALLOW_HEADERS="Authorization,Content-Type"
+```
+
+Notas importantes:
+
+- Si `FPV_CORS_ALLOW_ORIGINS="*"`, el backend desactiva credenciales automáticamente.
+- No uses `*` en producción salvo entornos controlados.
+- Tras cambiar variables de entorno, reinicia el servicio:
+
+```bash
+sudo systemctl restart fpvcopilot-sky
+```
+
 ---
 
 ## 3. CLI de Gestión
