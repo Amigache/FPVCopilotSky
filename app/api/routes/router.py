@@ -345,7 +345,7 @@ async def get_presets(request: Request) -> JSONResponse:
 
         return JSONResponse(content={"success": True, "presets": presets})
 
-    except Exception as e:
+    except (KeyError, TypeError, ValueError) as e:
         logger.error(f"Error getting presets: {e}")
         return JSONResponse(status_code=500, content={"success": False, "error": "Failed to get presets"})
 

@@ -298,7 +298,7 @@ async def get_dashboard():
                         "network": network_info,
                         "traffic": traffic_info,
                     }
-            except Exception as e:
+            except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
                 logger.debug(f"Could not get HiLink modem data: {e}")
 
         # Get flight mode status
@@ -313,7 +313,7 @@ async def get_dashboard():
                 "active": optimizer_status["active"],
                 "network_optimizer": optimizer_status["active"],
             }
-        except Exception as e:
+        except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
             logger.debug(f"Could not get flight mode status: {e}")
 
         return {
@@ -323,7 +323,7 @@ async def get_dashboard():
             "flight_mode": flight_mode_status,
         }
 
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
         logger.error(f"Error getting dashboard data: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to get network dashboard data")
 
@@ -428,7 +428,7 @@ async def set_priority_mode(request: PriorityModeRequest):
         else:
             return {"success": False, "message": "No routes could be modified"}
 
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
         logger.error("Error setting network priority", extra={"mode": mode, "error": str(e)}, exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to set network priority")
 

@@ -20,6 +20,7 @@ Flight mode applies:
 import asyncio
 from fastapi import APIRouter, HTTPException
 from app.services.network_optimizer import get_network_optimizer
+from app.exceptions import NetworkException
 from .common import detect_modem_interfaces, PriorityModeRequest
 from app.utils.logger import get_logger
 
@@ -70,9 +71,12 @@ async def get_flight_mode_status():
                 "network": network_status.get("config", {}) if network_status["active"] else "Not active",
             },
         }
-    except Exception as e:
-        logger.error(f"Error getting Flight Mode status: {e}")
-        return {"success": False, "error": str(e), "flight_mode_active": False}
+    except NetworkException as e:
+        logger.warning("Flight Mode status unavailable", extra=e.to_dict())
+        return {"success": False, "error": "Network optimizer unavailable", "flight_mode_active": False}
+    except KeyError as e:
+        logger.warning("Flight Mode status format error", extra={"field": str(e)})
+        return {"success": False, "error": "Invalid status format", "flight_mode_active": False}
 
 
 @router.post("/flight-mode/enable")
@@ -104,9 +108,9 @@ async def enable_flight_mode():
             results["network"] = network_result
             if not network_result.get("success"):
                 errors.append(f"Network: {network_result.get('message', 'Unknown error')}")
-        except Exception as e:
-            errors.append(f"Network: {str(e)}")
-            logger.error(f"Error enabling network optimizer: {e}")
+        except NetworkException as e:
+            errors.append(f"Network: {e.message}")
+            logger.error("Network optimizer enable failed", extra=e.to_dict())
 
         # 3. Set modem as primary network when flight mode is enabled
         try:
@@ -120,9 +124,9 @@ async def enable_flight_mode():
                     logger.info("Flight Mode: modem set as primary network")
             else:
                 logger.warning("Flight Mode: modem not detected, skipping priority switch")
-        except Exception as e:
-            errors.append(f"Priority: {str(e)}")
-            logger.error(f"Error setting modem priority in flight mode: {e}")
+        except NetworkException as e:
+            errors.append(f"Priority: {e.message}")
+            logger.error("Modem priority switch failed", extra=e.to_dict())
 
         # Determine overall success
         network_success = results["network"].get("success", False)
@@ -142,9 +146,12 @@ async def enable_flight_mode():
             "errors": errors if errors else None,
         }
 
-    except Exception as e:
-        logger.error(f"Error enabling Flight Mode: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to enable Flight Mode: {str(e)}")
+    except NetworkException as e:
+        logger.error("Flight Mode enable failed", extra=e.to_dict())
+        raise HTTPException(status_code=503, detail="Could not enable Flight Mode")
+    except (KeyError, TypeError, ValueError) as e:
+        logger.error("Unexpected error enabling Flight Mode", extra={"error": str(e)})
+        raise HTTPException(status_code=500, detail="Failed to enable Flight Mode")
 
 
 @router.post("/flight-mode/disable")
@@ -173,9 +180,9 @@ async def disable_flight_mode():
             results["network"] = network_result
             if not network_result.get("success"):
                 errors.append(f"Network: {network_result.get('message', 'Unknown error')}")
-        except Exception as e:
-            errors.append(f"Network: {str(e)}")
-            logger.error(f"Error disabling network optimizer: {e}")
+        except NetworkException as e:
+            errors.append(f"Network: {e.message}")
+            logger.error("Network optimizer disable failed", extra=e.to_dict())
 
         # 3. Restore WiFi as primary (undo flight mode priority)
         try:
@@ -184,9 +191,9 @@ async def disable_flight_mode():
                 priority_result = await set_priority_mode(PriorityModeRequest(mode="auto"))
                 results["priority"] = priority_result
                 logger.info("Flight Mode disabled: network priority restored")
-        except Exception as e:
-            errors.append(f"Priority restore: {str(e)}")
-            logger.error(f"Error restoring priority after flight mode: {e}")
+        except NetworkException as e:
+            errors.append(f"Priority restore: {e.message}")
+            logger.error("Priority restore failed", extra=e.to_dict())
 
         # Determine overall success
         network_success = results["network"].get("success", False)
@@ -206,9 +213,12 @@ async def disable_flight_mode():
             "errors": errors if errors else None,
         }
 
-    except Exception as e:
-        logger.error(f"Error disabling Flight Mode: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to disable Flight Mode: {str(e)}")
+    except NetworkException as e:
+        logger.error("Flight Mode disable failed", extra=e.to_dict())
+        raise HTTPException(status_code=503, detail="Could not disable Flight Mode")
+    except (KeyError, TypeError, ValueError) as e:
+        logger.error("Unexpected error disabling Flight Mode", extra={"error": str(e)})
+        raise HTTPException(status_code=500, detail="Failed to disable Flight Mode")
 
 
 @router.get("/flight-mode/metrics")
@@ -227,6 +237,6 @@ async def get_flight_mode_metrics():
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(None, optimizer.get_network_metrics)
         return result
-    except Exception as e:
-        logger.error(f"Error getting Flight Mode metrics: {e}")
-        return {"success": False, "error": str(e)}
+    except NetworkException as e:
+        logger.warning("Could not retrieve Flight Mode metrics", extra=e.to_dict())
+        return {"success": False, "error": "Network metrics unavailable"}

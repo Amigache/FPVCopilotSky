@@ -7,6 +7,10 @@ from unittest.mock import AsyncMock, Mock
 from app.api.routes import modem as modem_routes
 from app.api.routes import video as video_routes
 from app.api.routes import vpn as vpn_routes
+from app.api.routes import experimental as experimental_routes
+from app.api.routes.network import bridge as bridge_routes
+from app.api.routes.network import mptcp as mptcp_routes
+from app.exceptions import NetworkCommandError, NetworkException
 
 
 class MockRequest:
@@ -529,3 +533,83 @@ async def test_configure_video_sanitizes_service_errors(monkeypatch):
 
     assert excinfo.value.status_code == 500
     assert "Failed to update video configuration" in str(excinfo.value.detail)
+
+
+@pytest.mark.asyncio
+async def test_bridge_status_sanitizes_network_exception(monkeypatch):
+    """Verify bridge status endpoint sanitizes typed network exceptions."""
+
+    def raise_bridge_error():
+        raise NetworkException("bridge service unavailable")
+
+    monkeypatch.setattr("app.api.routes.network.bridge.get_network_event_bridge", raise_bridge_error)
+
+    with pytest.raises(HTTPException) as excinfo:
+        await bridge_routes.get_bridge_status()
+
+    assert excinfo.value.status_code == 500
+    assert "bridge service unavailable" in str(excinfo.value.detail)
+
+
+@pytest.mark.asyncio
+async def test_bridge_events_sanitizes_value_error(monkeypatch):
+    """Verify bridge events endpoint sanitizes input/value failures."""
+
+    mock_bridge = Mock()
+    mock_bridge.get_event_history.side_effect = ValueError("invalid last_n")
+
+    monkeypatch.setattr("app.api.routes.network.bridge.get_network_event_bridge", lambda: mock_bridge)
+
+    with pytest.raises(HTTPException) as excinfo:
+        await bridge_routes.get_bridge_events(last_n=-5)
+
+    assert excinfo.value.status_code == 500
+    assert "invalid last_n" in str(excinfo.value.detail)
+
+
+@pytest.mark.asyncio
+async def test_mptcp_status_returns_unavailable_on_command_error(monkeypatch):
+    """Verify MPTCP status falls back to unavailable on command errors."""
+
+    def raise_cmd_error(*_args, **_kwargs):
+        raise NetworkCommandError("sysctl", 1, "not supported")
+
+    monkeypatch.setattr("app.api.routes.network.mptcp.run_cmd", raise_cmd_error)
+
+    result = await mptcp_routes.get_mptcp_status()
+
+    assert result["success"] is True
+    assert result["available"] is False
+    assert result["kernel_support"] is False
+
+
+@pytest.mark.asyncio
+async def test_enable_mptcp_sanitizes_command_failures(monkeypatch):
+    """Verify enable_mptcp returns sanitized message on command failures."""
+
+    def fail_enable(*_args, **_kwargs):
+        return "", "permission denied", 1
+
+    monkeypatch.setattr("app.api.routes.network.mptcp.run_cmd", fail_enable)
+
+    with pytest.raises(HTTPException) as excinfo:
+        await mptcp_routes.enable_mptcp()
+
+    assert excinfo.value.status_code == 500
+    assert "Could not enable MPTCP" in str(excinfo.value.detail)
+
+
+@pytest.mark.asyncio
+async def test_experimental_status_sanitizes_type_errors(monkeypatch):
+    """Verify experimental status endpoint hides service type errors."""
+
+    mock_service = Mock()
+    mock_service.get_status.side_effect = TypeError("opencv status payload invalid")
+
+    monkeypatch.setattr(experimental_routes, "_opencv_service", mock_service)
+
+    with pytest.raises(HTTPException) as excinfo:
+        await experimental_routes.get_status()
+
+    assert excinfo.value.status_code == 500
+    assert "Could not retrieve OpenCV status" in str(excinfo.value.detail)

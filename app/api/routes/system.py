@@ -139,7 +139,7 @@ async def get_preferences_all():
 
         prefs = get_preferences()
         return prefs.get_all_preferences()
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
         return {"error": str(e)}
 
 
@@ -179,7 +179,7 @@ async def update_preferences(request: Request):
 
         prefs._save()
         return {"success": True, "message": "Preferences updated"}
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
         return {"success": False, "message": str(e)}
 
 
@@ -203,7 +203,7 @@ async def reset_preferences(request: Request):
                 "success": False,
                 "message": translate("system.preferences_reset_failed", lang),
             }
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
         lang = get_language_from_request(request)
         return {
             "success": False,
@@ -217,7 +217,7 @@ async def restart_backend(request: Request):
     try:
         result = SystemService.restart_backend()
         return result
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
         lang = get_language_from_request(request)
         return {
             "success": False,
@@ -231,7 +231,7 @@ async def restart_frontend(request: Request):
     try:
         result = SystemService.restart_frontend()
         return result
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
         lang = get_language_from_request(request)
         return {
             "success": False,
@@ -249,7 +249,7 @@ async def get_backend_logs(lines: int = 100, request: Request = None):
             "logs": logs,
             "lines": len(logs.split("\n")) if logs else 0,
         }
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
         lang = get_language_from_request(request) if request else "en"
         return {
             "success": False,
@@ -268,7 +268,7 @@ async def get_frontend_logs(lines: int = 100, request: Request = None):
             "logs": logs,
             "lines": len(logs.split("\n")) if logs else 0,
         }
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
         lang = get_language_from_request(request) if request else "en"
         return {
             "success": False,
@@ -295,7 +295,7 @@ async def get_board_info(request: Request):
                 "message": translate("system.board_not_detected", lang),
                 "data": None,
             }
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
         lang = get_language_from_request(request)
         return {
             "success": False,

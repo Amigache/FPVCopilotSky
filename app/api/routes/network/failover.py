@@ -18,6 +18,7 @@ from fastapi import APIRouter, HTTPException
 from app.services.auto_failover import get_auto_failover, stop_auto_failover, NetworkMode
 from app.services.latency_monitor import start_latency_monitoring
 from app.services.preferences import get_preferences
+from app.exceptions import FailoverError, NetworkException
 from .common import PriorityModeRequest
 from app.utils.logger import get_logger
 
@@ -57,8 +58,8 @@ async def start_failover(initial_mode: str = "modem"):
                 request = PriorityModeRequest(mode=target_mode.value)
                 result = await set_priority_mode(request)
                 return result.get("success", False)
-            except Exception as e:
-                logger.error(f"Error in failover switch callback: {e}")
+            except NetworkException as e:
+                logger.error("Failover switch callback failed", extra=e.to_dict())
                 return False
 
         # Set callback and start
@@ -67,9 +68,12 @@ async def start_failover(initial_mode: str = "modem"):
 
         return {"success": True, "message": "Auto-failover started", "initial_mode": initial_mode}
 
-    except Exception as e:
-        logger.error(f"Error starting auto-failover: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except FailoverError as e:
+        logger.error("Failed to start auto-failover", extra=e.to_dict())
+        raise HTTPException(status_code=500, detail="Could not start auto-failover")
+    except NetworkException as e:
+        logger.error("Network error starting failover", extra=e.to_dict())
+        raise HTTPException(status_code=503, detail="Network service unavailable")
 
 
 @router.post("/failover/stop")
@@ -78,9 +82,9 @@ async def stop_failover():
     try:
         await stop_auto_failover()
         return {"success": True, "message": "Auto-failover stopped"}
-    except Exception as e:
-        logger.error(f"Error stopping auto-failover: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except FailoverError as e:
+        logger.error("Failed to stop auto-failover", extra=e.to_dict())
+        raise HTTPException(status_code=500, detail="Could not stop auto-failover")
 
 
 @router.get("/failover/status")
@@ -92,9 +96,9 @@ async def get_failover_status():
 
         return {"success": True, **state}
 
-    except Exception as e:
-        logger.error(f"Error getting failover status: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except FailoverError as e:
+        logger.error("Failed to get failover status", extra=e.to_dict())
+        raise HTTPException(status_code=500, detail="Could not retrieve failover status")
 
 
 class FailoverConfigRequest(BaseModel):
@@ -143,9 +147,12 @@ async def update_failover_config(config: FailoverConfigRequest):
 
         return {"success": True, "message": "Failover configuration updated", "updated": updates}
 
-    except Exception as e:
-        logger.error(f"Error updating failover config: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except ValueError as e:
+        logger.warning("Invalid failover config parameter", extra={"error": str(e)})
+        raise HTTPException(status_code=400, detail="Invalid configuration parameter")
+    except FailoverError as e:
+        logger.error("Failed to update failover config", extra=e.to_dict())
+        raise HTTPException(status_code=500, detail="Could not update failover configuration")
 
 
 @router.get("/failover/preferences")
@@ -159,9 +166,9 @@ async def get_failover_startup_preferences():
             "enabled": bool(net.get("auto_failover_enabled", False)),
             "preferred_mode": str(net.get("auto_failover_preferred_mode", "modem")),
         }
-    except Exception as e:
-        logger.error(f"Error getting failover startup preferences: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except FailoverError as e:
+        logger.error("Failed to get failover preferences", extra=e.to_dict())
+        raise HTTPException(status_code=500, detail="Could not retrieve failover preferences")
 
 
 @router.post("/failover/preferences")
@@ -192,9 +199,9 @@ async def set_failover_startup_preferences(config: FailoverStartupPreferencesReq
         }
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Error setting failover startup preferences: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except FailoverError as e:
+        logger.error("Failed to set failover preferences", extra=e.to_dict())
+        raise HTTPException(status_code=500, detail="Could not save failover preferences")
 
 
 @router.post("/failover/force-switch")
@@ -221,10 +228,8 @@ async def force_failover_switch(target_mode: str, reason: str = "Manual override
                 "reason": reason,
             }
         else:
-            raise HTTPException(status_code=500, detail="Failed to execute switch")
+            raise FailoverError("current", target_mode, "switch failed")
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error forcing failover switch: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except FailoverError as e:
+        logger.error("Force switch failed", extra=e.to_dict())
+        raise HTTPException(status_code=500, detail="Could not execute network switch")

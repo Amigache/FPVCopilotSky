@@ -51,7 +51,7 @@ class VideoConfigRequest(BaseModel):
                 registry = get_provider_registry()
                 encoders = registry.get_available_video_encoders()
                 allowed = {e["codec_id"] for e in encoders if e.get("available")}
-            except Exception:
+            except (AttributeError, KeyError, TypeError, RuntimeError, ValueError):
                 allowed = set()
             # Fallback: always accept well-known codec IDs
             allowed |= {
@@ -387,7 +387,7 @@ async def configure_video(config: VideoConfigRequest, request: Request):
                         "Camera identity saved",
                         extra={"camera_name": identity.get("name"), "bus_info": identity.get("bus_info")},
                     )
-            except Exception as e:
+            except (AttributeError, KeyError, RuntimeError, TypeError, ValueError) as e:
                 logger.warning("Failed to detect camera identity", extra={"error": str(e)})
 
         prefs.set_video_config(current)
@@ -401,7 +401,7 @@ async def configure_video(config: VideoConfigRequest, request: Request):
                 "Video config preference verified",
                 extra={"width": config_dict["width"], "height": config_dict.get("height")},
             )
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError) as e:
         logger.error("Failed to save video config", extra={"error": str(e)})
 
     return {
@@ -446,7 +446,7 @@ async def configure_streaming(config: StreamingConfigRequest, request: Request):
             logger.debug("Streaming auto_start preference verified", extra={"auto_start": saved.get("auto_start")})
         else:
             logger.warning("Streaming preference save verification failed")
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError) as e:
         logger.error("Failed to save streaming config", extra={"error": str(e)})
 
     return {
@@ -481,7 +481,7 @@ async def live_update(req: LivePropertyRequest, request: Request):
         current = prefs.get_video_config()
         current[req.property] = req.value
         prefs.set_video_config(current)
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError) as e:
         logger.warning("Failed to save live update preference", extra={"property": req.property, "error": str(e)})
 
     return result
@@ -574,7 +574,7 @@ async def set_auto_adaptive_bitrate(request: Request):
             "enabled": enabled,
             "message": message,
         }
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError) as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -609,5 +609,5 @@ async def set_auto_adaptive_resolution(request: Request):
             "enabled": enabled,
             "message": f"Auto-adaptive resolution {'enabled' if enabled else 'disabled'}.",
         }
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError) as e:
         raise HTTPException(status_code=500, detail=str(e))

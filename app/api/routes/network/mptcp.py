@@ -15,6 +15,7 @@ Features:
 from fastapi import APIRouter, HTTPException
 from app.utils.logger import get_logger
 from app.utils.cmd import run_cmd
+from app.exceptions import NetworkCommandError
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -38,7 +39,8 @@ async def get_mptcp_status():
                 result["kernel_support"] = True
                 result["enabled"] = stdout.strip() == "1"
                 result["available"] = True
-        except Exception:
+        except NetworkCommandError:
+            # Kernel doesn't support MPTCP
             pass
 
         # Get MPTCP settings
@@ -54,7 +56,7 @@ async def get_mptcp_status():
                     stdout, _, returncode = run_cmd(["sysctl", "-n", f"net.mptcp.{param}"], timeout=5, check=False)
                     if returncode == 0:
                         result[param] = stdout.strip()
-                except Exception:
+                except NetworkCommandError:
                     pass
 
             # Check number of subflows
@@ -62,14 +64,14 @@ async def get_mptcp_status():
                 stdout, _, returncode = run_cmd(["ip", "mptcp", "limits", "show"], timeout=5, check=False)
                 if returncode == 0:
                     result["subflow_limits"] = stdout.strip()
-            except Exception:
+            except NetworkCommandError:
                 pass
 
         return {"success": True, **result}
 
-    except Exception as e:
-        logger.error(f"Error getting MPTCP status: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except NetworkCommandError as e:
+        logger.warning("MPTCP not available on this kernel", extra=e.to_dict())
+        return {"success": True, "available": False, "enabled": False, "kernel_support": False}
 
 
 @router.post("/mptcp/enable")
@@ -84,7 +86,7 @@ async def enable_mptcp():
         # Enable MPTCP
         _, stderr, returncode = run_cmd(["sysctl", "-w", "net.mptcp.enabled=1"], timeout=5, check=False)
         if returncode != 0:
-            raise HTTPException(status_code=500, detail=f"Failed to enable MPTCP: {stderr}")
+            raise NetworkCommandError("sysctl", returncode, stderr)
 
         # Set reasonable defaults for streaming
         _, limits_stderr, limits_returncode = run_cmd(
@@ -93,15 +95,15 @@ async def enable_mptcp():
             check=False,
         )
         if limits_returncode != 0:
-            logger.warning(f"Failed to set MPTCP limits: {limits_stderr}")
+            logger.warning(
+                "MPTCP limits may not be optimal", extra={"command": "ip mptcp limits", "stderr": limits_stderr}
+            )
 
         return {"success": True, "message": "MPTCP enabled"}
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error enabling MPTCP: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except NetworkCommandError as e:
+        logger.error("Failed to enable MPTCP", extra=e.to_dict())
+        raise HTTPException(status_code=500, detail="Could not enable MPTCP")
 
 
 @router.post("/mptcp/disable")
@@ -110,12 +112,10 @@ async def disable_mptcp():
     try:
         _, stderr, returncode = run_cmd(["sysctl", "-w", "net.mptcp.enabled=0"], timeout=5, check=False)
         if returncode != 0:
-            raise HTTPException(status_code=500, detail=f"Failed to disable MPTCP: {stderr}")
+            raise NetworkCommandError("sysctl", returncode, stderr)
 
         return {"success": True, "message": "MPTCP disabled"}
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error disabling MPTCP: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except NetworkCommandError as e:
+        logger.error("Failed to disable MPTCP", extra=e.to_dict())
+        raise HTTPException(status_code=500, detail="Could not disable MPTCP")
