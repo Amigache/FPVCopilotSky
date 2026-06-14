@@ -415,6 +415,20 @@ npx vitest run --reporter=verbose # Con detalle
 - Docstrings en todas las funciones públicas
 - Imports absolutos: `from providers import get_provider_registry`
 
+#### Política de ejecución de comandos del sistema
+
+- Usar siempre `run_cmd()` / `run_cmd_async()` desde [app/utils/cmd.py](../app/utils/cmd.py) para evitar `subprocess` directo en rutas/servicios/proveedores críticos.
+- Contrato único: `(stdout: str, stderr: str, returncode: int)` y nunca lanzar excepción al caller.
+- Timeout obligatorio por comando (default `15s`), con `returncode = -1` cuando hay timeout/error de ejecución.
+- Reintentos configurables para errores transitorios:
+  - `retries`: cantidad de reintentos adicionales (default `0`).
+  - `backoff_base_s` / `backoff_max_s`: backoff exponencial acotado entre intentos.
+  - `retry_on_returncodes`: conjunto opcional para limitar qué códigos no-cero reintentar.
+- Recomendación operativa:
+  - Lecturas/health checks: `retries=0` o `1` con timeout corto.
+  - Operaciones de recuperación/failover: `retries=1..3` y backoff pequeño.
+  - Acciones destructivas: evitar reintento automático salvo idempotencia garantizada.
+
 ### JavaScript/React (Frontend)
 
 - **Componentes funcionales** con hooks (no clases)

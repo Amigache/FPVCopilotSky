@@ -54,6 +54,49 @@ class TestRunCmd:
         assert returncode == -1
         mock_log_error.assert_called_once()
 
+    @patch("app.utils.cmd.time.sleep")
+    @patch("app.utils.cmd.subprocess.run")
+    def test_run_cmd_retries_and_recovers(self, mock_run, mock_sleep):
+        mock_run.side_effect = [
+            Mock(stdout="", stderr="temp fail\n", returncode=2),
+            Mock(stdout=" ok\n", stderr="", returncode=0),
+        ]
+
+        stdout, stderr, returncode = run_cmd(
+            ["demo"],
+            timeout=1,
+            retries=1,
+            backoff_base_s=0.1,
+            backoff_max_s=1.0,
+            check=False,
+        )
+
+        assert stdout == "ok"
+        assert stderr == ""
+        assert returncode == 0
+        assert mock_run.call_count == 2
+        mock_sleep.assert_called_once_with(0.1)
+
+    @patch("app.utils.cmd.subprocess.run")
+    def test_run_cmd_retry_filter_blocks_retry(self, mock_run):
+        mock_run.side_effect = [
+            Mock(stdout="", stderr="bad\n", returncode=2),
+            Mock(stdout=" ok\n", stderr="", returncode=0),
+        ]
+
+        stdout, stderr, returncode = run_cmd(
+            ["demo"],
+            timeout=1,
+            retries=1,
+            retry_on_returncodes={1},
+            check=False,
+        )
+
+        assert stdout == ""
+        assert stderr == "bad"
+        assert returncode == 2
+        assert mock_run.call_count == 1
+
 
 class TestRunCmdAsync:
     @patch("app.utils.cmd.asyncio.create_subprocess_exec")
@@ -118,3 +161,42 @@ class TestRunCmdAsync:
         assert "spawn failed" in stderr
         assert returncode == -1
         mock_log_error.assert_called_once()
+
+    @patch("app.utils.cmd.asyncio.sleep", new_callable=AsyncMock)
+    @patch("app.utils.cmd.asyncio.wait_for")
+    @patch("app.utils.cmd.asyncio.create_subprocess_exec")
+    async def test_run_cmd_async_retries_and_recovers(self, mock_create_proc, mock_wait_for, mock_sleep):
+        proc1 = AsyncMock()
+        proc1.kill = Mock()
+        proc1.wait = AsyncMock(return_value=None)
+        proc2 = AsyncMock()
+        proc2.returncode = 0
+
+        mock_create_proc.side_effect = [proc1, proc2]
+
+        async def _timeout_then_success(awaitable, timeout):
+            awaitable.close()
+            if _timeout_then_success.calls == 0:
+                _timeout_then_success.calls += 1
+                raise asyncio.TimeoutError
+            return (b" ok\n", b"")
+
+        _timeout_then_success.calls = 0
+        mock_wait_for.side_effect = _timeout_then_success
+
+        stdout, stderr, returncode = await run_cmd_async(
+            ["demo"],
+            timeout=1,
+            retries=1,
+            backoff_base_s=0.1,
+            backoff_max_s=1.0,
+            check=False,
+        )
+
+        assert stdout == "ok"
+        assert stderr == ""
+        assert returncode == 0
+        assert mock_create_proc.call_count == 2
+        proc1.kill.assert_called_once()
+        proc1.wait.assert_awaited_once()
+        mock_sleep.assert_awaited_once_with(0.1)
