@@ -6,9 +6,9 @@ every encoder / source provider does not shell out individually.
 """
 
 import logging
+import subprocess
 import threading
 from typing import Dict
-from app.utils.cmd import run_cmd
 
 logger = logging.getLogger(__name__)
 
@@ -64,11 +64,22 @@ def is_gst_element_available(element: str) -> bool:
         except Exception as e:
             logger.debug("Gst registry probe failed for %s, falling back to gst-inspect: %s", element, e)
 
-    stdout, stderr, returncode = run_cmd(
-        ["gst-inspect-1.0", element],
-        timeout=GST_INSPECT_TIMEOUT,
-        check=False,
-    )
+    stderr = ""
+    try:
+        proc = subprocess.run(
+            ["gst-inspect-1.0", element],
+            capture_output=True,
+            timeout=GST_INSPECT_TIMEOUT,
+        )
+        returncode = proc.returncode
+        stderr = (proc.stderr or b"").decode(errors="ignore")
+    except subprocess.TimeoutExpired:
+        returncode = 124
+        stderr = "Command timed out"
+    except Exception as e:
+        returncode = 1
+        stderr = str(e)
+
     available = returncode == 0
     if not available and "Command timed out" in stderr:
         logger.warning(

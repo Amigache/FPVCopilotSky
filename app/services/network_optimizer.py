@@ -11,6 +11,7 @@ Features:
 """
 
 import logging
+import subprocess  # noqa: F401 - backward-compatible patch target for tests/mocks.
 from typing import Dict, Optional, List
 from dataclasses import dataclass, field
 from app.utils.cmd import run_cmd
