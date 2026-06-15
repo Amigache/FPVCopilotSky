@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useWebSocket } from '../../../contexts/WebSocketContext'
 import { useToast } from '../../../contexts/ToastContext'
 import { useModal } from '../../../contexts/ModalContext'
+import { useParamCache } from '../../../contexts/ParamCacheContext'
 import { API_SYSTEM, API_MAVLINK, fetchWithTimeout } from '../../../services/api'
 import {
   AVAILABLE_BAUDRATES,
@@ -11,8 +12,10 @@ import {
   VEHICLE_PARAMS,
   STREAM_RATE_PARAMS,
   RC_CALIBRATION_PARAMS,
+  DEFAULT_STREAM_RATE_PROFILE,
+  detectStreamRateProfile,
+  getStreamRateParamName,
   detectVehicleType,
-  getParamNamesToLoad,
   buildRecommendedParams,
 } from './flightControllerConstants'
 import './FlightControllerView.css'
@@ -37,12 +40,19 @@ const FlightControllerView = () => {
   const [vehicleType, setVehicleType] = useState(null)
 
   // Parameters state
-  const [params, setParams] = useState({})
-  const [loadingParams, setLoadingParams] = useState(false)
   const [savingParams, setSavingParams] = useState(false)
   const [paramsModified, setParamsModified] = useState({})
   const [showRcCalibration, setShowRcCalibration] = useState(false)
   const [showAdvancedStreamRates, setShowAdvancedStreamRates] = useState(false)
+  const [streamRateProfile, setStreamRateProfile] = useState(DEFAULT_STREAM_RATE_PROFILE)
+  const {
+    params,
+    isDownloading: loadingParams,
+    isLoaded: paramsLoaded,
+    refreshParamsCache,
+    mergeParams,
+    clearCache,
+  } = useParamCache()
 
   // Update connection status and vehicle type from WebSocket
   useEffect(() => {
@@ -60,9 +70,6 @@ const FlightControllerView = () => {
       }
     }
   }, [messages.mavlink_status, messages.telemetry, vehicleType])
-
-  // Auto-load parameters flag
-  const [autoLoadTriggered, setAutoLoadTriggered] = useState(false)
 
   // Fetch available ports and load saved preferences on mount
   useEffect(() => {
@@ -188,8 +195,9 @@ const FlightControllerView = () => {
         setIsConnected(false)
         showToast(t('views.flightController.disconnectSuccess'), 'success')
         // Clear all parameter state on disconnect
-        setParams({})
+        clearCache()
         setParamsModified({})
+        setStreamRateProfile(DEFAULT_STREAM_RATE_PROFILE)
         setVehicleType(null)
       } else {
         showToast(t('views.flightController.disconnectError'), 'error')
@@ -202,75 +210,27 @@ const FlightControllerView = () => {
     }
   }
 
-  // Internal load function (with toasts for manual reload after apply recommended)
-  const loadParamsInternal = useCallback(
-    async (showToasts = false) => {
-      setLoadingParams(true)
-      showToast('🔄 ' + t('views.flightController.loadingParams'), 'info')
-      try {
-        const paramNames = getParamNamesToLoad(vehicleType)
-        const response = await fetchWithTimeout(
-          `${API_MAVLINK}/params/batch/get`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ params: paramNames }),
-          },
-          60000
-        )
-
-        const data = await response.json()
-
-        if (data.parameters) {
-          setParams(data.parameters)
-          setParamsModified({})
-
-          if (showToasts) {
-            const loadedCount = Object.keys(data.parameters).length
-            const errorCount = data.errors?.length || 0
-
-            if (errorCount > 0) {
-              showToast(
-                `${t('views.flightController.paramsLoaded')} (${loadedCount}/${
-                  loadedCount + errorCount
-                })`,
-                'warning'
-              )
-            } else {
-              showToast(t('views.flightController.paramsLoaded'), 'success')
-            }
-          }
-        } else if (showToasts) {
-          showToast(t('views.flightController.paramsLoadError'), 'error')
-        }
-      } catch (error) {
-        console.error('Error loading params:', error)
-        if (showToasts) {
-          showToast(`${t('views.flightController.paramsLoadError')}: ${error.message}`, 'error')
-        }
-      } finally {
-        setLoadingParams(false)
-      }
-    },
-    [vehicleType, showToast, t]
-  )
-
-  // Auto-load parameters when connected and vehicle type is detected
+  // Ensure background download starts if user enters this view before telemetry-triggered auto-start.
   useEffect(() => {
-    if (autoLoadTriggered || loadingParams) return
-    if (isConnected && vehicleType) {
-      setAutoLoadTriggered(true)
-      loadParamsInternal(true)
+    if (isConnected && !loadingParams) {
+      refreshParamsCache({ force: false, showCompletionToast: true })
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isConnected, vehicleType])
+  }, [isConnected, loadingParams, refreshParamsCache])
 
-  // Reset auto-load and clear params when disconnected
+  // Keep stream profile synced with cached parameters.
+  useEffect(() => {
+    if (Object.keys(params).length > 0) {
+      setStreamRateProfile(detectStreamRateProfile(params))
+    } else {
+      setStreamRateProfile(DEFAULT_STREAM_RATE_PROFILE)
+    }
+  }, [params])
+
+  // Clear local edits when disconnected.
   useEffect(() => {
     if (!isConnected) {
-      setAutoLoadTriggered(false)
-      setParams({})
       setParamsModified({})
+      setVehicleType(null)
     }
   }, [isConnected])
 
@@ -323,14 +283,14 @@ const FlightControllerView = () => {
       const data = await response.json()
 
       // Process results: update successful params and track failures
-      const newParams = { ...params }
+      const successfulUpdates = {}
       const successfulParams = []
       const failedParams = []
 
       if (data.results) {
         for (const [key, result] of Object.entries(data.results)) {
           if (result.success) {
-            newParams[key] = result.value
+            successfulUpdates[key] = result.value
             successfulParams.push(key)
           } else {
             failedParams.push(key)
@@ -339,7 +299,7 @@ const FlightControllerView = () => {
       }
 
       // Update state: remove successfully saved params from modified
-      setParams(newParams)
+      mergeParams(successfulUpdates)
       if (successfulParams.length > 0) {
         setParamsModified((prev) => {
           const next = { ...prev }
@@ -374,6 +334,16 @@ const FlightControllerView = () => {
     }
   }
 
+  const handleReloadParams = async () => {
+    setParamsModified({})
+    clearCache()
+    await refreshParamsCache({
+      force: true,
+      showCompletionToast: true,
+      resetCacheBeforeLoad: true,
+    })
+  }
+
   // Apply recommended configuration for all parameters
   const applyRecommendedConfig = () => {
     showModal({
@@ -383,7 +353,7 @@ const FlightControllerView = () => {
       confirmText: t('views.flightController.applyRecommended'),
       cancelText: t('common.cancel'),
       onConfirm: async () => {
-        const recommendedParams = buildRecommendedParams(vehicleType)
+        const recommendedParams = buildRecommendedParams(vehicleType, streamRateProfile)
 
         setSavingParams(true)
         try {
@@ -429,7 +399,7 @@ const FlightControllerView = () => {
           }
 
           // Always reload params to show what was actually applied
-          await loadParamsInternal(true)
+          await refreshParamsCache({ force: true, showCompletionToast: true })
         } catch (error) {
           console.error('Error applying recommended config:', error)
           showToast(`${t('views.flightController.paramsSaveError')}: ${error.message}`, 'error')
@@ -454,7 +424,6 @@ const FlightControllerView = () => {
   ).length
 
   // Check if inputs should be disabled (no connection OR no params loaded)
-  const paramsLoaded = Object.keys(params).length > 0
   const inputsDisabled = !isConnected || savingParams || loadingParams || !paramsLoaded || isArmed
 
   // Check if parameter matches recommended value
@@ -464,17 +433,45 @@ const FlightControllerView = () => {
     return Math.abs(currentValue - recommended) < 0.001
   }
 
-  // Render a parameter input (select or number)
+  const resolveStreamParamName = (suffix) => {
+    const preferred = getStreamRateParamName(streamRateProfile, suffix)
+    if (Object.hasOwn(params, preferred) || Object.hasOwn(paramsModified, preferred)) {
+      return preferred
+    }
+
+    const fallback = Object.keys(params).find(
+      (key) => (key.startsWith('MAV') || key.startsWith('SR')) && key.endsWith(`_${suffix}`)
+    )
+    return fallback || preferred
+  }
+
+  // Toggle a bit in a bitmap parameter
+  const handleBitmapChange = (paramName, bitValue, checked) => {
+    const currentValRaw = getParamValue(paramName)
+    const currentVal =
+      currentValRaw === '' || currentValRaw === undefined ? 0 : Number(currentValRaw)
+    const newVal = checked ? currentVal | bitValue : currentVal & ~bitValue
+    handleParamChange(paramName, newVal)
+  }
+
+  // Render a parameter input (select, number, or bitmap)
   const renderParamInput = (name, config, value) => {
     const recommended = config.recommended
     const isMatch = isRecommendedValue(name, recommended)
     const isModified = Object.hasOwn(paramsModified, name)
     const hasValue = value !== '' && value !== undefined
+    const notFound =
+      !hasValue &&
+      !loadingParams &&
+      Object.keys(params).length > 0 &&
+      !(name in params) &&
+      !(name in paramsModified)
 
     return (
       <div
         key={name}
         className={`param-item ${isModified ? 'modified' : ''} ${!hasValue ? 'no-data' : ''}`}
+        title={notFound ? t('views.flightController.paramNotFound') : ''}
       >
         <div className="param-header">
           <label>{config.label}</label>
@@ -492,7 +489,41 @@ const FlightControllerView = () => {
           )}
         </div>
         <div className="param-input-row">
-          {config.options ? (
+          {config.type === 'bitmap' && config.bits ? (
+            <div className="bitmap-checkboxes">
+              {
+                <button
+                  type="button"
+                  className={`bitmap-none-button ${Number(value) === 0 ? 'active' : ''}`}
+                  onClick={() => handleParamChange(name, 0)}
+                  disabled={inputsDisabled}
+                >
+                  {t('views.flightController.rcProtocol.none')}
+                </button>
+              }
+              {config.bits.map((bit) => {
+                const numValue = hasValue ? Number(value) : 0
+                const isSet = (numValue & bit.value) !== 0
+                return (
+                  <label key={bit.value} className="bitmap-checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={isSet}
+                      onChange={(e) => handleBitmapChange(name, bit.value, e.target.checked)}
+                      disabled={inputsDisabled || !hasValue}
+                    />
+                    {bit.labelKey ? t(`views.flightController.${bit.labelKey}`) : bit.label}
+                  </label>
+                )
+              })}
+              {hasValue && Number(value) === 0 && (
+                <span className="bitmap-none-label">
+                  {t('views.flightController.rcProtocol.none')}
+                </span>
+              )}
+              <span className="bitmap-value">= {hasValue ? Number(value) : '--'}</span>
+            </div>
+          ) : config.options ? (
             <select
               value={hasValue ? value : ''}
               onChange={(e) => handleParamChange(name, e.target.value)}
@@ -700,23 +731,40 @@ const FlightControllerView = () => {
                     {validModifiedCount})
                   </button>
                 )}
+                <button
+                  onClick={handleReloadParams}
+                  disabled={!isConnected || savingParams || loadingParams}
+                  className="btn-secondary"
+                >
+                  🔄 {t('views.flightController.reloadParams')}
+                </button>
               </div>
             </div>
 
             {/* Stream Rates Card */}
             <div className="card">
               <h3>📡 {t('views.flightController.streamRates')}</h3>
+              <div className="stream-profile-indicator">
+                <span className="stream-profile-label">
+                  {t('views.flightController.streamProfile')}
+                </span>
+                <span className="stream-profile-value">
+                  {streamRateProfile.kind}
+                  {streamRateProfile.index}
+                </span>
+              </div>
               <p className="stream-rates-help">{t('views.flightController.streamRatesDesc')}</p>
 
               <div className="stream-rates-list">
                 {STREAM_RATE_PARAMS.main.map((sr) => {
-                  const value = getParamValue(sr.name)
-                  const isMatch = isRecommendedValue(sr.name, sr.recommended)
-                  const isModified = Object.hasOwn(paramsModified, sr.name)
+                  const paramName = resolveStreamParamName(sr.suffix)
+                  const value = getParamValue(paramName)
+                  const isMatch = isRecommendedValue(paramName, sr.recommended)
+                  const isModified = Object.hasOwn(paramsModified, paramName)
 
                   return (
                     <div
-                      key={sr.name}
+                      key={paramName}
                       className={`stream-rate-item color-${sr.color} ${
                         isModified ? 'modified' : ''
                       }`}
@@ -735,7 +783,7 @@ const FlightControllerView = () => {
                         <input
                           type="number"
                           value={value}
-                          onChange={(e) => handleParamChange(sr.name, e.target.value)}
+                          onChange={(e) => handleParamChange(paramName, e.target.value)}
                           disabled={inputsDisabled}
                           min="0"
                           max="50"
@@ -774,9 +822,10 @@ const FlightControllerView = () => {
                 </summary>
                 <div className="advanced-stream-content">
                   {STREAM_RATE_PARAMS.advanced.map((sr) => {
-                    const value = getParamValue(sr.name)
+                    const paramName = resolveStreamParamName(sr.suffix)
+                    const value = getParamValue(paramName)
                     return (
-                      <div key={sr.name} className="stream-rate-item advanced">
+                      <div key={paramName} className="stream-rate-item advanced">
                         <div className="stream-rate-info">
                           <div className="stream-rate-label">
                             {sr.labelKey ? t(`views.flightController.${sr.labelKey}`) : sr.label}
@@ -791,7 +840,7 @@ const FlightControllerView = () => {
                           <input
                             type="number"
                             value={value}
-                            onChange={(e) => handleParamChange(sr.name, e.target.value)}
+                            onChange={(e) => handleParamChange(paramName, e.target.value)}
                             disabled={inputsDisabled}
                             min="0"
                             max="50"

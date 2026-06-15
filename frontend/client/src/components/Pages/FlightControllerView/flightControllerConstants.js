@@ -16,23 +16,53 @@ export const AVAILABLE_BAUDRATES = [
 
 export const DEFAULT_BAUDRATE = '115200'
 
+const STREAM_RATE_SUFFIXES = [
+  'EXTRA1',
+  'POSITION',
+  'EXTRA3',
+  'EXT_STAT',
+  'RAW_CTRL',
+  'RC_CHAN',
+  'EXTRA2',
+  'RAW_SENS',
+  'PARAMS',
+  'ADSB',
+]
+const MAX_MAV_INSTANCES = 6
+const MAX_SR_INSTANCES = 6
+
+export const DEFAULT_STREAM_RATE_PROFILE = {
+  kind: 'MAV',
+  index: 1,
+  prefix: 'MAV1_',
+}
+
 // Base parameters (common to all vehicles)
 export const BASE_PARAMS = {
   RC_PROTOCOLS: {
     label: 'RC_PROTOCOLS',
     description: 'rcProtocolsDesc',
+    type: 'bitmap',
     recommended: 0,
-    options: [
-      { value: 0, labelKey: 'rcProtocol.none' },
-      { value: 1, labelKey: 'rcProtocol.all' },
+    bits: [
+      { value: 1, labelKey: 'rcProtocol.ai' },
       { value: 2, labelKey: 'rcProtocol.ppm' },
       { value: 4, labelKey: 'rcProtocol.ibus' },
       { value: 8, labelKey: 'rcProtocol.sbus' },
-      { value: 16, labelKey: 'rcProtocol.dsm' },
-      { value: 32, labelKey: 'rcProtocol.sumd' },
-      { value: 64, labelKey: 'rcProtocol.srxl' },
-      { value: 128, labelKey: 'rcProtocol.fport' },
-      { value: 256, labelKey: 'rcProtocol.crsf' },
+      { value: 16, labelKey: 'rcProtocol.sbusNi' },
+      { value: 32, labelKey: 'rcProtocol.dsm' },
+      { value: 64, labelKey: 'rcProtocol.sumd' },
+      { value: 128, labelKey: 'rcProtocol.srxl' },
+      { value: 256, labelKey: 'rcProtocol.srxl2' },
+      { value: 512, labelKey: 'rcProtocol.crsf' },
+      { value: 1024, labelKey: 'rcProtocol.st24' },
+      { value: 2048, labelKey: 'rcProtocol.fport' },
+      { value: 4096, labelKey: 'rcProtocol.fport2' },
+      { value: 8192, labelKey: 'rcProtocol.fastsbus' },
+      { value: 16384, labelKey: 'rcProtocol.dronecan' },
+      { value: 32768, labelKey: 'rcProtocol.ghost' },
+      { value: 65536, labelKey: 'rcProtocol.mavradio' },
+      { value: 262144, labelKey: 'rcProtocol.sitlUdp' },
     ],
   },
   // GCS Failsafe: Enable action on loss of GCS heartbeat
@@ -109,31 +139,33 @@ export const VEHICLE_PARAMS = {
 }
 
 // Stream Rate parameters
+// ArduPilot now uses MAVn_* per MAVLink instance (MAV1, MAV2, ...).
+// Older firmware families may still expose SRn_* names.
 export const STREAM_RATE_PARAMS = {
   main: [
     {
-      name: 'SR0_EXTRA1',
+      suffix: 'EXTRA1',
       labelKey: 'streamRate.extra1',
       descriptionKey: 'streamRate.extra1Desc',
       recommended: 4,
       color: 'green',
     },
     {
-      name: 'SR0_POSITION',
+      suffix: 'POSITION',
       labelKey: 'streamRate.position',
       descriptionKey: 'streamRate.positionDesc',
       recommended: 2,
       color: 'blue',
     },
     {
-      name: 'SR0_EXTRA3',
+      suffix: 'EXTRA3',
       labelKey: 'streamRate.extra3',
       descriptionKey: 'streamRate.extra3Desc',
       recommended: 2,
       color: 'orange',
     },
     {
-      name: 'SR0_EXT_STAT',
+      suffix: 'EXT_STAT',
       labelKey: 'streamRate.extStat',
       descriptionKey: 'streamRate.extStatDesc',
       recommended: 2,
@@ -142,18 +174,95 @@ export const STREAM_RATE_PARAMS = {
   ],
   advanced: [
     {
-      name: 'SR0_RAW_CTRL',
+      suffix: 'RAW_CTRL',
       labelKey: 'streamRate.rawCtrl',
       descriptionKey: 'streamRate.rawCtrlDesc',
       recommended: 1,
     },
     {
-      name: 'SR0_RC_CHAN',
+      suffix: 'RC_CHAN',
       labelKey: 'streamRate.rcChan',
       descriptionKey: 'streamRate.rcChanDesc',
       recommended: 1,
     },
+    {
+      suffix: 'EXTRA2',
+      labelKey: 'streamRate.extra2',
+      descriptionKey: 'streamRate.extra2Desc',
+      recommended: 1,
+    },
+    {
+      suffix: 'RAW_SENS',
+      labelKey: 'streamRate.rawSens',
+      descriptionKey: 'streamRate.rawSensDesc',
+      recommended: 1,
+    },
+    {
+      suffix: 'PARAMS',
+      labelKey: 'streamRate.params',
+      descriptionKey: 'streamRate.paramsDesc',
+      recommended: 1,
+    },
+    {
+      suffix: 'ADSB',
+      labelKey: 'streamRate.adsb',
+      descriptionKey: 'streamRate.adsbDesc',
+      recommended: 0,
+    },
   ],
+}
+
+const buildStreamProfiles = () => {
+  const profiles = []
+
+  for (let idx = 0; idx <= MAX_MAV_INSTANCES; idx += 1) {
+    profiles.push({ kind: 'MAV', index: idx, prefix: `MAV${idx}_` })
+  }
+
+  for (let idx = 0; idx < MAX_SR_INSTANCES; idx += 1) {
+    profiles.push({ kind: 'SR', index: idx, prefix: `SR${idx}_` })
+  }
+
+  return profiles
+}
+
+const STREAM_RATE_PROFILES = buildStreamProfiles()
+
+export const getStreamRateParamName = (profile, suffix) => {
+  const activeProfile = profile || DEFAULT_STREAM_RATE_PROFILE
+  return `${activeProfile.prefix}${suffix}`
+}
+
+export const detectStreamRateProfile = (allParameters = {}) => {
+  let bestProfile = DEFAULT_STREAM_RATE_PROFILE
+  let bestCount = -1
+
+  for (const profile of STREAM_RATE_PROFILES) {
+    let hitCount = 0
+    for (const suffix of STREAM_RATE_SUFFIXES) {
+      const candidateName = `${profile.prefix}${suffix}`
+      if (candidateName in allParameters) {
+        hitCount += 1
+      }
+    }
+
+    if (hitCount > bestCount) {
+      bestCount = hitCount
+      bestProfile = profile
+    }
+  }
+
+  return bestCount > 0 ? bestProfile : DEFAULT_STREAM_RATE_PROFILE
+}
+
+export const getStreamRateNamesToLoad = () => {
+  const names = []
+  for (const profile of STREAM_RATE_PROFILES) {
+    for (const suffix of STREAM_RATE_SUFFIXES) {
+      names.push(`${profile.prefix}${suffix}`)
+    }
+  }
+  return names
 }
 
 // RC Calibration parameters (copter)
@@ -203,8 +312,8 @@ export const getParamNamesToLoad = (vehicleType) => {
     }
   }
 
-  STREAM_RATE_PARAMS.main.forEach((sr) => paramNames.push(sr.name))
-  STREAM_RATE_PARAMS.advanced.forEach((sr) => paramNames.push(sr.name))
+  // Stream rates: include MAVn and SRn variants, then select active profile after load.
+  paramNames.push(...getStreamRateNamesToLoad())
 
   return paramNames
 }
@@ -212,7 +321,10 @@ export const getParamNamesToLoad = (vehicleType) => {
 /**
  * Build recommended params object for "Apply All Recommended"
  */
-export const buildRecommendedParams = (vehicleType) => {
+export const buildRecommendedParams = (
+  vehicleType,
+  streamRateProfile = DEFAULT_STREAM_RATE_PROFILE
+) => {
   const recommended = {}
 
   Object.entries(BASE_PARAMS).forEach(([name, config]) => {
@@ -233,10 +345,10 @@ export const buildRecommendedParams = (vehicleType) => {
   }
 
   STREAM_RATE_PARAMS.main.forEach((sr) => {
-    recommended[sr.name] = sr.recommended
+    recommended[getStreamRateParamName(streamRateProfile, sr.suffix)] = sr.recommended
   })
   STREAM_RATE_PARAMS.advanced.forEach((sr) => {
-    recommended[sr.name] = sr.recommended
+    recommended[getStreamRateParamName(streamRateProfile, sr.suffix)] = sr.recommended
   })
 
   return recommended

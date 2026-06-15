@@ -2,10 +2,12 @@ import './Header.css'
 import Badge from '../Badge/Badge'
 import { useTranslation } from 'react-i18next'
 import { useWebSocket } from '../../contexts/WebSocketContext'
+import { useParamCache } from '../../contexts/ParamCacheContext'
 
 const Header = () => {
   const { t } = useTranslation()
   const { messages } = useWebSocket()
+  const { isDownloading, status } = useParamCache()
 
   const mavlinkStatus = messages.mavlink_status || {
     connected: false,
@@ -52,6 +54,20 @@ const Header = () => {
 
   return (
     <div className="header">
+      {isDownloading && (
+        <div
+          className="param-download-topbar"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={status.progress || 0}
+        >
+          <div
+            className="param-download-topbar-fill"
+            style={{ width: `${Math.min(status.progress || 0, 99)}%` }}
+          />
+        </div>
+      )}
       <div className="header-content">
         <h1 className="logo">📡 {t('header.title')}</h1>
         <div className="header-info">

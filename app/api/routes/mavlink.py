@@ -138,6 +138,8 @@ class ParameterSetRequest(BaseModel):
 
 class ParametersBatchGetRequest(BaseModel):
     params: list  # [param_name1, param_name2, ...]
+    include_all: bool = False
+    force_refresh: bool = False
 
 
 class ParametersBatchRequest(BaseModel):
@@ -196,8 +198,38 @@ def get_parameters_batch(request: ParametersBatchGetRequest, req: Request):
     if not mavlink_service.connected:
         raise HTTPException(status_code=400, detail=translate("mavlink.not_connected", lang))
 
-    result = mavlink_service.get_parameters_batch(request.params)
+    result = mavlink_service.get_parameters_batch(
+        request.params,
+        include_all=request.include_all,
+        force_refresh=request.force_refresh,
+    )
     return result
+
+
+@router.get("/params/cache/status")
+def get_params_cache_status(req: Request):
+    """Return live parameter cache status for progress polling."""
+    lang = get_language_from_request(req)
+    if not mavlink_service:
+        raise HTTPException(status_code=500, detail=translate("services.mavlink_not_initialized", lang))
+    if not mavlink_service.connected:
+        raise HTTPException(status_code=400, detail=translate("mavlink.not_connected", lang))
+    with mavlink_service._param_cache_lock:
+        cache_count = len(mavlink_service._param_cache)
+        loaded = mavlink_service._param_cache_loaded
+
+    expected = mavlink_service._param_list_expected_count
+    # Keep progress consistent with completion logic in bridge:
+    # during active fetch, count whichever is more complete.
+    if mavlink_service._param_list_active:
+        loaded_count = max(len(mavlink_service._param_list_indexes), len(mavlink_service._param_list_params))
+    else:
+        loaded_count = cache_count
+
+    if expected > 0:
+        loaded_count = min(loaded_count, expected)
+
+    return {"loaded": loaded_count, "expected": expected, "complete": loaded}
 
 
 @router.post("/params/batch/set")

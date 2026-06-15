@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next'
 import { WebSocketProvider } from './contexts/WebSocketContext'
 import { ToastProvider } from './contexts/ToastContext'
 import { ModalProvider } from './contexts/ModalContext'
+import { ParamCacheProvider } from './contexts/ParamCacheContext'
 import api from './services/api'
 
 function App() {
@@ -69,12 +70,14 @@ function App() {
     <ModalProvider>
       <ToastProvider>
         <WebSocketProvider>
-          <div className="app">
-            <Header />
-            <TabBar tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
-            <ArmedBanner />
-            <Content activeTab={activeTab} />
-          </div>
+          <ParamCacheProvider>
+            <div className="app">
+              <Header />
+              <TabBar tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
+              <ArmedBanner />
+              <Content activeTab={activeTab} />
+            </div>
+          </ParamCacheProvider>
         </WebSocketProvider>
       </ToastProvider>
     </ModalProvider>

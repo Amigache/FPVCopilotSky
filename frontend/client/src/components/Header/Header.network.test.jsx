@@ -15,6 +15,13 @@ vi.mock('../../contexts/WebSocketContext', () => ({
   useWebSocket: () => mockUseWebSocket(),
 }))
 
+vi.mock('../../contexts/ParamCacheContext', () => ({
+  useParamCache: () => ({
+    isDownloading: false,
+    status: { progress: 0 },
+  }),
+}))
+
 // Mock the useTranslation hook
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
