@@ -57,7 +57,6 @@ from app.api.routes import status as status_routes  # noqa: E402
 from app.api.routes import network_interface as network_interface_routes  # noqa: E402
 from app.api.routes import experimental as experimental_routes  # noqa: E402
 
-
 # Global services - event loop will be set on startup
 mavlink_service = None
 router_service = None
