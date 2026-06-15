@@ -5,7 +5,6 @@ Optimized for FPV video streaming over 4G LTE
 """
 
 import asyncio
-import subprocess
 import requests
 import xml.etree.ElementTree as ET
 from typing import Dict, Optional, List, Tuple
@@ -13,6 +12,7 @@ from functools import partial
 from dataclasses import dataclass, field
 from datetime import datetime
 import logging
+from app.utils.cmd import run_cmd
 
 from ...base import ModemProvider, ModemStatus, ModemInfo, NetworkInfo
 from .constants import (
@@ -913,19 +913,19 @@ class HuaweiE3372hProvider(ModemProvider):
             # Find modem interface (192.168.8.x route)
             iface = None
             try:
-                result = subprocess.run(
+                stdout, _, returncode = run_cmd(
                     ["ip", "route", "show", "to", "192.168.8.0/24"],
-                    capture_output=True,
-                    text=True,
                     timeout=3,
+                    check=False,
                 )
-                for line in result.stdout.strip().split("\n"):
-                    if "dev" in line:
-                        parts = line.split()
-                        dev_idx = parts.index("dev") + 1
-                        if dev_idx < len(parts):
-                            iface = parts[dev_idx]
-                            break
+                if returncode == 0:
+                    for line in stdout.strip().split("\n"):
+                        if "dev" in line:
+                            parts = line.split()
+                            dev_idx = parts.index("dev") + 1
+                            if dev_idx < len(parts):
+                                iface = parts[dev_idx]
+                                break
             except Exception:
                 pass
 
@@ -934,18 +934,28 @@ class HuaweiE3372hProvider(ModemProvider):
             if iface:
                 cmd.extend(["-I", iface])
 
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=ping_count * 5 + 5)
+            stdout, stderr, returncode = run_cmd(
+                cmd,
+                timeout=ping_count * 5 + 5,
+                check=False,
+            )
 
-            if result.returncode != 0:
+            if returncode != 0:
+                if returncode == -1 and "timed out" in stderr.lower():
+                    return {
+                        "success": False,
+                        "error": "Ping timeout",
+                        "host": target,
+                    }
                 return {
                     "success": False,
-                    "error": f'Ping failed: {result.stderr.strip() or "No response"}',
+                    "error": f'Ping failed: {stderr.strip() or "No response"}',
                     "host": target,
                 }
 
             # Parse ping output
             # rtt min/avg/max/mdev = 23.456/45.678/67.890/12.345 ms
-            output = result.stdout
+            output = stdout
             rtt_line = None
             packet_loss = None
 
@@ -1018,12 +1028,6 @@ class HuaweiE3372hProvider(ModemProvider):
                     "level": quality_level,
                     "label": quality_label,
                 },
-            }
-        except subprocess.TimeoutExpired:
-            return {
-                "success": False,
-                "error": "Ping timeout",
-                "host": target,
             }
         except Exception as e:
             return {"success": False, "error": str(e), "host": target}

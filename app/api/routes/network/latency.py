@@ -28,7 +28,7 @@ async def start_latency_monitor():
     try:
         await start_latency_monitoring()
         return {"success": True, "message": "Latency monitoring started"}
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
         logger.error(f"Error starting latency monitor: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -39,7 +39,7 @@ async def stop_latency_monitor():
     try:
         await stop_latency_monitoring()
         return {"success": True, "message": "Latency monitoring stopped"}
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
         logger.error(f"Error stopping latency monitor: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -71,7 +71,7 @@ async def get_current_latency():
 
         return {"success": True, "latency": stats_dict, "timestamp": time.time()}
 
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
         logger.error(f"Error getting current latency: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -105,7 +105,7 @@ async def get_latency_history(target: Optional[str] = None, last_n: int = 30):
 
         return {"success": True, "history": history_dict, "sample_count": sum(len(v) for v in history_dict.values())}
 
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
         logger.error(f"Error getting latency history: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -139,7 +139,7 @@ async def get_interface_latency(interface: str):
             },
         }
 
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
         logger.error(f"Error getting interface latency: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -170,7 +170,7 @@ async def test_interface_latency(interface: str, count: int = 3):
             },
         }
 
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
         logger.error(f"Error testing interface latency: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -182,6 +182,6 @@ async def clear_latency_history():
         monitor = get_latency_monitor()
         monitor.clear_history()
         return {"success": True, "message": "Latency history cleared"}
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
         logger.error(f"Error clearing latency history: {e}")
         raise HTTPException(status_code=500, detail=str(e))

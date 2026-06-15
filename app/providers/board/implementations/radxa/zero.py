@@ -8,9 +8,9 @@ Distros: Armbian, Ubuntu, Debian
 
 import os
 import logging
-import subprocess
 from typing import Optional, List
 from ...board_provider import BoardProvider
+from app.utils.cmd import run_cmd
 from ...board_definitions import (
     HardwareInfo,
     VariantInfo,
@@ -231,7 +231,9 @@ class RadxaZeroProvider(BoardProvider):
     def _detect_storage_gb() -> int:
         """Detect root storage capacity from df"""
         try:
-            output = subprocess.check_output(["df", "/"], text=True, timeout=3)
+            output, _, returncode = run_cmd(["df", "/"], timeout=3, check=False)
+            if returncode != 0:
+                return 32
             lines = output.strip().split("\n")
             if len(lines) >= 2:
                 parts = lines[1].split()
@@ -267,7 +269,9 @@ class RadxaZeroProvider(BoardProvider):
     def _get_kernel_version() -> str:
         """Get kernel version from uname"""
         try:
-            output = subprocess.check_output(["uname", "-r"], text=True, timeout=3)
+            output, _, returncode = run_cmd(["uname", "-r"], timeout=3, check=False)
+            if returncode != 0:
+                return "unknown"
             return output.strip()
         except Exception as e:
             logger.warning(f"Error getting kernel version: {e}")
@@ -277,7 +281,9 @@ class RadxaZeroProvider(BoardProvider):
     def _detect_storage_type() -> StorageType:
         """Detect root storage type"""
         try:
-            output = subprocess.check_output(["df", "/"], text=True, timeout=3)
+            output, _, returncode = run_cmd(["df", "/"], timeout=3, check=False)
+            if returncode != 0:
+                return StorageType.EMMC
 
             for line in output.split("\n")[1:]:
                 if line.startswith("/dev/"):

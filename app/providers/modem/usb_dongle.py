@@ -6,8 +6,8 @@ Implementation for generic USB dongle modems (e.g., via ModemManager/NetworkMana
 from typing import Dict, Optional
 from ..base import ModemProvider, ModemStatus, ModemInfo, NetworkInfo
 import logging
-import subprocess
 import re
+from app.utils.cmd import run_cmd
 
 logger = logging.getLogger(__name__)
 
@@ -31,17 +31,17 @@ class USBDongleProvider(ModemProvider):
         """Detect if USB modem is available via ModemManager"""
         try:
             # Check if ModemManager is available
-            result = subprocess.run(["which", "mmcli"], capture_output=True, timeout=2)
-            if result.returncode != 0:
+            _, _, returncode = run_cmd(["which", "mmcli"], timeout=2, check=False)
+            if returncode != 0:
                 logger.info("ModemManager (mmcli) not found")
                 return False
 
             # List modems
-            result = subprocess.run(["mmcli", "-L"], capture_output=True, text=True, timeout=5)
+            stdout, _, returncode = run_cmd(["mmcli", "-L"], timeout=5, check=False)
 
-            if result.returncode == 0 and "Modem/" in result.stdout:
+            if returncode == 0 and "Modem/" in stdout:
                 # Extract modem path (e.g., /org/freedesktop/ModemManager1/Modem/0)
-                match = re.search(r"/org/freedesktop/ModemManager1/Modem/\d+", result.stdout)
+                match = re.search(r"/org/freedesktop/ModemManager1/Modem/\d+", stdout)
                 if match:
                     self._modem_path = match.group(0)
                     logger.info(f"USB modem detected at {self._modem_path}")
@@ -55,8 +55,8 @@ class USBDongleProvider(ModemProvider):
     def _run_mmcli(self, args: list) -> Optional[str]:
         """Run mmcli command and return output"""
         try:
-            result = subprocess.run(["mmcli"] + args, capture_output=True, text=True, timeout=10)
-            return result.stdout if result.returncode == 0 else None
+            stdout, _, returncode = run_cmd(["mmcli"] + args, timeout=10, check=False)
+            return stdout if returncode == 0 else None
         except Exception as e:
             logger.error(f"mmcli command failed: {e}")
             return None

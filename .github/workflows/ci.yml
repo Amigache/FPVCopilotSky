@@ -78,6 +78,12 @@ jobs:
   test-backend:
     name: 🧪 Test Python Backend
     runs-on: ubuntu-latest
+    env:
+      # Gate applies to CI-unit-testable backend scope configured in pyproject
+      # (hardware-coupled providers/bridges are excluded from this threshold).
+      COVERAGE_GATE_CURRENT: "50"
+      COVERAGE_GATE_NEXT: "55"
+      COVERAGE_GATE_FINAL: "50"
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -113,14 +119,94 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: |
-          # Run all tests with coverage
+          # Hard gate: enforce current minimum coverage.
           pytest tests/ \
             --cov=app \
+            --cov-fail-under=${COVERAGE_GATE_CURRENT} \
             --cov-report=xml \
             --cov-report=html \
             --cov-report=term-missing \
             -v \
             --tb=short
+
+      - name: Check next coverage target (non-blocking)
+        continue-on-error: true
+        run: |
+          python3 - <<'PY'
+          import os
+          import xml.etree.ElementTree as ET
+
+          current = float(os.environ.get("COVERAGE_GATE_CURRENT", "17"))
+          nxt = float(os.environ.get("COVERAGE_GATE_NEXT", "20"))
+          final = float(os.environ.get("COVERAGE_GATE_FINAL", "50"))
+
+          tree = ET.parse("coverage.xml")
+          root = tree.getroot()
+          line_rate = float(root.attrib.get("line-rate", 0.0))
+          total_pct = line_rate * 100.0
+
+          print(f"Current hard gate: {current:.1f}%")
+          print(f"Next target (warning-only): {nxt:.1f}%")
+          print(f"Final roadmap target: {final:.1f}%")
+          print(f"Measured coverage: {total_pct:.2f}%")
+
+          if total_pct < nxt:
+              print(
+                  f"::warning::Coverage {total_pct:.2f}% is below next target {nxt:.1f}% "
+                  "(non-blocking warning)."
+              )
+          else:
+              print("Next target reached. Safe to raise hard gate in next iteration.")
+
+          remaining = max(0.0, final - total_pct)
+          print(f"Remaining to final target: {remaining:.2f}%")
+          PY
+
+  provider-contracts:
+    name: 🧩 Provider Contracts (${{ matrix.provider_type }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        provider_type: [modem, vpn, video_source, video_encoder]
+    env:
+      PROVIDER_TYPE: ${{ matrix.provider_type }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install system dependencies for GStreamer & PyGObject
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3-gi \
+            python3-gi-cairo \
+            gir1.2-gst-plugins-base-1.0 \
+            gir1.2-gstreamer-1.0 \
+            gir1.2-gst-rtsp-server-1.0 \
+            libgirepository1.0-dev \
+            libcairo2-dev \
+            pkg-config
+
+      - name: Install dependencies
+        run: |
+          pip install pytest pytest-asyncio pytest-mock
+          grep -v "PyGObject" requirements.txt > /tmp/requirements-filtered.txt
+          pip install -r /tmp/requirements-filtered.txt
+          grep -v "PyGObject" requirements-dev.txt | grep -v "^-r requirements" > /tmp/requirements-dev-filtered.txt
+          pip install -r /tmp/requirements-dev-filtered.txt
+
+      - name: Run provider contract tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          pytest tests/test_provider_contracts.py -q --no-cov
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
@@ -159,11 +245,10 @@ jobs:
         working-directory: frontend/client
         run: npm ci
 
-      - name: Increase Node.js heap size
-        run: echo "NODE_OPTIONS=--max-old-space-size=4096" >> $GITHUB_ENV
-
       - name: Run unit tests with coverage
         working-directory: frontend/client
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
         run: npx vitest run --reporter=verbose --coverage --exclude='**/StatusView.test.jsx'
         timeout-minutes: 8
 
@@ -253,7 +338,7 @@ jobs:
   summary:
     name: ✅ CI Summary
     runs-on: ubuntu-latest
-    needs: [lint-backend, lint-frontend, test-backend, test-frontend, build-frontend, security-scan]
+    needs: [lint-backend, lint-frontend, test-backend, provider-contracts, test-frontend, build-frontend, security-scan]
     if: always()
     steps:
       - name: Check results
@@ -262,6 +347,25 @@ jobs:
           echo "Lint Backend: ${{ needs.lint-backend.result }}"
           echo "Lint Frontend: ${{ needs.lint-frontend.result }}"
           echo "Test Backend: ${{ needs.test-backend.result }}"
+          echo "Provider Contracts: ${{ needs.provider-contracts.result }}"
           echo "Test Frontend: ${{ needs.test-frontend.result }}"
           echo "Build Frontend: ${{ needs.build-frontend.result }}"
           echo "Security Scan: ${{ needs.security-scan.result }}"
+
+          REQUIRED_RESULTS=(
+            "${{ needs.lint-backend.result }}"
+            "${{ needs.lint-frontend.result }}"
+            "${{ needs.test-backend.result }}"
+            "${{ needs.provider-contracts.result }}"
+            "${{ needs.test-frontend.result }}"
+            "${{ needs.build-frontend.result }}"
+          )
+
+          for result in "${REQUIRED_RESULTS[@]}"; do
+            if [[ "$result" != "success" ]]; then
+              echo "❌ Mandatory CI checks failed"
+              exit 1
+            fi
+          done
+
+          echo "✅ Mandatory CI checks passed"

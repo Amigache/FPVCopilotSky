@@ -4,9 +4,12 @@ Handles message translation based on Accept-Language header.
 """
 
 import json
+import logging
 import os
 from typing import Dict, Any, Optional
 from functools import lru_cache
+
+logger = logging.getLogger(__name__)
 
 
 class I18nManager:
@@ -25,8 +28,18 @@ class I18nManager:
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
                     self.translations[lang] = json.load(f)
+            except json.JSONDecodeError as e:
+                logger.warning(
+                    "Failed to parse translation file",
+                    extra={"language": lang, "error": str(e)},
+                )
+                self.translations[lang] = {}
             except Exception as e:
-                print(f"Error loading {lang}.json: {e}")
+                logger.warning(
+                    "Error loading translation file",
+                    extra={"language": lang, "error": str(e)},
+                )
+                self.translations[lang] = {}
 
     def get_language_from_accept_language(self, accept_language: Optional[str]) -> str:
         """

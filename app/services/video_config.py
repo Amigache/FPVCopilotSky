@@ -6,8 +6,8 @@ Supports MJPEG and H.264 encoding with UDP output
 from dataclasses import dataclass, field
 from typing import Optional, Dict
 import ipaddress
-import subprocess
 import glob
+from app.utils.cmd import run_cmd
 
 
 def get_device_identity(device: str) -> Optional[Dict[str, str]]:
@@ -16,19 +16,18 @@ def get_device_identity(device: str) -> Optional[Dict[str, str]]:
     Returns None if the device is not a valid capture device.
     """
     try:
-        result = subprocess.run(
+        stdout, _, returncode = run_cmd(
             ["v4l2-ctl", "--device", device, "--info"],
-            capture_output=True,
-            text=True,
             timeout=2,
+            check=False,
         )
-        if result.returncode != 0:
+        if returncode != 0:
             return None
 
         info = {"device": device}
         is_capture = False
 
-        for line in result.stdout.split("\n"):
+        for line in stdout.split("\n"):
             if "Card type" in line:
                 parts = line.split(":", 1)
                 if len(parts) > 1:
@@ -91,15 +90,14 @@ def auto_detect_camera() -> str:
         for device in sorted(devices):
             try:
                 # Check if it's a USB camera (uvcvideo driver)
-                result = subprocess.run(
+                stdout, _, returncode = run_cmd(
                     ["v4l2-ctl", "--device", device, "--info"],
-                    capture_output=True,
-                    text=True,
                     timeout=2,
+                    check=False,
                 )
 
-                if result.returncode == 0:
-                    output = result.stdout.lower()
+                if returncode == 0:
+                    output = stdout.lower()
                     # Look for uvcvideo driver (USB cameras) and video capture capability
                     if "uvcvideo" in output and "video capture" in output:
                         return device

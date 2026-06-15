@@ -59,7 +59,7 @@ async def get_available_interfaces() -> Dict:
 
         return {"success": True, "interfaces": interfaces, "count": len(interfaces)}
 
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError) as e:
         logger.error(f"Error listing available network interfaces: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -92,7 +92,7 @@ async def get_detected_interfaces() -> Dict:
 
         return {"success": True, "interfaces": detected, "count": len(detected)}
 
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError) as e:
         logger.error(f"Error listing detected network interfaces: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -142,7 +142,7 @@ async def get_interface_status(interface_name: str) -> Dict:
 
     except HTTPException:
         raise
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError) as e:
         logger.error(f"Error getting status for interface '{interface_name}': {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -198,7 +198,7 @@ async def bring_up_interface(interface_name: str, request: Request) -> Interface
 
     except HTTPException:
         raise
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError) as e:
         logger.error(f"Error bringing up interface '{interface_name}': {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -251,7 +251,7 @@ async def bring_down_interface(interface_name: str, request: Request) -> Interfa
 
     except HTTPException:
         raise
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError) as e:
         logger.error(f"Error bringing down interface '{interface_name}': {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -325,7 +325,7 @@ async def set_interface_metric(
 
     except HTTPException:
         raise
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError) as e:
         logger.error(f"Error setting metric for interface '{interface_name}': {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -375,7 +375,7 @@ async def scan_wifi_networks() -> Dict:
 
     except HTTPException:
         raise
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError) as e:
         logger.error(f"Error scanning WiFi networks: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -429,7 +429,7 @@ async def connect_wifi(request: WiFiConnectRequest) -> InterfaceActionResponse:
 
     except HTTPException:
         raise
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError) as e:
         logger.error(f"Error connecting to WiFi: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -475,6 +475,6 @@ async def disconnect_wifi() -> InterfaceActionResponse:
 
     except HTTPException:
         raise
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError) as e:
         logger.error(f"Error disconnecting WiFi: {e}")
         raise HTTPException(status_code=500, detail=str(e))

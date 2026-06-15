@@ -149,6 +149,17 @@ bash scripts/deploy.sh                   # Recompilar y desplegar
 bash scripts/dev.sh                      # Modo desarrollo con hot-reload
 ```
 
+### CORS por entorno
+
+El backend configura CORS mediante variables de entorno:
+
+- `FPV_CORS_ALLOW_ORIGINS`
+- `FPV_CORS_ALLOW_CREDENTIALS`
+- `FPV_CORS_ALLOW_METHODS`
+- `FPV_CORS_ALLOW_HEADERS`
+
+Configuración detallada y ejemplos dev/prod en [docs/INSTALLATION.md](docs/INSTALLATION.md).
+
 ## 📚 Documentación
 
 Toda la documentación extendida está en la **[Wiki del proyecto](docs/INDEX.md)**:

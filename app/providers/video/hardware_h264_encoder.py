@@ -3,12 +3,12 @@ Hardware H.264 Encoder Provider
 Detects and uses SoC hardware video encoding (V4L2 M2M, meson_venc, etc.)
 """
 
-import subprocess
 import glob
 import os
 import logging
 from typing import Dict, Optional
 from ..base.video_encoder_provider import VideoEncoderProvider
+from app.utils.cmd import run_cmd
 
 logger = logging.getLogger(__name__)
 
@@ -111,29 +111,27 @@ class HardwareH264Encoder(VideoEncoderProvider):
             for device in devices:
                 try:
                     # Query device capabilities (tight timeout — detection must not block startup)
-                    result = subprocess.run(
+                    stdout, _, returncode = run_cmd(
                         ["v4l2-ctl", "-d", device, "--info"],
-                        capture_output=True,
-                        text=True,
                         timeout=1,
+                        check=False,
                     )
 
-                    if result.returncode != 0:
+                    if returncode != 0:
                         continue
 
-                    info = result.stdout.lower()
+                    info = stdout.lower()
 
                     # Check if it's an encoder
                     if "video output" in info or "encoder" in info or "codec" in info:
                         # Check capabilities for H.264 encoding
-                        caps_result = subprocess.run(
+                        caps_stdout, _, _ = run_cmd(
                             ["v4l2-ctl", "-d", device, "--list-formats-out"],
-                            capture_output=True,
-                            text=True,
                             timeout=1,
+                            check=False,
                         )
 
-                        if "h264" in caps_result.stdout.lower() or "h.264" in caps_result.stdout.lower():
+                        if "h264" in caps_stdout.lower() or "h.264" in caps_stdout.lower():
                             logger.info(f"Found hardware H.264 encoder: {device}")
                             return device
 

@@ -4,11 +4,11 @@ Handles CSI cameras via libcamera (modern Raspberry Pi, some Radxa boards)
 """
 
 import re
-import subprocess
 import logging
 import time
 from typing import Dict, List, Optional, Any
 from ..base.video_source_provider import VideoSourceProvider
+from app.utils.cmd import run_cmd
 
 logger = logging.getLogger(__name__)
 
@@ -45,17 +45,17 @@ class LibCameraSource(VideoSourceProvider):
 
         try:
             # Check if libcamera-hello exists (indicates libcamera is installed)
-            result = subprocess.run(["which", "libcamera-hello"], capture_output=True, timeout=2)
+            _, _, returncode = run_cmd(["which", "libcamera-hello"], timeout=2, check=False)
 
-            if result.returncode != 0:
+            if returncode != 0:
                 _libcamera_available_cache = False
                 _libcamera_available_cache_ts = now
                 return False
 
             # Check if GStreamer libcamerasrc element is available
-            gst_result = subprocess.run(["gst-inspect-1.0", "libcamerasrc"], capture_output=True, timeout=2)
+            _, _, gst_returncode = run_cmd(["gst-inspect-1.0", "libcamerasrc"], timeout=5, check=False)
 
-            _libcamera_available_cache = gst_result.returncode == 0
+            _libcamera_available_cache = gst_returncode == 0
             _libcamera_available_cache_ts = now
             return _libcamera_available_cache
 
@@ -79,18 +79,17 @@ class LibCameraSource(VideoSourceProvider):
 
         try:
             # List cameras using libcamera-hello
-            result = subprocess.run(
+            stdout, _, returncode = run_cmd(
                 ["libcamera-hello", "--list-cameras"],
-                capture_output=True,
-                text=True,
                 timeout=5,
+                check=False,
             )
 
-            if result.returncode != 0:
+            if returncode != 0:
                 return []
 
             # Parse the full output to extract per-camera modes
-            parsed_cameras = self._parse_camera_list(result.stdout)
+            parsed_cameras = self._parse_camera_list(stdout)
 
             # Add all discovered cameras
             for cam in parsed_cameras:
@@ -244,14 +243,13 @@ class LibCameraSource(VideoSourceProvider):
         """
         # Try to find real data from a previous discover_sources() call
         try:
-            result = subprocess.run(
+            stdout, _, returncode = run_cmd(
                 ["libcamera-hello", "--list-cameras"],
-                capture_output=True,
-                text=True,
                 timeout=5,
+                check=False,
             )
-            if result.returncode == 0:
-                cams = self._parse_camera_list(result.stdout)
+            if returncode == 0:
+                cams = self._parse_camera_list(stdout)
                 for cam in cams:
                     if cam["camera_id"] == source_id or f"libcamera:{cam['camera_id']}" == source_id:
                         return self._build_capabilities(cam)

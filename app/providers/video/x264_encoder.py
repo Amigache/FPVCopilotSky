@@ -103,7 +103,6 @@ class X264Encoder(VideoEncoderProvider):
             # If source is already H.264, use avdec_h264 to decode for re-encoding
             # If source is MJPEG, use jpegdec or v4l2jpegdec
             if "video/x-h264" in source_format:
-                print(f"📹 Source is H.264, using avdec_h264 for decoding (source_format: {source_format})")
                 logger.info("Source is H.264, using avdec_h264 for decoding")
                 elements.append({"name": "decoder", "element": "avdec_h264", "properties": {}})
             elif "image/jpeg" in source_format:
@@ -112,7 +111,6 @@ class X264Encoder(VideoEncoderProvider):
                 use_hw_jpegdec = self._hw_jpegdec_available and not opencv_enabled
 
                 if use_hw_jpegdec:
-                    print("📹 Using v4l2jpegdec (HW) for JPEG decoding")
                     logger.info("Using v4l2jpegdec (HW) for JPEG decoding")
                     decoder_element = "v4l2jpegdec"
                 else:
@@ -121,7 +119,6 @@ class X264Encoder(VideoEncoderProvider):
                 elements.append({"name": "decoder", "element": decoder_element, "properties": {}})
             else:
                 # For raw formats (YUYV, etc), skip decoder
-                print(f"📹 Source format is {source_format}, no decoder needed")
                 logger.info(f"Source format is {source_format}, no decoder needed")
 
             # Add conversion and scaling elements

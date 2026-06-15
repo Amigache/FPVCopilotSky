@@ -46,7 +46,7 @@ async def get_flight_session_status():
             status = provider.get_flight_session_status()
             return {"success": True, **status}
         return {"success": True, "status": "no_session"}
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError) as e:
         logger.error(f"Error getting flight session status: {e}")
         return {"success": False, "error": str(e), "status": "error"}
 
@@ -75,7 +75,7 @@ async def start_flight_session():
         raise HTTPException(status_code=500, detail="Flight session not supported by modem")
     except HTTPException:
         raise
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError) as e:
         logger.error(f"Error starting flight session: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -108,7 +108,7 @@ async def stop_flight_session():
         raise HTTPException(status_code=400, detail="No active flight session")
     except HTTPException:
         raise
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError) as e:
         logger.error(f"Error stopping flight session: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -145,6 +145,6 @@ async def record_flight_sample():
                         "message": result.get("message", "No active session"),
                     }
         return {"success": False, "message": "Flight session not available"}
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError) as e:
         logger.error(f"Error recording flight sample: {e}")
         return {"success": False, "message": str(e)}

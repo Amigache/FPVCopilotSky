@@ -1,0 +1,96 @@
+{
+  "metadata": {
+    "timestamp": "2026-06-14T12:27:48+02:00",
+    "base_url": "http://localhost:8000",
+    "samples_per_endpoint": 2
+  },
+  "system": {
+    "hostname": "FPVCopilotSky",
+    "kernel": "6.1.115-vendor-rk35xx",
+    "cpu_model": "unknown",
+    "loadavg": "1.07 0.88 0.64 2/307 13930",
+    "memory": "3911MB_total,1673MB_used,819MB_free",
+    "disk_root": "29G total, 6,1G used, 21G avail",
+    "app_processes": [
+      {
+        "pid": 1181,
+        "cpu_percent": 7.9,
+        "mem_percent": 3.8,
+        "rss_kb": 153100,
+        "etime": "27:21"
+      }
+    ]
+  },
+  "endpoints": [
+    {
+      "endpoint": "/api/status/health",
+      "success_count": 2,
+      "failure_count": 0,
+      "stats": {
+        "count": 2,
+        "min_ms": 31.258,
+        "p50_ms": 31.258,
+        "p95_ms": 31.258,
+        "max_ms": 230.429,
+        "mean_ms": 130.844,
+        "status_codes": { "200": 2 }
+      }
+    },
+    {
+      "endpoint": "/api/system/status",
+      "success_count": 2,
+      "failure_count": 0,
+      "stats": {
+        "count": 2,
+        "min_ms": 9.552,
+        "p50_ms": 9.552,
+        "p95_ms": 9.552,
+        "max_ms": 55.669,
+        "mean_ms": 32.611,
+        "status_codes": { "404": 2 }
+      }
+    },
+    {
+      "endpoint": "/api/network/status",
+      "success_count": 2,
+      "failure_count": 0,
+      "stats": {
+        "count": 2,
+        "min_ms": 5.635,
+        "p50_ms": 5.635,
+        "p95_ms": 5.635,
+        "max_ms": 5.868,
+        "mean_ms": 5.752,
+        "status_codes": { "200": 2 }
+      }
+    },
+    {
+      "endpoint": "/api/video/config",
+      "success_count": 2,
+      "failure_count": 0,
+      "stats": {
+        "count": 2,
+        "min_ms": 6.299,
+        "p50_ms": 6.299,
+        "p95_ms": 6.299,
+        "max_ms": 8.589,
+        "mean_ms": 7.444,
+        "status_codes": { "404": 2 }
+      }
+    },
+    {
+      "endpoint": "/api/vpn/status",
+      "success_count": 2,
+      "failure_count": 0,
+      "stats": {
+        "count": 2,
+        "min_ms": 63.852,
+        "p50_ms": 63.852,
+        "p95_ms": 63.852,
+        "max_ms": 157.069,
+        "mean_ms": 110.46,
+        "status_codes": { "200": 2 }
+      }
+    }
+  ]
+}

@@ -1,4 +1,11 @@
 /* Dashboard specific styles */
+.dashboard-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  width: 100%;
+}
+
 .monitor-columns {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));

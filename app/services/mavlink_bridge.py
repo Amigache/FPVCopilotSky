@@ -7,17 +7,21 @@ import os
 
 os.environ["MAVLINK20"] = "1"
 
+import logging  # noqa: E402
 import socket  # noqa: E402
 import serial  # noqa: E402
 import threading  # noqa: E402
 import time  # noqa: E402
 import asyncio  # noqa: E402
-from typing import Optional, List, Dict, Any, TYPE_CHECKING  # noqa: E402
+from typing import Optional, Callable, List, Dict, Any, TYPE_CHECKING  # noqa: E402
 from pymavlink.dialects.v20 import ardupilotmega as mavlink2  # noqa: E402
 from .mavlink_dialect import MAVLinkDialect  # noqa: E402
 
 if TYPE_CHECKING:
     from .mavlink_router import MAVLinkRouter
+
+
+logger = logging.getLogger(__name__)
 
 
 class MAVLinkBridge:
@@ -80,6 +84,9 @@ class MAVLinkBridge:
         self.websocket_manager = websocket_manager
         self.event_loop = event_loop
 
+        # Disconnect handler (called when serial connection drops unexpectedly)
+        self._disconnect_handler: Optional[Callable[[], None]] = None
+
         # Statistics
         self.stats = {
             "serial_rx": 0,
@@ -120,7 +127,16 @@ class MAVLinkBridge:
         self.router = router
         # Set callback so router can send to serial
         router.set_serial_callback(self.write_to_serial)
-        print("🔗 Router connected to bridge")
+        logger.info("Router connected to MAVLink bridge")
+
+    def set_disconnect_handler(self, handler: Callable[[], None]):
+        """Set a callback invoked when the serial connection drops unexpectedly.
+
+        The handler is called after the bridge has fully disconnected.
+        It runs in the context of the serial reader thread — do not block.
+        Typical use: start a background reconnection thread.
+        """
+        self._disconnect_handler = handler
 
     def write_to_serial(self, data: bytes) -> bool:
         """Thread-safe write to serial port."""
@@ -133,7 +149,7 @@ class MAVLinkBridge:
                 self.stats["serial_tx"] += 1
             return True
         except Exception as e:
-            print(f"⚠️ Serial write error: {e}")
+            logger.warning("Serial write error", extra={"error": str(e)})
             return False
 
     def connect(self, port: str, baudrate: int = 115200, tcp_port: int = 0) -> Dict[str, Any]:
@@ -142,7 +158,7 @@ class MAVLinkBridge:
             return {"success": False, "message": "Already connected"}
 
         try:
-            print(f"🔌 Connecting to {port} @ {baudrate}...")
+            logger.info("Connecting MAVLink bridge", extra={"port": port, "baudrate": baudrate, "tcp_port": tcp_port})
 
             # Open serial port
             self.serial_port = serial.Serial(port=port, baudrate=baudrate, timeout=0.1, write_timeout=1)
@@ -150,14 +166,17 @@ class MAVLinkBridge:
             self.baudrate = baudrate
 
             # Wait for heartbeat
-            print("⏳ Waiting for heartbeat...")
+            logger.info("Waiting for MAVLink heartbeat")
             heartbeat = self._wait_for_heartbeat(timeout=10)
             if not heartbeat:
                 self.serial_port.close()
                 self.serial_port = None
                 return {"success": False, "message": "No heartbeat received"}
 
-            print(f"✅ Heartbeat received from system {self.target_system}")
+            logger.info(
+                "Heartbeat received",
+                extra={"target_system": self.target_system, "target_component": self.target_component},
+            )
 
             # Reset parser for serial reader (clean state after heartbeat detection)
             self.mav_parser = mavlink2.MAVLink(None)
@@ -172,7 +191,7 @@ class MAVLinkBridge:
                 stale = self.serial_port.in_waiting
                 if stale > 0:
                     self.serial_port.read(stale)
-                    print(f"🧹 Drained {stale} stale bytes from serial buffer")
+                    logger.info("Drained stale bytes from serial buffer", extra={"bytes_drained": stale})
             except Exception:
                 pass
 
@@ -195,8 +214,9 @@ class MAVLinkBridge:
             # Start HEARTBEAT sender thread
             self.heartbeat_thread = threading.Thread(target=self._heartbeat_sender, daemon=True, name="HeartbeatSender")
             self.heartbeat_thread.start()
-            print(
-                f"✅ Started HEARTBEAT transmitter (SysID={self.source_system_id}, CompID={self.source_component_id})"
+            logger.info(
+                "Started HEARTBEAT transmitter",
+                extra={"source_system_id": self.source_system_id, "source_component_id": self.source_component_id},
             )
 
             # Start TCP accept thread only if TCP server is enabled
@@ -205,9 +225,9 @@ class MAVLinkBridge:
                 self.tcp_accept_thread.start()
 
             if tcp_port > 0:
-                print(f"✅ MAVLink Bridge started (Serial: {port}, TCP: {tcp_port})")
+                logger.info("MAVLink bridge started with TCP server", extra={"port": port, "tcp_port": tcp_port})
             else:
-                print(f"✅ MAVLink Bridge started (Serial: {port}, outputs via router)")
+                logger.info("MAVLink bridge started with router outputs", extra={"port": port})
 
             self._broadcast_status()
 
@@ -219,7 +239,7 @@ class MAVLinkBridge:
             }
 
         except Exception as e:
-            print(f"❌ Connection error: {e}")
+            logger.error("MAVLink bridge connection error", extra={"error": str(e)})
             if self.serial_port:
                 try:
                     self.serial_port.close()
@@ -236,7 +256,7 @@ class MAVLinkBridge:
             return {"success": False, "message": "Not connected"}
         self._disconnecting = True
         try:
-            print("🔌 Disconnecting...")
+            logger.info("Disconnecting MAVLink bridge")
 
             self.running = False
 
@@ -268,13 +288,19 @@ class MAVLinkBridge:
             self.connected = False
             self.last_heartbeat = 0
 
-            print(
-                f"📊 Final stats: Serial RX={self.stats['serial_rx']}, TX={self.stats['serial_tx']}, "
-                f"TCP RX={self.stats['tcp_rx']}, TX={self.stats['tcp_tx']}, "
-                f"parsed={getattr(self, '_parsed_msg_count', 0)}, unparsed={getattr(self, '_unparsed_msg_count', 0)}, "
-                f"heartbeats={getattr(self, '_serial_heartbeat_count', 0)}"
+            logger.info(
+                "MAVLink bridge disconnected with final stats",
+                extra={
+                    "serial_rx": self.stats["serial_rx"],
+                    "serial_tx": self.stats["serial_tx"],
+                    "tcp_rx": self.stats["tcp_rx"],
+                    "tcp_tx": self.stats["tcp_tx"],
+                    "parsed": getattr(self, "_parsed_msg_count", 0),
+                    "unparsed": getattr(self, "_unparsed_msg_count", 0),
+                    "heartbeats": getattr(self, "_serial_heartbeat_count", 0),
+                },
             )
-            print("✅ Disconnected")
+            logger.info("MAVLink bridge disconnected")
 
             # Reset stats for next connection
             self.stats = {"serial_rx": 0, "serial_tx": 0, "tcp_rx": 0, "tcp_tx": 0}
@@ -289,11 +315,17 @@ class MAVLinkBridge:
         """Handle unexpected serial failures and update status."""
         if not self.connected:
             return
-        print(f"❌ Serial connection lost: {reason}")
+        logger.error("Serial connection lost", extra={"reason": reason})
         try:
             self.disconnect()
         except Exception as e:
-            print(f"⚠️ Error during disconnect after serial failure: {e}")
+            logger.warning("Error during disconnect after serial failure", extra={"error": str(e)})
+
+        if self._disconnect_handler:
+            try:
+                self._disconnect_handler()
+            except Exception as e:
+                logger.error("Disconnect handler error", extra={"error": str(e)})
 
     def _wait_for_heartbeat(self, timeout: float = 10) -> bool:
         """Wait for first heartbeat from autopilot."""
@@ -315,7 +347,10 @@ class MAVLinkBridge:
                             self.telemetry_data["system"]["mav_type"] = msg.type
                             self.telemetry_data["system"]["autopilot"] = msg.autopilot
 
-                            print(f"   MAV Type: {msg.type}, Autopilot: {msg.autopilot}")
+                            logger.info(
+                                "Heartbeat metadata received",
+                                extra={"mav_type": msg.type, "autopilot": msg.autopilot},
+                            )
                             return True
                     except Exception:
                         pass
@@ -331,16 +366,16 @@ class MAVLinkBridge:
         self.tcp_server.settimeout(1.0)
         self.tcp_server.bind(("0.0.0.0", self.tcp_port))
         self.tcp_server.listen(5)
-        print(f"🌐 TCP Server listening on 0.0.0.0:{self.tcp_port}")
+        logger.info("TCP server listening", extra={"host": "0.0.0.0", "port": self.tcp_port})
 
     def _tcp_accept_loop(self):
         """Accept incoming TCP connections."""
-        print("🔄 TCP accept thread started")
+        logger.info("TCP accept thread started")
 
         while self.running:
             try:
                 client, addr = self.tcp_server.accept()
-                print(f"✅ TCP Client connected from {addr}")
+                logger.info("TCP client connected", extra={"addr": str(addr)})
 
                 # Keep socket in blocking mode with timeout for reads
                 client.settimeout(0.1)
@@ -349,7 +384,7 @@ class MAVLinkBridge:
 
                 with self.tcp_clients_lock:
                     self.tcp_clients.append(client)
-                    print(f"   Total clients: {len(self.tcp_clients)}")
+                    logger.info("TCP client registered", extra={"total_clients": len(self.tcp_clients)})
 
                 # Start reader thread for this client
                 reader = threading.Thread(
@@ -365,24 +400,24 @@ class MAVLinkBridge:
                 continue
             except Exception as e:
                 if self.running:
-                    print(f"⚠️ TCP accept error: {e}")
+                    logger.warning("TCP accept error", extra={"error": str(e)})
 
-        print("🛑 TCP accept thread stopped")
+        logger.info("TCP accept thread stopped")
 
     def _tcp_client_reader(self, client: socket.socket, addr):
         """Read data from TCP client and forward to serial."""
-        print(f"📥 TCP reader started for {addr}")
+        logger.info("TCP reader started", extra={"addr": str(addr)})
         first_data = True
 
         while self.running:
             try:
                 data = client.recv(4096)
                 if not data:
-                    print(f"📤 Client {addr} disconnected (EOF)")
+                    logger.info("TCP client disconnected (EOF)", extra={"addr": str(addr)})
                     break
 
                 if first_data:
-                    print(f"📥 First data from {addr}: {len(data)} bytes")
+                    logger.info("First TCP data received", extra={"addr": str(addr), "bytes": len(data)})
                     first_data = False
 
                 # Forward to serial using thread-safe method
@@ -390,33 +425,33 @@ class MAVLinkBridge:
                     self.stats["tcp_rx"] += 1
 
                     if self.stats["tcp_rx"] == 1:
-                        print(f"📡 First message forwarded to serial ({len(data)} bytes)")
+                        logger.info("First TCP message forwarded to serial", extra={"bytes": len(data)})
                     elif self.stats["tcp_rx"] % 50 == 0:
-                        print(f"📡 TCP→Serial: {self.stats['tcp_rx']} messages")
+                        logger.debug("TCP to serial progress", extra={"messages": self.stats["tcp_rx"]})
 
             except socket.timeout:
                 continue
             except Exception as e:
                 if self.running:
-                    print(f"⚠️ TCP reader error {addr}: {e}")
+                    logger.warning("TCP reader error", extra={"addr": str(addr), "error": str(e)})
                 break
 
         # Cleanup
         with self.tcp_clients_lock:
             if client in self.tcp_clients:
                 self.tcp_clients.remove(client)
-                print(f"   Remaining clients: {len(self.tcp_clients)}")
+                logger.info("TCP client removed", extra={"remaining_clients": len(self.tcp_clients)})
 
         try:
             client.close()
         except Exception:
             pass
 
-        print(f"📥 TCP reader stopped for {addr}")
+        logger.info("TCP reader stopped", extra={"addr": str(addr)})
 
     def _heartbeat_sender(self):
         """Send HEARTBEAT messages periodically to identify as companion computer/camera."""
-        print("💓 HEARTBEAT sender started")
+        logger.info("HEARTBEAT sender started")
 
         while self.running:
             try:
@@ -448,30 +483,32 @@ class MAVLinkBridge:
                                     self.router.forward_to_outputs(packed_camera)
                                     # Debug log (first heartbeat of each session)
                                     if not hasattr(self, "_heartbeat_logged"):
-                                        print(
-                                            f"💓 Sending HEARTBEAT: Onboard Computer "
-                                            f"(SysID={self.mav_sender.srcSystem}, "
-                                            f"CompID={self.mav_sender.srcComponent})"
+                                        logger.info(
+                                            "Sending first HEARTBEAT",
+                                            extra={
+                                                "source_system_id": self.mav_sender.srcSystem,
+                                                "source_component_id": self.mav_sender.srcComponent,
+                                            },
                                         )
                                         self._heartbeat_logged = True
                         finally:
                             self.serial_lock.release()
                 except Exception as e:
-                    print(f"❌ HEARTBEAT send error: {e}")
+                    logger.error("HEARTBEAT send error", extra={"error": str(e)})
                     pass
 
                 # Wait for next heartbeat
                 time.sleep(self.heartbeat_interval)
 
             except Exception as e:
-                print(f"⚠️ HEARTBEAT sender error: {e}")
+                logger.warning("HEARTBEAT sender error", extra={"error": str(e)})
                 time.sleep(1)
 
-        print("💓 HEARTBEAT sender stopped")
+        logger.info("HEARTBEAT sender stopped")
 
     def _serial_reader_loop(self):
         """Read from serial, forward raw bytes, and parse for telemetry."""
-        print("🔄 Serial reader started")
+        logger.info("Serial reader started")
 
         while self.running:
             try:
@@ -484,10 +521,14 @@ class MAVLinkBridge:
                     # Use longer timeout (30s) during first 30 seconds after connect
                     effective_timeout = 30.0 if (time.time() - self._connect_time < 30.0) else self.heartbeat_timeout
                     if elapsed > effective_timeout:
-                        print(
-                            f"⏱️ Heartbeat elapsed: {elapsed:.1f}s > {effective_timeout:.1f}s "
-                            f"(parsed HBs: {getattr(self, '_serial_heartbeat_count', 0)}, "
-                            f"msgs: {self.stats['serial_rx']})"
+                        logger.warning(
+                            "Heartbeat timeout detected",
+                            extra={
+                                "elapsed_s": round(elapsed, 1),
+                                "timeout_s": round(effective_timeout, 1),
+                                "parsed_heartbeats": getattr(self, "_serial_heartbeat_count", 0),
+                                "serial_rx": self.stats["serial_rx"],
+                            },
                         )
                         self._handle_serial_failure("heartbeat timeout")
                         break
@@ -524,26 +565,32 @@ class MAVLinkBridge:
 
                                 # Log first message and periodic stats
                                 if self.stats["serial_rx"] == 1:
-                                    print(f"📡 First serial message: {msg_type}")
+                                    logger.info("First serial message received", extra={"message_type": msg_type})
                                 elif self.stats["serial_rx"] == 100:
                                     types_summary = ", ".join(sorted(self._msg_type_counts.keys()))
-                                    print(f"📊 Serial: {self.stats['serial_rx']} msgs, types: {types_summary}")
+                                    logger.info(
+                                        "Serial message summary",
+                                        extra={"messages": self.stats["serial_rx"], "types": types_summary},
+                                    )
                         except Exception as e:
                             if not hasattr(self, "_parse_error_count"):
                                 self._parse_error_count = 0
                             self._parse_error_count += 1
                             if self._parse_error_count <= 3:
-                                print(f"⚠️ MAVLink parse error #{self._parse_error_count}: {e}")
+                                logger.warning(
+                                    "MAVLink parse error",
+                                    extra={"count": self._parse_error_count, "error": str(e)},
+                                )
 
             except serial.SerialException as e:
-                print(f"⚠️ Serial error: {e}")
+                logger.warning("Serial error", extra={"error": str(e)})
                 self._handle_serial_failure(str(e))
                 break
             except Exception as e:
-                print(f"⚠️ Serial reader error: {e}")
+                logger.warning("Serial reader error", extra={"error": str(e)})
                 time.sleep(0.1)
 
-        print("🛑 Serial reader stopped")
+        logger.info("Serial reader stopped")
 
     def _forward_to_tcp_clients(self, data: bytes):
         """Forward data to all connected TCP clients and router outputs."""
@@ -559,10 +606,10 @@ class MAVLinkBridge:
 
                         # Log first successful send
                         if self.stats["tcp_tx"] == 1:
-                            print(f"📡 First message sent to TCP client ({len(data)} bytes)")
+                            logger.info("First message sent to TCP client", extra={"bytes": len(data)})
 
                     except (BrokenPipeError, ConnectionResetError, OSError) as e:
-                        print(f"⚠️ TCP send error: {e}")
+                        logger.warning("TCP send error", extra={"error": str(e)})
                         dead_clients.append(client)
 
                 # Remove dead clients
@@ -573,7 +620,10 @@ class MAVLinkBridge:
                             dead.close()
                         except Exception:
                             pass
-                        print(f"❌ TCP client disconnected, {len(self.tcp_clients)} remaining")
+                        logger.warning(
+                            "TCP client disconnected after send error",
+                            extra={"remaining_clients": len(self.tcp_clients)},
+                        )
 
         # Forward to router outputs (UDP, additional TCP servers/clients)
         if self.router:
@@ -589,7 +639,7 @@ class MAVLinkBridge:
                 self._serial_heartbeat_count = 0
             self._serial_heartbeat_count += 1
             if self._serial_heartbeat_count == 1:
-                print(f"💓 First HEARTBEAT parsed in serial reader (system {msg.get_srcSystem()})")
+                logger.info("First HEARTBEAT parsed in serial reader", extra={"system_id": msg.get_srcSystem()})
 
             self.last_heartbeat = time.time()
             mav_type = msg.type
@@ -661,7 +711,7 @@ class MAVLinkBridge:
             if len(self.telemetry_data["messages"]) > self.max_messages:
                 self.telemetry_data["messages"] = self.telemetry_data["messages"][: self.max_messages]
 
-            print(f"📨 STATUSTEXT [{severity}]: {text}")
+            logger.info("STATUSTEXT received", extra={"severity": severity, "text": text})
             self._broadcast_telemetry()
 
         elif msg_type == "VFR_HUD":
@@ -686,7 +736,7 @@ class MAVLinkBridge:
                 param_value = msg.param_value
                 param_type = msg.param_type
 
-                print(f"📥 PARAM_VALUE received: {param_id} = {param_value}")
+                logger.info("PARAM_VALUE received", extra={"param_id": param_id, "param_value": param_value})
 
                 # Store the value and signal any waiting threads
                 with self._param_lock:
@@ -699,10 +749,14 @@ class MAVLinkBridge:
                         }
                         self._param_callbacks[param_id].set()
             except Exception as e:
-                print(f"⚠️ Error processing PARAM_VALUE: {e}")
+                logger.warning("Error processing PARAM_VALUE", extra={"error": str(e)})
 
     def is_connected(self) -> bool:
         return self.connected
+
+    def get_system_id(self) -> int:
+        """Get the MAVLink system ID from the connected flight controller."""
+        return self.target_system
 
     def get_status(self) -> Dict[str, Any]:
         """Get current status."""
@@ -918,7 +972,10 @@ class MAVLinkBridge:
             if not result["success"]:
                 errors.append(f"{param_name}: {result.get('error', 'Failed')}")
             else:
-                print(f"✅ Parameter {param_name} = {result.get('actual_value')}")
+                logger.info(
+                    "Parameter set successfully",
+                    extra={"param_name": param_name, "actual_value": result.get("actual_value")},
+                )
 
         return {
             "success": len(errors) == 0,

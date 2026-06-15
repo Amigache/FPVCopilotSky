@@ -4,11 +4,14 @@ Endpoints for managing modem connections and providers
 """
 
 import asyncio
+import logging
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from app.providers import get_provider_registry
 from app.i18n import get_language_from_request, translate
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/modem", tags=["modem"])
 
@@ -65,11 +68,13 @@ async def get_available_providers():
         registry = get_provider_registry()
         providers = registry.get_available_modem_providers()
         return {"success": True, "providers": providers, "count": len(providers)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except HTTPException:
+        raise
+    except (ValueError, AttributeError, TypeError) as e:
+        logger.error(f"Provider registry error in get_available_providers: {type(e).__name__}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to retrieve modem providers")
 
 
-@router.get("/status/{provider_name}")
 async def get_modem_status(provider_name: str, request: Request):
     """
     Get status of a specific modem provider
@@ -95,8 +100,9 @@ async def get_modem_status(provider_name: str, request: Request):
         return {"success": True, "provider": provider_name, "status": status}
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except (AttributeError, TypeError, RuntimeError) as e:
+        logger.error(f"Provider error in get_modem_status({provider_name}): {type(e).__name__}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get modem status")
 
 
 @router.post("/connect/{provider_name}")
@@ -136,8 +142,12 @@ async def connect_modem(provider_name: str, request: Request):
         return {"success": True, "provider": provider_name, "result": result}
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except (AttributeError, TypeError, RuntimeError, ValueError, KeyError) as e:
+        logger.error(
+            f"Provider error in connect_modem({provider_name}): {type(e).__name__}: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Failed to connect modem")
 
 
 @router.post("/disconnect/{provider_name}")
@@ -177,8 +187,12 @@ async def disconnect_modem(provider_name: str, request: Request):
         return {"success": True, "provider": provider_name, "result": result}
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except (AttributeError, TypeError, RuntimeError, ValueError, KeyError) as e:
+        logger.error(
+            f"Provider error in disconnect_modem({provider_name}): {type(e).__name__}: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Failed to disconnect modem")
 
 
 class BandConfigRequest(BaseModel):
@@ -219,8 +233,12 @@ async def configure_modem_band(provider_name: str, request: BandConfigRequest, r
         return {"success": True, "provider": provider_name, "result": result}
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except (AttributeError, TypeError, RuntimeError, ValueError, KeyError) as e:
+        logger.error(
+            f"Provider error in configure_modem_band({provider_name}): {type(e).__name__}: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Failed to configure band")
 
 
 @router.post("/reboot/{provider_name}")
@@ -254,8 +272,12 @@ async def reboot_modem(provider_name: str, request: Request):
         return {"success": True, "provider": provider_name, "result": result}
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except (AttributeError, TypeError, RuntimeError, ValueError, KeyError) as e:
+        logger.error(
+            f"Provider error in reboot_modem({provider_name}): {type(e).__name__}: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Failed to reboot modem")
 
 
 @router.get("/info/{provider_name}")
@@ -284,8 +306,12 @@ async def get_modem_info(provider_name: str, request: Request):
         return {"success": True, "provider": provider_name, "info": info}
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except (AttributeError, TypeError, RuntimeError, ValueError, KeyError) as e:
+        logger.error(
+            f"Provider error in get_modem_info({provider_name}): {type(e).__name__}: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Failed to get modem info")
 
 
 # =============================
@@ -325,8 +351,12 @@ async def get_modem_signal(provider_name: str, request: Request):
         raise HTTPException(status_code=503, detail="Could not get signal info")
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except (AttributeError, TypeError, RuntimeError, ValueError, KeyError) as e:
+        logger.error(
+            f"Provider error in get_modem_signal({provider_name}): {type(e).__name__}: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Failed to get signal info")
 
 
 @router.get("/network/{provider_name}")
@@ -361,8 +391,12 @@ async def get_modem_network(provider_name: str, request: Request):
         raise HTTPException(status_code=503, detail="Could not get network info")
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except (AttributeError, TypeError, RuntimeError, ValueError, KeyError) as e:
+        logger.error(
+            f"Provider error in get_modem_network({provider_name}): {type(e).__name__}: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Failed to get network info")
 
 
 @router.get("/traffic/{provider_name}")
@@ -397,8 +431,12 @@ async def get_modem_traffic(provider_name: str, request: Request):
         raise HTTPException(status_code=503, detail="Could not get traffic stats")
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except (AttributeError, TypeError, RuntimeError, ValueError, KeyError) as e:
+        logger.error(
+            f"Provider error in get_modem_traffic({provider_name}): {type(e).__name__}: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Failed to get traffic stats")
 
 
 @router.get("/status/enhanced/{provider_name}")
@@ -477,8 +515,8 @@ async def get_enhanced_status(provider_name: str, request: Request):
                 vq = await loop.run_in_executor(None, provider.get_video_quality_assessment)
                 if vq and vq.get("available"):
                     response["video_quality"] = vq
-            except Exception:
-                pass
+            except (AttributeError, TypeError, RuntimeError, ValueError, KeyError) as e:
+                logger.debug("Video quality assessment unavailable", extra={"error": str(e)})
 
         # Device info - pass through all raw fields
         if device_info:
@@ -536,8 +574,8 @@ async def get_enhanced_status(provider_name: str, request: Request):
                         "network_mode": band_data.get("network_mode", "00"),
                         "network_mode_name": band_data.get("network_mode_name", "Auto"),
                     }
-            except Exception:
-                pass
+            except (AttributeError, TypeError, RuntimeError, ValueError, KeyError) as e:
+                logger.debug("Band data unavailable", extra={"error": str(e)})
 
         if not available:
             response["error"] = "Could not connect to modem"
@@ -552,7 +590,7 @@ async def get_enhanced_status(provider_name: str, request: Request):
             "connected": False,
             "error": "Modem provider not available",
         }
-    except Exception as e:
+    except (AttributeError, TypeError, RuntimeError, ValueError, KeyError) as e:
         return {
             "success": True,
             "available": False,
@@ -596,8 +634,12 @@ async def get_modem_mode(provider_name: str, request: Request):
         raise HTTPException(status_code=503, detail="Could not get network mode")
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except (AttributeError, TypeError, RuntimeError, ValueError, KeyError) as e:
+        logger.error(
+            f"Provider error in get_modem_mode({provider_name}): {type(e).__name__}: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Failed to get network mode")
 
 
 @router.post("/mode/{provider_name}")
@@ -641,8 +683,12 @@ async def set_modem_mode(provider_name: str, mode_request: NetworkModeRequest, r
         raise HTTPException(status_code=500, detail="Failed to set network mode")
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except (AttributeError, TypeError, RuntimeError, ValueError, KeyError) as e:
+        logger.error(
+            f"Provider error in set_modem_mode({provider_name}): {type(e).__name__}: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Failed to set network mode")
 
 
 # =============================
@@ -680,8 +726,12 @@ async def get_current_band(provider_name: str, request: Request):
         raise HTTPException(status_code=503, detail="Could not get band info")
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except (AttributeError, TypeError, RuntimeError, ValueError, KeyError) as e:
+        logger.error(
+            f"Provider error in get_current_band({provider_name}): {type(e).__name__}: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Failed to get band info")
 
 
 @router.get("/band/presets/{provider_name}")
@@ -712,8 +762,12 @@ async def get_band_presets(provider_name: str, request: Request):
         raise HTTPException(status_code=503, detail="Could not get presets")
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except (AttributeError, TypeError, RuntimeError, ValueError, KeyError) as e:
+        logger.error(
+            f"Provider error in get_band_presets({provider_name}): {type(e).__name__}: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Failed to get band presets")
 
 
 @router.post("/band/{provider_name}")
@@ -760,8 +814,12 @@ async def set_lte_band(provider_name: str, band_request: LTEBandRequest, request
         raise HTTPException(status_code=500, detail="Failed to set band")
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except (AttributeError, TypeError, RuntimeError, ValueError, KeyError) as e:
+        logger.error(
+            f"Provider error in set_lte_band({provider_name}): {type(e).__name__}: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Failed to set band")
 
 
 # =============================
@@ -798,8 +856,12 @@ async def get_apn_settings(provider_name: str, request: Request):
         raise HTTPException(status_code=503, detail="Could not get APN settings")
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except (AttributeError, TypeError, RuntimeError, ValueError, KeyError) as e:
+        logger.error(
+            f"Provider error in set_roaming({provider_name}): {type(e).__name__}: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Failed to set roaming")
 
 
 @router.post("/apn/{provider_name}")
@@ -844,8 +906,12 @@ async def set_apn(provider_name: str, apn_request: APNRequest, request: Request)
         raise HTTPException(status_code=500, detail="Failed to set APN")
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except (AttributeError, TypeError, RuntimeError, ValueError, KeyError) as e:
+        logger.error(
+            f"Provider error in set_apn({provider_name}): {type(e).__name__}: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Failed to set APN")
 
 
 # =============================
@@ -883,8 +949,12 @@ async def reconnect_network(provider_name: str, request: Request):
         raise HTTPException(status_code=500, detail="Reconnection failed")
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except (AttributeError, TypeError, RuntimeError, ValueError, KeyError) as e:
+        logger.error(
+            f"Provider error in reconnect_network({provider_name}): {type(e).__name__}: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Failed to reconnect network")
 
 
 @router.post("/roaming/{provider_name}")
@@ -918,8 +988,12 @@ async def set_roaming(provider_name: str, roaming_request: RoamingRequest, reque
         raise HTTPException(status_code=500, detail="Failed to set roaming")
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except (AttributeError, TypeError, RuntimeError, ValueError, KeyError) as e:
+        logger.error(
+            f"Provider error in get_video_quality({provider_name}): {type(e).__name__}: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Failed to assess video quality")
 
 
 # =============================
@@ -956,8 +1030,12 @@ async def get_video_quality(provider_name: str, request: Request):
         raise HTTPException(status_code=503, detail="Could not assess video quality")
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except (AttributeError, TypeError, RuntimeError, ValueError, KeyError) as e:
+        logger.error(
+            f"Provider error in measure_latency({provider_name}): {type(e).__name__}: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Failed to measure latency")
 
 
 # =============================
@@ -998,8 +1076,12 @@ async def measure_latency(provider_name: str, request: Request):
         raise HTTPException(status_code=500, detail="Latency test failed")
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except (AttributeError, TypeError, RuntimeError, ValueError, KeyError) as e:
+        logger.error(
+            f"Provider error in measure_latency_custom({provider_name}): {type(e).__name__}: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Failed to measure latency")
 
 
 @router.post("/latency/{provider_name}")
@@ -1038,5 +1120,9 @@ async def measure_latency_custom(provider_name: str, latency_request: LatencyTes
         raise HTTPException(status_code=500, detail="Latency test failed")
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except (AttributeError, TypeError, RuntimeError, ValueError, KeyError) as e:
+        logger.error(
+            f"Provider error in measure_latency_custom({provider_name}): {type(e).__name__}: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Failed to measure latency")

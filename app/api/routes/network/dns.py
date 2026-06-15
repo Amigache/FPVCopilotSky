@@ -28,7 +28,7 @@ async def get_dns_cache_status():
 
         return {"success": True, **status}
 
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
         logger.error(f"Error getting DNS cache status: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -47,7 +47,7 @@ async def start_dns_cache():
 
     except HTTPException:
         raise
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
         logger.error(f"Error starting DNS cache: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -66,7 +66,7 @@ async def stop_dns_cache():
 
     except HTTPException:
         raise
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
         logger.error(f"Error stopping DNS cache: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -85,7 +85,7 @@ async def clear_dns_cache():
 
     except HTTPException:
         raise
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
         logger.error(f"Error clearing DNS cache: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -109,6 +109,6 @@ async def install_dns_cache():
 
     except HTTPException:
         raise
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
         logger.error(f"Error installing DNS cache: {e}")
         raise HTTPException(status_code=500, detail=str(e))

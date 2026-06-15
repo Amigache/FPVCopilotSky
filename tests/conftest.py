@@ -169,32 +169,90 @@ def mock_subprocess():
         yield mock
 
 
+def _find_mavlink_serial():
+    """Auto-detect an active MAVLink serial connection.
+
+    Scans common serial port patterns and baudrates, attempting a quick
+    heartbeat check on each. Returns (port, baudrate) on success or None.
+    """
+    import glob
+    import pymavlink.mavutil as mavutil
+
+    candidates = (
+        glob.glob("/dev/ttyAMA*")
+        + glob.glob("/dev/ttyAML*")
+        + glob.glob("/dev/ttyUSB*")
+        + glob.glob("/dev/ttyACM*")
+        + glob.glob("/dev/ttyS*")
+        + glob.glob("/dev/ttyTHS*")
+    )
+    baudrates = [115200, 57600, 38400, 9600, 921600]
+
+    for port in sorted(set(candidates)):
+        for baud in baudrates:
+            try:
+                conn = mavutil.mavlink_connection(port, baud=baud, source_system=255, timeout=1)
+                msg = conn.wait_heartbeat(timeout=1)
+                conn.close()
+                if msg:
+                    return port, baud
+            except Exception:
+                continue
+    return None
+
+
+def _find_mavlink_tcp():
+    """Try connecting to common MAVLink TCP endpoints on localhost."""
+    import socket
+
+    ports = [5760, 5761, 5762, 14550, 14551]
+    for port in ports:
+        try:
+            s = socket.create_connection(("127.0.0.1", port), timeout=1)
+            s.close()
+            return port
+        except (OSError, socket.timeout):
+            continue
+    return None
+
+
 @pytest.fixture
 def serial_port():
     port = os.environ.get("MAVLINK_TEST_SERIAL_PORT")
-    if not port:
-        pytest.skip("Set MAVLINK_TEST_SERIAL_PORT to run serial MAVLink tests")
-    return port
+    if port:
+        return port
+    found = _find_mavlink_serial()
+    if found:
+        return found[0]
+    pytest.skip("No MAVLink serial connection detected. Set MAVLINK_TEST_SERIAL_PORT to specify one.")
 
 
 @pytest.fixture
 def baudrate():
-    value = os.environ.get("MAVLINK_TEST_BAUDRATE", "115200")
-    try:
-        return int(value)
-    except ValueError:
-        pytest.skip("MAVLINK_TEST_BAUDRATE must be an integer")
+    value = os.environ.get("MAVLINK_TEST_BAUDRATE")
+    if value is not None:
+        try:
+            return int(value)
+        except ValueError:
+            pytest.skip("MAVLINK_TEST_BAUDRATE must be an integer")
+    found = _find_mavlink_serial()
+    if found:
+        return found[1]
+    return 115200
 
 
 @pytest.fixture
 def tcp_port():
     value = os.environ.get("MAVLINK_TEST_TCP_PORT")
-    if not value:
-        pytest.skip("Set MAVLINK_TEST_TCP_PORT to run TCP MAVLink tests")
-    try:
-        return int(value)
-    except ValueError:
-        pytest.skip("MAVLINK_TEST_TCP_PORT must be an integer")
+    if value:
+        try:
+            return int(value)
+        except ValueError:
+            pytest.skip("MAVLINK_TEST_TCP_PORT must be an integer")
+    found = _find_mavlink_tcp()
+    if found:
+        return found
+    pytest.skip("No MAVLink TCP endpoint detected. Set MAVLINK_TEST_TCP_PORT to specify one.")
 
 
 @pytest.fixture
@@ -514,10 +572,16 @@ def mock_api_services(monkeypatch):
     mock_video_service.configure = Mock(side_effect=mock_configure)
     mock_video_service.is_available.return_value = True
 
-    # Patch the video routes module to inject the mock service
-    import app.api.routes.video as video_routes
+    # Patch each video sub-module to inject the mock service
+    import app.api.routes.video_config as video_config_routes
+    import app.api.routes.video_control as video_control_routes
+    import app.api.routes.video_status as video_status_routes
+    import app.api.routes.video_info as video_info_routes
 
-    video_routes._video_service = mock_video_service
+    video_config_routes._video_service = mock_video_service
+    video_control_routes._video_service = mock_video_service
+    video_status_routes._video_service = mock_video_service
+    video_info_routes._video_service = mock_video_service
 
     # Mock WebRTC service
     mock_webrtc_service = Mock()

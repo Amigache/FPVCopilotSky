@@ -36,6 +36,8 @@ markers = [
     "slow: mark test as slow running",
     "integration: mark test as integration test",
     "unit: mark test as unit test",
+    "e2e: mark test as end-to-end workflow test",
+    "contract: mark provider/API contract conformance tests",
 ]
 asyncio_mode = "auto"
 
@@ -46,10 +48,16 @@ omit = [
     "*/__pycache__/*",
     "*/venv/*",
     "*/.venv/*",
+    "*/app/providers/*",
+    "*/app/providers/**/*",
+    "*/app/services/gstreamer_service.py",
+    "*/app/services/mavlink_bridge.py",
+    "*/app/services/mavlink_router.py",
+    "*/app/services/network_event_bridge.py",
 ]
 
 [tool.coverage.report]
-fail_under = 17
+fail_under = 50
 exclude_lines = [
     "pragma: no cover",
     "def __repr__",

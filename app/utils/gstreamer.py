@@ -64,26 +64,33 @@ def is_gst_element_available(element: str) -> bool:
         except Exception as e:
             logger.debug("Gst registry probe failed for %s, falling back to gst-inspect: %s", element, e)
 
+    stderr = ""
     try:
-        result = subprocess.run(
+        proc = subprocess.run(
             ["gst-inspect-1.0", element],
             capture_output=True,
             timeout=GST_INSPECT_TIMEOUT,
         )
-        available = result.returncode == 0
+        returncode = proc.returncode
+        stderr = (proc.stderr or b"").decode(errors="ignore")
     except subprocess.TimeoutExpired:
+        returncode = 124
+        stderr = "Command timed out"
+    except Exception as e:
+        returncode = 1
+        stderr = str(e)
+
+    available = returncode == 0
+    if not available and "Command timed out" in stderr:
         logger.warning(
             "gst-inspect-1.0 %s timed out after %ds (registry still building?)",
             element,
             GST_INSPECT_TIMEOUT,
         )
-        available = False
-    except FileNotFoundError:
+    elif not available and ("No such file or directory" in stderr or "not found" in stderr.lower()):
         logger.warning("gst-inspect-1.0 not found on PATH")
-        available = False
-    except Exception as e:  # pragma: no cover
-        logger.error("Error checking GStreamer element %s: %s", element, e)
-        available = False
+    elif not available and stderr:
+        logger.debug("gst-inspect-1.0 probe failed for %s: %s", element, stderr)
 
     with _gst_cache_lock:
         _gst_plugin_cache[element] = available

@@ -5,9 +5,9 @@ Shared helper functions and Pydantic models
 
 from pydantic import BaseModel
 from typing import Optional, List
-import asyncio
 import logging
 import re
+from app.utils.cmd import run_cmd_async
 
 logger = logging.getLogger(__name__)
 
@@ -42,29 +42,13 @@ class ForgetConnectionRequest(BaseModel):
 
 
 async def run_command(cmd: List[str], timeout: float = 30) -> tuple:
-    """Run a command asynchronously and return stdout, stderr, returncode
+    """Run a command asynchronously via unified cmd layer.
 
     Args:
         cmd: Command and arguments to execute
         timeout: Maximum seconds to wait for the command (default: 30)
     """
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-        )
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-        return stdout.decode().strip(), stderr.decode().strip(), proc.returncode
-    except asyncio.TimeoutError:
-        logger.error(f"Command {cmd} timed out after {timeout}s")
-        try:
-            proc.kill()
-            await proc.wait()
-        except ProcessLookupError:
-            pass
-        return "", f"Command timed out after {timeout}s", -1
-    except Exception as e:
-        logger.error(f"Error running command {cmd}: {e}")
-        return "", str(e), -1
+    return await run_cmd_async(cmd, timeout=timeout)
 
 
 async def detect_wifi_interface() -> Optional[str]:

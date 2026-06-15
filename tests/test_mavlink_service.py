@@ -103,18 +103,13 @@ class TestMAVLinkStatus:
         except Exception as e:
             pytest.skip(f"Serial connection not available: {e}")
 
-    def test_get_system_id(self, mock_mavlink_connection):
-        """Test getting system ID"""
+    def test_get_system_id(self):
+        """Test getting system ID returns current target_system."""
         bridge = MAVLinkBridge()
-
-        try:
-            bridge.connect("/dev/ttyUSB0", 115200)
-            system_id = bridge.get_system_id()
-
-            # Should return a value or None
-            assert system_id is None or isinstance(system_id, int)
-        except Exception as e:
-            pytest.skip(f"Serial connection not available: {e}")
+        bridge.target_system = 42
+        assert bridge.get_system_id() == 42
+        bridge.target_system = 0
+        assert bridge.get_system_id() == 0
 
 
 class TestMAVLinkMessages:

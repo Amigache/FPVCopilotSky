@@ -52,6 +52,9 @@
     "charge": "Carga",
     "voltage": "Voltaje",
     "current": "Corriente",
+    "map": "🗺️ Mapa",
+    "mapView": "Mapa",
+    "satelliteView": "Satélite",
     "yes": "SÍ",
     "no": "NO",
     "critical": "Crítico"
