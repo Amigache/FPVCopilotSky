@@ -1,0 +1,104 @@
+.map-card {
+  grid-column: 1 / -1;
+  overflow: hidden;
+}
+
+.map-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.map-toggles {
+  display: flex;
+  gap: 4px;
+  background: rgba(20, 20, 30, 0.5);
+  border-radius: 6px;
+  padding: 3px;
+}
+
+.map-toggle-btn {
+  background: transparent;
+  border: none;
+  color: #9aa6c3;
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 0.8em;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.map-toggle-btn:hover {
+  color: #d5ddff;
+}
+
+.map-toggle-btn.active {
+  background: rgba(79, 195, 247, 0.2);
+  color: #4fc3f7;
+}
+
+.map-container {
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid rgba(102, 102, 102, 0.2);
+  height: 380px;
+}
+
+.map-inner {
+  width: 100%;
+  height: 100%;
+}
+
+.vehicle-marker {
+  background: none !important;
+  border: none !important;
+}
+
+.home-marker {
+  background: none !important;
+  border: none !important;
+}
+
+.map-popup {
+  font-size: 0.85em;
+  line-height: 1.6;
+}
+
+/* Leaflet overrides for dark theme */
+.map-container .leaflet-container {
+  background: #1a1a2e;
+}
+
+.map-container .leaflet-control-zoom a {
+  background: rgba(30, 30, 50, 0.9);
+  color: #d5ddff;
+  border-color: rgba(102, 102, 102, 0.3);
+}
+
+.map-container .leaflet-control-zoom a:hover {
+  background: rgba(50, 50, 70, 0.9);
+}
+
+.map-container .leaflet-popup-content-wrapper {
+  background: rgba(20, 20, 30, 0.95);
+  color: #d5ddff;
+  border: 1px solid rgba(102, 102, 102, 0.3);
+  border-radius: 6px;
+}
+
+.map-container .leaflet-popup-tip {
+  background: rgba(20, 20, 30, 0.95);
+  border: 1px solid rgba(102, 102, 102, 0.3);
+}
+
+.map-container .leaflet-popup-close-button {
+  color: #9aa6c3 !important;
+}
+
+@media (max-width: 768px) {
+  .map-container {
+    height: 280px;
+  }
+}

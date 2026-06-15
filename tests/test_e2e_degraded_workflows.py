@@ -12,7 +12,6 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 import app.api.routes.network.status as network_status_routes
-import app.api.routes.video as video_routes
 import app.api.routes.vpn as vpn_routes
 
 

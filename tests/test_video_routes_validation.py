@@ -13,7 +13,7 @@ Pydantic catches invalid data before it ever reaches a route handler.
 
 import pytest
 from pydantic import ValidationError
-from app.api.routes.video import (
+from app.api.routes.video_config import (
     VideoConfigRequest,
     StreamingConfigRequest,
     LivePropertyRequest,

@@ -13,7 +13,7 @@ import serial  # noqa: E402
 import threading  # noqa: E402
 import time  # noqa: E402
 import asyncio  # noqa: E402
-from typing import Optional, List, Dict, Any, TYPE_CHECKING  # noqa: E402
+from typing import Optional, Callable, List, Dict, Any, TYPE_CHECKING  # noqa: E402
 from pymavlink.dialects.v20 import ardupilotmega as mavlink2  # noqa: E402
 from .mavlink_dialect import MAVLinkDialect  # noqa: E402
 
@@ -84,6 +84,9 @@ class MAVLinkBridge:
         self.websocket_manager = websocket_manager
         self.event_loop = event_loop
 
+        # Disconnect handler (called when serial connection drops unexpectedly)
+        self._disconnect_handler: Optional[Callable[[], None]] = None
+
         # Statistics
         self.stats = {
             "serial_rx": 0,
@@ -125,6 +128,15 @@ class MAVLinkBridge:
         # Set callback so router can send to serial
         router.set_serial_callback(self.write_to_serial)
         logger.info("Router connected to MAVLink bridge")
+
+    def set_disconnect_handler(self, handler: Callable[[], None]):
+        """Set a callback invoked when the serial connection drops unexpectedly.
+
+        The handler is called after the bridge has fully disconnected.
+        It runs in the context of the serial reader thread — do not block.
+        Typical use: start a background reconnection thread.
+        """
+        self._disconnect_handler = handler
 
     def write_to_serial(self, data: bytes) -> bool:
         """Thread-safe write to serial port."""
@@ -308,6 +320,12 @@ class MAVLinkBridge:
             self.disconnect()
         except Exception as e:
             logger.warning("Error during disconnect after serial failure", extra={"error": str(e)})
+
+        if self._disconnect_handler:
+            try:
+                self._disconnect_handler()
+            except Exception as e:
+                logger.error("Disconnect handler error", extra={"error": str(e)})
 
     def _wait_for_heartbeat(self, timeout: float = 10) -> bool:
         """Wait for first heartbeat from autopilot."""
@@ -735,6 +753,10 @@ class MAVLinkBridge:
 
     def is_connected(self) -> bool:
         return self.connected
+
+    def get_system_id(self) -> int:
+        """Get the MAVLink system ID from the connected flight controller."""
+        return self.target_system
 
     def get_status(self) -> Dict[str, Any]:
         """Get current status."""

@@ -57,6 +57,7 @@ from app.api.routes import status as status_routes  # noqa: E402
 from app.api.routes import network_interface as network_interface_routes  # noqa: E402
 from app.api.routes import experimental as experimental_routes  # noqa: E402
 
+
 # Global services - event loop will be set on startup
 mavlink_service = None
 router_service = None
@@ -415,6 +416,7 @@ def _startup_init_core_services(provider_registry, preferences_service, loop):
     # ── Inject services into routes ───────────────────────────────────────────
     mavlink.set_mavlink_service(mav_svc)
     router_routes.set_router_service(router_svc)
+
     logger.info(" Router ready for outputs")
     logger.info(" VPN service initialized")
 
@@ -482,6 +484,11 @@ async def lifespan(app: FastAPI):
     provider_registry = _startup_init_providers()
     router_service, mavlink_service, video_service, streaming_config = _startup_init_core_services(
         provider_registry, preferences_service, loop
+    )
+
+    # Wire up reconnection handler for unexpected serial drops
+    mavlink_service.set_disconnect_handler(
+        lambda: threading.Thread(target=_auto_reconnect_serial, daemon=True, name="SerialReconnect").start()
     )
 
     modem_provider = provider_registry.get_modem_provider("huawei_e3372h")
@@ -1112,6 +1119,90 @@ def auto_connect_serial():
         import traceback
 
         traceback.print_exc()
+
+
+def _auto_reconnect_serial():
+    """
+    Reconnect to flight controller after unexpected serial disconnection.
+    Runs in a background thread with exponential backoff.
+    Reads preferences on each iteration so disabling auto-connect cancels retries.
+    """
+    import time
+
+    backoff = 1
+    max_backoff = 30
+
+    # Small initial delay so the disconnect can fully settle
+    time.sleep(0.5)
+
+    while True:
+        try:
+            if not preferences_service or not mavlink_service:
+                logger.warning(" Services not available for serial reconnection")
+                return
+
+            prefs = preferences_service
+            serial_config = prefs.get_serial_config()
+
+            if not serial_config.auto_connect:
+                logger.info(" Serial auto-reconnect disabled in preferences")
+                return
+
+            if mavlink_service.is_connected():
+                logger.info(" Already reconnected, stopping reconnection loop")
+                return
+
+            logger.info(f" Reconnecting to flight controller (backoff={backoff}s)...")
+
+            # Phase 1: try saved connection
+            if serial_config.port:
+                result = mavlink_service.connect(serial_config.port, serial_config.baudrate)
+                if result.get("success"):
+                    time.sleep(1)
+                    if mavlink_service.get_status().get("connected"):
+                        logger.info(f" Reconnected to saved port: {serial_config.port}")
+                        return
+                    else:
+                        mavlink_service.disconnect()
+                else:
+                    logger.warning(f" Saved connection failed: {result.get('message', 'Unknown error')}")
+
+            # Phase 2: auto-detect
+            detector = get_detector()
+            if detector:
+                detection = detector.detect_flight_controller(
+                    preferred_port=serial_config.port,
+                    preferred_baudrate=serial_config.baudrate,
+                )
+                if detection:
+                    logger.info(f" Found flight controller: {detection.get('description', detection['port'])}")
+                    result = mavlink_service.connect(detection["port"], detection["baudrate"])
+                    if result.get("success"):
+                        time.sleep(1)
+                        if mavlink_service.get_status().get("connected"):
+                            try:
+                                prefs.set_serial_config(
+                                    port=detection["port"],
+                                    baudrate=detection["baudrate"],
+                                    successful=True,
+                                )
+                                logger.info(f" Reconnected via detection: {detection['port']}")
+                            except Exception as e:
+                                logger.warning(f" Reconnected but failed to save: {e}")
+                            return
+                        else:
+                            mavlink_service.disconnect()
+                    else:
+                        logger.warning(f" Connection attempt failed: {result.get('message', 'Unknown error')}")
+
+            # Backoff for next retry
+            time.sleep(backoff)
+            backoff = min(backoff * 2 + 1, max_backoff)
+
+        except Exception as e:
+            logger.warning(f" Serial reconnection error: {e}")
+            time.sleep(backoff)
+            backoff = min(backoff * 2 + 1, max_backoff)
 
 
 def get_detected_board():

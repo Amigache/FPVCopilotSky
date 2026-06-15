@@ -8,7 +8,7 @@ from fastapi import APIRouter
 from app.api.routes import video_adaptive, video_config, video_control, video_info, video_status
 
 # Main router that aggregates all video sub-routes
-router = APIRouter(prefix="/api/video", tags=["video"])
+router = APIRouter(tags=["video"])
 
 # Include all sub-routers (they handle their own prefixes and tag groupings)
 router.include_router(video_status.router)

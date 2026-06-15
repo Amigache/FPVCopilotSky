@@ -5,7 +5,7 @@ from fastapi import HTTPException
 from unittest.mock import AsyncMock, Mock
 
 from app.api.routes import modem as modem_routes
-from app.api.routes import video as video_routes
+from app.api.routes import video_config, video_control, video_status
 from app.api.routes import vpn as vpn_routes
 from app.api.routes import experimental as experimental_routes
 from app.api.routes.network import bridge as bridge_routes
@@ -61,10 +61,10 @@ async def test_get_cameras_sanitizes_discovery_errors(monkeypatch):
     monkeypatch.setattr("app.providers.registry.get_provider_registry", lambda: mock_registry)
 
     # Mock the video service as present
-    monkeypatch.setattr(video_routes, "_video_service", Mock())
+    monkeypatch.setattr(video_status, "_video_service", Mock())
 
     with pytest.raises(HTTPException) as excinfo:
-        await video_routes.get_cameras(MockRequest())
+        await video_status.get_cameras(MockRequest())
 
     assert excinfo.value.status_code == 500
     assert "Failed to enumerate cameras" in str(excinfo.value.detail)
@@ -80,10 +80,10 @@ async def test_get_codecs_sanitizes_encoder_errors(monkeypatch):
     monkeypatch.setattr("app.providers.registry.get_provider_registry", lambda: mock_registry)
 
     # Mock the video service as present
-    monkeypatch.setattr(video_routes, "_video_service", Mock())
+    monkeypatch.setattr(video_status, "_video_service", Mock())
 
     with pytest.raises(HTTPException) as excinfo:
-        await video_routes.get_codecs(MockRequest())
+        await video_status.get_codecs(MockRequest())
 
     assert excinfo.value.status_code == 500
     assert "Failed to enumerate codecs" in str(excinfo.value.detail)
@@ -203,11 +203,11 @@ async def test_configure_streaming_sanitizes_service_errors(monkeypatch):
     mock_video_service = Mock()
     mock_video_service.configure.side_effect = RuntimeError("pipeline reconfigure failed")
 
-    monkeypatch.setattr(video_routes, "_video_service", mock_video_service)
+    monkeypatch.setattr(video_config, "_video_service", mock_video_service)
 
-    req = video_routes.StreamingConfigRequest(mode="udp")
+    req = video_config.StreamingConfigRequest(mode="udp")
     with pytest.raises(HTTPException) as excinfo:
-        await video_routes.configure_streaming(req, MockRequest())
+        await video_config.configure_streaming(req, MockRequest())
 
     assert excinfo.value.status_code == 500
     assert "Failed to update streaming configuration" in str(excinfo.value.detail)
@@ -219,11 +219,11 @@ async def test_live_update_sanitizes_service_errors(monkeypatch):
     mock_video_service = Mock()
     mock_video_service.update_live_property.side_effect = TypeError("invalid live property payload")
 
-    monkeypatch.setattr(video_routes, "_video_service", mock_video_service)
+    monkeypatch.setattr(video_config, "_video_service", mock_video_service)
 
-    req = video_routes.LivePropertyRequest(property="h264_bitrate", value=2500)
+    req = video_config.LivePropertyRequest(property="h264_bitrate", value=2500)
     with pytest.raises(HTTPException) as excinfo:
-        await video_routes.live_update(req, MockRequest())
+        await video_config.live_update(req, MockRequest())
 
     assert excinfo.value.status_code == 500
     assert "Failed to apply live update" in str(excinfo.value.detail)
@@ -478,10 +478,10 @@ async def test_start_streaming_sanitizes_service_errors(monkeypatch):
     mock_service = Mock()
     mock_service.start = Mock(side_effect=RuntimeError("GStreamer initialization failed"))
 
-    monkeypatch.setattr("app.api.routes.video._video_service", mock_service)
+    monkeypatch.setattr("app.api.routes.video_control._video_service", mock_service)
 
     with pytest.raises(HTTPException) as excinfo:
-        await video_routes.start_streaming(MockRequest())
+        await video_control.start_streaming(MockRequest())
 
     assert excinfo.value.status_code == 500
     assert "Failed to start video streaming" in str(excinfo.value.detail)
@@ -493,10 +493,10 @@ async def test_stop_streaming_sanitizes_service_errors(monkeypatch):
     mock_service = Mock()
     mock_service.stop = Mock(side_effect=TypeError("pipeline cleanup type error"))
 
-    monkeypatch.setattr("app.api.routes.video._video_service", mock_service)
+    monkeypatch.setattr("app.api.routes.video_control._video_service", mock_service)
 
     with pytest.raises(HTTPException) as excinfo:
-        await video_routes.stop_streaming(MockRequest())
+        await video_control.stop_streaming(MockRequest())
 
     assert excinfo.value.status_code == 500
     assert "Failed to stop video streaming" in str(excinfo.value.detail)
@@ -508,10 +508,10 @@ async def test_restart_streaming_sanitizes_service_errors(monkeypatch):
     mock_service = Mock()
     mock_service.restart = Mock(side_effect=AttributeError("restart method missing"))
 
-    monkeypatch.setattr("app.api.routes.video._video_service", mock_service)
+    monkeypatch.setattr("app.api.routes.video_control._video_service", mock_service)
 
     with pytest.raises(HTTPException) as excinfo:
-        await video_routes.restart_streaming(MockRequest())
+        await video_control.restart_streaming(MockRequest())
 
     assert excinfo.value.status_code == 500
     assert "Failed to restart video streaming" in str(excinfo.value.detail)
@@ -520,16 +520,16 @@ async def test_restart_streaming_sanitizes_service_errors(monkeypatch):
 @pytest.mark.asyncio
 async def test_configure_video_sanitizes_service_errors(monkeypatch):
     """Verify configure_video hides service internal errors."""
-    from app.api.routes.video import VideoConfigRequest
+    from app.api.routes.video_config import VideoConfigRequest
 
     mock_service = Mock()
     mock_service.configure = Mock(side_effect=ValueError("invalid config parameter"))
 
-    monkeypatch.setattr("app.api.routes.video._video_service", mock_service)
+    monkeypatch.setattr("app.api.routes.video_config._video_service", mock_service)
 
     config = VideoConfigRequest(width=1280, height=720)
     with pytest.raises(HTTPException) as excinfo:
-        await video_routes.configure_video(config, MockRequest())
+        await video_config.configure_video(config, MockRequest())
 
     assert excinfo.value.status_code == 500
     assert "Failed to update video configuration" in str(excinfo.value.detail)
