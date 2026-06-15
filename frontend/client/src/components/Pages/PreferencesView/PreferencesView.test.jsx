@@ -28,6 +28,13 @@ vi.mock('react-i18next', () => ({
   }),
 }))
 
+vi.mock('../../../contexts/WebSocketContext', () => ({
+  useWebSocket: () => ({
+    messages: { telemetry: { system: { armed: false } } },
+    isConnected: true,
+  }),
+}))
+
 vi.mock('../../../contexts/ToastContext', () => ({
   useToast: () => ({ showToast: mockShowToast }),
 }))
