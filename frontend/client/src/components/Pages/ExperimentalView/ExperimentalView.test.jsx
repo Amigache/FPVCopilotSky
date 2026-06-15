@@ -18,6 +18,13 @@ const { mockApi } = vi.hoisted(() => ({
 }))
 
 // Mock the contexts
+vi.mock('../../../contexts/WebSocketContext', () => ({
+  useWebSocket: () => ({
+    messages: { telemetry: { system: { armed: false } } },
+    isConnected: true,
+  }),
+}))
+
 vi.mock('../../../contexts/ToastContext', () => ({
   useToast: () => ({
     showToast: vi.fn(),
