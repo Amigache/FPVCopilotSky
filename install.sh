@@ -339,8 +339,13 @@ source venv/bin/activate
 # Install Python packages
 echo "📚 Installing Python packages..."
 pip install --upgrade pip
-pip install -r requirements.txt
-pip install -r requirements-dev.txt
+if [ -f requirements.lock ]; then
+    echo "  ℹ️  Using pinned requirements.lock (reproducible versions)"
+    pip install -r requirements.lock
+else
+    pip install -r requirements.txt
+    pip install -r requirements-dev.txt
+fi
 
 # Install Node.js if not installed
 # Uses the NodeSource apt repository with its signed GPG key instead of
