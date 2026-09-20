@@ -74,8 +74,10 @@ echo "$TARGET" > "$VERSION_FILE"
 # Python dependencies
 VENV_PY="$PROJECT_DIR/venv/bin/python3"
 if [ -x "$VENV_PY" ]; then
-    log "installing python dependencies"
-    "$VENV_PY" -m pip install -r "$PROJECT_DIR/requirements.txt"
+    REQ_FILE="$PROJECT_DIR/requirements.lock"
+    [ -f "$REQ_FILE" ] || REQ_FILE="$PROJECT_DIR/requirements.txt"
+    log "installing python dependencies ($(basename "$REQ_FILE"))"
+    "$VENV_PY" -m pip install -r "$REQ_FILE"
 fi
 
 # Frontend build

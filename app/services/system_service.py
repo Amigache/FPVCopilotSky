@@ -104,6 +104,14 @@ class SystemService:
         }
 
     @staticmethod
+    def _requirements_file(project_root: str) -> str:
+        """Return the pinned lockfile when available, else requirements.txt."""
+        lock_file = os.path.join(project_root, "requirements.lock")
+        if os.path.exists(lock_file):
+            return lock_file
+        return os.path.join(project_root, "requirements.txt")
+
+    @staticmethod
     def get_version() -> Dict[str, str]:
         """
         Get current installed version from local version file.
@@ -426,7 +434,7 @@ class SystemService:
             # Step 6: Install Python dependencies
             try:
                 venv_python = os.path.join(project_root, "venv", "bin", "python3")
-                requirements_file = os.path.join(project_root, "requirements.txt")
+                requirements_file = SystemService._requirements_file(project_root)
 
                 _, stderr, returncode = run_cmd(
                     [venv_python, "-m", "pip", "install", "-r", requirements_file],
@@ -716,7 +724,7 @@ class SystemService:
             # Step 6: Install Python dependencies
             try:
                 venv_python = os.path.join(project_root, "venv", "bin", "python3")
-                requirements_file = os.path.join(project_root, "requirements.txt")
+                requirements_file = SystemService._requirements_file(project_root)
 
                 _, stderr, returncode = run_cmd(
                     [venv_python, "-m", "pip", "install", "-r", requirements_file],

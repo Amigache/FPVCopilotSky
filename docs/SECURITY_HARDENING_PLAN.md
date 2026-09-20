@@ -110,9 +110,11 @@ repositorios APT firmados de NodeSource y Tailscale (keyrings GPG). No queda
 
 ### M5 — Dependencias sin fijar
 
-`requirements.lock` existe pero no se usa. Cambiar `install.sh` y el updater a
-`pip install -r requirements.lock` (regenerando el lock antes). Riesgo: el lock
-actual es de feb-2026; regenerarlo y validar en CI.
+✅ **Implementado.** `install.sh`, `scripts/privileged-update.sh` y el fallback
+en proceso usan `requirements.lock` (pinned) cuando está presente, con
+`requirements.txt` como fallback. El lock actual cubre runtime y dev.
+Regeneración: `pip freeze --exclude-editable` desde un entorno con
+`--system-site-packages` (excluyendo `pip`, `setuptools`, `wheel`).
 
 ### Arquitectura de privilegios (habilita M7)
 
@@ -146,6 +148,6 @@ endurecer el sandbox y eliminar las reglas NOPASSWD (Etapa 3 de C5).
 | C4 Grupo sudo           | ✅ aplicado                                                           |
 | C5 Código escribible    | 🟡 Etapa 1 validada; Etapa 2 implementada (script); Etapa 3 pendiente |
 | C6 Instaladores remotos | ✅ implementado (PR #46): repos APT firmados                          |
-| M5 Lock deps            | ⏳ pendiente                                                          |
+| M5 Lock deps            | ✅ implementado: lock usado en install/updater/fallback               |
 | M6 Serial 666           | ✅ aplicado                                                           |
 | M7 Sandbox systemd      | ⏳ acoplado a un helper privilegiado (sustituir `sudo`)               |

@@ -52,3 +52,16 @@ class TestPrivilegedUpdateRequest:
             patch("app.services.system_service.run_cmd", return_value=("", "boom", 1)),
         ):
             assert SystemService._start_privileged_update("update", "1.2.3") is None
+
+
+class TestRequirementsFile:
+    def test_prefers_lockfile_when_present(self, tmp_path):
+        (tmp_path / "requirements.lock").write_text("fastapi==1.0.0\n")
+        (tmp_path / "requirements.txt").write_text("fastapi>=1.0.0\n")
+
+        assert SystemService._requirements_file(str(tmp_path)).endswith("requirements.lock")
+
+    def test_falls_back_to_requirements_txt(self, tmp_path):
+        (tmp_path / "requirements.txt").write_text("fastapi>=1.0.0\n")
+
+        assert SystemService._requirements_file(str(tmp_path)).endswith("requirements.txt")
