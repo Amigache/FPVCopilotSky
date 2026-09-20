@@ -46,6 +46,22 @@ vi.mock('./contexts/ParamCacheContext', () => ({
   }),
 }))
 
+vi.mock('./contexts/AuthContext', () => ({
+  AuthProvider: ({ children }) => <div>{children}</div>,
+  useAuth: () => ({
+    loading: false,
+    authRequired: false,
+    authenticated: true,
+    login: vi.fn(),
+    logout: vi.fn(),
+    refresh: vi.fn(),
+  }),
+}))
+
+vi.mock('./components/AuthGate/AuthGate', () => ({
+  default: ({ children }) => <div>{children}</div>,
+}))
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key) => {

@@ -1,4 +1,13 @@
 {
+  "auth": {
+    "title": "Authentication required",
+    "help": "Enter the API token (FPV_API_TOKEN) configured on the device.",
+    "tokenLabel": "API token",
+    "submit": "Unlock",
+    "submitting": "Verifying...",
+    "invalidToken": "Invalid token",
+    "error": "Authentication error"
+  },
   "header": {
     "title": "FPV Copilot Sky",
     "streamOnline": "Stream: Online",

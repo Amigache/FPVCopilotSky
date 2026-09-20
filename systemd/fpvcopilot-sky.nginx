@@ -57,6 +57,19 @@ server {
         proxy_read_timeout 5m;
     }
 
+    # Block interactive API docs in production. They are disabled by default
+    # when FPV_API_TOKEN is set; this is defence in depth. Remove these three
+    # locations if you explicitly enable docs with FPV_ENABLE_DOCS=true.
+    location = /docs {
+        return 404;
+    }
+    location = /redoc {
+        return 404;
+    }
+    location = /openapi.json {
+        return 404;
+    }
+
     # API proxy to backend with keepalive
     location /api/ {
         proxy_pass http://fpvcopilot_backend;
@@ -109,3 +122,40 @@ server {
         try_files $uri $uri/ /index.html;
     }
 }
+
+# =============================================================================
+# TLS (recommended for any non-loopback / Internet exposure)
+# =============================================================================
+# Not enabled by default because it requires certificates to exist, otherwise
+# `nginx -t` fails. To enable HTTPS:
+#
+# 1) Obtain a certificate. With Tailscale (recommended for remote access):
+#      sudo tailscale cert <device>.<tailnet>.ts.net
+#    This writes <device>....ts.net.crt / .key in the current directory.
+#    For a LAN-only setup you can use a self-signed cert:
+#      sudo openssl req -x509 -newkey rsa:4096 -nodes -days 365 \
+#        -keyout /etc/ssl/private/fpvcopilot.key \
+#        -out /etc/ssl/certs/fpvcopilot.crt -subj "/CN=fpvcopilot.local"
+#
+# 2) Add the following server block and reload nginx:
+#
+# server {
+#     listen 443 ssl;
+#     listen [::]:443 ssl;
+#     server_name _;
+#
+#     ssl_certificate     /etc/ssl/certs/fpvcopilot.crt;
+#     ssl_certificate_key /etc/ssl/private/fpvcopilot.key;
+#     ssl_protocols TLSv1.2 TLSv1.3;
+#     add_header Strict-Transport-Security "max-age=31536000" always;
+#
+#     root /opt/FPVCopilotSky/frontend/client/dist;
+#     index index.html;
+#
+#     location /api/ { proxy_pass http://fpvcopilot_backend; ... }
+#     location /ws   { proxy_pass http://fpvcopilot_backend; ... }
+#     location /     { try_files $uri $uri/ /index.html; }
+# }
+#
+# 3) Optionally redirect HTTP to HTTPS by adding `return 301 https://$host$request_uri;`
+#    inside the port-80 server block above.
