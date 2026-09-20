@@ -499,14 +499,14 @@ sudo usermod -aG dialout,video $(whoami)
 
 Después de instalar, tienes scripts auxiliares disponibles en `scripts/`:
 
-| Script                           | Propósito                                                    | Cuándo usarlo                                                                     |
-| -------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------- |
-| **`deploy.sh`**                  | Compila frontend, reinstala systemd/nginx, reinicia servicio | Después de cambios en frontend o backend; despliegue a producción                 |
-| **`dev.sh`**                     | Inicia backend con hot-reload y frontend dev server          | Desarrollo local; requiere dos terminales                                         |
-| **`status.sh`**                  | Diagnosis completa: servicios, logs, conexiones, recursos    | Troubleshooting; para entender el estado actual                                   |
-| **`configure-modem.sh`**         | Detecta e inicializa modem Huawei HiLink y CSQ/RSSI          | Si el modem no se detecta automáticamente en `status.sh`                          |
-| **`setup-system-sudoers.sh`**    | Configura permisos sudo para network/modem/tailscale         | Reparar permisos si algunos comandos fallan; `install.sh` lo hace automáticamente |
-| **`setup-tailscale-sudoers.sh`** | Configura permisos sudo específicos para Tailscale           | Reparar permisos de Tailscale si `install.sh` falló                               |
+| Script                           | Propósito                                                        | Cuándo usarlo                                                                     |
+| -------------------------------- | ---------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| **`deploy.sh`**                  | Compila frontend, reinstala systemd/nginx, reinicia servicio     | Después de cambios en frontend o backend; despliegue a producción                 |
+| **`dev.sh`**                     | Inicia backend con hot-reload y frontend dev server              | Desarrollo local; requiere dos terminales                                         |
+| **`status.sh`**                  | Diagnosis completa: servicios, logs, conexiones, recursos        | Troubleshooting; para entender el estado actual                                   |
+| **`configure-modem.sh`**         | Detecta e inicializa modem Huawei HiLink y CSQ/RSSI              | Si el modem no se detecta automáticamente en `status.sh`                          |
+| **`setup-sudoers.sh`**           | Permisos sudo endurecidos (mínimos) para network/modem/tailscale | Reparar permisos si algunos comandos fallan; `install.sh` lo hace automáticamente |
+| **`setup-tailscale-sudoers.sh`** | Configura permisos sudo específicos para Tailscale               | Reparar permisos de Tailscale si `install.sh` falló                               |
 
 ### Troubleshooting común
 

@@ -809,7 +809,7 @@ if sudo -n ip route show default &>/dev/null; then
     echo -e "${GREEN}✓${NC} Route management permissions OK"
 else
     echo -e "${YELLOW}⚠️${NC}  Route management may require password"
-    echo -e "    ${BLUE}ℹ️${NC}  Run: sudo bash scripts/setup-system-sudoers.sh"
+    echo -e "    ${BLUE}ℹ️${NC}  Run: sudo bash scripts/setup-sudoers.sh"
 fi
 
 echo -e "\n${BLUE}🌐 Connectivity${NC}"
