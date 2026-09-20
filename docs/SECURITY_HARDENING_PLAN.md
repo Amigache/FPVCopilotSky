@@ -90,9 +90,13 @@ se rompe.
    escribe la petición y lanza `sudo -n systemctl start fpvcopilot-update`, con
    **fallback** al método actual si la unidad no está instalada. No cambia aún
    los permisos → retrocompatible y validable con una actualización real.
-2. **Etapa 2 — árbol de solo lectura.** Una vez validada la Etapa 1:
-   `/opt/FPVCopilotSky` pasa a `root:fpvcopilotsky` `0755` (sin `g+rw` ni setgid)
-   y se elimina el fallback; el updater ya no necesita escribir el árbol.
+2. **Etapa 2 — árbol de solo lectura.** ✅ **Implementada.**
+   `scripts/harden-ownership.sh` deja `/opt/FPVCopilotSky` en `root:fpvcopilotsky`
+   con lectura/ejecución para el servicio (nunca escritura); `install.sh` la
+   aplica al final de la instalación. El updater privilegiado **preserva** el
+   ownership existente, así que sigue funcionando en modo desarrollo. Para
+   volver al modo desarrollo: `sudo bash scripts/harden-ownership.sh --revert`.
+   `deploy.sh` compila el frontend como root y deja `dist` legible por nginx.
 3. **Etapa 3 — sandbox + helper de red.** Sustituir los `sudo` de red
    (`ip`/`tc`/`iptables`/`sysctl`/`nmcli`/`tailscale`) por un helper privilegiado,
    eliminar las reglas NOPASSWD y habilitar `NoNewPrivileges`,
@@ -140,8 +144,8 @@ endurecer el sandbox y eliminar las reglas NOPASSWD (Etapa 3 de C5).
 | C2 TLS / bind           | 🟡 parcial (PR #44): bind `127.0.0.1`, docs bloqueados, plantilla TLS |
 | C3 Sudoers wildcards    | 🟡 mitigado (script obsoleto neutralizado); `ip` wildcards pendientes |
 | C4 Grupo sudo           | ✅ aplicado                                                           |
-| C5 Código escribible    | ⏳ acoplado al updater                                                |
-| C6 Instaladores remotos | ⏳ pendiente                                                          |
+| C5 Código escribible    | 🟡 Etapa 1 validada; Etapa 2 implementada (script); Etapa 3 pendiente |
+| C6 Instaladores remotos | ✅ implementado (PR #46): repos APT firmados                          |
 | M5 Lock deps            | ⏳ pendiente                                                          |
 | M6 Serial 666           | ✅ aplicado                                                           |
 | M7 Sandbox systemd      | ⏳ acoplado a un helper privilegiado (sustituir `sudo`)               |

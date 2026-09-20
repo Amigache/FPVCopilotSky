@@ -781,6 +781,15 @@ else
     echo "  Skipping production deployment — run manually later"
 fi
 
+# Harden source ownership (audit finding C5): root-owned, read-only for the
+# service user. Updates keep working because they run as root via
+# fpvcopilot-update.service. Revert for development with:
+#   sudo bash scripts/harden-ownership.sh --revert
+if [ -f "scripts/harden-ownership.sh" ]; then
+    chmod +x scripts/harden-ownership.sh
+    sudo bash scripts/harden-ownership.sh apply
+fi
+
 echo ""
 echo "✅ Installation complete!"
 echo ""

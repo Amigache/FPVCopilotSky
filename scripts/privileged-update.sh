@@ -7,8 +7,9 @@
 #     FPV_UPDATE_ACTION=update|rollback
 #     FPV_UPDATE_TARGET=<semver>          (e.g. 1.2.3, leading 'v' allowed)
 #
-# Running the update as root is the first stage towards making /opt readonly
-# for the service user (audit finding C5). The target is validated before use.
+# Running the update as root lets /opt/FPVCopilotSky be read-only for the
+# service user (audit finding C5). The target is validated before use and the
+# existing ownership model is preserved after the update.
 # =============================================================================
 set -euo pipefail
 
@@ -45,6 +46,10 @@ cd "$PROJECT_DIR"
 GIT="git -c safe.directory=$PROJECT_DIR"
 TAG="v$TARGET"
 
+# Remember the ownership model of this install (root-owned in hardened
+# deployments, service/dev-owned otherwise) and restore it afterwards.
+PROJECT_OWNER="$(stat -c '%U:%G' "$PROJECT_DIR" 2>/dev/null || echo "$SERVICE_USER:$SERVICE_USER")"
+
 CURRENT_VERSION=""
 if [ -f "$VERSION_FILE" ]; then
     CURRENT_VERSION="$(cat "$VERSION_FILE" 2>/dev/null || true)"
@@ -79,9 +84,10 @@ if [ -d "$PROJECT_DIR/frontend/client" ]; then
     (cd "$PROJECT_DIR/frontend/client" && npm install && npm run build)
 fi
 
-# Keep the current ownership model so the in-process fallback and deploy flow
-# keep working. Stage 2 of C5 will drop this and make the tree root-owned.
-chown -R "$SERVICE_USER:$SERVICE_USER" "$PROJECT_DIR" 2> /dev/null || true
+# Preserve the ownership model of the install so both hardened (root-owned) and
+# development (service-owned) setups keep working.
+log "restoring ownership ($PROJECT_OWNER)"
+chown -R "$PROJECT_OWNER" "$PROJECT_DIR" 2> /dev/null || true
 
 log "restarting fpvcopilot-sky"
 systemctl restart fpvcopilot-sky
