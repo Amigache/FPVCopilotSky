@@ -23,6 +23,8 @@ import asyncio
 import logging
 from typing import Dict, List, Optional
 
+from app.utils.cmd import run_cmd_async
+
 logger = logging.getLogger(__name__)
 
 
@@ -246,18 +248,11 @@ class PolicyRoutingManager:
 
         content = "".join(additions).encode()
         try:
-            proc = await asyncio.create_subprocess_exec(
-                "sudo",
-                "tee",
-                "-a",
-                "/etc/iproute2/rt_tables",
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.PIPE,
+            _, err, rc = await run_cmd_async(
+                ["sudo", "tee", "-a", "/etc/iproute2/rt_tables"],
+                timeout=5,
+                input_data=content,
             )
-            _, stderr = await asyncio.wait_for(proc.communicate(content), timeout=5)
-            rc = proc.returncode
-            err = stderr.decode().strip()
             if rc == 0:
                 logger.info(f"PolicyRoutingManager: added rt_tables entries: {list(entries.values())}")
             else:
@@ -296,17 +291,13 @@ class PolicyRoutingManager:
         rules_input = "\n".join(lines) + "\n"
 
         try:
-            proc = await asyncio.create_subprocess_exec(
-                "sudo",
-                "iptables-restore",
-                "--noflush",
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+            _, stderr, rc = await run_cmd_async(
+                ["sudo", "iptables-restore", "--noflush"],
+                timeout=10,
+                input_data=rules_input.encode(),
             )
-            _, stderr = await asyncio.wait_for(proc.communicate(rules_input.encode()), timeout=10)
-            if proc.returncode != 0:
-                logger.warning(f"PolicyRoutingManager: iptables-restore failed: {stderr.decode().strip()}")
+            if rc != 0:
+                logger.warning(f"PolicyRoutingManager: iptables-restore failed: {stderr.strip()}")
             else:
                 rule_count = sum(len(tc["dports"]) for tc in TRAFFIC_CLASSES)
                 logger.info(f"PolicyRoutingManager: {rule_count} iptables mangle marks installed (1 sudo call)")
@@ -321,19 +312,11 @@ class PolicyRoutingManager:
         """
         try:
             # Dump current mangle table
-            proc = await asyncio.create_subprocess_exec(
-                "sudo",
-                "iptables-save",
-                "-t",
-                "mangle",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5)
-            if proc.returncode != 0:
+            stdout, _, rc = await run_cmd_async(["sudo", "iptables-save", "-t", "mangle"], timeout=5)
+            if rc != 0:
                 return
 
-            current = stdout.decode()
+            current = stdout
             # Strip any line that contains our fpv_ comment marker
             filtered_lines = [line for line in current.splitlines() if "fpv_" not in line]
             filtered = "\n".join(filtered_lines) + "\n"
@@ -344,16 +327,13 @@ class PolicyRoutingManager:
             removed = len(current.splitlines()) - len(filtered_lines)
 
             # Atomically restore the filtered state (flushes + re-applies in one call)
-            proc2 = await asyncio.create_subprocess_exec(
-                "sudo",
-                "iptables-restore",
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+            _, stderr, rc = await run_cmd_async(
+                ["sudo", "iptables-restore"],
+                timeout=10,
+                input_data=filtered.encode(),
             )
-            _, stderr = await asyncio.wait_for(proc2.communicate(filtered.encode()), timeout=10)
-            if proc2.returncode != 0:
-                logger.warning(f"PolicyRoutingManager: iptables-restore (remove) failed: {stderr.decode().strip()}")
+            if rc != 0:
+                logger.warning(f"PolicyRoutingManager: iptables-restore (remove) failed: {stderr.strip()}")
             else:
                 logger.info(f"PolicyRoutingManager: removed {removed} iptables marks (2 sudo calls)")
         except Exception as e:
@@ -386,19 +366,13 @@ class PolicyRoutingManager:
         ]
         batch_input = "\n".join(del_lines + add_lines) + "\n"
 
-        proc = await asyncio.create_subprocess_exec(
-            "sudo",
-            "ip",
-            "-force",
-            "-batch",
-            "-",
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        _, stderr, rc = await run_cmd_async(
+            ["sudo", "ip", "-force", "-batch", "-"],
+            timeout=10,
+            input_data=batch_input.encode(),
         )
-        _, stderr = await proc.communicate(batch_input.encode())
-        if proc.returncode not in (0, 1):  # 1 = some dels skipped, non-fatal
-            logger.warning(f"PolicyRoutingManager: ip rule batch errors: {stderr.decode().strip()}")
+        if rc not in (0, 1):  # 1 = some dels skipped, non-fatal
+            logger.warning(f"PolicyRoutingManager: ip rule batch errors: {stderr.strip()}")
 
         logger.info("PolicyRoutingManager: ip rules installed (1 batch sudo call)")
 
@@ -413,17 +387,11 @@ class PolicyRoutingManager:
             f"rule del fwmark {MARK_MAVLINK} lookup {TABLE_VIDEO}\n"
         )
 
-        proc = await asyncio.create_subprocess_exec(
-            "sudo",
-            "ip",
-            "-force",
-            "-batch",
-            "-",
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        await run_cmd_async(
+            ["sudo", "ip", "-force", "-batch", "-"],
+            timeout=10,
+            input_data=batch_input.encode(),
         )
-        await proc.communicate(batch_input.encode())
         # Ignore return code — errors are expected when rules don't exist
 
     # ──────────────────────────────────────────────────────────────────────

@@ -225,6 +225,29 @@ git push -u origin refactor/audit-improvements
 - Abrir la `fix/security-hardening` para la **Fase 0 (seguridad)** por su criticidad y para facilitar revisión.
 - `main` está muy desactualizado (`f8e12a4`, feb 2026). Promover `develop → main` tras validar.
 
+## 8. Estado de ejecución (progreso a 2026-09-21)
+
+Todo lo siguiente está **mergeado en `develop`** y con CI en verde:
+
+| Área                                                  | Estado               | PR       |
+| ----------------------------------------------------- | -------------------- | -------- |
+| Integración `dev-junio` → `develop`                   | ✅                   | #41      |
+| Fix real `FlightControllerView` (A7) + flood 401      | ✅                   | #41, #45 |
+| Auditoría y plan                                      | ✅                   | #42      |
+| Endurecimiento mecánico (C4, M6, C3 parcial)          | ✅                   | #43      |
+| Auth API opt-in + bind loopback (C1, C2 parcial)      | ✅                   | #44      |
+| Instaladores firmados (C6)                            | ✅                   | #46      |
+| Plan C5/M7                                            | ✅                   | #47      |
+| Updater privilegiado (C5 Etapa 1), validado en equipo | ✅                   | #48      |
+| Árbol de solo lectura (C5 Etapa 2)                    | ✅ (installs nuevas) | #49      |
+| Dependencias fijadas (M5)                             | ✅                   | #50      |
+| Helper privilegiado, base (M7 Incremento 1)           | ✅                   | #51      |
+| Migración total al helper (M7 Incremento 2)           | ✅                   | #52      |
+
+Pendiente: **M7 Incremento 3** (habilitar el daemon, retirar NOPASSWD y activar
+`NoNewPrivileges`/`ProtectSystem=strict`) y **TLS (C2)**. Detalle en
+[`SECURITY_HARDENING_PLAN.md`](SECURITY_HARDENING_PLAN.md).
+
 ---
 
 _Documento generado como resultado de la auditoría de 2026-09-20. No modifica código del proyecto._

@@ -1244,16 +1244,15 @@ class SystemService:
             Dictionary with success status and message
         """
         try:
-            import subprocess
+            import threading
 
-            # Use nohup and background process to ensure restart completes
-            # even after our process dies
-            subprocess.Popen(
-                ["sudo", "-n", "systemctl", "restart", "fpvcopilot-sky"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True,
-            )
+            # Fire-and-forget: restart in a background thread so the HTTP
+            # response is returned before the process is replaced.
+            threading.Thread(
+                target=lambda: run_cmd(["sudo", "-n", "systemctl", "restart", "fpvcopilot-sky"], timeout=30),
+                daemon=True,
+                name="RestartBackend",
+            ).start()
 
             return {
                 "success": True,
@@ -1272,16 +1271,15 @@ class SystemService:
             Dictionary with success status and message
         """
         try:
-            import subprocess
+            import threading
 
-            # Use nohup and background process to ensure restart completes
-            # even after connections are lost
-            subprocess.Popen(
-                ["sudo", "-n", "systemctl", "restart", "nginx"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True,
-            )
+            # Fire-and-forget: restart in a background thread so the HTTP
+            # response is returned before connections are lost.
+            threading.Thread(
+                target=lambda: run_cmd(["sudo", "-n", "systemctl", "restart", "nginx"], timeout=30),
+                daemon=True,
+                name="RestartFrontend",
+            ).start()
 
             return {
                 "success": True,

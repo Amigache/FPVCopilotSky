@@ -4,11 +4,12 @@ DNS Caching Service
 Local DNS caching with dnsmasq for reduced latency and faster name resolution.
 """
 
-import asyncio
 import logging
 import os
 from dataclasses import dataclass
 from typing import Optional, List
+
+from app.utils.cmd import run_cmd_async
 
 logger = logging.getLogger(__name__)
 
@@ -72,23 +73,10 @@ class DNSCache:
             Tuple of (stdout_bytes, stderr_bytes, returncode).
             On timeout returns (b"", b"timeout", -1).
         """
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdin=asyncio.subprocess.PIPE if input_data else None,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        stdout, stderr, returncode = await run_cmd_async(
+            [str(part) for part in cmd], timeout=timeout, input_data=input_data
         )
-        try:
-            stdout, stderr = await asyncio.wait_for(proc.communicate(input=input_data), timeout=timeout)
-            return stdout, stderr, proc.returncode
-        except asyncio.TimeoutError:
-            logger.warning(f"Command timed out after {timeout}s: {' '.join(cmd)}")
-            try:
-                proc.kill()
-                await proc.wait()
-            except ProcessLookupError:
-                pass
-            return b"", b"Command timed out", -1
+        return stdout.encode(), stderr.encode(), returncode
 
     async def is_installed(self) -> bool:
         """Check if dnsmasq is installed"""
@@ -252,7 +240,7 @@ class DNSCache:
         """Get dnsmasq status and statistics"""
         try:
             # Check if service is running
-            stdout, _, _ = await self._exec("sudo", "systemctl", "is-active", "dnsmasq", timeout=10)
+            stdout, _, _ = await self._exec("systemctl", "is-active", "dnsmasq", timeout=10)
             is_running = stdout.decode().strip() == "active"
 
             status = {
@@ -287,7 +275,6 @@ class DNSCache:
 
             # Read systemd journal for stats
             stdout, _, _ = await self._exec(
-                "sudo",
                 "journalctl",
                 "-u",
                 "dnsmasq",
