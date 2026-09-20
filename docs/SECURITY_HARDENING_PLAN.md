@@ -121,12 +121,12 @@ endurecer el sandbox y eliminar las reglas NOPASSWD.
 
 | Hallazgo                | Estado                                                                |
 | ----------------------- | --------------------------------------------------------------------- |
-| C1 Auth API             | ⏳ diseño listo, sin implementar                                      |
-| C2 TLS / bind           | ⏳ diseño listo, sin implementar                                      |
+| C1 Auth API             | ✅ implementado (PR #44): opt-in `FPV_API_TOKEN` + WebSocket          |
+| C2 TLS / bind           | 🟡 parcial (PR #44): bind `127.0.0.1`, docs bloqueados, plantilla TLS |
 | C3 Sudoers wildcards    | 🟡 mitigado (script obsoleto neutralizado); `ip` wildcards pendientes |
 | C4 Grupo sudo           | ✅ aplicado                                                           |
 | C5 Código escribible    | ⏳ acoplado al updater                                                |
 | C6 Instaladores remotos | ⏳ pendiente                                                          |
 | M5 Lock deps            | ⏳ pendiente                                                          |
 | M6 Serial 666           | ✅ aplicado                                                           |
-| M7 Sandbox systemd      | ⏳ acoplado a C1/`sudo`                                               |
+| M7 Sandbox systemd      | ⏳ acoplado a un helper privilegiado (sustituir `sudo`)               |
