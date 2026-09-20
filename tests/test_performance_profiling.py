@@ -430,5 +430,6 @@ class TestResponseTimeDistribution:
         variance = sum((x - mean) ** 2 for x in latencies) / len(latencies)
         std_dev = variance**0.5
 
-        # Should be consistent (low standard deviation)
-        assert std_dev < mean * 0.5, f"Inconsistent latency: std_dev={std_dev}ms, mean={mean}ms"
+        # Should be consistent. Allow a small absolute floor: at sub-50 ms
+        # latencies the measurement jitter of a shared CI runner dominates.
+        assert std_dev < max(mean * 0.5, 50.0), f"Inconsistent latency: std_dev={std_dev}ms, mean={mean}ms"
