@@ -10,6 +10,8 @@ import { WebSocketProvider } from './contexts/WebSocketContext'
 import { ToastProvider } from './contexts/ToastContext'
 import { ModalProvider } from './contexts/ModalContext'
 import { ParamCacheProvider } from './contexts/ParamCacheContext'
+import { AuthProvider } from './contexts/AuthContext'
+import AuthGate from './components/AuthGate/AuthGate'
 import api from './services/api'
 
 function App() {
@@ -67,20 +69,24 @@ function App() {
   const tabs = experimentalTabEnabled ? allTabs : allTabs.filter((tab) => tab.id !== 'experimental')
 
   return (
-    <ModalProvider>
-      <ToastProvider>
-        <WebSocketProvider>
-          <ParamCacheProvider>
-            <div className="app">
-              <Header />
-              <TabBar tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
-              <ArmedBanner />
-              <Content activeTab={activeTab} />
-            </div>
-          </ParamCacheProvider>
-        </WebSocketProvider>
-      </ToastProvider>
-    </ModalProvider>
+    <AuthProvider>
+      <ModalProvider>
+        <ToastProvider>
+          <AuthGate>
+            <WebSocketProvider>
+              <ParamCacheProvider>
+                <div className="app">
+                  <Header />
+                  <TabBar tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
+                  <ArmedBanner />
+                  <Content activeTab={activeTab} />
+                </div>
+              </ParamCacheProvider>
+            </WebSocketProvider>
+          </AuthGate>
+        </ToastProvider>
+      </ModalProvider>
+    </AuthProvider>
   )
 }
 

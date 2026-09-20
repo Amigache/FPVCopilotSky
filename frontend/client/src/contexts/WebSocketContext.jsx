@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react'
+import { getAuthToken } from '../services/api'
 
 const WebSocketContext = createContext(null)
 
@@ -48,7 +49,11 @@ export const WebSocketProvider = ({ children }) => {
 
     isConnectingRef.current = true
 
-    const wsUrl = getWebSocketUrl()
+    const baseUrl = getWebSocketUrl()
+    const token = getAuthToken()
+    const wsUrl = token
+      ? `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`
+      : baseUrl
 
     try {
       const ws = new WebSocket(wsUrl)
