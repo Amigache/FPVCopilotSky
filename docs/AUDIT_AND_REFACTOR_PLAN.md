@@ -18,7 +18,7 @@ El proyecto tiene una **arquitectura por capas bien pensada**, una **capa de eje
 | Backend — tests             | **866 passed / 19 skipped / 0 failed** (140 s, sin `test_mavlink_bridge.py`) |
 | Backend — cobertura real    | **52.16 %** (gate 50 % ✅)                                                   |
 | `coverage.xml` del repo     | **19.96 %** → **obsoleto**, no refleja la realidad                           |
-| Frontend — tests            | **342 passed / 3 failed / 13 skipped** ❌                                    |
+| Frontend — tests            | ✅ CI verde tras corregir el race de `FlightControllerView` (ver A7)         |
 | `black --check`             | ✅ 160 ficheros sin cambios                                                  |
 | `flake8 app/ tests/`        | ✅ 0 errores                                                                 |
 | `eslint . --max-warnings 0` | ✅ 0 warnings                                                                |
@@ -56,15 +56,15 @@ El proyecto tiene una **arquitectura por capas bien pensada**, una **capa de eje
 
 ### 🟠 Alto
 
-| #   | Hallazgo                                                                                                                                                                                                      | Evidencia                                                                 |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| A1  | **Bloqueo del event loop en rutas `async`**: `check_for_updates` (HTTP 10 s), `apply_update`/`rollback` (git+pip+npm, minutos), `psutil`/`systemctl` síncronos. Contraste: `main.py:894-914` sí los desofila. | `app/api/routes/system.py:20-131`; `app/services/system_service.py:114`   |
-| A2  | **447 `except Exception`**, muchos con `pass` silencioso (fallos invisibles).                                                                                                                                 | `app/main.py:432-459`; `app/services/gstreamer_service.py` (~20)          |
-| A3  | **Mutación de estado privado sin lock**: `prefs._preferences[...]` + `_save()` saltándose el `RLock`. Riesgo de corrupción de `preferences.json`.                                                             | `app/api/routes/system.py:161,178,180`                                    |
-| A4  | **God objects sin cobertura**: `gstreamer_service.py` (2709), `network_event_bridge.py` (1681), `system_service.py` (1413), `mavlink_bridge.py` (1273), `main.py` (1215).                                     | `app/services/`                                                           |
-| A5  | **Re-render storm del frontend**: el contexto WebSocket recrea `messages` y el `value` en cada frame → re-render de todos los consumidores a 10-50 Hz.                                                        | `frontend/client/src/contexts/WebSocketContext.jsx:75-78,144-152`         |
-| A6  | **Componentes monolíticos y sin code-splitting**: `NetworkView.jsx` (1259), `StatusView.jsx` (1204), `FlightControllerView.jsx` (869). Cero `React.lazy`.                                                     | `frontend/client/src/components/Pages/`; `components/Content/Content.jsx` |
-| A7  | **Tests frontend en rojo (3)**: `FlightControllerView.test.jsx` busca `vehicleTitle.{copter,plane}` que el componente ya no renderiza → tests obsoletos.                                                      | `FlightControllerView.test.jsx:487-507`                                   |
+| #   | Hallazgo                                                                                                                                                                                                                                                                                                                                                                                         | Evidencia                                                                 |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
+| A1  | **Bloqueo del event loop en rutas `async`**: `check_for_updates` (HTTP 10 s), `apply_update`/`rollback` (git+pip+npm, minutos), `psutil`/`systemctl` síncronos. Contraste: `main.py:894-914` sí los desofila.                                                                                                                                                                                    | `app/api/routes/system.py:20-131`; `app/services/system_service.py:114`   |
+| A2  | **447 `except Exception`**, muchos con `pass` silencioso (fallos invisibles).                                                                                                                                                                                                                                                                                                                    | `app/main.py:432-459`; `app/services/gstreamer_service.py` (~20)          |
+| A3  | **Mutación de estado privado sin lock**: `prefs._preferences[...]` + `_save()` saltándose el `RLock`. Riesgo de corrupción de `preferences.json`.                                                                                                                                                                                                                                                | `app/api/routes/system.py:161,178,180`                                    |
+| A4  | **God objects sin cobertura**: `gstreamer_service.py` (2709), `network_event_bridge.py` (1681), `system_service.py` (1413), `mavlink_bridge.py` (1273), `main.py` (1215).                                                                                                                                                                                                                        | `app/services/`                                                           |
+| A5  | **Re-render storm del frontend**: el contexto WebSocket recrea `messages` y el `value` en cada frame → re-render de todos los consumidores a 10-50 Hz.                                                                                                                                                                                                                                           | `frontend/client/src/contexts/WebSocketContext.jsx:75-78,144-152`         |
+| A6  | **Componentes monolíticos y sin code-splitting**: `NetworkView.jsx` (1259), `StatusView.jsx` (1204), `FlightControllerView.jsx` (869). Cero `React.lazy`.                                                                                                                                                                                                                                        | `frontend/client/src/components/Pages/`; `components/Content/Content.jsx` |
+| A7  | ✅ **Resuelto (PR #41)**: no eran tests obsoletos sino un **bug real**. El efecto de limpieza al desconectar (`[isConnected]`) corría en el montaje inicial con el `isConnected=false` heredado y borraba el `vehicleType` detectado por telemetría; si se abría la pestaña ya conectado, nunca aparecían los parámetros específicos. Se corrige limpiando solo en una desconexión real (borde). | `FlightControllerView.jsx:229-244`                                        |
 
 ### 🟡 Medio
 
@@ -105,7 +105,7 @@ El proyecto tiene una **arquitectura por capas bien pensada**, una **capa de eje
 
 ### Fase 1 — Corrección y CI verde (1-2 semanas)
 
-- [ ] Arreglar los 3 tests frontend obsoletos (`FlightControllerView.test.jsx`).
+- [x] Arreglar los tests frontend — bug real en `FlightControllerView.jsx` (PR #41).
 - [ ] Hacer obligatorios mypy, Trivy, Safety y `npm audit`.
 - [ ] Añadir `coverage.thresholds` en `vitest.config.js`; dejar de excluir `StatusView.test.jsx`; arreglar el upload de coverage de `provider-contracts`.
 - [ ] Desofilar con `run_in_executor`/`run_cmd_async` las llamadas síncronas de `system.py`.
@@ -201,8 +201,8 @@ git push origin dev-junio                                                  # 2fc
 # Paso 2 — integrar dev-junio en develop
 # ⚠️ develop está PROTEGIDA: el push directo se rechaza.
 # git push origin develop  →  ! [remote rejected] (protected branch hook declined)
-# Equivalente: Pull Request #41  (dev-junio → develop)
-#   https://github.com/Amigache/FPVCopilotSky/pull/41
+# Equivalente: Pull Request #41  (dev-junio → develop)  ✅ MERGEADO
+#   https://github.com/Amigache/FPVCopilotSky/pull/41  → commit 71d4f6d
 
 # Paso 3 — rama de mejoras  ✅
 git checkout -b refactor/audit-improvements develop
@@ -212,18 +212,18 @@ git push -u origin refactor/audit-improvements
 
 ### Estado tras la ejecución
 
-| Ref                           | SHA       | Contenido                        | Remoto         |
-| ----------------------------- | --------- | -------------------------------- | -------------- |
-| `dev-junio`                   | `d5297cb` | fix de códec                     | ✅ subida      |
-| `develop`                     | `ec8b3ed` | sin cambios directos (protegida) | 🔒 solo por PR |
-| `refactor/audit-improvements` | `0690e94` | merge local + este `.md`         | ✅ subida      |
-| PR #41                        | —         | `dev-junio → develop`            | abierto        |
+| Ref                           | SHA                      | Contenido                       | Remoto             |
+| ----------------------------- | ------------------------ | ------------------------------- | ------------------ |
+| `dev-junio`                   | `fec4fca`                | fix de códec + fix vehicle-type | ✅ subida          |
+| `develop`                     | `71d4f6d`                | PR #41 mergeado                 | ✅                 |
+| `refactor/audit-improvements` | rebasada sobre `develop` | solo este `.md`                 | ✅ (lista para PR) |
+| PR #41                        | `71d4f6d`                | `dev-junio → develop`           | ✅ MERGED          |
 
 **Recomendaciones:**
 
-- `develop` está protegida: la integración de `dev-junio` debe ir por PR (#41). Tras su merge, **recrear/rebasear** `refactor/audit-improvements` desde el nuevo `develop` para que su PR contenga solo este documento.
-- Separar la **Fase 0 (seguridad)** en su propia rama (`fix/security-hardening`) por su criticidad y para facilitar revisión.
-- `main` está muy desactualizado (`f8e12a4`, feb 2026). Promover `develop → main` tras validar el merge.
+- ✅ `develop` protegida; la integración de `dev-junio` se hizo vía PR #41 (merge `71d4f6d`). La rama `refactor/audit-improvements` ya está rebasada sobre el nuevo `develop`, por lo que su PR contendrá **solo este documento**.
+- Abrir la `fix/security-hardening` para la **Fase 0 (seguridad)** por su criticidad y para facilitar revisión.
+- `main` está muy desactualizado (`f8e12a4`, feb 2026). Promover `develop → main` tras validar.
 
 ---
 
