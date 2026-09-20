@@ -56,6 +56,13 @@ from app.api.routes import modem as modem_routes  # noqa: E402
 from app.api.routes import status as status_routes  # noqa: E402
 from app.api.routes import network_interface as network_interface_routes  # noqa: E402
 from app.api.routes import experimental as experimental_routes  # noqa: E402
+from app.api.routes import auth as auth_routes  # noqa: E402
+from app.security.auth import (  # noqa: E402
+    is_auth_enabled,
+    verify_token,
+    extract_bearer_token,
+    require_auth,
+)
 
 # Global services - event loop will be set on startup
 mavlink_service = None
@@ -545,9 +552,6 @@ async def lifespan(app: FastAPI):
     await _lifespan_shutdown()
 
 
-app = FastAPI(title="FPV Copilot Sky", version="1.0.0", lifespan=lifespan)
-
-
 def _parse_csv_env(value: str) -> list[str]:
     """Parse comma-separated env values into a clean list."""
     return [item.strip() for item in value.split(",") if item.strip()]
@@ -587,6 +591,21 @@ def _build_cors_settings() -> dict:
     }
 
 
+# ── Application instance ─────────────────────────────────────────────────────
+# API docs are disabled by default when authentication is enabled; they can be
+# re-enabled explicitly with FPV_ENABLE_DOCS=true.
+_docs_default = "false" if is_auth_enabled() else "true"
+_docs_enabled = _is_env_true(os.getenv("FPV_ENABLE_DOCS", _docs_default))
+
+app = FastAPI(
+    title="FPV Copilot Sky",
+    version="1.0.0",
+    lifespan=lifespan,
+    docs_url="/docs" if _docs_enabled else None,
+    redoc_url="/redoc" if _docs_enabled else None,
+    openapi_url="/openapi.json" if _docs_enabled else None,
+)
+
 # CORS middleware
 cors_settings = _build_cors_settings()
 app.add_middleware(
@@ -597,7 +616,12 @@ app.add_middleware(
     allow_headers=cors_settings["allow_headers"],
 )
 
+# Authentication middleware (no-op unless FPV_API_TOKEN is set). Registered
+# after CORS so that 401 responses still carry CORS headers.
+app.middleware("http")(require_auth)
+
 # Include routers
+app.include_router(auth_routes.router, prefix="/api/auth", tags=["auth"])
 app.include_router(mavlink.router, prefix="/api/mavlink", tags=["mavlink"])
 app.include_router(system.router, prefix="/api/system", tags=["system"])
 app.include_router(router_routes.router)
@@ -613,8 +637,14 @@ app.include_router(experimental_routes.router)
 
 # Global WebSocket endpoint
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(websocket: WebSocket, token: str | None = None):
     """Global WebSocket endpoint for real-time updates"""
+    if is_auth_enabled():
+        candidate = token or extract_bearer_token(websocket.headers.get("authorization"))
+        if not verify_token(candidate):
+            await websocket.close(code=4401)
+            return
+
     await websocket_manager.connect(websocket)
 
     try:
@@ -1212,4 +1242,8 @@ def get_detected_board():
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(
+        app,
+        host=os.getenv("FPV_BIND_HOST", "127.0.0.1"),
+        port=int(os.getenv("FPV_BIND_PORT", "8000")),
+    )

@@ -160,6 +160,23 @@ El backend configura CORS mediante variables de entorno:
 
 Configuración detallada y ejemplos dev/prod en [docs/INSTALLATION.md](docs/INSTALLATION.md).
 
+### 🔐 Autenticación de la API (opcional)
+
+Define `FPV_API_TOKEN` para exigir `Authorization: Bearer <token>` en toda la API
+y `?token=<token>` en el WebSocket `/ws`. Si no se define, la API queda abierta
+(modo desarrollo) y el backend emite un aviso por log.
+
+| Variable          | Por defecto       | Descripción                                                      |
+| ----------------- | ----------------- | ---------------------------------------------------------------- |
+| `FPV_API_TOKEN`   | _(vacío)_         | Secreto compartido. Al definirlo se **activa** la autenticación. |
+| `FPV_ENABLE_DOCS` | `false` con token | `true` para seguir sirviendo `/docs` y `/openapi.json`.          |
+| `FPV_BIND_HOST`   | `127.0.0.1`       | Interfaz de escucha de uvicorn.                                  |
+| `FPV_BIND_PORT`   | `8000`            | Puerto de uvicorn.                                               |
+
+La unidad systemd escucha solo en `127.0.0.1`; nginx es la única entrada de red
+y bloquea `/docs`, `/redoc` y `/openapi.json`. Guía TLS en
+[`systemd/fpvcopilot-sky.nginx`](../systemd/fpvcopilot-sky.nginx).
+
 ## 📚 Documentación
 
 Toda la documentación extendida está en la **[Wiki del proyecto](docs/INDEX.md)**:

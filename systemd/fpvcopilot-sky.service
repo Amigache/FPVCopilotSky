@@ -12,8 +12,10 @@ SupplementaryGroups=dialout video adm
 WorkingDirectory=/opt/FPVCopilotSky
 Environment="PATH=/opt/FPVCopilotSky/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
-# Use virtual environment Python
-ExecStart=/opt/FPVCopilotSky/venv/bin/python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+# Bind to loopback only: nginx is the single network entry point and proxies
+# to 127.0.0.1:8000. For a direct LAN/dev exposure override FPV_BIND_HOST.
+# The application also reads FPV_API_TOKEN to enable API authentication.
+ExecStart=/opt/FPVCopilotSky/venv/bin/python3 -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 # Restart policy
 Restart=always
