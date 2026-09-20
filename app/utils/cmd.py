@@ -21,10 +21,27 @@ import subprocess
 import time
 from typing import List, Optional, Set, Tuple
 
+from app.security import privileged as _privileged
+
 logger = logging.getLogger(__name__)
 
 _DEFAULT_TIMEOUT: float = 15.0
 _CommandResult = Tuple[str, str, int]
+
+
+def _extract_sudo(cmd: List[str]) -> Tuple[List[str], bool]:
+    """Split a command that contains ``sudo`` into its privileged part.
+
+    ``["sudo", "-n", "ip", "route"]`` -> ``(["ip", "route"], True)``
+    ``["timeout", "5", "sudo", "tailscale", "up"]`` -> ``(["tailscale", "up"], True)``
+    """
+    if "sudo" not in cmd:
+        return cmd, False
+    index = cmd.index("sudo")
+    rest = cmd[index + 1 :]
+    while rest and rest[0] in ("-n", "-E", "-H"):
+        rest = rest[1:]
+    return list(rest), True
 
 
 def _should_retry(
@@ -72,6 +89,16 @@ def run_cmd(
     Returns:
         (stdout, stderr, returncode)  — returncode is -1 on timeout/exception.
     """
+    privileged_cmd, is_privileged = _extract_sudo(cmd)
+    if is_privileged and _privileged.is_available():
+        stdout, stderr, returncode = _privileged.run_privileged_sync(privileged_cmd, timeout=timeout)
+        if check and returncode != 0:
+            logger.error(
+                "Privileged command failed",
+                extra={"cmd": " ".join(privileged_cmd), "returncode": returncode, "stderr": stderr},
+            )
+        return stdout, stderr, returncode
+
     for attempt in range(retries + 1):
         t0 = time.monotonic()
         try:
@@ -164,6 +191,16 @@ async def run_cmd_async(
     Returns:
         (stdout, stderr, returncode)  — returncode is -1 on timeout/exception.
     """
+    privileged_cmd, is_privileged = _extract_sudo(cmd)
+    if is_privileged and _privileged.is_available():
+        stdout, stderr, returncode = await _privileged.run_privileged_async(privileged_cmd, timeout=timeout)
+        if check and returncode != 0:
+            logger.error(
+                "Privileged async command failed",
+                extra={"cmd": " ".join(privileged_cmd), "returncode": returncode, "stderr": stderr},
+            )
+        return stdout, stderr, returncode
+
     for attempt in range(retries + 1):
         t0 = time.monotonic()
         proc = None

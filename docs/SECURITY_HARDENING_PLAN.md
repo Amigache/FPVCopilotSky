@@ -118,11 +118,23 @@ Regeneración: `pip freeze --exclude-editable` desde un entorno con
 
 ### Arquitectura de privilegios (habilita M7)
 
-`systemd` no puede activar `NoNewPrivileges=true` (rompería `sudo`) ni
-`ProtectSystem=strict` (rompería el updater). La solución de fondo es dejar de
-usar `sudo` desde la app y sustituirlo por un **helper privilegiado** (servicio
-systemd/IPC o polkit) que valide operaciones concretas. Solo entonces se podrá
-endurecer el sandbox y eliminar las reglas NOPASSWD (Etapa 3 de C5).
+Helper privilegiado **`fpvcopilot-privd`** (root, socket unix
+`/run/fpvcopilot-priv.sock` `0660 root:fpvcopilotsky`), con whitelist de comandos
+en `app/security/privd_policy.py`. El cliente (`app/security/privileged.py`) y el
+routing en `app/utils/cmd.py` sustituyen `sudo` por el helper cuando el socket
+existe, con fallback a `sudo` si no.
+
+- **Incremento 1 (hecho)**: daemon (`app/security/privd_daemon.py`), política,
+  cliente, unidad `systemd/fpvcopilot-privd.service`, routing central y tests.
+  Inerte hasta que el daemon esté activo (sin cambios de comportamiento).
+- **Incremento 2 (pendiente)**: migrar los caminos que no pasan por `cmd.py`
+  (`policy_routing_manager` con `create_subprocess_exec` + stdin,
+  `subprocess.Popen` de `system_service`, prefijo `sudo ping` en
+  `latency_monitor`, `gstreamer_service`).
+- **Incremento 3 (pendiente)**: instalar/habilitar el daemon en
+  `install.sh`/`deploy.sh`, retirar las reglas NOPASSWD y habilitar
+  `NoNewPrivileges`, `ProtectSystem=strict` y `CapabilityBoundingSet` en el
+  servicio principal. Validar en el equipo.
 
 ---
 
@@ -150,4 +162,4 @@ endurecer el sandbox y eliminar las reglas NOPASSWD (Etapa 3 de C5).
 | C6 Instaladores remotos | ✅ implementado (PR #46): repos APT firmados                          |
 | M5 Lock deps            | ✅ implementado: lock usado en install/updater/fallback               |
 | M6 Serial 666           | ✅ aplicado                                                           |
-| M7 Sandbox systemd      | ⏳ acoplado a un helper privilegiado (sustituir `sudo`)               |
+| M7 Sandbox systemd      | 🟡 Incremento 1 (helper) hecho; incrementos 2-3 pendientes            |
