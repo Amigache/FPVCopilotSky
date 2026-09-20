@@ -82,7 +82,11 @@ export const ParamCacheProvider = ({ children }) => {
         try {
           pollTimer = setInterval(async () => {
             try {
-              const statusRes = await fetch(`${API_MAVLINK}/params/cache/status`)
+              const statusRes = await fetchWithTimeout(
+                `${API_MAVLINK}/params/cache/status`,
+                {},
+                5000
+              )
               if (!statusRes.ok) return
               const live = await statusRes.json()
               if (live.expected > 0) {

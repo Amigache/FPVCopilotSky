@@ -198,3 +198,40 @@ export const api = {
 }
 
 export default api
+
+// ── Global bearer-token injection for same-origin /api requests ──────────────
+// Some modules call `fetch()` directly. Patch it once so the token is always
+// attached when configured, so no call site can accidentally omit it.
+// Only same-origin `/api/*` requests are affected; everything else is untouched.
+if (
+  typeof window !== 'undefined' &&
+  typeof window.fetch === 'function' &&
+  !window.__fpvFetchPatched
+) {
+  const originalFetch = window.fetch.bind(window)
+
+  window.fetch = (input, init = {}) => {
+    try {
+      const token = getAuthToken()
+      if (token) {
+        const rawUrl = typeof input === 'string' ? input : input?.url || ''
+        const isApiRequest =
+          rawUrl.startsWith('/api') || rawUrl.startsWith(`${window.location.origin}/api`)
+        if (isApiRequest) {
+          const headers = new Headers(
+            init.headers || (typeof input !== 'string' ? input.headers : undefined)
+          )
+          if (!headers.has('Authorization')) {
+            headers.set('Authorization', `Bearer ${token}`)
+          }
+          return originalFetch(input, { ...init, headers })
+        }
+      }
+    } catch (_e) {
+      /* fall through to the original fetch */
+    }
+    return originalFetch(input, init)
+  }
+
+  window.__fpvFetchPatched = true
+}
