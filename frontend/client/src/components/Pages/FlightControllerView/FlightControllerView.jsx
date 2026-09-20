@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useWebSocket } from '../../../contexts/WebSocketContext'
 import { useToast } from '../../../contexts/ToastContext'
@@ -226,12 +226,20 @@ const FlightControllerView = () => {
     }
   }, [params])
 
-  // Clear local edits when disconnected.
+  // Clear local edits when the connection is lost. Only clear the detected
+  // vehicle type on a true disconnect (edge), never on initial mount: if the
+  // tab is opened while telemetry is already flowing, the mount-time
+  // `isConnected=false` would otherwise clobber the vehicle type detected by
+  // the effect above and hide all vehicle-specific parameters.
+  const wasConnectedRef = useRef(false)
   useEffect(() => {
     if (!isConnected) {
       setParamsModified({})
-      setVehicleType(null)
+      if (wasConnectedRef.current) {
+        setVehicleType(null)
+      }
     }
+    wasConnectedRef.current = isConnected
   }, [isConnected])
 
   // Handle parameter change
