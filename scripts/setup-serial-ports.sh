@@ -60,6 +60,35 @@ enable_uart4_m1_overlay() {
     REBOOT_REQUIRED=1
 }
 
+enable_usb_host_overlay() {
+    local ARMBIAN_ENV="/boot/armbianEnv.txt"
+    local OVERLAY_NAME="rk3568-dwc3-host"
+
+    [ -f "$ARMBIAN_ENV" ] || return 0
+
+    # Verify overlay exists in current kernel dtb set.
+    if ! find /boot/dtb* -maxdepth 4 -type f -name "${OVERLAY_NAME}.dtbo" 2>/dev/null | grep -q .; then
+        echo -e "${YELLOW}⚠ Overlay ${OVERLAY_NAME}.dtbo not found — skipping USB-C host auto-enable${NC}"
+        return 0
+    fi
+
+    if grep -Eq "^overlays=.*\b${OVERLAY_NAME}\b" "$ARMBIAN_ENV"; then
+        echo -e "${GREEN}✓ USB host overlay already enabled in armbianEnv.txt${NC}"
+        return 0
+    fi
+
+    cp "$ARMBIAN_ENV" "${ARMBIAN_ENV}.bak.fpvcopilot" 2>/dev/null || true
+
+    if grep -q '^overlays=' "$ARMBIAN_ENV"; then
+        sed -i "/^overlays=/ s/$/ ${OVERLAY_NAME}/" "$ARMBIAN_ENV"
+    else
+        echo "overlays=${OVERLAY_NAME}" >> "$ARMBIAN_ENV"
+    fi
+
+    echo -e "${GREEN}✓ Enabled ${OVERLAY_NAME} overlay in armbianEnv.txt${NC}"
+    REBOOT_REQUIRED=1
+}
+
 set_default_serial_preferences() {
     local PREFS_FILE="/var/lib/fpvcopilot-sky/preferences.json"
 
@@ -178,10 +207,12 @@ if is_radxa_zero3w; then
     echo -e "${BLUE}🎯 Radxa Zero 3W detected — applying default serial preferences...${NC}"
     echo -e "${BLUE}🔧 Enabling UART4_M1 overlay (Armbian)...${NC}"
     enable_uart4_m1_overlay
+    echo -e "${BLUE}🔧 Enabling USB-C OTG host overlay (Armbian)...${NC}"
+    enable_usb_host_overlay
     set_default_serial_preferences
 fi
 
 echo -e "${GREEN}✅ Serial port configuration complete${NC}"
 if [ "$REBOOT_REQUIRED" -eq 1 ]; then
-    echo -e "${YELLOW}⚠ Reboot required to apply UART overlay changes${NC}"
+    echo -e "${YELLOW}⚠ Reboot required to apply overlay changes (UART/USB OTG)${NC}"
 fi

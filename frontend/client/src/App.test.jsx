@@ -33,6 +33,19 @@ vi.mock('./contexts/ModalContext', () => ({
   }),
 }))
 
+vi.mock('./contexts/ParamCacheContext', () => ({
+  ParamCacheProvider: ({ children }) => <div>{children}</div>,
+  useParamCache: () => ({
+    params: {},
+    isDownloading: false,
+    isLoaded: false,
+    status: { total: 0, loaded: 0, phase: '', progress: 0 },
+    refreshParamsCache: vi.fn(),
+    clearCache: vi.fn(),
+    mergeParams: vi.fn(),
+  }),
+}))
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key) => {

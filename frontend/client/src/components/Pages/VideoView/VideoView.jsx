@@ -399,18 +399,26 @@ const VideoView = () => {
     setAvailableCodecs(filtered)
 
     // Determine best codec for this device:
-    // - Prefer passthrough for H264-capable cameras (ultra-low latency)
+    // - Prefer passthrough for H264-capable cameras (ultra-low latency) ONLY
+    //   when the backend config has not been synced yet (initialLoadDone).
+    //   After backend config arrives, respect the saved/preferred codec.
     // - Otherwise keep current codec if compatible, else switch to first compatible
     if (filtered.length > 0) {
-      const hasPassthrough = deviceCodecs.some(
-        (c) => c.codec_id === 'h264_passthrough' && c.compatible
-      )
-      const passthroughCodec = filtered.find((c) => c.id === 'h264_passthrough')
       const currentCompatible = filtered.some((c) => c.id === config.codec)
 
-      if (hasPassthrough && passthroughCodec && config.codec !== 'h264_passthrough') {
-        setConfig((prev) => ({ ...prev, codec: 'h264_passthrough' }))
-      } else if (!currentCompatible) {
+      if (!initialLoadDone.current) {
+        const hasPassthrough = deviceCodecs.some(
+          (c) => c.codec_id === 'h264_passthrough' && c.compatible
+        )
+        const passthroughCodec = filtered.find((c) => c.id === 'h264_passthrough')
+
+        if (hasPassthrough && passthroughCodec && config.codec !== 'h264_passthrough') {
+          setConfig((prev) => ({ ...prev, codec: 'h264_passthrough' }))
+          return
+        }
+      }
+
+      if (!currentCompatible) {
         setConfig((prev) => ({ ...prev, codec: filtered[0].id }))
       }
     }

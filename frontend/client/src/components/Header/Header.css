@@ -1,4 +1,5 @@
 .header {
+  position: relative;
   background: rgba(14, 20, 36, 0.92);
   backdrop-filter: blur(10px);
   padding: 20px;
@@ -9,6 +10,24 @@
   align-items: center;
   box-shadow: 0 5px 15px rgba(0, 0, 0, 0.4);
   border: 1px solid rgba(96, 115, 170, 0.18);
+}
+
+.param-download-topbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: rgba(93, 122, 219, 0.22);
+  overflow: hidden;
+  border-top-left-radius: 6px;
+  border-top-right-radius: 6px;
+}
+
+.param-download-topbar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #48c7ff 0%, #5f8cff 100%);
+  transition: width 220ms ease;
 }
 
 .header-content {

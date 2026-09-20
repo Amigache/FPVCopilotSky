@@ -2,12 +2,31 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // Hoisted mocks
-const { mockFetchWithTimeout, mockShowToast, mockShowModal, mockMessages } = vi.hoisted(() => ({
-  mockFetchWithTimeout: vi.fn(),
-  mockShowToast: vi.fn(),
-  mockShowModal: vi.fn(),
-  mockMessages: {},
-}))
+const { mockFetchWithTimeout, mockShowToast, mockShowModal, mockMessages, mockRefreshParamsCache } =
+  vi.hoisted(() => ({
+    mockFetchWithTimeout: vi.fn(),
+    mockShowToast: vi.fn(),
+    mockShowModal: vi.fn(),
+    mockMessages: {},
+    mockRefreshParamsCache: vi.fn(() =>
+      mockFetchWithTimeout('/api/mavlink/params/batch/get', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ params: [], include_all: true }),
+      })
+    ),
+  }))
+
+const mockCachedParams = {
+  RC_PROTOCOLS: 0,
+  FS_GCS_ENABL: 1,
+  SR0_EXTRA1: 4,
+  SR0_POSITION: 2,
+  SR0_EXTRA3: 2,
+  SR0_EXT_STAT: 2,
+  SR0_RAW_CTRL: 1,
+  SR0_RC_CHAN: 1,
+}
 
 // Mock dependencies
 vi.mock('react-i18next', () => ({
@@ -27,6 +46,18 @@ vi.mock('../../../contexts/WebSocketContext', () => ({
 
 vi.mock('../../../contexts/ModalContext', () => ({
   useModal: () => ({ showModal: mockShowModal }),
+}))
+
+vi.mock('../../../contexts/ParamCacheContext', () => ({
+  useParamCache: () => ({
+    params: mockCachedParams,
+    isDownloading: false,
+    isLoaded: true,
+    status: { total: 0, loaded: 0, phase: '', progress: 0 },
+    refreshParamsCache: mockRefreshParamsCache,
+    clearCache: vi.fn(),
+    mergeParams: vi.fn(),
+  }),
 }))
 
 vi.mock('../../../services/api', () => ({
@@ -491,14 +522,13 @@ describe('FlightControllerView', () => {
         expect(batchCall).toBeDefined()
       })
 
-      // Change a parameter value via select
+      // Change a parameter value via select (e.g. FS_GCS_ENABL)
       const selects = screen.getAllByRole('combobox')
-      // Find the RC_PROTOCOLS select (first param select after port/baudrate)
-      const rcProtocolSelect = selects.find((s) => s.closest('.param-item') !== null)
+      const paramSelect = selects.find((s) => s.closest('.param-item') !== null)
 
-      if (rcProtocolSelect) {
+      if (paramSelect) {
         await act(async () => {
-          fireEvent.change(rcProtocolSelect, { target: { value: '256' } })
+          fireEvent.change(paramSelect, { target: { value: '1' } })
         })
 
         await waitFor(() => {

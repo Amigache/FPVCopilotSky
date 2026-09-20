@@ -39,6 +39,13 @@ vi.mock('../../contexts/WebSocketContext', () => ({
   }),
 }))
 
+vi.mock('../../contexts/ParamCacheContext', () => ({
+  useParamCache: () => ({
+    isDownloading: false,
+    status: { progress: 0 },
+  }),
+}))
+
 describe('Header Component', () => {
   it('renders header with title', () => {
     render(<Header />)

@@ -117,10 +117,24 @@ class MAVLinkBridge:
         }
         self.max_messages = 20  # Keep last 20 messages
 
-        # Parameter handling
+        # Parameter handling (individual requests)
         self._param_callbacks: Dict[str, threading.Event] = {}
         self._param_values: Dict[str, Any] = {}
         self._param_lock = threading.Lock()
+
+        # PARAM_REQUEST_LIST (bulk fetch) state
+        self._param_list_active: bool = False
+        self._param_list_params: Dict[str, Any] = {}
+        self._param_list_done = threading.Event()
+        self._param_list_last_activity: float = 0.0
+        self._param_list_expected_count: int = 0
+        self._param_list_indexes: set[int] = set()
+
+        # Full-parameter cache (loaded via PARAM_REQUEST_LIST)
+        self._param_cache: Dict[str, Dict[str, Any]] = {}
+        self._param_cache_lock = threading.Lock()
+        self._param_cache_loaded: bool = False
+        self._param_cache_last_refresh: float = 0.0
 
     def set_router(self, router: "MAVLinkRouter"):
         """Set the router for additional outputs."""
@@ -287,6 +301,11 @@ class MAVLinkBridge:
 
             self.connected = False
             self.last_heartbeat = 0
+
+            with self._param_cache_lock:
+                self._param_cache = {}
+                self._param_cache_loaded = False
+                self._param_cache_last_refresh = 0.0
 
             logger.info(
                 "MAVLink bridge disconnected with final stats",
@@ -736,18 +755,39 @@ class MAVLinkBridge:
                 param_value = msg.param_value
                 param_type = msg.param_type
 
-                logger.info("PARAM_VALUE received", extra={"param_id": param_id, "param_value": param_value})
+                entry = {
+                    "value": param_value,
+                    "param_type": param_type,
+                    "param_index": msg.param_index,
+                    "param_count": msg.param_count,
+                }
 
-                # Store the value and signal any waiting threads
+                # Always update cache immediately
+                with self._param_cache_lock:
+                    self._param_cache[param_id] = entry
+
+                # Signal individual-read waiters
                 with self._param_lock:
                     if param_id in self._param_callbacks:
-                        self._param_values[param_id] = {
-                            "value": param_value,
-                            "param_type": param_type,
-                            "param_index": msg.param_index,
-                            "param_count": msg.param_count,
-                        }
+                        self._param_values[param_id] = entry
                         self._param_callbacks[param_id].set()
+
+                # Signal bulk-list collector
+                if self._param_list_active:
+                    self._param_list_params[param_id] = entry
+                    self._param_list_last_activity = time.time()
+                    if isinstance(msg.param_index, int) and msg.param_index >= 0:
+                        self._param_list_indexes.add(int(msg.param_index))
+                    if msg.param_count > 0:
+                        self._param_list_expected_count = max(self._param_list_expected_count, int(msg.param_count))
+                    # Some FCs can occasionally report non-usable indexes for a few params.
+                    # Consider the transfer complete when either unique indexes OR unique params
+                    # reaches the expected total.
+                    if self._param_list_expected_count > 0 and (
+                        len(self._param_list_indexes) >= self._param_list_expected_count
+                        or len(self._param_list_params) >= self._param_list_expected_count
+                    ):
+                        self._param_list_done.set()
             except Exception as e:
                 logger.warning("Error processing PARAM_VALUE", extra={"error": str(e)})
 
@@ -778,6 +818,44 @@ class MAVLinkBridge:
         if not self.connected:
             return {"connected": False}
         return {"connected": True, **self.telemetry_data}
+
+    def _refresh_param_cache(self, timeout: float = 30.0, force: bool = False) -> Dict[str, Any]:
+        """Refresh full FC parameter cache via PARAM_REQUEST_LIST."""
+        if not self.connected or not self.serial_port:
+            return {"success": False, "error": "Not connected"}
+
+        with self._param_cache_lock:
+            if self._param_cache_loaded and not force:
+                return {
+                    "success": True,
+                    "count": len(self._param_cache),
+                    "cached": True,
+                }
+
+        result = self._request_all_params(timeout=timeout)
+        if not result.get("success"):
+            return result
+
+        params = result.get("params", {})
+        expected = result.get("expected_count", 0)
+        received = result.get("received_indexes", 0)
+        received_params = result.get("received_params", len(params))
+        is_partial = expected > 0 and max(received, received_params) < expected
+
+        with self._param_cache_lock:
+            self._param_cache.update(params)
+            self._param_cache_loaded = not is_partial
+            self._param_cache_last_refresh = time.time()
+
+        return {
+            "success": True,
+            "count": len(self._param_cache),
+            "partial": is_partial,
+            "expected_count": expected,
+            "received_indexes": received,
+            "received_params": received_params,
+            "cached": False,
+        }
 
     def get_parameter(self, param_name: str, timeout: float = 3.0) -> Dict[str, Any]:
         """
@@ -922,31 +1000,206 @@ class MAVLinkBridge:
         """Compatibility alias for set_parameter."""
         return self.set_parameter(param_name, value, param_type=param_type, timeout=timeout)
 
-    def get_parameters_batch(self, param_names: List[str], timeout: float = 5.0) -> Dict[str, Any]:
+    def _request_all_params(self, timeout: float = 60.0) -> Dict[str, Any]:
         """
-        Get multiple parameters in sequence.
+        Request ALL parameters via PARAM_REQUEST_LIST.
+
+        Simple protocol:
+        1. Send PARAM_REQUEST_LIST
+        2. Each PARAM_VALUE carries param_index and param_count
+        3. Collect until all param_count unique indexes received
+        4. Retry any missing indexes individually via PARAM_REQUEST_READ by index
+        """
+        if not self.connected or not self.serial_port:
+            return {"success": False, "error": "Not connected"}
+
+        self._param_list_active = True
+        self._param_list_params = {}
+        self._param_list_done.clear()
+        self._param_list_last_activity = time.time()
+        self._param_list_expected_count = 0
+        self._param_list_indexes = set()
+
+        try:
+            # Send PARAM_REQUEST_LIST
+            req = self.mav_sender.param_request_list_encode(
+                target_system=self.target_system,
+                target_component=self.target_component,
+            )
+            with self.serial_lock:
+                self.serial_port.write(req.pack(self.mav_sender))
+            logger.info("PARAM_REQUEST_LIST sent")
+
+            # Wait until expected count is reached.
+            # Only use idle-complete if expected count is still unknown.
+            start = time.time()
+            idle_complete_s = 2.0
+            stall_retry_s = 1.5
+            retries = 0
+            max_retries = 2
+            while time.time() - start < timeout:
+                expected = self._param_list_expected_count
+                received = len(self._param_list_indexes)
+                got = len(self._param_list_params)
+                idle_s = time.time() - self._param_list_last_activity
+
+                if expected > 0 and max(received, got) >= expected:
+                    logger.info(
+                        "All params received",
+                        extra={"received_params": got, "received_indexes": received, "expected": expected},
+                    )
+                    return {
+                        "success": True,
+                        "params": dict(self._param_list_params),
+                        "expected_count": expected,
+                        "received_indexes": received,
+                        "received_params": got,
+                        "partial": False,
+                    }
+
+                # If expected is unknown, complete on idle after receiving data.
+                if expected <= 0 and got > 0 and idle_s >= idle_complete_s:
+                    logger.info(
+                        "PARAM_REQUEST_LIST complete on idle",
+                        extra={
+                            "received_params": got,
+                            "received_indexes": received,
+                            "expected": expected,
+                            "partial": False,
+                        },
+                    )
+                    return {
+                        "success": True,
+                        "params": dict(self._param_list_params),
+                        "expected_count": expected,
+                        "received_indexes": received,
+                        "received_params": got,
+                        "partial": False,
+                    }
+
+                # If expected is known and stream stalls, request list again.
+                if expected > 0 and got > 0 and idle_s >= stall_retry_s and retries < max_retries:
+                    retries += 1
+                    logger.info(
+                        "PARAM_REQUEST_LIST stalled, retrying",
+                        extra={
+                            "retry": retries,
+                            "received_params": got,
+                            "received_indexes": received,
+                            "expected": expected,
+                        },
+                    )
+                    retry_req = self.mav_sender.param_request_list_encode(
+                        target_system=self.target_system,
+                        target_component=self.target_component,
+                    )
+                    with self.serial_lock:
+                        self.serial_port.write(retry_req.pack(self.mav_sender))
+                    self._param_list_last_activity = time.time()
+
+                time.sleep(0.05)
+
+            expected = self._param_list_expected_count
+            received = len(self._param_list_indexes)
+            got = len(self._param_list_params)
+            partial = expected > 0 and max(received, got) < expected
+            logger.warning(
+                "PARAM_REQUEST_LIST timeout",
+                extra={"received_params": got, "received_indexes": received, "expected": expected, "partial": partial},
+            )
+            return {
+                "success": got > 0,
+                "params": dict(self._param_list_params),
+                "expected_count": expected,
+                "received_indexes": received,
+                "received_params": got,
+                "partial": partial,
+            }
+        finally:
+            self._param_list_active = False
+
+    def get_parameters_batch(
+        self,
+        param_names: List[str],
+        timeout: float = 3.0,
+        include_all: bool = False,
+        force_refresh: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Get multiple parameters.
+
+        Uses PARAM_REQUEST_LIST for efficiency, with individual PARAM_REQUEST_READ
+        fallback for any params not received in the bulk response.
 
         Args:
             param_names: List of parameter names
-            timeout: Timeout per parameter
+            timeout: Timeout per individual fallback request
 
         Returns:
             Dict with parameters and their values
         """
-        results = {}
-        errors = []
+        # Full list downloads can exceed 15s on slower links/FCs.
+        cache_result = self._refresh_param_cache(timeout=60.0, force=force_refresh)
+        if not cache_result.get("success"):
+            return {
+                "success": False,
+                "parameters": {},
+                "errors": [cache_result.get("error", "Failed to refresh parameter cache")],
+                "meta": {
+                    "requested": len(param_names),
+                    "found": 0,
+                    "missing": len(param_names),
+                    "cache_loaded": False,
+                },
+            }
 
-        for param_name in param_names:
-            result = self.get_parameter(param_name, timeout=timeout)
-            if result["success"]:
-                results[param_name] = result["value"]
+        with self._param_cache_lock:
+            cached_params = dict(self._param_cache)
+
+        if include_all:
+            all_values = {name: entry["value"] for name, entry in cached_params.items()}
+            return {
+                "success": True,
+                "parameters": all_values,
+                "errors": None,
+                "meta": {
+                    "requested": len(param_names),
+                    "found": len(all_values),
+                    "missing": 0,
+                    "cache_loaded": True,
+                    "cache_entries": len(cached_params),
+                    "cache_refreshed": not cache_result.get("cached", False),
+                    "cache_last_refresh": self._param_cache_last_refresh,
+                    "cache_expected_count": cache_result.get("expected_count", 0),
+                    "cache_received_indexes": cache_result.get("received_indexes", 0),
+                    "cache_partial": cache_result.get("partial", False),
+                    "cache_attempts": cache_result.get("attempts", 1),
+                    "include_all": True,
+                },
+            }
+
+        results = {}
+        missing = []
+
+        for name in param_names:
+            if name in cached_params:
+                results[name] = cached_params[name]["value"]
             else:
-                errors.append(f"{param_name}: {result.get('error', 'Unknown error')}")
+                missing.append(name)
 
         return {
-            "success": len(errors) == 0,
+            "success": True,
             "parameters": results,
-            "errors": errors if errors else None,
+            "errors": None,
+            "meta": {
+                "requested": len(param_names),
+                "found": len(results),
+                "missing": len(missing),
+                "cache_loaded": True,
+                "cache_entries": len(cached_params),
+                "cache_refreshed": not cache_result.get("cached", False),
+                "cache_last_refresh": self._param_cache_last_refresh,
+            },
         }
 
     def set_parameters_batch(self, params: Dict[str, float], timeout: float = 3.0) -> Dict[str, Any]:
