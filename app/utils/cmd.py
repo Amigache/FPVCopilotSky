@@ -73,6 +73,7 @@ def run_cmd(
     backoff_base_s: float = 0.2,
     backoff_max_s: float = 2.0,
     retry_on_returncodes: Optional[Set[int]] = None,
+    input_data: Optional[bytes] = None,
 ) -> _CommandResult:
     """Run *cmd* synchronously and return (stdout, stderr, returncode).
 
@@ -91,7 +92,9 @@ def run_cmd(
     """
     privileged_cmd, is_privileged = _extract_sudo(cmd)
     if is_privileged and _privileged.is_available():
-        stdout, stderr, returncode = _privileged.run_privileged_sync(privileged_cmd, timeout=timeout)
+        stdout, stderr, returncode = _privileged.run_privileged_sync(
+            privileged_cmd, timeout=timeout, input_data=input_data
+        )
         if check and returncode != 0:
             logger.error(
                 "Privileged command failed",
@@ -107,6 +110,7 @@ def run_cmd(
                 capture_output=True,
                 text=True,
                 timeout=timeout,
+                input=input_data.decode(errors="replace") if input_data else None,
             )
             elapsed_ms = int((time.monotonic() - t0) * 1000)
             stdout, stderr, returncode = result.stdout.strip(), result.stderr.strip(), result.returncode
@@ -173,6 +177,7 @@ async def run_cmd_async(
     backoff_base_s: float = 0.2,
     backoff_max_s: float = 2.0,
     retry_on_returncodes: Optional[Set[int]] = None,
+    input_data: Optional[bytes] = None,
 ) -> _CommandResult:
     """Run *cmd* asynchronously and return (stdout, stderr, returncode).
 
@@ -193,7 +198,9 @@ async def run_cmd_async(
     """
     privileged_cmd, is_privileged = _extract_sudo(cmd)
     if is_privileged and _privileged.is_available():
-        stdout, stderr, returncode = await _privileged.run_privileged_async(privileged_cmd, timeout=timeout)
+        stdout, stderr, returncode = await _privileged.run_privileged_async(
+            privileged_cmd, timeout=timeout, input_data=input_data
+        )
         if check and returncode != 0:
             logger.error(
                 "Privileged async command failed",
@@ -210,7 +217,7 @@ async def run_cmd_async(
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+            stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(input=input_data), timeout=timeout)
             elapsed_ms = int((time.monotonic() - t0) * 1000)
 
             stdout = stdout_b.decode(errors="replace").strip()

@@ -11,7 +11,7 @@ import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 from collections import deque
-from app.utils.cmd import run_cmd
+from app.utils.cmd import run_cmd, run_cmd_async
 
 logger = logging.getLogger(__name__)
 
@@ -206,16 +206,11 @@ class LatencyMonitor:
         cmd.append(target)
 
         try:
-            process = await asyncio.create_subprocess_exec(
-                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-            )
-
-            stdout, _ = await asyncio.wait_for(process.communicate(), timeout=self.timeout + 0.5)
+            output, _, returncode = await run_cmd_async(cmd, timeout=self.timeout + 0.5)
 
             # Parse ping output for latency
             latency_ms = None
-            if process.returncode == 0:
-                output = stdout.decode()
+            if returncode == 0:
                 # Look for "time=X.XX ms" pattern
                 import re
 

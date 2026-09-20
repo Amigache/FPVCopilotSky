@@ -1681,23 +1681,9 @@ class GStreamerService:
             if changed:
                 logger.info("CPU governor set to performance", extra={"cores_changed": changed})
             elif governors:
-                # Try via sudo as last resort (non-blocking)
-                try:
-                    run_cmd(
-                        [
-                            "sudo",
-                            "-n",
-                            "sh",
-                            "-c",
-                            "for g in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; "
-                            'do echo performance > "$g"; done',
-                        ],
-                        timeout=2,
-                        check=False,
-                    )
-                    logger.info("CPU governor set to performance via sudo")
-                except Exception:
-                    pass
+                # The systemd unit sets the governor via ExecStartPre; the
+                # privileged helper does not run shells, so nothing more here.
+                logger.debug("CPU governor not set directly (handled by systemd ExecStartPre)")
         except Exception:
             pass
 
