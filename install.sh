@@ -41,7 +41,11 @@ NC='\033[0m' # No Color
 # Function to create fpvcopilotsky user if it doesn't exist
 setup_fpvcopilotsky_user() {
     local USERNAME="fpvcopilotsky"
-    local REQUIRED_GROUPS=(dialout video netdev sudo adm)
+    # NOTE: no `sudo` group. The service uses scoped NOPASSWD sudoers rules
+    # (scripts/setup-sudoers.sh) which are per-user and do not require group
+    # membership. Keeping the account out of `sudo` prevents full passwordless
+    # root escalation if the (unauthenticated) web backend is compromised.
+    local REQUIRED_GROUPS=(dialout video netdev adm)
 
     if id "$USERNAME" &>/dev/null; then
         echo -e "${GREEN}✓${NC} User '$USERNAME' already exists"
@@ -72,11 +76,10 @@ setup_fpvcopilotsky_user() {
         sudo usermod -a -G dialout "$USERNAME"     # Serial port access
         sudo usermod -a -G video "$USERNAME"       # Camera + MPP access
         sudo usermod -a -G netdev "$USERNAME"      # Network device access
-        sudo usermod -a -G sudo "$USERNAME"        # Sudo access for system management
         sudo usermod -a -G adm "$USERNAME"         # Read system journal (journalctl)
 
         echo -e "${GREEN}✓${NC} User '$USERNAME' created and configured"
-        echo -e "${GREEN}✓${NC} Groups: dialout, video, netdev, sudo, adm"
+        echo -e "${GREEN}✓${NC} Groups: dialout, video, netdev, adm (no sudo group — see scripts/setup-sudoers.sh)"
         echo ""
     fi
 
@@ -407,8 +410,8 @@ if [ -f "/etc/sudoers.d/fpvcopilot-system" ]; then
     if sudo grep -q "ip route" /etc/sudoers.d/fpvcopilot-system 2>/dev/null; then
         echo "  ✓ Network route management sudo permissions configured"
     else
-        echo "  ⚠ Route permissions missing, re-running sudoers setup..."
-        sudo bash scripts/setup-system-sudoers.sh
+        echo "  ⚠ Legacy sudoers file detected, re-running hardened sudoers setup..."
+        sudo bash scripts/setup-sudoers.sh
     fi
 fi
 

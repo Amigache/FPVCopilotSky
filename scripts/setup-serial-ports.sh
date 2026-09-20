@@ -185,22 +185,28 @@ udevadm trigger --action=change --subsystem-match=tty 2>/dev/null || true
 udevadm settle 2>/dev/null || true
 echo -e "${GREEN}✓ Udev rules applied${NC}"
 
-# Set permissions for serial ports if they exist
+# Set permissions for serial ports if they exist.
+# Use group `dialout` + 0660 (never world-writable) so only the serial-access
+# group can talk to the flight controller — prevents local MAVLink injection.
 if ls /dev/ttyAML* > /dev/null 2>&1; then
-    chmod 666 /dev/ttyAML* || true
-    echo -e "${GREEN}✓ Permissions set for /dev/ttyAML*${NC}"
+    chgrp dialout /dev/ttyAML* || true
+    chmod 660 /dev/ttyAML* || true
+    echo -e "${GREEN}✓ Permissions set for /dev/ttyAML* (0660 dialout)${NC}"
 fi
 if ls /dev/ttyS* > /dev/null 2>&1; then
-    chmod 666 /dev/ttyS* || true
-    echo -e "${GREEN}✓ Permissions set for /dev/ttyS*${NC}"
+    chgrp dialout /dev/ttyS* || true
+    chmod 660 /dev/ttyS* || true
+    echo -e "${GREEN}✓ Permissions set for /dev/ttyS* (0660 dialout)${NC}"
 fi
 if ls /dev/ttyUSB* > /dev/null 2>&1; then
-    chmod 666 /dev/ttyUSB* || true
-    echo -e "${GREEN}✓ Permissions set for /dev/ttyUSB*${NC}"
+    chgrp dialout /dev/ttyUSB* || true
+    chmod 660 /dev/ttyUSB* || true
+    echo -e "${GREEN}✓ Permissions set for /dev/ttyUSB* (0660 dialout)${NC}"
 fi
 if ls /dev/ttyACM* > /dev/null 2>&1; then
-    chmod 666 /dev/ttyACM* || true
-    echo -e "${GREEN}✓ Permissions set for /dev/ttyACM*${NC}"
+    chgrp dialout /dev/ttyACM* || true
+    chmod 660 /dev/ttyACM* || true
+    echo -e "${GREEN}✓ Permissions set for /dev/ttyACM* (0660 dialout)${NC}"
 fi
 
 if is_radxa_zero3w; then
