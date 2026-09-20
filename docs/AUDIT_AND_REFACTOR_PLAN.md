@@ -190,33 +190,40 @@ merge-base dev-junio/develop = aa7e14d
   - `develop ← dev-junio` → **exit 0, sin conflictos**.
   - `main ← dev-junio` → **exit 0** (además main es ancestro, podría ser fast-forward).
 
-### Flujo recomendado (comandos, sin ejecutar)
+### Flujo ejecutado (2026-09-20)
 
 ```bash
-# 1) Commitear el fix de VideoView en dev-junio
+# Paso 1 — commit del fix en dev-junio  ✅
 git add frontend/client/src/components/Pages/VideoView/VideoView.jsx
-git commit -m "fix(video): respect saved codec after backend config sync"
-git push origin dev-junio
+git commit -m "fix(video): respect saved codec after backend config sync"   # d5297cb
+git push origin dev-junio                                                  # 2fc599e..d5297cb
 
-# 2) Integrar dev-junio en develop (merge no-ff; verificado sin conflictos)
-git checkout develop
-git pull --ff-only origin develop
-git merge --no-ff dev-junio -m "Merge branch 'dev-junio' into develop"
-git push origin develop
+# Paso 2 — integrar dev-junio en develop
+# ⚠️ develop está PROTEGIDA: el push directo se rechaza.
+# git push origin develop  →  ! [remote rejected] (protected branch hook declined)
+# Equivalente: Pull Request #41  (dev-junio → develop)
+#   https://github.com/Amigache/FPVCopilotSky/pull/41
 
-# 3) Crear la rama nueva para auditoría/mejoras desde develop
+# Paso 3 — rama de mejoras  ✅
 git checkout -b refactor/audit-improvements develop
-git add docs/AUDIT_AND_REFACTOR_PLAN.md
-git commit -m "docs(audit): add audit report and refactorization plan"
+git commit -m "docs(audit): add audit report and refactorization plan"     # 0690e94
 git push -u origin refactor/audit-improvements
 ```
 
+### Estado tras la ejecución
+
+| Ref                           | SHA       | Contenido                        | Remoto         |
+| ----------------------------- | --------- | -------------------------------- | -------------- |
+| `dev-junio`                   | `d5297cb` | fix de códec                     | ✅ subida      |
+| `develop`                     | `ec8b3ed` | sin cambios directos (protegida) | 🔒 solo por PR |
+| `refactor/audit-improvements` | `0690e94` | merge local + este `.md`         | ✅ subida      |
+| PR #41                        | —         | `dev-junio → develop`            | abierto        |
+
 **Recomendaciones:**
 
-- Mantener este `.md` en la rama nueva (`refactor/audit-improvements`), no en `dev-junio`.
+- `develop` está protegida: la integración de `dev-junio` debe ir por PR (#41). Tras su merge, **recrear/rebasear** `refactor/audit-improvements` desde el nuevo `develop` para que su PR contenga solo este documento.
 - Separar la **Fase 0 (seguridad)** en su propia rama (`fix/security-hardening`) por su criticidad y para facilitar revisión.
 - `main` está muy desactualizado (`f8e12a4`, feb 2026). Promover `develop → main` tras validar el merge.
-- No se ha ejecutado ningún commit, merge ni push: solo verificación en seco.
 
 ---
 
