@@ -39,7 +39,7 @@ async def apply_system_update(background_tasks: BackgroundTasks):
     the success response first.
     """
     result = SystemService.apply_update(do_restart=False)
-    if result.get("success"):
+    if result.get("success") and not result.get("privileged"):
         background_tasks.add_task(SystemService._restart_service_delayed)
     return result
 
@@ -55,7 +55,7 @@ async def rollback_to_previous_version(background_tasks: BackgroundTasks):
     the success response first.
     """
     result = SystemService.rollback_to_previous_version(do_restart=False)
-    if result.get("success"):
+    if result.get("success") and not result.get("privileged"):
         background_tasks.add_task(SystemService._restart_service_delayed)
     return result
 

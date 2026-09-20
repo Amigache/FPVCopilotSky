@@ -1,0 +1,19 @@
+[Unit]
+Description=FPV Copilot Sky - Privileged update/rollback (one-shot)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/FPVCopilotSky
+# Request written by the backend: FPV_UPDATE_ACTION / FPV_UPDATE_TARGET.
+EnvironmentFile=-/var/lib/fpvcopilot-sky/update-request.env
+ExecStart=/opt/FPVCopilotSky/scripts/privileged-update.sh
+TimeoutStartSec=1800
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=fpvcopilot-update
+
+[Install]
+WantedBy=multi-user.target
