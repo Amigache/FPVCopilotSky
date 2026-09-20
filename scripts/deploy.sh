@@ -82,6 +82,9 @@ echo -e "${GREEN}✅ Frontend built successfully${NC}"
 # Step 2: Install systemd service
 echo -e "\n${BLUE}🔧 Installing systemd service...${NC}"
 sudo cp "$PROJECT_DIR/systemd/fpvcopilot-sky.service" /etc/systemd/system/
+# Privileged updater: oneshot unit (root) triggered by the backend.
+sudo cp "$PROJECT_DIR/systemd/fpvcopilot-update.service" /etc/systemd/system/
+chmod +x "$PROJECT_DIR/scripts/privileged-update.sh" 2>/dev/null || true
 sudo systemctl daemon-reload
 echo -e "${GREEN}✅ Systemd service installed${NC}"
 

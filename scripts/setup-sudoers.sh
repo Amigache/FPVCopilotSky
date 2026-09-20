@@ -45,6 +45,9 @@ fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart fpvcopilot-sky
 fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/bin/systemctl start fpvcopilot-sky
 fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop fpvcopilot-sky
 fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/bin/systemctl status fpvcopilot-sky
+# --- Privileged updater (one-shot root unit) ---
+# The backend may only *start* the dedicated update unit, never run git/pip as root.
+fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/bin/systemctl start --no-block fpvcopilot-update
 fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart nginx
 fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/bin/systemctl status nginx
 fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/bin/systemctl reload nginx

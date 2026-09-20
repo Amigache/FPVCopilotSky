@@ -36,6 +36,11 @@ class SystemService:
     # Previous version file (for rollback)
     PREVIOUS_VERSION_FILE = os.path.join(DATA_DIR, "previous_version")
 
+    # Privileged updater (systemd oneshot executing as root)
+    UPDATE_REQUEST_FILE = os.path.join(DATA_DIR, "update-request.env")
+    PRIVILEGED_UPDATE_UNIT = "fpvcopilot-update"
+    PRIVILEGED_UPDATE_UNIT_FILE = "/etc/systemd/system/fpvcopilot-update.service"
+
     @staticmethod
     def _ensure_data_directory():
         """Ensure the data directory exists with proper permissions"""
@@ -43,6 +48,60 @@ class SystemService:
             os.makedirs(SystemService.DATA_DIR, mode=0o755, exist_ok=True)
         except Exception as e:
             logger.warning("Failed to create data directory", extra={"path": SystemService.DATA_DIR, "error": str(e)})
+
+    @staticmethod
+    def _privileged_updater_available() -> bool:
+        """Whether the privileged updater unit is installed."""
+        return os.path.exists(SystemService.PRIVILEGED_UPDATE_UNIT_FILE)
+
+    @staticmethod
+    def _write_update_request(action: str, target: str) -> bool:
+        """Atomically write the update request consumed by the privileged unit."""
+        try:
+            SystemService._ensure_data_directory()
+            path = SystemService.UPDATE_REQUEST_FILE
+            tmp = f"{path}.tmp"
+            with open(tmp, "w") as f:
+                f.write(f"FPV_UPDATE_ACTION={action}\n")
+                f.write(f"FPV_UPDATE_TARGET={target}\n")
+            os.replace(tmp, path)
+            return True
+        except Exception as e:
+            logger.warning("Failed to write update request", extra={"error": str(e)})
+            return False
+
+    @staticmethod
+    def _start_privileged_update(action: str, target: str) -> Dict[str, Any] | None:
+        """Trigger the privileged updater.
+
+        Returns a result dict when the privileged path is taken, or ``None`` to
+        tell the caller to fall back to the in-process update flow.
+        """
+        if not SystemService._privileged_updater_available():
+            return None
+        if not SystemService._write_update_request(action, target):
+            return None
+
+        _, stderr, returncode = run_cmd(
+            ["sudo", "-n", "systemctl", "start", "--no-block", SystemService.PRIVILEGED_UPDATE_UNIT],
+            timeout=30,
+            check=False,
+        )
+        if returncode != 0:
+            logger.warning(
+                "Privileged updater could not be started; falling back to in-process update",
+                extra={"stderr": stderr, "returncode": returncode},
+            )
+            return None
+
+        logger.info("Privileged updater started", extra={"action": action, "target": target})
+        return {
+            "success": True,
+            "privileged": True,
+            "action": action,
+            "updated_to": target,
+            "message": f"{action.title()} to version {target} started (privileged updater)",
+        }
 
     @staticmethod
     def get_version() -> Dict[str, str]:
@@ -254,6 +313,12 @@ class SystemService:
                     }
 
                 target_version = update_info.get("latest_version")
+
+            # Prefer the privileged updater (runs as root via systemd). Falls
+            # back to the in-process flow when it is not installed/startable.
+            privileged_result = SystemService._start_privileged_update("update", target_version)
+            if privileged_result is not None:
+                return privileged_result
 
             # Step 2: Reset any local changes (users cannot commit in installed apps)
             try:
@@ -556,6 +621,11 @@ class SystemService:
                     "step": "check_previous_version",
                     "error": f"Failed to read previous version: {str(e)}",
                 }
+
+            # Prefer the privileged updater (see apply_update).
+            privileged_result = SystemService._start_privileged_update("rollback", previous_version)
+            if privileged_result is not None:
+                return privileged_result
 
             # Step 2: Reset any local changes (users cannot commit in installed apps)
             try:
