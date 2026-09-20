@@ -343,10 +343,27 @@ pip install -r requirements.txt
 pip install -r requirements-dev.txt
 
 # Install Node.js if not installed
+# Uses the NodeSource apt repository with its signed GPG key instead of
+# piping a remote script to bash.
 if ! command -v node &> /dev/null; then
-    echo "📦 Installing Node.js..."
-    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-    sudo apt-get install -y nodejs
+    echo "📦 Installing Node.js 20 (NodeSource apt repository, signed key)..."
+    if ! command -v gpg >/dev/null 2>&1; then
+        sudo apt-get install -y gnupg
+    fi
+    NODESOURCE_KEY_TMP="$(mktemp)"
+    if curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key -o "$NODESOURCE_KEY_TMP"; then
+        sudo gpg --dearmor --yes -o /usr/share/keyrings/nodesource.gpg "$NODESOURCE_KEY_TMP"
+        sudo chmod 644 /usr/share/keyrings/nodesource.gpg
+        rm -f "$NODESOURCE_KEY_TMP"
+        echo "deb [signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" \
+            | sudo tee /etc/apt/sources.list.d/nodesource.list > /dev/null
+        sudo apt-get update
+        sudo apt-get install -y nodejs
+    else
+        rm -f "$NODESOURCE_KEY_TMP"
+        echo "  ⚠ Could not download the NodeSource signing key. Install Node.js 20 manually:"
+        echo "    https://github.com/nodesource/distributions"
+    fi
 fi
 
 # Install frontend dependencies
@@ -356,16 +373,39 @@ npm install
 cd ../..
 
 # Install Tailscale for VPN support
+# Uses the signed Tailscale apt repository instead of piping a remote script
+# to a shell.
 echo ""
 echo "🔐 Installing Tailscale VPN..."
 if command -v tailscale &> /dev/null; then
     echo "  ✓ Tailscale already installed"
 else
-    if curl -fsSL https://tailscale.com/install.sh | sh; then
-        echo "  ✓ Tailscale installed successfully"
-        echo "  ℹ️  To connect: sudo tailscale up"
+    TS_ID="$(grep -E '^ID=' /etc/os-release 2>/dev/null | cut -d= -f2 | tr -d '"')"
+    TS_CODENAME="$(grep -E '^VERSION_CODENAME=' /etc/os-release 2>/dev/null | cut -d= -f2 | tr -d '"')"
+    case "$TS_ID" in
+        ubuntu) TS_DISTRO=ubuntu ;;
+        *) TS_DISTRO=debian ;;
+    esac
+
+    TS_KEY_TMP="$(mktemp)"
+    TS_LIST_TMP="$(mktemp)"
+    if [ -n "$TS_CODENAME" ] \
+        && curl -fsSL "https://pkgs.tailscale.com/stable/${TS_DISTRO}/${TS_CODENAME}.noarmor.gpg" -o "$TS_KEY_TMP" \
+        && curl -fsSL "https://pkgs.tailscale.com/stable/${TS_DISTRO}/${TS_CODENAME}.tailscale-keyring.list" -o "$TS_LIST_TMP"; then
+        sudo install -m 644 "$TS_KEY_TMP" /usr/share/keyrings/tailscale-archive-keyring.gpg
+        sudo install -m 644 "$TS_LIST_TMP" /etc/apt/sources.list.d/tailscale.list
+        rm -f "$TS_KEY_TMP" "$TS_LIST_TMP"
+        sudo apt-get update
+        if sudo apt-get install -y tailscale; then
+            echo "  ✓ Tailscale installed successfully"
+            echo "  ℹ️  To connect: sudo tailscale up"
+        else
+            echo "  ⚠ Tailscale install failed (optional)"
+        fi
     else
-        echo "  ⚠ Tailscale installation failed (optional)"
+        rm -f "$TS_KEY_TMP" "$TS_LIST_TMP"
+        echo "  ⚠ Could not configure the Tailscale apt repository (optional)."
+        echo "    Install manually: https://tailscale.com/download/linux"
     fi
 fi
 
