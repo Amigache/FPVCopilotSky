@@ -17,9 +17,6 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
-# Resolve the actual invoking user (handles: sudo bash deploy.sh, bash deploy.sh, root)
-ACTUAL_USER="${SUDO_USER:-$USER}"
-
 cd "$PROJECT_DIR"
 
 # Ensure local data directory exists
@@ -70,13 +67,15 @@ fi
 # Step 1: Build Frontend
 echo -e "\n${BLUE}📦 Building frontend...${NC}"
 cd frontend/client
-npm run build
-# Fix ownership so the service user (fpvcopilotsky) can overwrite dist on future updates
+# Build as root: works on hardened (root-owned) installs and keeps the dist
+# output readable by nginx. The service never needs to write it.
+sudo npm run build
 if id "fpvcopilotsky" &>/dev/null; then
-    chown -R fpvcopilotsky:fpvcopilotsky dist
-elif [ -n "$SUDO_USER" ]; then
-    chown -R "$SUDO_USER:$SUDO_USER" dist
+    sudo chown -R root:fpvcopilotsky dist
+else
+    sudo chown -R root:root dist
 fi
+sudo chmod -R a+rX dist
 echo -e "${GREEN}✅ Frontend built successfully${NC}"
 
 # Step 2: Install systemd service
@@ -111,17 +110,13 @@ if command -v nginx &> /dev/null; then
         sudo rm /etc/nginx/sites-enabled/default
     fi
 
-    # Fix permissions for frontend build:
-    # - Owner: ACTUAL_USER so the dev user can rebuild without sudo
-    # - Group: fpvcopilotsky (if it exists) so the service can overwrite files during git-based updates
-    # - Mode: 775/664 so group members can write; other (nginx/www-data) gets read-only
+    # dist is build output served by nginx; root-owned and world-readable.
     if id "fpvcopilotsky" &>/dev/null; then
-        sudo chown -R "$ACTUAL_USER:fpvcopilotsky" "$PROJECT_DIR/frontend/client/dist"
+        sudo chown -R root:fpvcopilotsky "$PROJECT_DIR/frontend/client/dist"
     else
-        sudo chown -R "$ACTUAL_USER:$ACTUAL_USER" "$PROJECT_DIR/frontend/client/dist"
+        sudo chown -R root:root "$PROJECT_DIR/frontend/client/dist"
     fi
-    sudo chmod -R 775 "$PROJECT_DIR/frontend/client/dist"
-    sudo find "$PROJECT_DIR/frontend/client/dist" -type f -exec chmod 664 {} \;
+    sudo chmod -R a+rX "$PROJECT_DIR/frontend/client/dist"
 
     # Test nginx config
     if sudo nginx -t; then
