@@ -75,19 +75,34 @@ cert`) o self-signed; redirigir 80→443.
 
 ### C5 — Código fuente escribible por el servicio
 
-Acoplado al **updater** (hace `git reset/checkout` dentro de `/opt`).
+El updater actual ejecuta `git reset/checkout`, `pip install` y `npm build`
+**dentro del proceso**, así que necesita escritura sobre `/opt/FPVCopilotSky`. No
+hay arreglo parcial: si el árbol pasa a ser de solo lectura sin más, el updater
+se rompe.
 
-Diseño: separar **usuario de despliegue** (root/admin) de **usuario de
-servicio**. El directed fix de Fase 0: mantener `/opt/FPVCopilotSky` propiedad de
-`root:fpvcopilotsky` con `g+rX` (sin escritura) y ejecutar el updater mediante una
-unidad systemd de un solo uso o un sudoers acotado que haga el checkout como
-root, no como el usuario que corre la web.
+**Plan por etapas (seguro y validable en el equipo):**
+
+1. **Etapa 1 — updater privilegiado con fallback.** Añadir
+   `systemd/fpvcopilot-update.service` (oneshot, `User=root`) y
+   `scripts/privileged-update.sh`, que lee el objetivo desde
+   `/var/lib/fpvcopilot-sky/update-request.env` (validado con regex antes de
+   usarlo) y hace checkout/pip/npm/restart como root. `SystemService.apply_update`
+   escribe la petición y lanza `sudo -n systemctl start fpvcopilot-update`, con
+   **fallback** al método actual si la unidad no está instalada. No cambia aún
+   los permisos → retrocompatible y validable con una actualización real.
+2. **Etapa 2 — árbol de solo lectura.** Una vez validada la Etapa 1:
+   `/opt/FPVCopilotSky` pasa a `root:fpvcopilotsky` `0755` (sin `g+rw` ni setgid)
+   y se elimina el fallback; el updater ya no necesita escribir el árbol.
+3. **Etapa 3 — sandbox + helper de red.** Sustituir los `sudo` de red
+   (`ip`/`tc`/`iptables`/`sysctl`/`nmcli`/`tailscale`) por un helper privilegiado,
+   eliminar las reglas NOPASSWD y habilitar `NoNewPrivileges`,
+   `ProtectSystem=strict` y `CapabilityBoundingSet` (M7).
 
 ### C6 — Instaladores remotos sin verificación
 
-`install.sh` usa `curl … | sudo bash` (NodeSource) y `curl … | sh` (Tailscale).
-Mitigación: fijar versión y verificar GPG/checksum; instalar claves de repo por
-`apt` en lugar de ejecutar scripts remotos. Requiere ventanas de mantenimiento.
+✅ **Implementado (PR #46).** `install.sh` ya no ejecuta scripts remotos: usa los
+repositorios APT firmados de NodeSource y Tailscale (keyrings GPG). No queda
+`curl | bash`/`curl | sh` en el repositorio.
 
 ### M5 — Dependencias sin fijar
 
@@ -101,7 +116,7 @@ actual es de feb-2026; regenerarlo y validar en CI.
 `ProtectSystem=strict` (rompería el updater). La solución de fondo es dejar de
 usar `sudo` desde la app y sustituirlo por un **helper privilegiado** (servicio
 systemd/IPC o polkit) que valide operaciones concretas. Solo entonces se podrá
-endurecer el sandbox y eliminar las reglas NOPASSWD.
+endurecer el sandbox y eliminar las reglas NOPASSWD (Etapa 3 de C5).
 
 ---
 
