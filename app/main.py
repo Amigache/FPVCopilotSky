@@ -601,7 +601,7 @@ _docs_enabled = _is_env_true(os.getenv("FPV_ENABLE_DOCS", _docs_default))
 
 app = FastAPI(
     title="FPV Copilot Sky",
-    version="1.0.0",
+    version="1.1.0",
     lifespan=lifespan,
     docs_url="/docs" if _docs_enabled else None,
     redoc_url="/redoc" if _docs_enabled else None,
@@ -723,7 +723,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str | None = None):
 
 @app.get("/")
 async def root():
-    return {"name": "FPV Copilot Sky", "version": "1.0.0", "status": "running"}
+    return {"name": "FPV Copilot Sky", "version": "1.1.0", "status": "running"}
 
 
 async def _broadcast_status_health():
