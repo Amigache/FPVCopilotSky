@@ -98,10 +98,14 @@ if command -v nginx &> /dev/null; then
         sudo cp /etc/nginx/sites-available/fpvcopilot-sky /etc/nginx/sites-available/fpvcopilot-sky.backup
     fi
 
-    # Copy nginx config with production optimizations:
-    # - Uses 127.0.0.1 instead of localhost (avoids IPv6 resolution issues)
-    # - Optimized timeouts for API (10s) and WebSocket (7d)
-    sudo cp "$PROJECT_DIR/systemd/fpvcopilot-sky.nginx" /etc/nginx/sites-available/fpvcopilot-sky
+    # Copy nginx config. If a TLS certificate exists (see scripts/setup-tls.sh),
+    # install the HTTPS config; otherwise the plain HTTP config.
+    if [ -f /etc/ssl/fpvcopilot/fpvcopilot.crt ]; then
+        echo -e "${BLUE}🔒 TLS certificate found — installing HTTPS nginx config${NC}"
+        sudo cp "$PROJECT_DIR/systemd/fpvcopilot-sky.tls.nginx" /etc/nginx/sites-available/fpvcopilot-sky
+    else
+        sudo cp "$PROJECT_DIR/systemd/fpvcopilot-sky.nginx" /etc/nginx/sites-available/fpvcopilot-sky
+    fi
 
     # Enable FPV site
     sudo ln -sf /etc/nginx/sites-available/fpvcopilot-sky /etc/nginx/sites-enabled/

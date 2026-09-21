@@ -98,7 +98,7 @@ El proyecto tiene una **arquitectura por capas bien pensada**, una **capa de eje
 ### Fase 0 — Seguridad (bloqueante, antes de exponer a Internet)
 
 - [x] Añadir autenticación a la API (token/`HTTPBearer` + dependencia global); deshabilitar `/docs` en producción; proteger update/rollback/restart. (PR #44)
-- [ ] No publicar el puerto 8000: escuchar solo `127.0.0.1` (**hecho**), servir por nginx (**hecho**); añadir TLS (**pendiente**); fijar CORS a orígenes concretos.
+- [x] No publicar el puerto 8000: escuchar solo `127.0.0.1` (**hecho**), servir por nginx (**hecho**); TLS (**hecho**, `scripts/setup-tls.sh`); CORS por entorno.
 - [x] Purga de sudoers: eliminar `setup-system-sudoers.sh`, quitar `tee *`/`sysctl -w *`/`ip -force -batch *`; sacar a `fpvcopilotsky` del grupo `sudo`. (PRs #43, #55)
 - [x] systemd: `NoNewPrivileges=true`, `ProtectSystem=strict` + `ReadWritePaths=/var/lib/fpvcopilot-sky`, `CapabilityBoundingSet`. (PR #55, validado)
 - [x] Verificar checksums/GPG de instaladores remotos (PR #46); serial `0660 group=dialout` (PR #43).
@@ -253,6 +253,7 @@ Todo lo siguiente está **mergeado en `develop`** y con CI en verde:
 | WebSocketContext: suscripciones por tipo (perf)       | ✅                   | #61      |
 | Bloque Fase1+2: errores, except-pass, WS/timers, i18n | ✅                   | #63      |
 | Bloque Fase1+2 restante: HTTPException, memo, i18n    | ✅                   | #64      |
+| TLS (C2): setup-tls.sh + config nginx 443             | ✅                   | #65      |
 
 **Validado en el equipo (2026-09-21):** `fpvcopilot-privd` activo, socket
 `root:fpvcopilotsky 0660`; `ip route show` permitido y comandos peligrosos
