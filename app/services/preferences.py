@@ -9,6 +9,7 @@ import os
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from app.utils.cmd import run_cmd
+from app.services.link_profiles import default_link_profiles, merge_profile_overrides
 import threading
 
 logger = logging.getLogger(__name__)
@@ -120,6 +121,12 @@ class PreferencesService:
                 "vpn_health_check_enabled": True,
                 "auto_failover_enabled": False,
                 "auto_failover_preferred_mode": "modem",  # modem|wifi
+                # Link profiles (adapt video+telemetry to the connection type)
+                "link_profile_mode": "auto",  # auto|manual
+                "forced_link_profile": "",  # "", "lan", "modem", "vpn"
+                "link_profile_auto_apply": True,  # apply detected profile automatically
+                "link_profile_telemetry_apply": False,  # opt-in: also adapt FC stream rates
+                "link_profiles": default_link_profiles(),
             },
             "flight_session": {
                 "auto_start_on_arm": False,  # Auto-start flight session when drone arms
@@ -393,6 +400,69 @@ class PreferencesService:
         """Get auto-adaptive resolution setting."""
         with self._lock:
             return self._preferences.get("video", {}).get("auto_adaptive_resolution", True)
+
+    # ==================== Link Profiles ====================
+
+    def get_link_profiles(self) -> Dict[str, Dict[str, Any]]:
+        """Get link profiles (defaults merged with user overrides)."""
+        with self._lock:
+            overrides = self._preferences.get("network", {}).get("link_profiles", {})
+        return merge_profile_overrides(overrides)
+
+    def set_link_profiles(self, overrides: Dict[str, Any]):
+        """Persist link profile overrides (validated against known keys)."""
+        with self._lock:
+            if "network" not in self._preferences:
+                self._preferences["network"] = {}
+            self._preferences["network"]["link_profiles"] = overrides if isinstance(overrides, dict) else {}
+            self._save()
+            logger.info(
+                "Link profiles updated",
+                extra={"profiles": list(overrides.keys()) if isinstance(overrides, dict) else []},
+            )
+
+    def get_link_profile_settings(self) -> Dict[str, Any]:
+        """Get link profile mode/forced/auto-apply settings."""
+        with self._lock:
+            network = self._preferences.get("network", {})
+            return {
+                "mode": network.get("link_profile_mode", "auto"),
+                "forced": network.get("forced_link_profile", ""),
+                "auto_apply": network.get("link_profile_auto_apply", True),
+            }
+
+    def set_link_profile_telemetry_apply(self, enabled: bool):
+        """Enable/disable adapting FC telemetry stream rates per link profile."""
+        with self._lock:
+            if "network" not in self._preferences:
+                self._preferences["network"] = {}
+            self._preferences["network"]["link_profile_telemetry_apply"] = bool(enabled)
+            self._save()
+            logger.info("Link profile telemetry apply updated", extra={"enabled": bool(enabled)})
+
+    def set_link_profile_settings(
+        self, mode: Optional[str] = None, forced: Optional[str] = None, auto_apply: Optional[bool] = None
+    ):
+        """Update link profile mode/forced/auto-apply settings."""
+        with self._lock:
+            if "network" not in self._preferences:
+                self._preferences["network"] = {}
+            network = self._preferences["network"]
+            if mode is not None:
+                network["link_profile_mode"] = "manual" if str(mode).lower() == "manual" else "auto"
+            if forced is not None:
+                network["forced_link_profile"] = forced or ""
+            if auto_apply is not None:
+                network["link_profile_auto_apply"] = bool(auto_apply)
+            self._save()
+            logger.info(
+                "Link profile settings updated",
+                extra={
+                    "mode": network.get("link_profile_mode"),
+                    "forced": network.get("forced_link_profile"),
+                    "auto_apply": network.get("link_profile_auto_apply"),
+                },
+            )
 
     # ==================== Streaming Configuration ====================
 

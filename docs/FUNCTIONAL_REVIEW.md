@@ -113,7 +113,8 @@ stream rates de telemetría + tuning de red según el enlace detectado.
 
 ### P2 — Adaptación por enlace
 
-- [ ] Perfiles LAN/4G/VPN (vídeo + `SRx_*` + red) · CAKE real · latencia por interfaz · MTU/VPN · orquestador único de rutas
+- [x] **P2a** Perfiles LAN/4G/VPN (vídeo) + tasas de telemetría (`SET_MESSAGE_INTERVAL`, opt-in) + robustez UDP (`buffer-size`)
+- [ ] **P2b** CAKE real · latencia por interfaz · MTU/VPN · orquestador único de rutas
 
 ### P3 — Limpieza y frontend
 
