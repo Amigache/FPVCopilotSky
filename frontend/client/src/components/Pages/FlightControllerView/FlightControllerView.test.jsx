@@ -41,7 +41,8 @@ vi.mock('../../../contexts/ToastContext', () => ({
 }))
 
 vi.mock('../../../contexts/WebSocketContext', () => ({
-  useWebSocket: () => ({ messages: mockMessages, isConnected: true }),
+  useWebSocket: () => ({ isConnected: true, send: () => {} }),
+  useWsMessage: (type) => mockMessages[type],
 }))
 
 vi.mock('../../../contexts/ModalContext', () => ({

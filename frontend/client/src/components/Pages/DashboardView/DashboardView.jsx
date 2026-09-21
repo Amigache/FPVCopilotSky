@@ -1,13 +1,12 @@
 import './DashboardView.css'
 import { useTranslation } from 'react-i18next'
-import { useWebSocket } from '../../../contexts/WebSocketContext'
+import { useWsMessage } from '../../../contexts/WebSocketContext'
 import MapView from './MapView/MapView'
 
 const DashboardView = () => {
   const { t } = useTranslation()
-  const { messages } = useWebSocket()
 
-  const telemetry = messages.telemetry || {
+  const telemetry = useWsMessage('telemetry') || {
     connected: false,
     attitude: { roll: 0, pitch: 0, yaw: 0 },
     gps: { lat: 0, lon: 0, alt: 0, satellites: 0 },

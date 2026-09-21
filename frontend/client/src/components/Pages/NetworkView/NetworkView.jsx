@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 
 import { useTranslation } from 'react-i18next'
 import { useToast } from '../../../contexts/ToastContext'
-import { useWebSocket } from '../../../contexts/WebSocketContext'
+import { useWsMessage } from '../../../contexts/WebSocketContext'
 import { useArmedState } from '../../../hooks/useArmedState'
 import api from '../../../services/api'
 import { API_TIMEOUTS, getSignalBars } from './networkConstants'
@@ -12,11 +12,14 @@ import { formatBitrate } from '../../../utils/formatters'
 const NetworkView = () => {
   const { t } = useTranslation()
   const { showToast } = useToast()
-  const { messages } = useWebSocket()
+  const networkStatusMessage = useWsMessage('network_status')
+  const modemStatusMessage = useWsMessage('modem_status')
+  const networkQualityMessage = useWsMessage('network_quality')
+  const videoStatusMessage = useWsMessage('video_status')
   const isArmed = useArmedState()
 
   // Video stats from WebSocket (as in VideoView)
-  const videoStatus = messages.video_status || {}
+  const videoStatus = videoStatusMessage || {}
   const videoStats = videoStatus.stats || {}
   const videoConfig = videoStatus.config || {}
 
@@ -119,11 +122,11 @@ const NetworkView = () => {
 
   // Update from WebSocket - network status
   useEffect(() => {
-    if (messages.network_status) {
+    if (networkStatusMessage) {
       const prevModemDetected = status?.modem?.detected || false
-      const newModemDetected = messages.network_status?.modem?.detected || false
+      const newModemDetected = networkStatusMessage?.modem?.detected || false
 
-      setStatus(messages.network_status)
+      setStatus(networkStatusMessage)
       setLoading(false)
 
       // If modem was just detected, refresh dashboard to get HiLink status
@@ -131,24 +134,24 @@ const NetworkView = () => {
         loadDashboard(true)
       }
     }
-  }, [messages.network_status, status?.modem?.detected, loadDashboard])
+  }, [networkStatusMessage, status?.modem?.detected, loadDashboard])
 
   // Update from WebSocket - modem HiLink status
   useEffect(() => {
-    if (messages.modem_status) {
-      setHilinkStatus(messages.modem_status)
+    if (modemStatusMessage) {
+      setHilinkStatus(modemStatusMessage)
     }
-  }, [messages.modem_status])
+  }, [modemStatusMessage])
 
   // Update from WebSocket - network quality bridge
   useEffect(() => {
-    if (messages.network_quality) {
-      setBridgeStatus(messages.network_quality)
+    if (networkQualityMessage) {
+      setBridgeStatus(networkQualityMessage)
       if (!bridgeInitialized) {
         setBridgeInitialized(true)
       }
     }
-  }, [messages.network_quality, bridgeInitialized])
+  }, [networkQualityMessage, bridgeInitialized])
 
   // Auto-start bridge if inactive
   const startBridge = useCallback(async () => {

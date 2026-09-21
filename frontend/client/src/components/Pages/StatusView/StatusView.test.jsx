@@ -21,27 +21,28 @@ vi.mock('../../../contexts/ModalContext', () => ({
   }),
 }))
 
-vi.mock('../../../contexts/WebSocketContext', () => ({
-  useWebSocket: () => ({
-    messages: {
-      status: {
-        backend: {
-          running: true,
-          python_deps: { status: 'ok' },
-          system: { status: 'ok' },
-          app_version: { version: '1.0.0', status: 'ok' },
-        },
-        frontend: {
-          npm_deps: { status: 'ok' },
-          frontend_version: { version: '1.0.0', status: 'ok' },
-          node_version: { version: '18.0.0', status: 'ok' },
-        },
-        permissions: {},
+vi.mock('../../../contexts/WebSocketContext', () => {
+  const messages = {
+    status: {
+      backend: {
+        running: true,
+        python_deps: { status: 'ok' },
+        system: { status: 'ok' },
+        app_version: { version: '1.0.0', status: 'ok' },
       },
+      frontend: {
+        npm_deps: { status: 'ok' },
+        frontend_version: { version: '1.0.0', status: 'ok' },
+        node_version: { version: '18.0.0', status: 'ok' },
+      },
+      permissions: {},
     },
-    isConnected: true,
-  }),
-}))
+  }
+  return {
+    useWebSocket: () => ({ isConnected: true, send: () => {} }),
+    useWsMessage: (type) => messages[type],
+  }
+})
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({

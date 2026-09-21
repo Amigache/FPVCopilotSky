@@ -12,10 +12,8 @@ import App from './App'
 // Mock the useTranslation hook
 vi.mock('./contexts/WebSocketContext', () => ({
   WebSocketProvider: ({ children }) => <div>{children}</div>,
-  useWebSocket: () => ({
-    messages: {},
-    send: vi.fn(),
-  }),
+  useWebSocket: () => ({ send: vi.fn() }),
+  useWsMessage: () => undefined,
 }))
 
 vi.mock('./contexts/ToastContext', () => ({

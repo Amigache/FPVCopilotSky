@@ -1,7 +1,7 @@
 import './VideoView.css'
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useWebSocket } from '../../../contexts/WebSocketContext'
+import { useWsMessage } from '../../../contexts/WebSocketContext'
 import { useToast } from '../../../contexts/ToastContext'
 import api from '../../../services/api'
 import { VIDEO_DEFAULTS, FALLBACK_FPS, EMPTY_STATUS, TIMING, safeInt } from './videoConstants'
@@ -17,7 +17,9 @@ import { useArmedState } from '../../../hooks/useArmedState'
 
 const VideoView = () => {
   const { t } = useTranslation()
-  const { messages } = useWebSocket()
+  const statusMessage = useWsMessage('video_status')
+  const webrtcStatusMessage = useWsMessage('webrtc_status')
+  const resolutionChanged = useWsMessage('resolution_changed')
   const { showToast } = useToast()
 
   // ── State ──────────────────────────────────────────────────────────────────
@@ -80,17 +82,17 @@ const VideoView = () => {
   }, [videoDevices, config])
 
   // ── WebSocket status ───────────────────────────────────────────────────────
-  const status = messages.video_status || EMPTY_STATUS
-  const webrtcStatus = messages.webrtc_status || null
+  const status = statusMessage || EMPTY_STATUS
+  const webrtcStatus = webrtcStatusMessage || null
   const isArmed = useArmedState()
 
   // Sync remote config → local when no pending changes
   useEffect(() => {
-    if (messages.video_status?.config && !hasChanges) {
-      setConfig((prev) => ({ ...prev, ...messages.video_status.config }))
+    if (statusMessage?.config && !hasChanges) {
+      setConfig((prev) => ({ ...prev, ...statusMessage.config }))
       initialLoadDone.current = true
     }
-  }, [messages.video_status, hasChanges])
+  }, [statusMessage, hasChanges])
 
   // Track local changes
   const updateConfig = useCallback((updater) => {
@@ -187,8 +189,8 @@ const VideoView = () => {
 
   // Listen for resolution changes from auto-adaptive system
   useEffect(() => {
-    if (messages.resolution_changed) {
-      const { old_resolution, new_resolution, reason } = messages.resolution_changed
+    if (resolutionChanged) {
+      const { old_resolution, new_resolution, reason } = resolutionChanged
       const reasonText =
         reason === 'adaptive_downscale'
           ? t('views.video.qualityDrop')
@@ -200,7 +202,7 @@ const VideoView = () => {
         'info'
       )
     }
-  }, [messages.resolution_changed, showToast, t])
+  }, [resolutionChanged, showToast, t])
 
   // ── Action handlers ────────────────────────────────────────────────────────
   const applyConfigAndStart = async () => {
