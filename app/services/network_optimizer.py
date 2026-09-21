@@ -147,6 +147,15 @@ class NetworkOptimizer:
             return False
         return self._set_mtu(vpn_interface, mtu)
 
+    def _policy_routing_managed(self) -> bool:
+        """True when PolicyRoutingManager owns the policy-routing tables."""
+        try:
+            from app.services.policy_routing_manager import get_policy_routing_manager
+
+            return bool(get_policy_routing_manager()._initialized)
+        except Exception:
+            return False
+
     def _configure_qos(self, enable: bool = True) -> bool:
         """Configure QoS with iptables DSCP marking"""
         try:
@@ -851,9 +860,12 @@ class NetworkOptimizer:
                         f"down={self.config.cake_bandwidth_down_mbit}mbit)"
                     )
 
-            # 6. Configure VPN policy routing
-            if self.config.enable_vpn_policy_routing and self._configure_vpn_policy_routing(
-                modem_interface, enable=True
+            # 6. Configure VPN policy routing (skipped when PolicyRoutingManager
+            # owns the policy-routing tables, to avoid two writers on table 100)
+            if (
+                self.config.enable_vpn_policy_routing
+                and not self._policy_routing_managed()
+                and self._configure_vpn_policy_routing(modem_interface, enable=True)
             ):
                 optimizations.append("VPN policy routing enabled (tunnel isolation)")
 
@@ -919,8 +931,8 @@ class NetworkOptimizer:
             if modem_interface and self.config.enable_cake:
                 self._configure_cake(modem_interface, enable=False)
 
-            # Remove VPN policy routing
-            if modem_interface and self.config.enable_vpn_policy_routing:
+            # Remove VPN policy routing (only if this optimizer owns it)
+            if modem_interface and self.config.enable_vpn_policy_routing and not self._policy_routing_managed():
                 self._configure_vpn_policy_routing(modem_interface, enable=False)
 
             self.flight_mode_active = False

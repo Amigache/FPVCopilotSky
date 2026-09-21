@@ -54,15 +54,15 @@ stream rates de telemetría + tuning de red según el enlace detectado.
 - [x] **N1** Deadlock en AutoFailover: lock no reentrante (`auto_failover.py:231/246` + `:360`).
 - [x] **N2** `mode="auto"` deja WiFi y módem en `metric 200` → sin primaria (`status.py:368,397`).
 - [x] **N3** `ModemPool` borra **todas** las default routes (`modem_pool.py:604-610`).
-- [ ] **N4** Tres escritores de rutas se pisan (`modem_pool`, `set_priority_mode`, `set_metric`).
+- [x] **N4** Tres escritores de rutas se pisan (`modem_pool`, `set_priority_mode`, `set_metric`).
 - [x] **N5** CAKE mal calibrado: burst al gateway, solo subida, bajada fija 30, `ifb0` compartido (`network_optimizer.py:307-379,54,413-433`).
 - [x] **N6** DSCP inútil: se marca EF-46 y CAKE subida aplica `wash` (`network_optimizer.py:132-173` vs `:414`).
 - [x] **N7** Latencia no es por interfaz (`ping` sin `-I`; `interface` solo etiqueta) (`latency_monitor.py:200-206,302-345`).
 
 ### Mejoras
 
-- [ ] Un único orquestador de rutas (`PolicyRoutingManager`) como dueño de defaults/métricas.
-- [ ] Cooldown/anti-flapping unificado.
+- [x] Un único orquestador de rutas (`PolicyRoutingManager`) como dueño de defaults/métricas.
+- [x] Cooldown/anti-flapping unificado.
 - [ ] Estimación de throughput (no solo RTT).
 - [x] MTU/overlay VPN (1280) y health-check con umbrales de túnel.
 - [ ] sysctl: quitar `tcp_rto_min`, añadir `fq`, `tcp_rmem/wmem`; restaurar todo bien.
@@ -115,7 +115,7 @@ stream rates de telemetría + tuning de red según el enlace detectado.
 
 - [x] **P2a** Perfiles LAN/4G/VPN (vídeo) + tasas de telemetría (`SET_MESSAGE_INTERVAL`, opt-in) + robustez UDP (`buffer-size`)
 - [x] **P2b** CAKE/DSCP coherente + ifb por interfaz · latencia por interfaz · MTU/VPN · fix detección VPN
-- [ ] **P2c** Orquestador único de rutas (N4) + anti-flapping unificado
+- [x] **P2c** Orquestador único de rutas (N4) + anti-flapping unificado
 
 ### P3 — Limpieza y frontend
 
