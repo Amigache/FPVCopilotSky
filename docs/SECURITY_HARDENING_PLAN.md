@@ -124,17 +124,25 @@ en `app/security/privd_policy.py`. El cliente (`app/security/privileged.py`) y e
 routing en `app/utils/cmd.py` sustituyen `sudo` por el helper cuando el socket
 existe, con fallback a `sudo` si no.
 
-- **Incremento 1 (hecho)**: daemon (`app/security/privd_daemon.py`), política,
-  cliente, unidad `systemd/fpvcopilot-privd.service`, routing central y tests.
-  Inerte hasta que el daemon esté activo (sin cambios de comportamiento).
-- **Incremento 2 (pendiente)**: migrar los caminos que no pasan por `cmd.py`
-  (`policy_routing_manager` con `create_subprocess_exec` + stdin,
-  `subprocess.Popen` de `system_service`, prefijo `sudo ping` en
-  `latency_monitor`, `gstreamer_service`).
-- **Incremento 3 (pendiente)**: instalar/habilitar el daemon en
+- **Incremento 1 (hecho y validado en el equipo)**: daemon
+  (`app/security/privd_daemon.py`), política, cliente, unidad
+  `systemd/fpvcopilot-privd.service`, routing central y tests. Validado en el
+  equipo: socket `root:fpvcopilotsky 0660`, `ip route show` permitido, comandos
+  peligrosos denegados (rc=126) y la app en marcha enruta `iw scan` / `ip route`
+  por el helper (log `exec:` / `denied:`).
+- **Incremento 2 (hecho)**: migración total de los caminos que no pasaban por
+  `cmd.py` — `policy_routing_manager` (stdin), `dns_cache._exec`,
+  `latency_monitor` (ping), `system_service` (`Popen` → hilo de fondo) y
+  `gstreamer_service`. `run_cmd`/`run_cmd_async` soportan stdin. Escaneo AST:
+  todos los `sudo` literales cubiertos por la whitelist.
+- **Incremento 3 (pendiente — próxima sesión)**: instalar/habilitar el daemon en
   `install.sh`/`deploy.sh`, retirar las reglas NOPASSWD y habilitar
-  `NoNewPrivileges`, `ProtectSystem=strict` y `CapabilityBoundingSet` en el
-  servicio principal. Validar en el equipo.
+  `NoNewPrivileges`, `ProtectSystem=strict` y `CapabilityBoundingSet` en
+  `fpvcopilot-sky.service`.
+
+> ⚠️ Con `NoNewPrivileges` el fallback a `sudo` deja de funcionar: habilitar y
+> validar el daemon primero. Rollback: revertir la unit del servicio y
+> `sudo systemctl daemon-reload && sudo systemctl restart fpvcopilot-sky`.
 
 ---
 
@@ -162,4 +170,4 @@ existe, con fallback a `sudo` si no.
 | C6 Instaladores remotos | ✅ implementado (PR #46): repos APT firmados                          |
 | M5 Lock deps            | ✅ implementado: lock usado en install/updater/fallback               |
 | M6 Serial 666           | ✅ aplicado                                                           |
-| M7 Sandbox systemd      | 🟡 Incremento 1 (helper) hecho; incrementos 2-3 pendientes            |
+| M7 Sandbox systemd      | 🟡 Incrementos 1-2 hechos y validados; Incremento 3 pendiente         |
