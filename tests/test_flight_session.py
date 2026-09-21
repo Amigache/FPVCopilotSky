@@ -41,7 +41,7 @@ class TestFlightSessionAutoStart:
             "/api/system/preferences",
             json={"flight_session": {"auto_start_on_arm": True}},
         )
-        assert response.status_code in [200, 400]  # May not be fully implemented
+        assert response.status_code == 200  # May not be fully implemented
 
         # Start flight session
         response = client.post("/api/network/hilink/flight-session/start")
@@ -230,7 +230,7 @@ class TestFlightPreferences:
                 }
             },
         )
-        assert response.status_code in [200, 400]
+        assert response.status_code == 200
 
     def test_preference_defaults(self, client):
         """Default preferences should be reasonable"""

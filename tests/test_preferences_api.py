@@ -59,7 +59,7 @@ class TestPreferencesEndpoints:
             json={"flight_session": {"auto_start_on_arm": True}},
         )
 
-        assert response.status_code in [200, 400]
+        assert response.status_code == 200
         if response.status_code == 200:
             data = response.json()
             assert "success" in data or "message" in data
@@ -71,7 +71,7 @@ class TestPreferencesEndpoints:
             json={"serial": {"port": "/dev/ttyUSB0", "baudrate": 115200}},
         )
 
-        assert response.status_code in [200, 400]
+        assert response.status_code == 200
 
     def test_post_update_video_preferences(self, client):
         """Should be able to update video preferences"""
@@ -80,13 +80,13 @@ class TestPreferencesEndpoints:
             json={"video": {"codec": "mjpeg", "width": 960, "height": 720}},
         )
 
-        assert response.status_code in [200, 400]
+        assert response.status_code == 200
 
     def test_post_update_ui_preferences(self, client):
         """Should be able to update UI preferences"""
         response = client.post("/api/system/preferences", json={"ui": {"language": "en", "theme": "dark"}})
 
-        assert response.status_code in [200, 400]
+        assert response.status_code == 200
 
     def test_preferences_persistence(self, client):
         """Updated preferences should persist"""
@@ -127,7 +127,7 @@ class TestPreferencesEndpoints:
         response = client.post("/api/system/preferences", json={"invalid_key": {"value": "test"}})
 
         # Should either ignore or return error
-        assert response.status_code in [200, 400, 422]
+        assert response.status_code == 200
 
     def test_reset_preferences_endpoint(self, client):
         """POST /api/system/preferences/reset should reset to defaults"""

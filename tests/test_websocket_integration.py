@@ -244,8 +244,8 @@ class TestWebSocketIntegrationWithREST:
     def test_rest_api_before_websocket(self, client):
         """Test REST API call before WebSocket connection"""
         # Call REST API
-        response = client.get("/api/system/status")
-        assert response.status_code in [200, 404, 500]
+        response = client.get("/api/system/info")
+        assert response.status_code == 200
 
         # Then connect WebSocket
         try:
@@ -265,15 +265,15 @@ class TestWebSocketIntegrationWithREST:
                 assert response is not None
 
                 # Call REST API while connected
-                rest_response = client.get("/api/system/status")
-                assert rest_response.status_code in [200, 404, 500]
+                rest_response = client.get("/api/system/info")
+                assert rest_response.status_code == 200
         except Exception as e:
             pytest.skip(f"WebSocket + REST integration skipped: {e}")
 
     def test_rest_and_websocket_data_consistency(self, client):
         """Test data consistency between REST and WebSocket"""
         # Get data via REST
-        rest_response = client.get("/api/system/status")
+        rest_response = client.get("/api/system/info")
         rest_status = rest_response.status_code
 
         try:

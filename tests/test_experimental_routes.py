@@ -45,20 +45,20 @@ class TestExperimentalEndpointsExist:
     def test_get_config_endpoint_exists(self):
         """Test GET /api/experimental/config endpoint exists"""
         response = self.client.get("/api/experimental/config")
-        # Should return 200 or 503 (not 404)
-        assert response.status_code in [200, 503]
+        # OpenCV service is not initialised in tests → 503
+        assert response.status_code == 503
 
     def test_post_config_endpoint_exists(self):
         """Test POST /api/experimental/config endpoint exists"""
         response = self.client.post("/api/experimental/config", json={"filter": "edges"})
-        # Should return 200, 503, or 422 (not 404)
-        assert response.status_code in [200, 422, 503]
+        # Service not initialised in tests → 503 (route exists, not 404)
+        assert response.status_code == 503
 
     def test_post_toggle_endpoint_exists(self):
         """Test POST /api/experimental/toggle endpoint exists"""
         response = self.client.post("/api/experimental/toggle", json={"enabled": True})
-        # Should return 200 or 503 (not 404)
-        assert response.status_code in [200, 503]
+        # Service not initialised in tests → 503 (route exists, not 404)
+        assert response.status_code == 503
 
     def test_get_status_endpoint_exists(self):
         """Test GET /api/experimental/status endpoint exists"""
