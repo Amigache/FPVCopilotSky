@@ -55,8 +55,10 @@ def _execute(request: dict) -> dict:
         timeout = 15.0
 
     if not isinstance(argv, list) or not argv or not is_allowed(argv):
+        logger.warning("denied: %s", " ".join(str(arg) for arg in argv) if isinstance(argv, list) else argv)
         return {"returncode": 126, "stdout": "", "stderr": f"command not permitted: {argv}"}
 
+    logger.info("exec: %s", " ".join(str(arg) for arg in argv))
     input_data = request.get("input")
     try:
         proc = subprocess.run(
