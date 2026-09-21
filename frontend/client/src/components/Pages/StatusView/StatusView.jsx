@@ -1,5 +1,5 @@
 import './StatusView.css'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, memo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useToast } from '../../../contexts/ToastContext'
 import { useModal } from '../../../contexts/ModalContext'
@@ -7,6 +7,25 @@ import { useWebSocket, useWsMessage } from '../../../contexts/WebSocketContext'
 import { useArmedState } from '../../../hooks/useArmedState'
 import LogsModal from '../../LogsModal/LogsModal'
 import api from '../../../services/api'
+
+const StatusBadge = memo(({ status }) => {
+  const { t } = useTranslation()
+  const statusClass = `status-indicator status-${status}`
+  const icon = status === 'ok' ? '✅' : status === 'warning' ? '⚠️' : '❌'
+  return (
+    <span className={statusClass}>
+      {icon} {t(`status.badge.${status}`)}
+    </span>
+  )
+})
+
+const InfoRow = memo(({ label, value, status }) => (
+  <div className="info-row">
+    <span className="info-label">{label}:</span>
+    <span className="info-value">{value}</span>
+    {status && <StatusBadge status={status} />}
+  </div>
+))
 
 const StatusView = () => {
   const { t } = useTranslation()
@@ -682,24 +701,6 @@ const StatusView = () => {
       return t('status.logs.loadError')
     }
   }, [logsType, t])
-
-  const StatusBadge = ({ status }) => {
-    const statusClass = `status-indicator status-${status}`
-    const icon = status === 'ok' ? '✅' : status === 'warning' ? '⚠️' : '❌'
-    return (
-      <span className={statusClass}>
-        {icon} {t(`status.badge.${status}`)}
-      </span>
-    )
-  }
-
-  const InfoRow = ({ label, value, status }) => (
-    <div className="info-row">
-      <span className="info-label">{label}:</span>
-      <span className="info-value">{value}</span>
-      {status && <StatusBadge status={status} />}
-    </div>
-  )
 
   if (loading) {
     return (

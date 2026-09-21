@@ -227,8 +227,8 @@ def _broadcast_router_status(loop):
     try:
         outputs = router_service.get_outputs_list()
         asyncio.run_coroutine_threadsafe(websocket_manager.broadcast("router_status", outputs), loop)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Router status broadcast failed", exc_info=e)
 
 
 def _auto_start_video():

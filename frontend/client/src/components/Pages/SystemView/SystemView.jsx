@@ -1,10 +1,17 @@
 import './SystemView.css'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, memo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useToast } from '../../../contexts/ToastContext'
 import { useWsMessage } from '../../../contexts/WebSocketContext'
 import api from '../../../services/api'
 import VideoDevicesCard from './VideoDevicesCard'
+
+const InfoRow = memo(({ label, value }) => (
+  <div className="info-row">
+    <span className="info-label">{label}:</span>
+    <span className="info-value">{value}</span>
+  </div>
+))
 
 const SystemView = () => {
   const { t } = useTranslation()
@@ -267,13 +274,6 @@ const SystemView = () => {
   // CPU colors
   const cpuPercent = cpuInfo?.usage_percent || 0
   const cpuColors = getUsageColor(cpuPercent)
-
-  const InfoRow = ({ label, value }) => (
-    <div className="info-row">
-      <span className="info-label">{label}:</span>
-      <span className="info-value">{value}</span>
-    </div>
-  )
 
   return (
     <div className="monitor-columns">

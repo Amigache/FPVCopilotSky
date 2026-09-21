@@ -2,6 +2,12 @@
   "armedBanner": {
     "message": "Drone armado — algunos controles están deshabilitados durante el vuelo"
   },
+  "peerSelector": {
+    "selectFromPeers": "Seleccionar de peers VPN",
+    "nodes": "Nodos VPN ({{count}})",
+    "empty": "No hay peers VPN disponibles",
+    "thisDevice": "Este dispositivo"
+  },
   "auth": {
     "title": "Autenticación requerida",
     "help": "Introduce el token de API (FPV_API_TOKEN) configurado en el dispositivo.",
