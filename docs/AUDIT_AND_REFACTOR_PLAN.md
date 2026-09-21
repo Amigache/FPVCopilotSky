@@ -110,17 +110,17 @@ El proyecto tiene una **arquitectura por capas bien pensada**, una **capa de eje
 - [x] `mypy` arreglado para que **ejecute** (`# type:` inválido + `explicit_package_bases`); reporta 192 errores → aún no bloqueante.
 - [x] Trocear vistas grandes con `React.lazy`/`Suspense` y `manualChunks` (leaflet/framer-motion aparte). (PR #58)
 - [x] Desofilar con `run_in_executor`/`run_cmd_async` las llamadas síncronas de `system.py` (`asyncio.to_thread`). (PR pendiente)
-- [~] Unificar manejo de errores: handler global para `FPVCopilotException` + `Exception` añadido (PR #63); conversión de rutas 200-con-error a `HTTPException` pendiente.
+- [x] Unificar manejo de errores: handler global (`FPVCopilotException` + `Exception`) y rutas de `system.py` convertidas a `HTTPException` (PR #63, #64).
 - [x] Usar setters con lock en `system.py` (eliminar acceso a `_preferences`). (PR #60)
-- [~] Sustituir `except Exception: pass` por logging: hecho en `_lifespan_shutdown` y `_broadcast_router_status` (PR #63); resto pendiente.
+- [~] Sustituir `except Exception: pass` por logging: `_lifespan_shutdown` y `_broadcast_router_status` (PR #63); los de `gstreamer_service` siguen pendientes.
 
 ### Fase 2 — Rendimiento y calidad (1 mes)
 
 - [x] Partir `WebSocketContext` (suscripciones por tipo con `useWsMessage`) para eliminar el re-render storm. (PR #61)
-- [x] Trocear vistas grandes con `React.lazy`/`Suspense` y `manualChunks` (hecho, PR #58); pendiente memoizar tarjetas.
+- [x] Trocear vistas grandes con `React.lazy`/`Suspense` y `manualChunks`; componentes internos de `StatusView`/`SystemView` movidos a módulo con `memo` (PR #58, #64).
 - [ ] Empezar a dividir los god services (builder de pipeline, RTSP, stats en `gstreamer_service.py`).
 - [x] Backoff exponencial + jitter en la reconexión WS; limpieza de timers (ModemView, Toast); tests del store WS. (PR #63)
-- [~] Cerrar brechas i18n: claves faltantes en `en.json` (`presetUDPLocal`/`presetTCPListen`) y `ArmedBanner` con i18n (PR #63); resto pendiente.
+- [~] i18n: claves faltantes en `en.json`, `ArmedBanner` y `PeerSelector` con i18n (PR #63, #64); strings de `NetworkView`/`StatusView` pendientes.
 
 ### Fase 3 — Extraer el código no cubierto (continuo)
 
@@ -252,6 +252,7 @@ Todo lo siguiente está **mergeado en `develop`** y con CI en verde:
 | Desofilar rutas de system + setters con lock          | ✅                   | #60      |
 | WebSocketContext: suscripciones por tipo (perf)       | ✅                   | #61      |
 | Bloque Fase1+2: errores, except-pass, WS/timers, i18n | ✅                   | #63      |
+| Bloque Fase1+2 restante: HTTPException, memo, i18n    | ✅                   | #64      |
 
 **Validado en el equipo (2026-09-21):** `fpvcopilot-privd` activo, socket
 `root:fpvcopilotsky 0660`; `ip route show` permitido y comandos peligrosos

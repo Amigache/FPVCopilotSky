@@ -4,10 +4,13 @@ Endpoints for system information
 """
 
 import asyncio
+import logging
 
-from fastapi import APIRouter, BackgroundTasks, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from app.services.system_service import SystemService
 from app.i18n import get_language_from_request, translate
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -143,7 +146,8 @@ async def get_preferences_all():
         prefs = get_preferences()
         return prefs.get_all_preferences()
     except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
-        return {"error": str(e)}
+        logger.error("Failed to read preferences", exc_info=e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/preferences")
@@ -178,7 +182,8 @@ async def update_preferences(request: Request):
 
         return {"success": True, "message": "Preferences updated"}
     except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
-        return {"success": False, "message": str(e)}
+        logger.error("Failed to update preferences", exc_info=e)
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.post("/preferences/reset")
@@ -203,10 +208,10 @@ async def reset_preferences(request: Request):
             }
     except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
         lang = get_language_from_request(request)
-        return {
-            "success": False,
-            "message": translate("system.preferences_reset_error", lang, error=str(e)),
-        }
+        raise HTTPException(
+            status_code=500,
+            detail=translate("system.preferences_reset_error", lang, error=str(e)),
+        ) from e
 
 
 @router.post("/restart/backend")
@@ -217,10 +222,10 @@ async def restart_backend(request: Request):
         return result
     except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
         lang = get_language_from_request(request)
-        return {
-            "success": False,
-            "message": translate("system.restart_backend_error", lang, error=str(e)),
-        }
+        raise HTTPException(
+            status_code=500,
+            detail=translate("system.restart_backend_error", lang, error=str(e)),
+        ) from e
 
 
 @router.post("/restart/frontend")
@@ -231,10 +236,10 @@ async def restart_frontend(request: Request):
         return result
     except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
         lang = get_language_from_request(request)
-        return {
-            "success": False,
-            "message": translate("system.restart_frontend_error", lang, error=str(e)),
-        }
+        raise HTTPException(
+            status_code=500,
+            detail=translate("system.restart_frontend_error", lang, error=str(e)),
+        ) from e
 
 
 @router.get("/logs/backend")

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../../services/api'
 import './PeerSelector.css'
 
@@ -20,6 +21,7 @@ export const PeerSelector = ({
   const [dropUp, setDropUp] = useState(false)
   const dropdownRef = useRef(null)
   const inputRef = useRef(null)
+  const { t } = useTranslation()
 
   // Load VPN peers
   const loadPeers = useCallback(async () => {
@@ -141,7 +143,7 @@ export const PeerSelector = ({
           className="peer-selector-button"
           onClick={toggleDropdown}
           disabled={disabled}
-          title="Select from VPN peers"
+          title={t('peerSelector.selectFromPeers')}
         >
           {loading ? (
             <span className="loading-icon">⏳</span>
@@ -162,7 +164,7 @@ export const PeerSelector = ({
       {showDropdown && peers.length > 0 && (
         <div className={`peer-selector-dropdown ${dropUp ? 'drop-up' : ''}`}>
           <div className="peer-selector-header">
-            <span>VPN Nodes ({peers.length})</span>
+            <span>{t('peerSelector.nodes', { count: peers.length })}</span>
             <button
               type="button"
               className="peer-selector-refresh"
@@ -185,7 +187,9 @@ export const PeerSelector = ({
                 >
                   <div className="peer-selector-item-name">
                     <span className="peer-name">{peer.hostname}</span>
-                    {peer.is_self && <span className="peer-badge">This device</span>}
+                    {peer.is_self && (
+                      <span className="peer-badge">{t('peerSelector.thisDevice')}</span>
+                    )}
                   </div>
                   <div className="peer-selector-item-details">
                     <span className="peer-ip">{ipv4}</span>
@@ -201,7 +205,7 @@ export const PeerSelector = ({
 
       {showDropdown && peers.length === 0 && !loading && (
         <div className={`peer-selector-dropdown ${dropUp ? 'drop-up' : ''}`}>
-          <div className="peer-selector-empty">No VPN peers available</div>
+          <div className="peer-selector-empty">{t('peerSelector.empty')}</div>
         </div>
       )}
     </div>
