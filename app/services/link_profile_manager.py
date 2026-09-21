@@ -277,14 +277,20 @@ class LinkProfileManager:
 
         if service.is_streaming:
             service.stop()
-            # Let the pipeline tear down before starting the new one.
-            time.sleep(0.5)
+            # The camera/source needs a moment to be fully released before the
+            # new pipeline opens it again, otherwise start fails with a stream
+            # error. 0.5 s was not enough on the Radxa; use a safer margin.
+            time.sleep(2.5)
 
         result = service.start()
-        if not (isinstance(result, dict) and result.get("success")):
-            # One retry — some sinks need an extra moment after teardown.
-            logger.warning("Video start failed, retrying once", extra={"mode": mode, "result": result})
-            time.sleep(0.5)
+        retries = 0
+        while not (isinstance(result, dict) and result.get("success")) and retries < 2:
+            retries += 1
+            logger.warning(
+                "Video start failed, retrying",
+                extra={"mode": mode, "attempt": retries, "result": result},
+            )
+            time.sleep(1.5)
             result = service.start()
         return result if isinstance(result, dict) else {"success": bool(result)}
 

@@ -41,7 +41,8 @@ def test_apply_same_mode_updates_bitrate_live():
     gst.start.assert_not_called()
 
 
-def test_apply_different_mode_restarts_pipeline():
+def test_apply_different_mode_restarts_pipeline(monkeypatch):
+    monkeypatch.setattr("app.services.link_profile_manager.time.sleep", lambda *_: None)
     manager = LinkProfileManager()
     gst = make_gstreamer(mode="udp", width=1920, height=1080, framerate=30)
     manager.set_services(gstreamer_service=gst)
@@ -88,7 +89,8 @@ def test_desired_profile_respects_manual_forced():
     assert manager._desired_profile({"mode": "manual", "forced": ""}) == "lan"
 
 
-def test_restart_failure_is_reported_and_retried():
+def test_restart_failure_is_reported_and_retried(monkeypatch):
+    monkeypatch.setattr("app.services.link_profile_manager.time.sleep", lambda *_: None)
     manager = LinkProfileManager()
     gst = make_gstreamer(mode="udp")
     gst.start.return_value = {"success": False, "message": "boom"}
@@ -98,7 +100,7 @@ def test_restart_failure_is_reported_and_retried():
         result = asyncio.run(manager.apply_profile("modem"))
 
     assert any("video-restart-failed" in action for action in result["actions"])
-    assert gst.start.call_count == 2  # original + one retry
+    assert gst.start.call_count == 3  # original + two retries
 
 
 def test_profile_when_not_streaming_only_configures():
