@@ -113,7 +113,8 @@ stream rates de telemetría + tuning de red según el enlace detectado.
 
 ### P2 — Adaptación por enlace
 
-- [ ] Perfiles LAN/4G/VPN (vídeo + `SRx_*` + red) · CAKE real · latencia por interfaz · MTU/VPN · orquestador único de rutas
+- [x] **P2a** Perfiles LAN/4G/VPN (vídeo) + tasas de telemetría (`SET_MESSAGE_INTERVAL`, opt-in) + robustez UDP (`buffer-size`)
+- [ ] **P2b** CAKE real · latencia por interfaz · MTU/VPN · orquestador único de rutas
 
 ### P3 — Limpieza y frontend
 
@@ -158,6 +159,18 @@ Opciones (base para **P2 - adaptación por enlace**):
 - Pasar a **5 GHz** o bajar bitrate/resolución cuando el enlace es marginal.
 - Robustez UDP: `udpsink buffer-size`, o **RTSP/TCP · WebRTC** (retransmisión) en enlaces con pérdidas.
 - Perfiles de enlace que ajusten **modo + bitrate + resolución** automáticamente.
+
+### P2a — Validación de perfiles de enlace
+
+| Prueba                   | Resultado                                                                                                                       |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| Auto en LAN              | ✅ `active_profile lan`; `bitrate:6000` live-update (sin reiniciar)                                                             |
+| Override `vpn`           | ✅ `bitrate:4000` + `udp_buffer:2MB`, sin reiniciar                                                                             |
+| Override `modem`         | ✅ reinicio a WebRTC (`resolution-kept:1920x1080` + `video-restart:webrtc`) y vuelta a `lan` (udp) — `streaming: True` en ambos |
+| Evento WS `link_profile` | ✅                                                                                                                              |
+| Resolución no soportada  | ✅ la cámara solo ofrece 4K/1080p, así que el manager **mantiene la actual** en vez de fallar                                   |
+
+Hallazgos corregidos durante la validación: (1) el reinicio de pipeline requería más margen para liberar la cámara; (2) validar la resolución contra la cámara antes de reiniciar. El perfil es la base y el adaptativo de red ajusta en vivo (opción A).
 
 ---
 

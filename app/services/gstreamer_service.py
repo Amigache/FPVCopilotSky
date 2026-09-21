@@ -1549,6 +1549,24 @@ class GStreamerService:
         """
         pass
 
+    def set_udp_buffer_size(self, size: int) -> bool:
+        """Adjust the live UDP sink send buffer (bytes). Returns True if applied.
+
+        A larger send buffer smooths keyframe bursts so packets are less likely
+        to be dropped on a congested link.
+        """
+        if not self.pipeline or not size or size <= 0:
+            return False
+        try:
+            sink = self.pipeline.get_by_name("sink")
+            if sink and sink.find_property("buffer-size") is not None:
+                sink.set_property("buffer-size", int(size))
+                logger.info("UDP sink buffer-size updated", extra={"bytes": int(size)})
+                return True
+        except Exception as e:
+            logger.debug(f"Could not set udp buffer-size: {e}")
+        return False
+
     def _read_pipeline_counter(self):
         """Read real (frames, bytes) from the C-level ``identity`` counter.
 

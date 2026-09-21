@@ -177,6 +177,72 @@ class MAVLinkBridge:
             logger.warning("Serial write error", extra={"error": str(e)})
             return False
 
+    # Message IDs whose stream rate is adapted per link profile.
+    # MAV_CMD_SET_MESSAGE_INTERVAL is global for the link, so this is opt-in.
+    _TELEMETRY_INTERVALS = {
+        "reduced": {
+            "ATTITUDE": 200_000,  # 5 Hz
+            "GLOBAL_POSITION_INT": 500_000,  # 2 Hz
+            "VFR_HUD": 500_000,  # 2 Hz
+            "SYS_STATUS": 1_000_000,  # 1 Hz
+            "GPS_RAW_INT": 1_000_000,  # 1 Hz
+        },
+        "full": {
+            "ATTITUDE": 100_000,  # 10 Hz
+            "GLOBAL_POSITION_INT": 200_000,  # 5 Hz
+            "VFR_HUD": 200_000,  # 5 Hz
+            "SYS_STATUS": 500_000,  # 2 Hz
+            "GPS_RAW_INT": 200_000,  # 5 Hz
+        },
+    }
+
+    def set_message_interval(self, message_id: int, interval_us: int) -> bool:
+        """Ask the autopilot to emit a message every ``interval_us``.
+
+        Sends MAV_CMD_SET_MESSAGE_INTERVAL to the flight controller.
+        """
+        if not self.connected or not self.serial_port:
+            return False
+        try:
+            msg = self.mav_sender.command_long_encode(
+                self.target_system,
+                self.target_component,
+                mavlink2.MAV_CMD_SET_MESSAGE_INTERVAL,
+                0,
+                int(message_id),
+                int(interval_us),
+                0,
+                0,
+                0,
+                0,
+                0,
+            )
+            return self.write_to_serial(msg.pack(self.mav_sender))
+        except Exception as e:
+            logger.warning("Failed to set message interval", extra={"message_id": message_id, "error": str(e)})
+            return False
+
+    def apply_telemetry_profile(self, profile: str) -> Dict[str, Any]:
+        """Apply a telemetry stream-rate profile ('full' or 'reduced') to the FC.
+
+        Note: MAV_CMD_SET_MESSAGE_INTERVAL changes the stream for the whole
+        link (a connected GCS is affected too), so callers make this opt-in.
+        """
+        intervals = self._TELEMETRY_INTERVALS.get(profile)
+        if not intervals:
+            return {"success": False, "message": f"Unknown telemetry profile: {profile}"}
+
+        applied = []
+        for name, interval_us in intervals.items():
+            message_id = getattr(mavlink2, f"MAVLINK_MSG_ID_{name}", None)
+            if message_id is None:
+                continue
+            if self.set_message_interval(message_id, interval_us):
+                applied.append(name)
+
+        logger.info("Telemetry profile applied", extra={"profile": profile, "messages": applied})
+        return {"success": bool(applied), "profile": profile, "applied": applied}
+
     def connect(self, port: str, baudrate: int = 115200, tcp_port: int = 0) -> Dict[str, Any]:
         """Connect to serial port. TCP server disabled by default (tcp_port=0), use router instead."""
         if self.connected:
