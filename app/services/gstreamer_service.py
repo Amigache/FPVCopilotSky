@@ -143,10 +143,7 @@ class GStreamerService:
             "avg_frame_size_bytes": 0,
         }
 
-        # REMOVED: per-frame pad probes caused ~720 GIL acquisitions/sec
-        # Stats are now collected via polling in _poll_pipeline_stats()
-        self._encoder_probe_ids: list = []
-        self._last_position_query: int = 0  # For polling-based byte tracking
+        # Stats are collected via polling in _poll_pipeline_stats()
 
         # Thread lock for stats
         import threading as th
@@ -756,8 +753,6 @@ class GStreamerService:
                 x264enc.set_property("byte-stream", True)
                 pipeline.add(x264enc)
                 elements.append(x264enc)
-                # Install encoder stats probes
-                self._install_encoder_probes(x264enc)
                 logger.info("Using x264enc for WebRTC pipeline", extra={"bitrate_kbps": bitrate_kbps})
             else:
                 openh264enc = Gst.ElementFactory.make("openh264enc", "webrtc_h264enc")
@@ -767,8 +762,6 @@ class GStreamerService:
                     openh264enc.set_property("complexity", 0)  # low complexity
                     pipeline.add(openh264enc)
                     elements.append(openh264enc)
-                    # Install encoder stats probes
-                    self._install_encoder_probes(openh264enc)
                     logger.info("Using openh264enc for WebRTC pipeline", extra={"bitrate_kbps": bitrate_kbps})
                 else:
                     self.last_error = "No H264 encoder available (need x264enc or openh264enc)"
@@ -903,32 +896,6 @@ class GStreamerService:
         except Exception as e:
             logger.warning(f"⚠️ Force keyframe failed: {e}")
         return False
-
-    def _install_encoder_probes(self, encoder_element):
-        """NO-OP: Pad probes removed to eliminate GIL contention.
-
-        Previously installed per-frame Python callbacks on encoder pads,
-        causing ~720 GIL acquisitions/sec that blocked native GStreamer
-        encoding threads (measured 3.3x slowdown: 9 FPS vs 30 FPS native).
-
-        Stats are now collected via _poll_pipeline_stats() in the broadcast
-        thread (4 Hz polling, zero GIL contention with pipeline threads).
-        """
-        pass
-
-    def _remove_encoder_probes(self):
-        """Remove all installed encoder probes (no-op since probes are no longer installed)."""
-        for pad, probe_id in self._encoder_probe_ids:
-            try:
-                pad.remove_probe(probe_id)
-            except Exception as e:
-                logger.debug("Suppressed exception", exc_info=e)
-        self._encoder_probe_ids.clear()
-
-    def _install_passthrough_probes(self, rtppay_element):
-        """NO-OP: Pad probes removed to eliminate GIL contention.
-        Stats are now collected via _poll_pipeline_stats()."""
-        pass
 
     def _on_webrtc_appsink_sample(self, appsink):
         """
@@ -1351,7 +1318,6 @@ class GStreamerService:
             # ══════════════════════════════════════════════════════════════
 
             # Add encoder elements
-            encoder_element = None
             for elem_config in pipeline_config["elements"]:
                 # Skip decoder if OpenCV is enabled and we already decoded (MJPEG or H.264)
                 if opencv_enabled and elem_config["name"] == "decoder" and (is_jpeg_source or is_h264_source):
@@ -1384,17 +1350,6 @@ class GStreamerService:
                 pipeline.add(element)
                 elements_list.append(element)
 
-                # Track encoder element for stats probes
-                if elem_config["name"] == "encoder":
-                    encoder_element = element
-
-            # Install encoder stats probes
-            if encoder_element:
-                self._install_encoder_probes(encoder_element)
-            else:
-                # No encoder (passthrough mode) - install probe on RTP payloader instead
-                logger.info("Passthrough mode detected, installing probe on RTP payloader")
-
             # C-level byte/frame counter (read by the stats thread at 4 Hz).
             # `identity` counts buffers/bytes natively — no per-frame Python.
             # Placed BEFORE the RTP payloader so num-buffers counts encoded
@@ -1419,10 +1374,6 @@ class GStreamerService:
 
             pipeline.add(rtppay)
             elements_list.append(rtppay)
-
-            # Install passthrough probe on RTP payloader if no encoder
-            if not encoder_element:
-                self._install_passthrough_probes(rtppay)
 
             # Create sink based on streaming mode
             sink = self._create_sink_for_mode()
@@ -1535,19 +1486,6 @@ class GStreamerService:
                 extra={"host": self.streaming_config.udp_host, "port": self.streaming_config.udp_port},
             )
         return sink
-
-    def _setup_stats_probes(self):
-        """NO-OP: Per-frame pad probes removed to eliminate GIL contention.
-
-        Previously installed probes on encoder src and sink pads that fired
-        Python callbacks on every frame and RTP packet (~720 GIL acquisitions/sec).
-        This blocked native GStreamer threads, causing 3.3x FPS degradation
-        (9 FPS measured vs 30 FPS native on same hardware).
-
-        Stats are now collected via _poll_pipeline_stats() called from the
-        stats broadcast thread at 4 Hz — zero interference with the pipeline.
-        """
-        pass
 
     def set_udp_buffer_size(self, size: int) -> bool:
         """Adjust the live UDP sink send buffer (bytes). Returns True if applied.
@@ -1951,9 +1889,6 @@ class GStreamerService:
                 "message": self.last_error or "Failed to build pipeline",
             }
 
-        # Setup stats probes for metrics
-        self._setup_stats_probes()
-
         # Optimize system
         self._optimize_for_streaming()
 
@@ -2124,9 +2059,6 @@ class GStreamerService:
 
         # Stop OpenCV processing thread if running
         self._stop_opencv_processing_thread()
-
-        # Remove encoder stats probes before stopping pipeline
-        self._remove_encoder_probes()
 
         if self.pipeline:
             self.pipeline.set_state(Gst.State.NULL)
