@@ -10,7 +10,7 @@ import { API_TIMEOUTS, getSignalBars } from './networkConstants'
 import { formatBitrate } from '../../../utils/formatters'
 
 const NetworkView = () => {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { showToast } = useToast()
   const networkStatusMessage = useWsMessage('network_status')
   const modemStatusMessage = useWsMessage('modem_status')
@@ -391,13 +391,13 @@ const NetworkView = () => {
                       <div className="bridge-inactive-icon">{bridgeStarting ? '⏳' : '⚠️'}</div>
                       <div>
                         {bridgeStarting
-                          ? 'Iniciando monitoreo...'
-                          : 'Servicio de monitoreo inactivo'}
+                          ? t('network.startingMonitoring', 'Iniciando monitoreo...')
+                          : t('network.monitorInactive', 'Servicio de monitoreo inactivo')}
                       </div>
                       <div className="bridge-inactive-hint">
                         {bridgeStarting
-                          ? 'Espera unos segundos...'
-                          : 'Intentando iniciar automáticamente...'}
+                          ? t('network.waitSeconds', 'Espera unos segundos...')
+                          : t('network.autoStarting', 'Intentando iniciar automáticamente...')}
                       </div>
                       {!bridgeStarting && (
                         <button
@@ -654,8 +654,10 @@ const NetworkView = () => {
                           color: '#2196f3',
                         }}
                       >
-                        ℹ️ Conectado vía {primaryType === 'wifi' ? 'WiFi' : 'Ethernet'} — Calidad
-                        basada en latencia
+                        {'ℹ️ '}
+                        {t('network.connectedViaQuality', {
+                          type: primaryType === 'wifi' ? 'WiFi' : 'Ethernet',
+                        })}
                       </div>
                     )}
                     {hasModem && (
@@ -678,14 +680,20 @@ const NetworkView = () => {
 
                     {/* Actual vs Recommended Video Stats */}
                     <div className="bridge-recommended">
-                      <span className="rec-item" title="Actual bitrate">
+                      <span
+                        className="rec-item"
+                        title={t('network.actualBitrate', 'Actual bitrate')}
+                      >
                         🎥 <b>{formatBitrate(videoStats.current_bitrate)}</b>
                         <span style={{ opacity: 0.6, marginLeft: 4, marginRight: 4 }}>/</span>
-                        <span title="Recomendado">
+                        <span title={t('network.recommended', 'Recomendado')}>
                           {formatBitrate(qs.recommended?.bitrate_kbps)}
                         </span>
                       </span>
-                      <span className="rec-item" title="Actual resolución">
+                      <span
+                        className="rec-item"
+                        title={t('network.actualResolution', 'Actual resolución')}
+                      >
                         📐{' '}
                         <b>
                           {videoConfig.width && videoConfig.height
@@ -693,12 +701,16 @@ const NetworkView = () => {
                             : '—'}
                         </b>
                         <span style={{ opacity: 0.6, marginLeft: 4, marginRight: 4 }}>/</span>
-                        <span title="Recomendado">{qs.recommended?.resolution || '—'}</span>
+                        <span title={t('network.recommended', 'Recomendado')}>
+                          {qs.recommended?.resolution || '—'}
+                        </span>
                       </span>
-                      <span className="rec-item" title="Actual FPS">
+                      <span className="rec-item" title={t('network.actualFps', 'Actual FPS')}>
                         🎞️ <b>{videoConfig.framerate || videoStats.current_fps || '—'} fps</b>
                         <span style={{ opacity: 0.6, marginLeft: 4, marginRight: 4 }}>/</span>
-                        <span title="Recomendado">{qs.recommended?.framerate || '—'} fps</span>
+                        <span title={t('network.recommended', 'Recomendado')}>
+                          {qs.recommended?.framerate || '—'} fps
+                        </span>
                       </span>
                     </div>
 
@@ -714,7 +726,9 @@ const NetworkView = () => {
 
                     {/* Recent Events */}
                     <div className="bridge-events">
-                      <div className="events-title">Eventos recientes</div>
+                      <div className="events-title">
+                        {t('network.recentEvents', 'Eventos recientes')}
+                      </div>
                       {lastEvents.length > 0 ? (
                         lastEvents.map((ev, idx) => {
                           const eventIcons = {
@@ -732,11 +746,14 @@ const NetworkView = () => {
                             reconnection: '🔁',
                           }
                           const icon = eventIcons[ev.event] || '📋'
-                          const time = new Date(ev.timestamp * 1000).toLocaleTimeString('es-ES', {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            second: '2-digit',
-                          })
+                          const time = new Date(ev.timestamp * 1000).toLocaleTimeString(
+                            i18n.language || 'es-ES',
+                            {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              second: '2-digit',
+                            }
+                          )
                           return (
                             <div key={idx} className="bridge-event-item">
                               <span className="event-icon">{icon}</span>
@@ -753,7 +770,7 @@ const NetworkView = () => {
                           className="bridge-event-item"
                           style={{ opacity: 0.6, fontStyle: 'italic' }}
                         >
-                          <span>Sin eventos recientes</span>
+                          <span>{t('network.noRecentEvents', 'Sin eventos recientes')}</span>
                         </div>
                       )}
                     </div>
@@ -763,8 +780,10 @@ const NetworkView = () => {
             ) : (
               <div className="bridge-inactive">
                 <div className="bridge-inactive-icon">📊</div>
-                <div>Recopilando datos...</div>
-                <div className="bridge-inactive-hint">Las métricas aparecerán en unos segundos</div>
+                <div>{t('network.collectingData', 'Recopilando datos...')}</div>
+                <div className="bridge-inactive-hint">
+                  {t('network.metricsSoon', 'Las métricas aparecerán en unos segundos')}
+                </div>
               </div>
             )}
           </div>
@@ -1127,12 +1146,13 @@ export default NetworkView
 
 // ── ModemPool Card ─────────────────────────────────────────────────────────
 const ModemPoolCard = ({ pool, onSelectModem }) => {
+  const { t } = useTranslation()
   const modeLabels = {
-    best_score: 'Auto · mejor puntuación',
-    best_sinr: 'Auto · mejor SINR',
-    best_latency: 'Auto · menor latencia',
-    manual: 'Manual',
-    round_robin: 'Round Robin',
+    best_score: t('network.modeBestScore', 'Auto · mejor puntuación'),
+    best_sinr: t('network.modeBestSinr', 'Auto · mejor SINR'),
+    best_latency: t('network.modeBestLatency', 'Auto · menor latencia'),
+    manual: t('network.modeManual', 'Manual'),
+    round_robin: t('network.modeRoundRobin', 'Round Robin'),
   }
 
   const scoreColor = (score) => {
@@ -1144,7 +1164,13 @@ const ModemPoolCard = ({ pool, onSelectModem }) => {
   return (
     <div className="card modem-pool-card">
       <div className="modem-pool-header">
-        <h2>📶 Pool de Modems ({pool.total_modems} detectados)</h2>
+        <h2>
+          📶{' '}
+          {t('network.modemPoolTitle', {
+            count: pool.total_modems,
+            defaultValue: 'Pool de Modems ({{count}} detectados)',
+          })}
+        </h2>
         <span className="modem-pool-mode">
           {modeLabels[pool.selection_mode] || pool.selection_mode}
         </span>
@@ -1170,13 +1196,23 @@ const ModemPoolCard = ({ pool, onSelectModem }) => {
                   )}
                 </div>
                 <div className="modem-pool-item-tags">
-                  {modem.is_active && <span className="tag tag-active">ACTIVO</span>}
-                  {!modem.is_connected && <span className="tag tag-offline">DESCONECTADO</span>}
+                  {modem.is_active && (
+                    <span className="tag tag-active">{t('network.tagActive', 'ACTIVO')}</span>
+                  )}
+                  {!modem.is_connected && (
+                    <span className="tag tag-offline">
+                      {t('network.tagDisconnected', 'DESCONECTADO')}
+                    </span>
+                  )}
                   {modem.is_connected && !modem.is_healthy && (
-                    <span className="tag tag-warn">NO SALUDABLE</span>
+                    <span className="tag tag-warn">
+                      {t('network.tagUnhealthy', 'NO SALUDABLE')}
+                    </span>
                   )}
                   {modem.is_connected && modem.signal_score >= 70 && (
-                    <span className="tag tag-good">Señal Excelente</span>
+                    <span className="tag tag-good">
+                      {t('network.signalExcellent', 'Señal Excelente')}
+                    </span>
                   )}
                 </div>
               </div>
