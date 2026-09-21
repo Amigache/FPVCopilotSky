@@ -120,7 +120,8 @@ stream rates de telemetría + tuning de red según el enlace detectado.
 ### P3 — Limpieza y frontend
 
 - [x] **P3a** Frontend: `useMemo` en `ParamCacheContext`/`Toast`/`Modal` (evita re-render por telemetría)
-- [ ] **P3b** Limpieza: MPTCP/DSCP+wash/VPN policy duplicado/TCP server embebido/probes muertos · dedupe rutas default · sysctl cleanup
+- [x] **P3b-1** Quitar probes muertos (`_install_encoder_probes`, `_remove_encoder_probes`, `_install_passthrough_probes`, `_setup_stats_probes`) y su estado sin uso
+- [ ] **P3b-2** MPTCP/DSCP+wash/VPN policy duplicado/TCP server embebido · dedupe rutas default · sysctl cleanup
 
 ---
 
