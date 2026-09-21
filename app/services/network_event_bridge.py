@@ -382,8 +382,8 @@ class NetworkEventBridge:
                     try:
                         proc.kill()
                         await proc.wait()
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("Suppressed exception", exc_info=e)
 
     # ======================
     # Main Loop
@@ -637,8 +637,8 @@ class NetworkEventBridge:
                         m = _re.search(r"default via (\d+\.\d+\.\d+\.\d+)", line)
                         if m:
                             return m.group(1)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Suppressed exception", exc_info=e)
         return None
 
     async def _get_gateway_latency(self, interface: str) -> Optional[Dict]:
@@ -672,8 +672,8 @@ class NetworkEventBridge:
                     m = _re.search(r"time[=:](\d+\.?\d*)\s*ms", stdout.decode())
                     if m:
                         latencies.append(float(m.group(1)))
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Suppressed exception", exc_info=e)
 
         if not latencies:
             # Gateway completely unreachable
@@ -1275,8 +1275,8 @@ class NetworkEventBridge:
                                     "timestamp": now,
                                 },
                             )
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.debug("Suppressed exception", exc_info=e)
                 return
 
             # ── H.264 family: adapt bitrate ──
@@ -1337,8 +1337,8 @@ class NetworkEventBridge:
             prefs = get_preferences()
             if not prefs.get_auto_adaptive_resolution():
                 return
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Suppressed exception", exc_info=e)
 
         if not self._gstreamer_service or not self._gstreamer_service.is_streaming:
             return
@@ -1400,8 +1400,8 @@ class NetworkEventBridge:
                             "reason": "adaptive_downscale",
                         },
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Suppressed exception", exc_info=e)
         else:
             self._low_score_since = 0  # reset counter
 
@@ -1430,8 +1430,8 @@ class NetworkEventBridge:
                                     "reason": "adaptive_restore",
                                 },
                             )
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.debug("Suppressed exception", exc_info=e)
 
                 self._pre_downscale_resolution = None
 
@@ -1554,8 +1554,8 @@ class NetworkEventBridge:
                         "healthy_modems": sum(1 for m in pool._modems.values() if m.is_connected and m.is_healthy),
                         "modems": [m.to_dict() for m in pool._modems.values()],
                     }
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Suppressed exception", exc_info=e)
 
         # Include policy routing status if available
         policy_routing_status = None
@@ -1584,8 +1584,8 @@ class NetworkEventBridge:
                         {"name": "mavlink", "fwmark": "0x300", "table_id": 200},
                     ],
                 }
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Suppressed exception", exc_info=e)
 
         # Include VPN health status if available
         vpn_health_status = None
@@ -1595,8 +1595,8 @@ class NetworkEventBridge:
             vpn_checker = get_vpn_health_checker()
             if vpn_checker._initialized:
                 vpn_health_status = vpn_checker.get_status()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Suppressed exception", exc_info=e)
 
         return {
             "active": self._monitoring,
