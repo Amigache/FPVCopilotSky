@@ -183,27 +183,6 @@ class NetworkOptimizer:
                         check=False,
                     )
 
-                    # Mark incoming UDP traffic on video ports
-                    self._run_command(
-                        [
-                            "sudo",
-                            "iptables",
-                            "-t",
-                            "mangle",
-                            "-A",
-                            "INPUT",
-                            "-p",
-                            "udp",
-                            "--sport",
-                            str(port),
-                            "-j",
-                            "DSCP",
-                            "--set-dscp",
-                            "46",
-                        ],
-                        check=False,
-                    )
-
                 logger.info(f"QoS enabled: DSCP marking on ports {self.config.video_ports}")
                 return True
             else:
@@ -220,26 +199,6 @@ class NetworkOptimizer:
                             "-p",
                             "udp",
                             "--dport",
-                            str(port),
-                            "-j",
-                            "DSCP",
-                            "--set-dscp",
-                            "46",
-                        ],
-                        check=False,
-                    )
-
-                    self._run_command(
-                        [
-                            "sudo",
-                            "iptables",
-                            "-t",
-                            "mangle",
-                            "-D",
-                            "INPUT",
-                            "-p",
-                            "udp",
-                            "--sport",
                             str(port),
                             "-j",
                             "DSCP",
@@ -275,9 +234,6 @@ class NetworkOptimizer:
 
                 # Enable TCP timestamps for better RTT estimation
                 self._run_command(["sudo", "sysctl", "-w", "net.ipv4.tcp_timestamps=1"])
-
-                # Reduce TCP retransmission timeout min (faster recovery)
-                self._run_command(["sudo", "sysctl", "-w", "net.ipv4.tcp_rto_min=200"])
 
                 logger.info("TCP optimizations enabled")
                 return True
@@ -999,10 +955,6 @@ class NetworkOptimizer:
             if modem_interface:
                 cake_stats = self.get_cake_stats(modem_interface)
                 metrics["cake"] = cake_stats
-
-            # Get MPTCP status
-            mptcp_stdout, _, mptcp_rc = self._run_command(["sysctl", "-n", "net.mptcp.enabled"], check=False)
-            metrics["mptcp_enabled"] = mptcp_stdout.strip() == "1" if mptcp_rc == 0 else False
 
             return {"success": True, "metrics": metrics}
 

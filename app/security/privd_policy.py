@@ -36,7 +36,6 @@ _RULES: Dict[str, List[str]] = {
         r"addr show( .*)?",
         r"(-o|-o -4|-4) addr show( .*)?",
         r"rule( .*)?",
-        r"mptcp( .*)?",
         r"-force -batch( -)?",
     ],
     "tc": [r"(-s )?(qdisc|class|filter)( .*)?"],
@@ -45,8 +44,7 @@ _RULES: Dict[str, List[str]] = {
     "iptables-restore": [r"(--noflush)?"],
     "sysctl": [
         r"-w (net\.ipv4\.tcp_congestion_control|net\.core\.rmem_max|net\.core\.wmem_max|"
-        r"net\.ipv4\.tcp_window_scaling|net\.ipv4\.tcp_timestamps|net\.ipv4\.tcp_rto_min|"
-        r"net\.mptcp\.enabled)=[^ ]+"
+        r"net\.ipv4\.tcp_window_scaling|net\.ipv4\.tcp_timestamps)=[^ ]+"
     ],
     "ethtool": [r"-s \S+ wol d"],
     "wg": [r"show( all)?( .*)?"],
