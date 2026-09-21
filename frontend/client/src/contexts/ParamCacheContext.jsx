@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useWebSocket } from './WebSocketContext'
+import { useWsMessage } from './WebSocketContext'
 import { useToast } from './ToastContext'
 import { API_MAVLINK, fetchWithTimeout } from '../services/api'
 
@@ -17,7 +17,8 @@ export const useParamCache = () => {
 export const ParamCacheProvider = ({ children }) => {
   const { t } = useTranslation()
   const { showToast } = useToast()
-  const { messages } = useWebSocket()
+  const mavlinkStatus = useWsMessage('mavlink_status')
+  const telemetryMessage = useWsMessage('telemetry')
 
   const [params, setParams] = useState({})
   const [isDownloading, setIsDownloading] = useState(false)
@@ -183,8 +184,8 @@ export const ParamCacheProvider = ({ children }) => {
 
   // Start background download once MAVLink is connected and telemetry is present.
   useEffect(() => {
-    const connected = Boolean(messages?.mavlink_status?.connected)
-    const hasTelemetryFrame = Boolean(messages?.telemetry)
+    const connected = Boolean(mavlinkStatus?.connected)
+    const hasTelemetryFrame = Boolean(telemetryMessage)
 
     if (!connected) {
       clearCache()
@@ -201,7 +202,7 @@ export const ParamCacheProvider = ({ children }) => {
 
     startedThisConnectionRef.current = true
     refreshParamsCache({ force: true, showCompletionToast: true, resetCacheBeforeLoad: true })
-  }, [messages, clearCache, refreshParamsCache])
+  }, [mavlinkStatus, telemetryMessage, clearCache, refreshParamsCache])
 
   const value = {
     params,

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useWebSocket } from '../../../contexts/WebSocketContext'
+import { useWsMessage } from '../../../contexts/WebSocketContext'
 import { useToast } from '../../../contexts/ToastContext'
 import { useModal } from '../../../contexts/ModalContext'
 import { useParamCache } from '../../../contexts/ParamCacheContext'
@@ -23,7 +23,8 @@ import { useArmedState } from '../../../hooks/useArmedState'
 
 const FlightControllerView = () => {
   const { t } = useTranslation()
-  const { messages } = useWebSocket()
+  const mavlinkStatusMessage = useWsMessage('mavlink_status')
+  const telemetryMessage = useWsMessage('telemetry')
   const isArmed = useArmedState()
   const { showToast } = useToast()
   const { showModal } = useModal()
@@ -56,20 +57,20 @@ const FlightControllerView = () => {
 
   // Update connection status and vehicle type from WebSocket
   useEffect(() => {
-    const mavlinkStatus = messages.mavlink_status
+    const mavlinkStatus = mavlinkStatusMessage
     if (mavlinkStatus) {
       setIsConnected(mavlinkStatus.connected)
     }
 
     // Detect vehicle type from telemetry
-    const telemetry = messages.telemetry
+    const telemetry = telemetryMessage
     if (telemetry?.system?.vehicle_type) {
       const detected = detectVehicleType(telemetry.system.vehicle_type)
       if (detected && detected !== vehicleType) {
         setVehicleType(detected)
       }
     }
-  }, [messages.mavlink_status, messages.telemetry, vehicleType])
+  }, [mavlinkStatusMessage, telemetryMessage, vehicleType])
 
   // Fetch available ports and load saved preferences on mount
   useEffect(() => {

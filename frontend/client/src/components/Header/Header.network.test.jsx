@@ -13,6 +13,7 @@ const mockUseWebSocket = vi.fn()
 
 vi.mock('../../contexts/WebSocketContext', () => ({
   useWebSocket: () => mockUseWebSocket(),
+  useWsMessage: (type) => mockUseWebSocket()?.messages?.[type],
 }))
 
 vi.mock('../../contexts/ParamCacheContext', () => ({

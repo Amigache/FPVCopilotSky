@@ -2,14 +2,18 @@ import './SystemView.css'
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useToast } from '../../../contexts/ToastContext'
-import { useWebSocket } from '../../../contexts/WebSocketContext'
+import { useWsMessage } from '../../../contexts/WebSocketContext'
 import api from '../../../services/api'
 import VideoDevicesCard from './VideoDevicesCard'
 
 const SystemView = () => {
   const { t } = useTranslation()
   const { showToast } = useToast()
-  const { messages } = useWebSocket()
+  const statusMessage = useWsMessage('status')
+  const systemResourcesMessage = useWsMessage('system_resources')
+  const systemServicesMessage = useWsMessage('system_services')
+  const videoDevicesMessage = useWsMessage('video_devices')
+  const videoStatusMessage = useWsMessage('video_status')
 
   const [loading, setLoading] = useState(true)
   const [statusData, setStatusData] = useState(null)
@@ -158,42 +162,42 @@ const SystemView = () => {
 
   // Update from WebSocket
   useEffect(() => {
-    if (messages.status) {
-      setStatusData(messages.status)
+    if (statusMessage) {
+      setStatusData(statusMessage)
       setLoading(false)
     }
-  }, [messages.status])
+  }, [statusMessage])
 
   // Update resources from WebSocket
   useEffect(() => {
-    if (messages.system_resources) {
-      setCpuInfo(messages.system_resources.cpu)
-      setMemoryInfo(messages.system_resources.memory)
+    if (systemResourcesMessage) {
+      setCpuInfo(systemResourcesMessage.cpu)
+      setMemoryInfo(systemResourcesMessage.memory)
     }
-  }, [messages.system_resources])
+  }, [systemResourcesMessage])
 
   // Update services from WebSocket
   useEffect(() => {
-    if (messages.system_services) {
-      setServices(messages.system_services.services || [])
+    if (systemServicesMessage) {
+      setServices(systemServicesMessage.services || [])
       setServicesLoading(false)
     }
-  }, [messages.system_services])
+  }, [systemServicesMessage])
 
   // Update video devices from WebSocket
   useEffect(() => {
-    if (messages.video_devices) {
-      setVideoDevices(messages.video_devices.devices || [])
+    if (videoDevicesMessage) {
+      setVideoDevices(videoDevicesMessage.devices || [])
       setVideoDevicesLoading(false)
     }
-  }, [messages.video_devices])
+  }, [videoDevicesMessage])
 
   // Track active video device from video_status WebSocket
   useEffect(() => {
-    if (messages.video_status?.config?.device) {
-      setActiveDevicePath(messages.video_status.config.device)
+    if (videoStatusMessage?.config?.device) {
+      setActiveDevicePath(videoStatusMessage.config.device)
     }
-  }, [messages.video_status])
+  }, [videoStatusMessage])
 
   // Color helpers
   const getUsageColor = (percent) => {

@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useToast } from '../../../contexts/ToastContext'
 import { useModal } from '../../../contexts/ModalContext'
-import { useWebSocket } from '../../../contexts/WebSocketContext'
+import { useWsMessage } from '../../../contexts/WebSocketContext'
 import api from '../../../services/api'
 import { MODEM_API_TIMEOUTS, REBOOT_CONFIG } from './modemConstants'
 import { useArmedState } from '../../../hooks/useArmedState'
@@ -12,7 +12,7 @@ const ModemView = () => {
   const { t } = useTranslation()
   const { showToast } = useToast()
   const { showModal } = useModal()
-  const { messages: wsMessages } = useWebSocket()
+  const modemStatus = useWsMessage('modem_status')
   const isArmed = useArmedState()
 
   // State
@@ -68,10 +68,10 @@ const ModemView = () => {
 
   // WebSocket: update modem data from server push (replaces polling)
   useEffect(() => {
-    if (wsMessages?.modem_status) {
-      setStatus(wsMessages.modem_status)
+    if (modemStatus) {
+      setStatus(modemStatus)
     }
-  }, [wsMessages?.modem_status])
+  }, [modemStatus])
 
   // Set LTE band
   const handleSetBand = async (preset) => {

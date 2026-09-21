@@ -18,7 +18,8 @@ vi.mock('../../../contexts/ModalContext', () => ({
 }))
 
 vi.mock('../../../contexts/WebSocketContext', () => ({
-  useWebSocket: () => ({ messages: mockMessages }),
+  useWebSocket: () => ({ send: () => {} }),
+  useWsMessage: (type) => mockMessages[type],
 }))
 
 // Mock API (include api for PeerSelector)

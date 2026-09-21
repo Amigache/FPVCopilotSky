@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useToast } from '../../../contexts/ToastContext'
 import { useModal } from '../../../contexts/ModalContext'
-import { useWebSocket } from '../../../contexts/WebSocketContext'
+import { useWebSocket, useWsMessage } from '../../../contexts/WebSocketContext'
 import { useArmedState } from '../../../hooks/useArmedState'
 import LogsModal from '../../LogsModal/LogsModal'
 import api from '../../../services/api'
@@ -12,7 +12,9 @@ const StatusView = () => {
   const { t } = useTranslation()
   const { showToast } = useToast()
   const { showModal } = useModal()
-  const { messages, isConnected } = useWebSocket()
+  const { isConnected } = useWebSocket()
+  const statusMessage = useWsMessage('status')
+  const telemetryMessage = useWsMessage('telemetry')
   const isArmed = useArmedState()
 
   const [loading, setLoading] = useState(true)
@@ -79,11 +81,11 @@ const StatusView = () => {
 
   // Update from WebSocket
   useEffect(() => {
-    if (messages.status) {
-      setStatusData(messages.status)
+    if (statusMessage) {
+      setStatusData(statusMessage)
       setLoading(false)
     }
-  }, [messages.status])
+  }, [statusMessage])
 
   // Monitor WebSocket connection during restart
   useEffect(() => {
@@ -627,7 +629,7 @@ const StatusView = () => {
 
   // Monitor armed state for auto-start
   useEffect(() => {
-    const telemetry = messages.telemetry
+    const telemetry = telemetryMessage
     if (telemetry?.system) {
       const isArmed = telemetry.system.armed || false
 
@@ -653,7 +655,7 @@ const StatusView = () => {
       setPrevArmed(isArmed)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages.telemetry, autoStartOnArm, flightSession])
+  }, [telemetryMessage, autoStartOnArm, flightSession])
 
   // Logs handlers
   const openLogsModal = (type) => {

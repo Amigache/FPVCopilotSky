@@ -60,7 +60,8 @@ const { mockMessages, mockApi, resetApiMock } = vi.hoisted(() => {
 
 // ---------- Mock contexts ----------
 vi.mock('../../../contexts/WebSocketContext', () => ({
-  useWebSocket: () => ({ messages: mockMessages }),
+  useWebSocket: () => ({ send: () => {} }),
+  useWsMessage: (type) => mockMessages[type],
 }))
 vi.mock('../../../contexts/ToastContext', () => ({
   useToast: () => ({ showToast: vi.fn() }),
