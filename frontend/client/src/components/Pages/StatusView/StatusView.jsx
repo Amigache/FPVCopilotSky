@@ -1,5 +1,5 @@
 import './StatusView.css'
-import { useState, useEffect, useCallback, memo } from 'react'
+import { useState, useEffect, useCallback, memo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useToast } from '../../../contexts/ToastContext'
 import { useModal } from '../../../contexts/ModalContext'
@@ -53,9 +53,9 @@ const StatusView = () => {
 
   // Flight session state
   const [flightSession, setFlightSession] = useState(null)
-  const [samplingInterval, setSamplingInterval] = useState(null)
-  const [autoStartOnArm, setAutoStartOnArm] = useState(false)
   const [_savingPrefs, setSavingPrefs] = useState(false)
+  const samplingIntervalRef = useRef(null)
+  const [autoStartOnArm, setAutoStartOnArm] = useState(false)
 
   // Extras/Experimental state
   const [_experimentalTabEnabled, setExperimentalTabEnabled] = useState(true)
@@ -569,7 +569,7 @@ const StatusView = () => {
           }
         }, 5000)
 
-        setSamplingInterval(interval)
+        samplingIntervalRef.current = interval
       }
     } catch (error) {
       showToast(error.message, 'error')
@@ -579,9 +579,9 @@ const StatusView = () => {
   const handleStopFlightSession = async (autoStop = false) => {
     const stopSession = async () => {
       // Clear sampling interval
-      if (samplingInterval) {
-        clearInterval(samplingInterval)
-        setSamplingInterval(null)
+      if (samplingIntervalRef.current) {
+        clearInterval(samplingIntervalRef.current)
+        samplingIntervalRef.current = null
       }
 
       try {
@@ -640,11 +640,12 @@ const StatusView = () => {
   // Cleanup sampling interval on unmount
   useEffect(() => {
     return () => {
-      if (samplingInterval) {
-        clearInterval(samplingInterval)
+      if (samplingIntervalRef.current) {
+        clearInterval(samplingIntervalRef.current)
+        samplingIntervalRef.current = null
       }
     }
-  }, [samplingInterval])
+  }, [])
 
   // Monitor armed state for auto-start
   useEffect(() => {

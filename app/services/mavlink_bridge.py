@@ -3,6 +3,7 @@ MAVLink Bridge - Simple Serial <-> TCP bidirectional bridge
 Based on the working test_mavlink_bridge.py approach
 """
 
+import copy
 import os
 
 os.environ["MAVLINK20"] = "1"
@@ -42,6 +43,8 @@ class MAVLinkBridge:
         self.tcp_port: int = 0  # 0 = disabled, all outputs via router
         self.tcp_clients: List[socket.socket] = []
         self.tcp_clients_lock = threading.Lock()
+        # Protects telemetry_data (written by reader/heartbeat threads, read by API)
+        self._telemetry_lock = threading.RLock()
 
         # Router for outputs (required)
         self.router: Optional["MAVLinkRouter"] = None
@@ -363,8 +366,9 @@ class MAVLinkBridge:
                             self.target_component = msg.get_srcComponent()
                             self.last_heartbeat = time.time()
 
-                            self.telemetry_data["system"]["mav_type"] = msg.type
-                            self.telemetry_data["system"]["autopilot"] = msg.autopilot
+                            with self._telemetry_lock:
+                                self.telemetry_data["system"]["mav_type"] = msg.type
+                                self.telemetry_data["system"]["autopilot"] = msg.autopilot
 
                             logger.info(
                                 "Heartbeat metadata received",
@@ -649,7 +653,12 @@ class MAVLinkBridge:
             self.router.forward_to_outputs(data)
 
     def _process_telemetry(self, msg):
-        """Process parsed message for telemetry updates."""
+        """Process parsed message for telemetry updates (thread-safe)."""
+        with self._telemetry_lock:
+            self._process_telemetry_unlocked(msg)
+
+    def _process_telemetry_unlocked(self, msg):
+        """Apply telemetry updates from *msg* (caller holds _telemetry_lock)."""
         msg_type = msg.get_type()
 
         if msg_type == "HEARTBEAT":
@@ -814,10 +823,11 @@ class MAVLinkBridge:
         }
 
     def get_telemetry(self) -> Dict[str, Any]:
-        """Get telemetry data."""
-        if not self.connected:
-            return {"connected": False}
-        return {"connected": True, **self.telemetry_data}
+        """Get a snapshot of telemetry data (thread-safe copy)."""
+        with self._telemetry_lock:
+            if not self.connected:
+                return {"connected": False}
+            return {"connected": True, **copy.deepcopy(self.telemetry_data)}
 
     def _refresh_param_cache(self, timeout: float = 30.0, force: bool = False) -> Dict[str, Any]:
         """Refresh full FC parameter cache via PARAM_REQUEST_LIST."""

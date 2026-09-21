@@ -107,7 +107,7 @@ El proyecto tiene una **arquitectura por capas bien pensada**, una **capa de eje
 
 - [x] Arreglar los tests frontend — bug real en `FlightControllerView.jsx` (PR #41).
 - [x] Añadir `coverage.thresholds` en `vitest.config.js` (baseline 40/70/49/60) y arreglar el upload de coverage (ahora en `test-backend`); `StatusView.test.jsx` sigue excluido por flaky.
-- [x] `mypy` arreglado para que **ejecute** (`# type:` inválido + `explicit_package_bases`); reporta 192 errores → aún no bloqueante.
+- [x] `mypy` arreglado para que **ejecute** (`# type:` inválido + `explicit_package_bases`); reporta ~190 errores → aún no bloqueante (documentado en `AGENTS.md`).
 - [x] Trocear vistas grandes con `React.lazy`/`Suspense` y `manualChunks` (leaflet/framer-motion aparte). (PR #58)
 - [x] Desofilar con `run_in_executor`/`run_cmd_async` las llamadas síncronas de `system.py` (`asyncio.to_thread`). (PR pendiente)
 - [x] Unificar manejo de errores: handler global (`FPVCopilotException` + `Exception`) y rutas de `system.py` convertidas a `HTTPException` (PR #63, #64).
@@ -257,6 +257,7 @@ Todo lo siguiente está **mergeado en `develop`** y con CI en verde:
 | Fase 2: helpers gstreamer + i18n NetworkView          | ✅                   | #67      |
 | Fase 3: assertions estrictas (0 permisivas)           | ✅                   | #68      |
 | Fase 3: cobertura mavlink_router + job slow/e2e       | ✅                   | #69      |
+| Cierre: M8/M10/M12, M2, higiene (LICENSE, docs)       | ✅                   | #70      |
 
 **Validado en el equipo (2026-09-21):** `fpvcopilot-privd` activo, socket
 `root:fpvcopilotsky 0660`; `ip route show` permitido y comandos peligrosos
