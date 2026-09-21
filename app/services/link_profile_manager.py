@@ -184,8 +184,14 @@ class LinkProfileManager:
         async with self._lock:
             actions = []
 
-            if self._auto_apply_video and self._gstreamer_service and self._gstreamer_service.is_streaming:
-                actions.extend(await self._apply_video(profile))
+            if self._auto_apply_video and self._gstreamer_service:
+                if self._gstreamer_service.is_streaming:
+                    actions.extend(await self._apply_video(profile))
+                else:
+                    # Not streaming: apply the profile to the configuration so the
+                    # next start uses it, without forcing the stream on.
+                    await asyncio.to_thread(self._configure_video_only, profile)
+                    actions.append("video-config-only")
 
             if self._telemetry_apply and self._mavlink_service:
                 result = await asyncio.to_thread(
@@ -233,27 +239,54 @@ class LinkProfileManager:
                 return [f"bitrate:{profile.get('h264_bitrate')}"]
             return [f"bitrate-failed:{result.get('message')}"]
 
-        await asyncio.to_thread(self._restart_video, profile, target_mode)
+        result = await asyncio.to_thread(self._restart_video, profile, target_mode)
+        if not (isinstance(result, dict) and result.get("success")):
+            message = result.get("message") if isinstance(result, dict) else str(result)
+            logger.warning("Link profile video restart failed", extra={"mode": target_mode, "error": message})
+            return [f"video-restart-failed:{message}"]
         return [
             f"video-restart:{target_mode} {profile.get('width')}x{profile.get('height')}@{profile.get('framerate')} "
             f"{profile.get('h264_bitrate')}kbps"
         ]
 
-    def _restart_video(self, profile: Dict[str, Any], mode: str):
-        """Reconfigure and restart the video pipeline (blocking, run in a thread)."""
+    def _video_config_from_profile(self, profile: Dict[str, Any]) -> Dict[str, Any]:
         service = self._gstreamer_service
-        video_config = {
+        return {
             "width": int(profile.get("width", service.video_config.width)),
             "height": int(profile.get("height", service.video_config.height)),
             "framerate": int(profile.get("framerate", service.video_config.framerate)),
             "h264_bitrate": int(profile.get("h264_bitrate", service.video_config.h264_bitrate)),
             "quality": int(profile.get("quality", service.video_config.quality)),
         }
-        service.configure(video_config=video_config, streaming_config={"mode": mode})
+
+    def _configure_video_only(self, profile: Dict[str, Any]):
+        """Apply profile values to the video config without starting the stream."""
+        service = self._gstreamer_service
+        service.configure(
+            video_config=self._video_config_from_profile(profile),
+            streaming_config={"mode": profile.get("video_mode", service.streaming_config.mode)},
+        )
+
+    def _restart_video(self, profile: Dict[str, Any], mode: str) -> Dict[str, Any]:
+        """Reconfigure and restart the video pipeline (blocking, run in a thread)."""
+        service = self._gstreamer_service
+        service.configure(
+            video_config=self._video_config_from_profile(profile),
+            streaming_config={"mode": mode},
+        )
 
         if service.is_streaming:
             service.stop()
-        service.start()
+            # Let the pipeline tear down before starting the new one.
+            time.sleep(0.5)
+
+        result = service.start()
+        if not (isinstance(result, dict) and result.get("success")):
+            # One retry — some sinks need an extra moment after teardown.
+            logger.warning("Video start failed, retrying once", extra={"mode": mode, "result": result})
+            time.sleep(0.5)
+            result = service.start()
+        return result if isinstance(result, dict) else {"success": bool(result)}
 
     async def _broadcast_status(self):
         if not self._websocket_manager or not getattr(self._websocket_manager, "has_clients", False):

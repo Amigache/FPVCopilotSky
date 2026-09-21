@@ -23,6 +23,7 @@ def make_gstreamer(mode="udp", width=1920, height=1080, framerate=30):
     svc.streaming_config = SimpleNamespace(mode=mode)
     svc.update_live_property.return_value = {"success": True}
     svc.set_udp_buffer_size.return_value = True
+    svc.start.return_value = {"success": True, "message": "Streaming started"}
     return svc
 
 
@@ -85,3 +86,31 @@ def test_desired_profile_respects_manual_forced():
     assert manager._desired_profile({"mode": "manual", "forced": "modem"}) == "modem"
     # manual without forced falls back to detection
     assert manager._desired_profile({"mode": "manual", "forced": ""}) == "lan"
+
+
+def test_restart_failure_is_reported_and_retried():
+    manager = LinkProfileManager()
+    gst = make_gstreamer(mode="udp")
+    gst.start.return_value = {"success": False, "message": "boom"}
+    manager.set_services(gstreamer_service=gst)
+
+    with patch("app.services.preferences.get_preferences", return_value=make_prefs()):
+        result = asyncio.run(manager.apply_profile("modem"))
+
+    assert any("video-restart-failed" in action for action in result["actions"])
+    assert gst.start.call_count == 2  # original + one retry
+
+
+def test_profile_when_not_streaming_only_configures():
+    manager = LinkProfileManager()
+    gst = make_gstreamer()
+    gst.is_streaming = False
+    gst.set_udp_buffer_size.return_value = False  # no live pipeline
+    manager.set_services(gstreamer_service=gst)
+
+    with patch("app.services.preferences.get_preferences", return_value=make_prefs()):
+        result = asyncio.run(manager.apply_profile("modem"))
+
+    assert result["actions"] == ["video-config-only"]
+    gst.configure.assert_called_once()
+    gst.start.assert_not_called()
