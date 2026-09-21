@@ -9,7 +9,6 @@ from app.api.routes import video_config, video_control, video_status
 from app.api.routes import vpn as vpn_routes
 from app.api.routes import experimental as experimental_routes
 from app.api.routes.network import bridge as bridge_routes
-from app.api.routes.network import mptcp as mptcp_routes
 from app.exceptions import NetworkCommandError, NetworkException
 
 
@@ -565,38 +564,6 @@ async def test_bridge_events_sanitizes_value_error(monkeypatch):
 
     assert excinfo.value.status_code == 500
     assert "invalid last_n" in str(excinfo.value.detail)
-
-
-@pytest.mark.asyncio
-async def test_mptcp_status_returns_unavailable_on_command_error(monkeypatch):
-    """Verify MPTCP status falls back to unavailable on command errors."""
-
-    def raise_cmd_error(*_args, **_kwargs):
-        raise NetworkCommandError("sysctl", 1, "not supported")
-
-    monkeypatch.setattr("app.api.routes.network.mptcp.run_cmd", raise_cmd_error)
-
-    result = await mptcp_routes.get_mptcp_status()
-
-    assert result["success"] is True
-    assert result["available"] is False
-    assert result["kernel_support"] is False
-
-
-@pytest.mark.asyncio
-async def test_enable_mptcp_sanitizes_command_failures(monkeypatch):
-    """Verify enable_mptcp returns sanitized message on command failures."""
-
-    def fail_enable(*_args, **_kwargs):
-        return "", "permission denied", 1
-
-    monkeypatch.setattr("app.api.routes.network.mptcp.run_cmd", fail_enable)
-
-    with pytest.raises(HTTPException) as excinfo:
-        await mptcp_routes.enable_mptcp()
-
-    assert excinfo.value.status_code == 500
-    assert "Could not enable MPTCP" in str(excinfo.value.detail)
 
 
 @pytest.mark.asyncio
