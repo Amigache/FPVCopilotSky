@@ -21,10 +21,14 @@ logger = logging.getLogger(__name__)
 def _stats_counter_enabled() -> bool:
     """Whether to insert the C-level ``identity`` stats counter element.
 
-    Set ``FPV_VIDEO_STATS_COUNTER=0`` to disable it (falls back to the
-    position-based estimate). Useful to A/B test pipeline changes on device.
+    Defaults to OFF for the live provider/WebRTC pipelines: hardware testing
+    showed occasional gray frames when the counter sat inline in the RTP
+    packet path, so we keep those pipelines byte-identical to v1.1.1 and fall
+    back to the position-based estimate. RTSP keeps its long-standing counter.
+
+    Set ``FPV_VIDEO_STATS_COUNTER=1`` to force the counter on (for A/B tests).
     """
-    return os.environ.get("FPV_VIDEO_STATS_COUNTER", "1").strip().lower() not in ("0", "false", "no", "off")
+    return os.environ.get("FPV_VIDEO_STATS_COUNTER", "0").strip().lower() in ("1", "true", "yes", "on")
 
 
 # Try to import numpy (required for OpenCV frame processing)
@@ -1639,12 +1643,63 @@ class GStreamerService:
         self.stats["last_frames_count"] = self.stats["frames_sent"]
         self.stats["last_bytes_count"] = self.stats["bytes_sent"]
 
+    def _estimate_stats_locked(self, now: float) -> None:
+        """Pre-counter fallback: estimate frames from running time and bytes from config.
+
+        Used when the ``identity`` counter is disabled/unavailable so the UI
+        still shows plausible FPS/bitrate instead of zeros. Caller holds
+        ``self.stats_lock``.
+        """
+        target_fps = max(1, int(self.video_config.framerate or 30))
+
+        position_ns = self._query_pipeline_position()
+        if position_ns >= 0:
+            estimated_frames = int((position_ns / 1_000_000_000) * target_fps)
+            self.stats["frames_sent"] = max(self.stats["frames_sent"], estimated_frames)
+            self.encoder_stats["frames_encoded"] = self.stats["frames_sent"]
+
+        if self.stats["last_stats_time"] is None:
+            self.stats["last_stats_time"] = now
+            self.stats["last_frames_count"] = self.stats["frames_sent"]
+            self.stats["last_bytes_count"] = self.stats["bytes_sent"]
+            return
+
+        elapsed = now - self.stats["last_stats_time"]
+        if elapsed < 0.5:
+            return
+
+        frames_delta = self.stats["frames_sent"] - self.stats["last_frames_count"]
+        instant_fps = min(max(0.0, frames_delta / max(elapsed, 1e-3)), target_fps * 1.05)
+
+        previous_ema = self.stats.get("fps_ema")
+        if previous_ema is None:
+            fps_ema = instant_fps
+        else:
+            alpha = 0.22
+            fps_ema = (1.0 - alpha) * float(previous_ema) + alpha * instant_fps
+        if fps_ema >= (target_fps - 0.35):
+            fps_ema = float(target_fps)
+
+        self.stats["fps_ema"] = fps_ema
+        self.stats["current_fps"] = int(round(min(fps_ema, float(target_fps))))
+
+        bitrate = self.video_config.h264_bitrate or 0
+        if bitrate > 0:
+            ratio = min(1.0, max(0.0, fps_ema / target_fps))
+            self.stats["current_bitrate"] = int(bitrate * ratio)
+            self.stats["bytes_sent"] += int((self.stats["current_bitrate"] * 1000 * elapsed) / 8)
+        else:
+            self.stats["current_bitrate"] = 0
+
+        self.stats["last_stats_time"] = now
+        self.stats["last_frames_count"] = self.stats["frames_sent"]
+        self.stats["last_bytes_count"] = self.stats["bytes_sent"]
+
     def _poll_pipeline_stats(self):
         """Poll pipeline stats at ~4 Hz from the stats broadcast thread.
 
-        Prefers the real C-level ``identity`` byte/frame counter. Only when the
-        counter is unavailable does it fall back to estimating frames from the
-        pipeline running time × configured framerate.
+        Uses the real C-level ``identity`` counter when present; otherwise
+        falls back to the position/bitrate estimate.
         """
         if not self.pipeline or not self.is_streaming:
             return
@@ -1659,16 +1714,9 @@ class GStreamerService:
                 if counter is not None:
                     self.stats["frames_sent"], self.stats["bytes_sent"] = counter
                     self.encoder_stats["frames_encoded"] = counter[0]
+                    self._update_rates_locked(now)
                 else:
-                    position_ns = self._query_pipeline_position()
-                    if position_ns >= 0:
-                        fps = self.video_config.framerate or 30
-                        estimated_frames = int((position_ns / 1_000_000_000) * fps)
-                        # Advance absolute counters by the estimated delta.
-                        self.stats["frames_sent"] = max(self.stats["frames_sent"], estimated_frames)
-                        self.encoder_stats["frames_encoded"] = self.stats["frames_sent"]
-
-                self._update_rates_locked(now)
+                    self._estimate_stats_locked(now)
 
         except Exception as e:
             logger.debug(f"Pipeline stats poll error: {e}")
