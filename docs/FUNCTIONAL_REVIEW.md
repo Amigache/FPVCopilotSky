@@ -55,19 +55,19 @@ stream rates de telemetría + tuning de red según el enlace detectado.
 - [x] **N2** `mode="auto"` deja WiFi y módem en `metric 200` → sin primaria (`status.py:368,397`).
 - [x] **N3** `ModemPool` borra **todas** las default routes (`modem_pool.py:604-610`).
 - [ ] **N4** Tres escritores de rutas se pisan (`modem_pool`, `set_priority_mode`, `set_metric`).
-- [ ] **N5** CAKE mal calibrado: burst al gateway, solo subida, bajada fija 30, `ifb0` compartido (`network_optimizer.py:307-379,54,413-433`).
-- [ ] **N6** DSCP inútil: se marca EF-46 y CAKE subida aplica `wash` (`network_optimizer.py:132-173` vs `:414`).
-- [ ] **N7** Latencia no es por interfaz (`ping` sin `-I`; `interface` solo etiqueta) (`latency_monitor.py:200-206,302-345`).
+- [x] **N5** CAKE mal calibrado: burst al gateway, solo subida, bajada fija 30, `ifb0` compartido (`network_optimizer.py:307-379,54,413-433`).
+- [x] **N6** DSCP inútil: se marca EF-46 y CAKE subida aplica `wash` (`network_optimizer.py:132-173` vs `:414`).
+- [x] **N7** Latencia no es por interfaz (`ping` sin `-I`; `interface` solo etiqueta) (`latency_monitor.py:200-206,302-345`).
 
 ### Mejoras
 
 - [ ] Un único orquestador de rutas (`PolicyRoutingManager`) como dueño de defaults/métricas.
 - [ ] Cooldown/anti-flapping unificado.
 - [ ] Estimación de throughput (no solo RTT).
-- [ ] MTU/overlay VPN (1280) y health-check con umbrales de túnel.
+- [x] MTU/overlay VPN (1280) y health-check con umbrales de túnel.
 - [ ] sysctl: quitar `tcp_rto_min`, añadir `fq`, `tcp_rmem/wmem`; restaurar todo bien.
 - [ ] DNS cache: parser real; no pisar `resolv.conf` gestionado; no `apt-get` en vuelo.
-- [ ] vpn_health_checker: arreglar condición de precedencia (`:244`).
+- [x] vpn_health_checker: arreglar condición de precedencia (`:244`).
 
 ### Sobra
 
@@ -114,7 +114,8 @@ stream rates de telemetría + tuning de red según el enlace detectado.
 ### P2 — Adaptación por enlace
 
 - [x] **P2a** Perfiles LAN/4G/VPN (vídeo) + tasas de telemetría (`SET_MESSAGE_INTERVAL`, opt-in) + robustez UDP (`buffer-size`)
-- [ ] **P2b** CAKE real · latencia por interfaz · MTU/VPN · orquestador único de rutas
+- [x] **P2b** CAKE/DSCP coherente + ifb por interfaz · latencia por interfaz · MTU/VPN · fix detección VPN
+- [ ] **P2c** Orquestador único de rutas (N4) + anti-flapping unificado
 
 ### P3 — Limpieza y frontend
 
