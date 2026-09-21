@@ -240,8 +240,8 @@ class VPNHealthChecker:
         # Tailscale: check binary + daemon running
         _, _, rc = await run_command(["which", "tailscale"])
         if rc == 0:
-            stdout, _, rc2 = await run_command(["tailscale", "status"], timeout=3)
-            if rc2 == 0 and "Tailscale" not in stdout.split("\n")[0] if stdout else True:
+            _, _, rc2 = await run_command(["tailscale", "status"], timeout=3)
+            if rc2 == 0:
                 # Daemon is up (exit 0 even if not connected)
                 return VPN_TYPE_TAILSCALE
 

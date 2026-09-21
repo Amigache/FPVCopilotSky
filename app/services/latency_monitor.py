@@ -301,47 +301,53 @@ class LatencyMonitor:
 
     async def get_interface_latency(self, interface: str) -> Optional[LatencyStats]:
         """
-        Get average latency across all targets for a specific interface.
+        Measure latency for a specific interface (on demand, via ``ping -I``).
+
+        Pings all targets in parallel bound to *interface* and aggregates the
+        result, so the value actually reflects that link rather than a global
+        aggregate where ``interface`` was only a label.
 
         Args:
-            interface: Network interface name
+            interface: Network interface name (e.g. "wlan0", "eth1")
 
         Returns:
-            Aggregated LatencyStats for the interface
+            Aggregated LatencyStats, or None when no interface is given.
         """
-        stats = await self.get_current_latency()
-
-        if not stats:
+        if not interface:
             return None
 
-        # Calculate weighted average across all targets
-        all_latencies = []
-        all_samples = 0
-        all_losses = []
-
-        for target_stats in stats.values():
-            # Always include entries that have samples (even if avg_latency==0 due to all pings failing)
-            # This captures packet_loss=100% when there is no internet but the monitor IS running
-            if target_stats.sample_count > 0:
-                all_samples += target_stats.sample_count
-                all_losses.append(target_stats.packet_loss)
-                if target_stats.avg_latency > 0:
-                    all_latencies.append(target_stats.avg_latency)
-
-        if not all_losses:
-            # No samples at all – monitor has not collected data yet
+        results = await asyncio.gather(*(self._ping_target(target, interface) for target in self.targets))
+        results = [r for r in results if r is not None]
+        if not results:
             return None
 
-        avg_rtt = sum(all_latencies) / len(all_latencies) if all_latencies else 0.0
+        successful = [r for r in results if r.success]
+        latencies = [r.latency_ms for r in successful]
+
+        if latencies:
+            avg_lat = sum(latencies) / len(latencies)
+            variance = sum((x - avg_lat) ** 2 for x in latencies) / len(latencies)
+            jitter = variance**0.5
+            sorted_lats = sorted(latencies)
+            p95_idx = int(len(sorted_lats) * 0.95)
+            p95 = sorted_lats[min(p95_idx, len(sorted_lats) - 1)]
+        else:
+            avg_lat = 0.0
+            jitter = 0.0
+            p95 = 0.0
+
         return LatencyStats(
-            target=f"aggregate ({len(stats)} targets)",
+            target=f"interface {interface}",
             interface=interface,
-            avg_latency=avg_rtt,
-            min_latency=min(all_latencies) if all_latencies else 0.0,
-            max_latency=max(all_latencies) if all_latencies else 0.0,
-            packet_loss=sum(all_losses) / len(all_losses) if all_losses else 0.0,
-            sample_count=all_samples,
+            avg_latency=avg_lat,
+            min_latency=min(latencies) if latencies else 0.0,
+            max_latency=max(latencies) if latencies else 0.0,
+            packet_loss=(1 - len(successful) / len(results)) * 100,
+            sample_count=len(results),
             last_update=time.time(),
+            jitter_ms=round(jitter, 2),
+            variance_ms=round(jitter**2, 2),
+            p95_latency=round(p95, 2),
         )
 
     async def test_interface_latency(self, interface: str, count: int = 3) -> LatencyStats:
