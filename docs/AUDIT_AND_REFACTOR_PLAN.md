@@ -118,9 +118,9 @@ El proyecto tiene una **arquitectura por capas bien pensada**, una **capa de eje
 
 - [x] Partir `WebSocketContext` (suscripciones por tipo con `useWsMessage`) para eliminar el re-render storm. (PR #61)
 - [x] Trocear vistas grandes con `React.lazy`/`Suspense` y `manualChunks`; componentes internos de `StatusView`/`SystemView` movidos a módulo con `memo` (PR #58, #64).
-- [ ] Empezar a dividir los god services (builder de pipeline, RTSP, stats en `gstreamer_service.py`).
+- [x] Empezar a dividir los god services: `gstreamer_service` extrae funciones puras (`format_uptime`, `calculate_health`) a `app/services/gstreamer_helpers.py` con tests (PR #67). Builder de pipeline/RTSP pendiente.
 - [x] Backoff exponencial + jitter en la reconexión WS; limpieza de timers (ModemView, Toast); tests del store WS. (PR #63)
-- [~] i18n: claves faltantes en `en.json`, `ArmedBanner` y `PeerSelector` con i18n (PR #63, #64); strings de `NetworkView`/`StatusView` pendientes.
+- [x] i18n: `ArmedBanner`, `PeerSelector`, `NetworkView` (incl. `ModemPoolCard`), `StatusView` y claves `network`/`peerSelector` en es/en (PRs #63, #64, #67); quedan strings sueltos puntuales.
 
 ### Fase 3 — Extraer el código no cubierto (continuo)
 
@@ -254,6 +254,7 @@ Todo lo siguiente está **mergeado en `develop`** y con CI en verde:
 | Bloque Fase1+2: errores, except-pass, WS/timers, i18n | ✅                   | #63      |
 | Bloque Fase1+2 restante: HTTPException, memo, i18n    | ✅                   | #64      |
 | TLS (C2): setup-tls.sh + config nginx 443             | ✅                   | #65      |
+| Fase 2: helpers gstreamer + i18n NetworkView          | ✅                   | #67      |
 
 **Validado en el equipo (2026-09-21):** `fpvcopilot-privd` activo, socket
 `root:fpvcopilotsky 0660`; `ip route show` permitido y comandos peligrosos

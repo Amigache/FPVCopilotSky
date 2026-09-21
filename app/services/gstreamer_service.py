@@ -13,6 +13,7 @@ import queue
 import time
 from typing import Optional, Dict, Any
 from app.utils.cmd import run_cmd
+from app.services.gstreamer_helpers import calculate_health, format_uptime
 
 logger = logging.getLogger(__name__)
 
@@ -2305,43 +2306,12 @@ class GStreamerService:
         }
 
     def _format_uptime(self, seconds: int) -> str:
-        """Format uptime in seconds to HH:MM:SS format"""
-        if not seconds:
-            return "-"
-        hours = seconds // 3600
-        minutes = (seconds % 3600) // 60
-        secs = seconds % 60
-        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+        """Format uptime in seconds to HH:MM:SS format (see gstreamer_helpers)."""
+        return format_uptime(seconds)
 
     def _calculate_health(self, errors: int, current_fps: int, target_fps: int) -> str:
-        """Calculate holistic stream health from FPS, errors, encoder stats,
-        and (when available) the NetworkQualityScore from the event bridge.
-
-        Returns ``'good'``, ``'fair'``, or ``'poor'``.
-        """
-        # --- 1. Pipeline component (0-100) ---
-        if target_fps > 0:
-            fps_pct = current_fps / target_fps * 100
-        else:
-            fps_pct = 100
-        error_penalty = min(errors * 3, 30)  # up to -30
-        pipeline_score = max(0, min(100, fps_pct - error_penalty))
-
-        # --- 2. Encoder component (0-100) ---
-        enc = self.encoder_stats
-        encode_ms = enc.get("avg_encode_time_ms", 0.0)
-        # Budget: ~33 ms at 30 fps, ~16 ms at 60 fps
-        budget_ms = (1000 / target_fps * 0.8) if target_fps > 0 else 33
-        if budget_ms > 0:
-            enc_load = min(encode_ms / budget_ms, 1.0)
-        else:
-            enc_load = 0
-        dropped = enc.get("frames_dropped_pre_encoder", 0) + enc.get("frames_dropped_post_encoder", 0)
-        drop_penalty = min(dropped * 2, 20)
-        encoder_score = max(0, 100 - int(enc_load * 50) - drop_penalty)
-
-        # --- 3. Network component (0-100) — optional ---
-        network_score: float = 75  # neutral default when bridge is not running
+        """Calculate holistic stream health (see gstreamer_helpers.calculate_health)."""
+        network_score: float = 75  # neutral default when the bridge is not running
         try:
             from app.services.network_event_bridge import get_network_event_bridge
 
@@ -2351,15 +2321,13 @@ class GStreamerService:
         except Exception:
             pass
 
-        # --- Weighted composite ---
-        composite = 0.45 * pipeline_score + 0.25 * encoder_score + 0.30 * network_score
-
-        if composite >= 70:
-            return "good"
-        elif composite >= 40:
-            return "fair"
-        else:
-            return "poor"
+        return calculate_health(
+            errors=errors,
+            current_fps=current_fps,
+            target_fps=target_fps,
+            encoder_stats=self.encoder_stats,
+            network_score=network_score,
+        )
 
     # ------------------------------------------------------------------
     # Client receive-pipeline helpers
