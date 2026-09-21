@@ -62,3 +62,28 @@ def test_get_status_reports_primary():
         status = asyncio.run(manager.get_status())
     assert status["primary"] == "eth1"
     assert len(status["routes"]) == 2
+
+
+def test_set_priority_removes_redundant_duplicate():
+    manager = RouteManager()
+    # Same gateway on the same interface with two metrics (leftover backup).
+    routes = "default via 192.168.1.1 dev wlan0 metric 100\n" "default via 192.168.1.1 dev wlan0 metric 200"
+
+    with patch("app.api.routes.network.common.run_command", new=make_run_command(routes)) as run_command:
+        result = asyncio.run(manager.set_priority("wlan0"))
+
+    cmds = [call.args[0] for call in run_command.call_args_list]
+    assert [
+        "sudo",
+        "ip",
+        "route",
+        "del",
+        "default",
+        "dev",
+        "wlan0",
+        "via",
+        "192.168.1.1",
+        "metric",
+        "200",
+    ] in cmds
+    assert any("removed redundant" in change for change in result["changes"])

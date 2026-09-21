@@ -61,11 +61,24 @@ class RouteManager:
         _, _, rc = await run_command(cmd)
         return rc == 0
 
+    async def _delete_default(self, dev: str, via: Optional[str], metric: Optional[int]) -> bool:
+        from app.api.routes.network.common import run_command
+
+        cmd = ["sudo", "ip", "route", "del", "default", "dev", dev]
+        if via:
+            cmd += ["via", via]
+        if metric is not None:
+            cmd += ["metric", str(metric)]
+        _, _, rc = await run_command(cmd)
+        return rc == 0
+
     async def set_priority(self, primary_interface: str) -> Dict[str, Any]:
         """Make *primary_interface* the metric-100 default; others become backups.
 
         Idempotent and rate-limited: if the same interface was set within the
-        cooldown window, it is a no-op.
+        cooldown window, it is a no-op. Redundant default routes for the same
+        dev+gateway (left over from previous tooling) are removed so the panel
+        shows a single default per path.
         """
         if not primary_interface:
             return {"success": False, "message": "No primary interface", "changes": []}
@@ -79,13 +92,26 @@ class RouteManager:
             if not routes:
                 return {"success": False, "message": "No default routes found", "changes": []}
 
+            def desired_metric(route: Dict[str, Any]) -> int:
+                return PRIMARY_METRIC if route["dev"] == primary_interface else BACKUP_METRIC
+
             changes = []
+
+            # 1) Make every route use its desired metric (idempotent replace).
             for route in routes:
-                metric = PRIMARY_METRIC if route["dev"] == primary_interface else BACKUP_METRIC
+                metric = desired_metric(route)
                 if route.get("metric") == metric:
                     continue
                 if await self._replace_default(route["dev"], route.get("via"), metric):
                     changes.append(f"{route['dev']}: metric {metric}")
+
+            # 2) Remove redundant routes for the same dev+gateway (e.g. a
+            # leftover "backup" metric 200 on the primary interface).
+            for route in routes:
+                if route.get("metric") == desired_metric(route):
+                    continue
+                if await self._delete_default(route["dev"], route.get("via"), route.get("metric")):
+                    changes.append(f"{route['dev']}: removed redundant metric {route.get('metric')}")
 
             self._last_primary = primary_interface
             self._last_change = now
