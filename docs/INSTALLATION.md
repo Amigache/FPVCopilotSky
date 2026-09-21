@@ -499,14 +499,14 @@ sudo usermod -aG dialout,video $(whoami)
 
 Después de instalar, tienes scripts auxiliares disponibles en `scripts/`:
 
-| Script                           | Propósito                                                        | Cuándo usarlo                                                                     |
-| -------------------------------- | ---------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| **`deploy.sh`**                  | Compila frontend, reinstala systemd/nginx, reinicia servicio     | Después de cambios en frontend o backend; despliegue a producción                 |
-| **`dev.sh`**                     | Inicia backend con hot-reload y frontend dev server              | Desarrollo local; requiere dos terminales                                         |
-| **`status.sh`**                  | Diagnosis completa: servicios, logs, conexiones, recursos        | Troubleshooting; para entender el estado actual                                   |
-| **`configure-modem.sh`**         | Detecta e inicializa modem Huawei HiLink y CSQ/RSSI              | Si el modem no se detecta automáticamente en `status.sh`                          |
-| **`setup-sudoers.sh`**           | Permisos sudo endurecidos (mínimos) para network/modem/tailscale | Reparar permisos si algunos comandos fallan; `install.sh` lo hace automáticamente |
-| **`setup-tailscale-sudoers.sh`** | Configura permisos sudo específicos para Tailscale               | Reparar permisos de Tailscale si `install.sh` falló                               |
+| Script                           | Propósito                                                        | Cuándo usarlo                                                     |
+| -------------------------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------- |
+| **`deploy.sh`**                  | Compila frontend, reinstala systemd/nginx, reinicia servicio     | Después de cambios en frontend o backend; despliegue a producción |
+| **`dev.sh`**                     | Inicia backend con hot-reload y frontend dev server              | Desarrollo local; requiere dos terminales                         |
+| **`status.sh`**                  | Diagnosis completa: servicios, logs, conexiones, recursos        | Troubleshooting; para entender el estado actual                   |
+| **`configure-modem.sh`**         | Detecta e inicializa modem Huawei HiLink y CSQ/RSSI              | Si el modem no se detecta automáticamente en `status.sh`          |
+| **`setup-sudoers.sh`**           | Elimina las reglas sudoers NOPASSWD (modelo helper privilegiado) | Limpiar permisos antiguos; `install.sh` lo hace automáticamente   |
+| **`setup-tailscale-sudoers.sh`** | Configura permisos sudo específicos para Tailscale               | Reparar permisos de Tailscale si `install.sh` falló               |
 
 ### Troubleshooting común
 
@@ -544,22 +544,18 @@ sudo bash scripts/configure-modem.sh   # Si modem no funciona
 
 Esta sección cubre la configuración de red avanzada — detección multi-modem, policy routing y VPN health checks — que se instala **automáticamente** con `install.sh`. No se requieren pasos manuales en una instalación limpia.
 
-### 5.1 Permisos sudo (sudoers)
+### 5.1 Permisos (helper privilegiado)
 
-`install.sh` ejecuta `scripts/setup-sudoers.sh` que crea `/etc/sudoers.d/fpvcopilot-sky` con los permisos necesarios para las operaciones de red:
+`install.sh` ejecuta `scripts/setup-sudoers.sh`, que **elimina** cualquier regla
+NOPASSWD antigua. Las operaciones privilegiadas (red, iptables, VPN…) las realiza
+el helper `fpvcopilot-privd` (root, socket `/run/fpvcopilot-priv.sock`) con una
+whitelist de comandos en `app/security/privd_policy.py`.
 
-```
-fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/sbin/iptables -t mangle *
-fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/sbin/ip rule *
-fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/sbin/ip route add *
-fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/sbin/ip route del *
-fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/sbin/ip route show *
-```
-
-Verificar que están presentes:
+Verificar que el helper está activo:
 
 ```bash
-sudo cat /etc/sudoers.d/fpvcopilot-sky | grep -E "iptables|ip rule|ip route"
+systemctl is-active fpvcopilot-privd
+ls -l /run/fpvcopilot-priv.sock
 ```
 
 ### 5.2 Dependencias instaladas por install.sh

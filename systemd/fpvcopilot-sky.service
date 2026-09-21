@@ -31,18 +31,31 @@ LimitNOFILE=65536
 LimitNPROC=4096
 
 # --- Security hardening ---
+# The service no longer uses sudo: every privileged operation goes through
+# fpvcopilot-privd (root, whitelisted) over /run/fpvcopilot-priv.sock.
+NoNewPrivileges=true
+CapabilityBoundingSet=
 # Isolate /tmp so other services cannot access our temp files
 PrivateTmp=true
 # Prevent access to /home, /root, /run/user
 ProtectHome=true
-# Make /usr, /boot, /efi read-only (not /opt, which we need writable for preferences)
-ProtectSystem=full
+# Entire filesystem read-only (except /dev, /proc, /sys); allow the data dir.
+ProtectSystem=strict
+ReadWritePaths=/var/lib/fpvcopilot-sky
 # Prevent loading kernel modules
 ProtectKernelModules=true
 # Prevent modifying control groups
 ProtectControlGroups=true
+# Miscellaneous hardening
+ProtectClock=true
+ProtectHostname=true
+LockPersonality=true
+RestrictNamespaces=true
+SystemCallArchitectures=native
 # Deny creating SUID/SGID files
 RestrictSUIDSGID=true
+# NOTE: ProtectKernelTunables is intentionally NOT set: ExecStartPre writes the
+# CPU governor under /sys (and the helper handles any sysctl changes).
 
 # --- Resource limits ---
 # Cap memory at 512 MB to prevent OOM on embedded boards
