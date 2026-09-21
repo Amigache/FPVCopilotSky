@@ -6,10 +6,13 @@ Tests simulate real user interactions with multiple API endpoints in sequence.
 """
 
 import pytest
+
 import json
 from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 from app.main import app
+
+pytestmark = pytest.mark.slow
 
 
 @pytest.fixture

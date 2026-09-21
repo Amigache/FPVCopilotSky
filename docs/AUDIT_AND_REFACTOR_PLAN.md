@@ -124,8 +124,8 @@ El proyecto tiene una **arquitectura por capas bien pensada**, una **capa de eje
 
 ### Fase 3 — Extraer el código no cubierto (continuo)
 
-- [ ] Incluir `providers/*` y los 4 servicios grandes en cobertura con tests unitarios sobre los mocks existentes.
-- [ ] Subir el gate progresivamente (55 % → 65 %); mover `slow`/`e2e` a un job no bloqueante.
+- [~] Incluir en cobertura `providers/*` y los servicios grandes: `mavlink_router` ya incluido con tests unitarios (44% propio, total 52.9%); `gstreamer_service`/`mavlink_bridge`/`network_event_bridge`/`providers/*` pendientes (PR #69).
+- [x] Mover `slow`/`e2e` a un job **no bloqueante** (`test-slow`, `continue-on-error`); el job principal corre `-m "not slow"` con el gate de cobertura (PR #69). Subir el gate progresivo queda pendiente.
 - [x] Sustituir las assertions permisivas (`status_code in [...]`) por **códigos exactos** (0 restantes). Además se corrigieron paths/métodos inexistentes que las hacían pasar con 404/405 (PR #68).
 - [ ] Capa de integración real (contenedores) y tests de seguridad (auth, CSRF, sanitización).
 
@@ -256,6 +256,7 @@ Todo lo siguiente está **mergeado en `develop`** y con CI en verde:
 | TLS (C2): setup-tls.sh + config nginx 443             | ✅                   | #65      |
 | Fase 2: helpers gstreamer + i18n NetworkView          | ✅                   | #67      |
 | Fase 3: assertions estrictas (0 permisivas)           | ✅                   | #68      |
+| Fase 3: cobertura mavlink_router + job slow/e2e       | ✅                   | #69      |
 
 **Validado en el equipo (2026-09-21):** `fpvcopilot-privd` activo, socket
 `root:fpvcopilotsky 0660`; `ip route show` permitido y comandos peligrosos
