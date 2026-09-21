@@ -160,6 +160,18 @@ Opciones (base para **P2 - adaptación por enlace**):
 - Robustez UDP: `udpsink buffer-size`, o **RTSP/TCP · WebRTC** (retransmisión) en enlaces con pérdidas.
 - Perfiles de enlace que ajusten **modo + bitrate + resolución** automáticamente.
 
+### P2a — Validación de perfiles de enlace
+
+| Prueba                   | Resultado                                                                                                                       |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| Auto en LAN              | ✅ `active_profile lan`; `bitrate:6000` live-update (sin reiniciar)                                                             |
+| Override `vpn`           | ✅ `bitrate:4000` + `udp_buffer:2MB`, sin reiniciar                                                                             |
+| Override `modem`         | ✅ reinicio a WebRTC (`resolution-kept:1920x1080` + `video-restart:webrtc`) y vuelta a `lan` (udp) — `streaming: True` en ambos |
+| Evento WS `link_profile` | ✅                                                                                                                              |
+| Resolución no soportada  | ✅ la cámara solo ofrece 4K/1080p, así que el manager **mantiene la actual** en vez de fallar                                   |
+
+Hallazgos corregidos durante la validación: (1) el reinicio de pipeline requería más margen para liberar la cámara; (2) validar la resolución contra la cámara antes de reiniciar. El perfil es la base y el adaptativo de red ajusta en vivo (opción A).
+
 ---
 
 _Documento de seguimiento de la revisión funcional (v1.1.1). Las tareas se marcan a medida que se implementan._
