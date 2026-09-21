@@ -1,33 +1,34 @@
 import './Header.css'
 import Badge from '../Badge/Badge'
 import { useTranslation } from 'react-i18next'
-import { useWebSocket } from '../../contexts/WebSocketContext'
+import { useWsMessage } from '../../contexts/WebSocketContext'
+import { useParamCache } from '../../contexts/ParamCacheContext'
 
 const Header = () => {
   const { t } = useTranslation()
-  const { messages } = useWebSocket()
+  const { isDownloading, status } = useParamCache()
 
-  const mavlinkStatus = messages.mavlink_status || {
+  const mavlinkStatus = useWsMessage('mavlink_status') || {
     connected: false,
     port: '',
     baudrate: 0,
   }
 
-  const telemetry = messages.telemetry || {
+  const telemetry = useWsMessage('telemetry') || {
     system: { armed: false, mode: 'UNKNOWN' },
   }
 
-  const videoStatus = messages.video_status || {
+  const videoStatus = useWsMessage('video_status') || {
     streaming: false,
   }
 
-  const vpnStatus = messages.vpn_status || {
+  const vpnStatus = useWsMessage('vpn_status') || {
     connected: false,
     authenticated: false,
     installed: true,
   }
 
-  const networkStatus = messages.network_status || {
+  const networkStatus = useWsMessage('network_status') || {
     mode: 'unknown',
     wifi_interface: null,
     modem_interface: null,
@@ -52,6 +53,20 @@ const Header = () => {
 
   return (
     <div className="header">
+      {isDownloading && (
+        <div
+          className="param-download-topbar"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={status.progress || 0}
+        >
+          <div
+            className="param-download-topbar-fill"
+            style={{ width: `${Math.min(status.progress || 0, 99)}%` }}
+          />
+        </div>
+      )}
       <div className="header-content">
         <h1 className="logo">📡 {t('header.title')}</h1>
         <div className="header-info">

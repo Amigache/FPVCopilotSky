@@ -232,16 +232,13 @@ class TestDNSCache:
         assert "8.8.8.8" in dns_cache.config.upstream_dns
 
     @pytest.mark.asyncio
-    @patch("app.services.dns_cache.asyncio.create_subprocess_exec")
-    async def test_is_installed_check(self, mock_subprocess):
+    @patch("app.services.dns_cache.run_cmd_async")
+    async def test_is_installed_check(self, mock_run_cmd_async):
         """Test checking if dnsmasq is installed"""
         from app.services.dns_cache import DNSCache
 
         # Mock 'which dnsmasq' success
-        mock_process = AsyncMock()
-        mock_process.returncode = 0
-        mock_process.communicate = AsyncMock(return_value=(b"/usr/sbin/dnsmasq\n", b""))
-        mock_subprocess.return_value = mock_process
+        mock_run_cmd_async.return_value = ("/usr/sbin/dnsmasq\n", "", 0)
 
         dns_cache = DNSCache()
         is_installed = await dns_cache.is_installed()

@@ -3,13 +3,13 @@ V4L2 Camera Source Provider
 Handles USB cameras and CSI cameras exposed through video4linux2
 """
 
-import subprocess
 import glob
 import os
 import re
 import logging
 from typing import Dict, List, Optional, Any
 from ..base.video_source_provider import VideoSourceProvider
+from app.utils.cmd import run_cmd
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +34,8 @@ class V4L2CameraSource(VideoSourceProvider):
     def is_available(self) -> bool:
         """Check if v4l2-ctl is available"""
         try:
-            result = subprocess.run(["which", "v4l2-ctl"], capture_output=True, timeout=5)
-            return result.returncode == 0
+            _, _, returncode = run_cmd(["which", "v4l2-ctl"], timeout=5, check=False)
+            return returncode == 0
         except Exception as e:
             logger.error(f"Failed to check v4l2-ctl availability: {e}")
             return False
@@ -109,14 +109,13 @@ class V4L2CameraSource(VideoSourceProvider):
             device = source_id
 
             # Get device identity info
-            info_result = subprocess.run(
+            info_stdout, _, info_returncode = run_cmd(
                 ["v4l2-ctl", "-d", device, "--info"],
-                capture_output=True,
-                text=True,
                 timeout=5,
+                check=False,
             )
 
-            if info_result.returncode != 0:
+            if info_returncode != 0:
                 return None
 
             # Parse device info
@@ -125,7 +124,7 @@ class V4L2CameraSource(VideoSourceProvider):
             bus_info = ""
             is_capture = False
 
-            for line in info_result.stdout.split("\n"):
+            for line in info_stdout.split("\n"):
                 if "Card type" in line:
                     parts = line.split(":", 1)
                     if len(parts) > 1:
@@ -146,11 +145,10 @@ class V4L2CameraSource(VideoSourceProvider):
                 return None
 
             # Get formats and resolutions with FPS
-            formats_result = subprocess.run(
+            formats_stdout, _, _ = run_cmd(
                 ["v4l2-ctl", "-d", device, "--list-formats-ext"],
-                capture_output=True,
-                text=True,
                 timeout=5,
+                check=False,
             )
 
             # Parse formats and resolutions
@@ -161,7 +159,7 @@ class V4L2CameraSource(VideoSourceProvider):
             current_format = None
             current_resolution = None
 
-            for line in formats_result.stdout.split("\n"):
+            for line in formats_stdout.split("\n"):
                 # Parse format line (e.g., "[0]: 'MJPG' (Motion-JPEG)")
                 if "'" in line:
                     parts = line.split("'")
@@ -289,12 +287,12 @@ class V4L2CameraSource(VideoSourceProvider):
             if pixel_format == "H264":
                 try:
                     # Try to set repeat_sequence_header (SPS/PPS with every IDR)
-                    result = subprocess.run(
+                    _, _, returncode = run_cmd(
                         ["v4l2-ctl", "-d", source_id, "-c", "repeat_sequence_header=1"],
-                        capture_output=True,
                         timeout=2,
+                        check=False,
                     )
-                    if result.returncode == 0:
+                    if returncode == 0:
                         logger.info(f"Enabled repeat_sequence_header on {source_id}")
                 except Exception:
                     pass
@@ -319,16 +317,15 @@ class V4L2CameraSource(VideoSourceProvider):
     def _reset_controls_to_defaults(self, device: str):
         """Reset V4L2 camera controls (brightness, contrast, etc.) to defaults."""
         try:
-            result = subprocess.run(
+            stdout, _, returncode = run_cmd(
                 ["v4l2-ctl", "-d", device, "--list-ctrls"],
-                capture_output=True,
-                text=True,
                 timeout=3,
+                check=False,
             )
-            if result.returncode != 0:
+            if returncode != 0:
                 return
 
-            for line in result.stdout.split("\n"):
+            for line in stdout.split("\n"):
                 # Parse: "brightness 0x00980900 (int) : min=0 max=200 step=1 default=100 value=6"
                 match = re.match(
                     r"\s*(\w+)\s+0x[0-9a-f]+\s+\(\w+\)\s*:.*default=(\d+)\s+value=(\d+)",
@@ -339,10 +336,10 @@ class V4L2CameraSource(VideoSourceProvider):
                     default_val = match.group(2)
                     current_val = match.group(3)
                     if current_val != default_val:
-                        subprocess.run(
+                        run_cmd(
                             ["v4l2-ctl", "-d", device, "-c", f"{ctrl_name}={default_val}"],
-                            capture_output=True,
                             timeout=2,
+                            check=False,
                         )
                         logger.info(f"Reset {ctrl_name} to default {default_val} (was {current_val})")
         except Exception as e:

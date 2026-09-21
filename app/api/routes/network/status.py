@@ -298,7 +298,7 @@ async def get_dashboard():
                         "network": network_info,
                         "traffic": traffic_info,
                     }
-            except Exception as e:
+            except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
                 logger.debug(f"Could not get HiLink modem data: {e}")
 
         # Get flight mode status
@@ -309,16 +309,11 @@ async def get_dashboard():
             optimizer = get_network_optimizer()
             optimizer_status = optimizer.get_status()
 
-            registry = get_provider_registry()
-            provider = registry.get_modem_provider("huawei_e3372h")
-            modem_video_active = getattr(provider, "video_mode_active", False) if provider else False
-
             flight_mode_status = {
-                "active": optimizer_status["active"] and modem_video_active,
+                "active": optimizer_status["active"],
                 "network_optimizer": optimizer_status["active"],
-                "modem_video_mode": modem_video_active,
             }
-        except Exception as e:
+        except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
             logger.debug(f"Could not get flight mode status: {e}")
 
         return {
@@ -328,9 +323,9 @@ async def get_dashboard():
             "flight_mode": flight_mode_status,
         }
 
-    except Exception as e:
-        logger.error(f"Error getting dashboard data: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
+        logger.error(f"Error getting dashboard data: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get network dashboard data")
 
 
 @router.get("/interfaces")
@@ -433,9 +428,9 @@ async def set_priority_mode(request: PriorityModeRequest):
         else:
             return {"success": False, "message": "No routes could be modified"}
 
-    except Exception as e:
-        logger.error(f"Error setting priority: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
+        logger.error("Error setting network priority", extra={"mode": mode, "error": str(e)}, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to set network priority")
 
 
 @router.post("/priority/auto-adjust")

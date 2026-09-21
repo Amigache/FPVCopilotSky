@@ -1,17 +1,40 @@
 import './StatusView.css'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, memo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useToast } from '../../../contexts/ToastContext'
 import { useModal } from '../../../contexts/ModalContext'
-import { useWebSocket } from '../../../contexts/WebSocketContext'
+import { useWebSocket, useWsMessage } from '../../../contexts/WebSocketContext'
+import { useArmedState } from '../../../hooks/useArmedState'
 import LogsModal from '../../LogsModal/LogsModal'
 import api from '../../../services/api'
+
+const StatusBadge = memo(({ status }) => {
+  const { t } = useTranslation()
+  const statusClass = `status-indicator status-${status}`
+  const icon = status === 'ok' ? '✅' : status === 'warning' ? '⚠️' : '❌'
+  return (
+    <span className={statusClass}>
+      {icon} {t(`status.badge.${status}`)}
+    </span>
+  )
+})
+
+const InfoRow = memo(({ label, value, status }) => (
+  <div className="info-row">
+    <span className="info-label">{label}:</span>
+    <span className="info-value">{value}</span>
+    {status && <StatusBadge status={status} />}
+  </div>
+))
 
 const StatusView = () => {
   const { t } = useTranslation()
   const { showToast } = useToast()
   const { showModal } = useModal()
-  const { messages, isConnected } = useWebSocket()
+  const { isConnected } = useWebSocket()
+  const statusMessage = useWsMessage('status')
+  const telemetryMessage = useWsMessage('telemetry')
+  const isArmed = useArmedState()
 
   const [loading, setLoading] = useState(true)
   const [statusData, setStatusData] = useState(null)
@@ -30,9 +53,9 @@ const StatusView = () => {
 
   // Flight session state
   const [flightSession, setFlightSession] = useState(null)
-  const [samplingInterval, setSamplingInterval] = useState(null)
-  const [autoStartOnArm, setAutoStartOnArm] = useState(false)
   const [_savingPrefs, setSavingPrefs] = useState(false)
+  const samplingIntervalRef = useRef(null)
+  const [autoStartOnArm, setAutoStartOnArm] = useState(false)
 
   // Extras/Experimental state
   const [_experimentalTabEnabled, setExperimentalTabEnabled] = useState(true)
@@ -77,11 +100,11 @@ const StatusView = () => {
 
   // Update from WebSocket
   useEffect(() => {
-    if (messages.status) {
-      setStatusData(messages.status)
+    if (statusMessage) {
+      setStatusData(statusMessage)
       setLoading(false)
     }
-  }, [messages.status])
+  }, [statusMessage])
 
   // Monitor WebSocket connection during restart
   useEffect(() => {
@@ -546,7 +569,7 @@ const StatusView = () => {
           }
         }, 5000)
 
-        setSamplingInterval(interval)
+        samplingIntervalRef.current = interval
       }
     } catch (error) {
       showToast(error.message, 'error')
@@ -556,9 +579,9 @@ const StatusView = () => {
   const handleStopFlightSession = async (autoStop = false) => {
     const stopSession = async () => {
       // Clear sampling interval
-      if (samplingInterval) {
-        clearInterval(samplingInterval)
-        setSamplingInterval(null)
+      if (samplingIntervalRef.current) {
+        clearInterval(samplingIntervalRef.current)
+        samplingIntervalRef.current = null
       }
 
       try {
@@ -617,15 +640,16 @@ const StatusView = () => {
   // Cleanup sampling interval on unmount
   useEffect(() => {
     return () => {
-      if (samplingInterval) {
-        clearInterval(samplingInterval)
+      if (samplingIntervalRef.current) {
+        clearInterval(samplingIntervalRef.current)
+        samplingIntervalRef.current = null
       }
     }
-  }, [samplingInterval])
+  }, [])
 
   // Monitor armed state for auto-start
   useEffect(() => {
-    const telemetry = messages.telemetry
+    const telemetry = telemetryMessage
     if (telemetry?.system) {
       const isArmed = telemetry.system.armed || false
 
@@ -651,7 +675,7 @@ const StatusView = () => {
       setPrevArmed(isArmed)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages.telemetry, autoStartOnArm, flightSession])
+  }, [telemetryMessage, autoStartOnArm, flightSession])
 
   // Logs handlers
   const openLogsModal = (type) => {
@@ -678,24 +702,6 @@ const StatusView = () => {
       return t('status.logs.loadError')
     }
   }, [logsType, t])
-
-  const StatusBadge = ({ status }) => {
-    const statusClass = `status-indicator status-${status}`
-    const icon = status === 'ok' ? '✅' : status === 'warning' ? '⚠️' : '❌'
-    return (
-      <span className={statusClass}>
-        {icon} {t(`status.badge.${status}`)}
-      </span>
-    )
-  }
-
-  const InfoRow = ({ label, value, status }) => (
-    <div className="info-row">
-      <span className="info-label">{label}:</span>
-      <span className="info-value">{value}</span>
-      {status && <StatusBadge status={status} />}
-    </div>
-  )
 
   if (loading) {
     return (
@@ -779,7 +785,7 @@ const StatusView = () => {
             <button
               className="btn-check-updates"
               onClick={checkForUpdates}
-              disabled={checkingUpdates || isUpdating}
+              disabled={checkingUpdates || isUpdating || isArmed}
             >
               {checkingUpdates ? (
                 <>
@@ -796,7 +802,7 @@ const StatusView = () => {
               <button
                 className="btn-apply-update"
                 onClick={() => setShowUpdateModal(true)}
-                disabled={isUpdating || isRollingBack}
+                disabled={isUpdating || isRollingBack || isArmed}
               >
                 {isUpdating ? (
                   <>
@@ -814,7 +820,7 @@ const StatusView = () => {
               <button
                 className="btn-rollback"
                 onClick={() => setShowRollbackModal(true)}
-                disabled={isRollingBack || isUpdating}
+                disabled={isRollingBack || isUpdating || isArmed}
               >
                 {isRollingBack ? (
                   <>
@@ -828,7 +834,6 @@ const StatusView = () => {
             )}
           </div>
         </div>
-
         {/* APP Status */}
         <div className="card">
           <h2>{t('status.sections.backend')}</h2>
@@ -891,7 +896,11 @@ const StatusView = () => {
 
           <div className="info-section">
             <div className="system-controls">
-              <button className="btn-restart-backend" onClick={handleRestartBackend}>
+              <button
+                className="btn-restart-backend"
+                disabled={isArmed}
+                onClick={handleRestartBackend}
+              >
                 🔄 {t('status.restart.restartBackend')}
               </button>
 
@@ -901,7 +910,6 @@ const StatusView = () => {
             </div>
           </div>
         </div>
-
         {/* WebUI Status */}
         <div className="card">
           <h2>{t('status.sections.frontend')}</h2>
@@ -943,7 +951,11 @@ const StatusView = () => {
 
           <div className="info-section">
             <div className="system-controls">
-              <button className="btn-restart-frontend" onClick={handleRestartFrontend}>
+              <button
+                className="btn-restart-frontend"
+                disabled={isArmed}
+                onClick={handleRestartFrontend}
+              >
                 🌐 {t('status.restart.restartFrontend')}
               </button>
 
@@ -1007,12 +1019,14 @@ const StatusView = () => {
             <h3 className="subsection-title">{t('status.permissions.filePermissions')}</h3>
             <div className="permission-check">
               <div className={permissions?.permissions?.can_read_opt ? 'check-ok' : 'check-fail'}>
-                {permissions?.permissions?.can_read_opt ? '✅' : '❌'}{' '}
-                {t('status.permissions.canRead')} /opt/FPVCopilotSky
+                {permissions?.permissions?.can_read_opt
+                  ? `✅ ${t('status.permissions.canRead')} /opt/FPVCopilotSky`
+                  : `❌ ${t('status.permissions.cannotRead')} /opt/FPVCopilotSky`}
               </div>
               <div className={permissions?.permissions?.can_write_opt ? 'check-ok' : 'check-fail'}>
-                {permissions?.permissions?.can_write_opt ? '✅' : '❌'}{' '}
-                {t('status.permissions.canWrite')} /opt/FPVCopilotSky
+                {permissions?.permissions?.can_write_opt
+                  ? `✅ ${t('status.permissions.canWrite')} /opt/FPVCopilotSky`
+                  : `❌ ${t('status.permissions.cannotWrite')} /opt/FPVCopilotSky`}
               </div>
             </div>
           </div>

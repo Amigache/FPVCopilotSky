@@ -6,12 +6,15 @@ and throughput measurements for all major system components.
 """
 
 import pytest
+
 import time
 import psutil
 import json
 from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 from app.main import app
+
+pytestmark = pytest.mark.slow
 
 
 @pytest.fixture
@@ -75,7 +78,7 @@ class TestAPILatency:
         latencies = []
         for _ in range(5):
             start = time.perf_counter()
-            response = client.get("/api/video/config")
+            response = client.get("/api/video/status")
             end = time.perf_counter()
             latencies.append((end - start) * 1000)
 
@@ -105,7 +108,7 @@ class TestThroughput:
 
         for _ in range(num_requests):
             response = client.get("/api/status/health")
-            assert response.status_code in [200, 404, 500]
+            assert response.status_code == 200
 
         end = time.perf_counter()
         duration = end - start
@@ -119,9 +122,9 @@ class TestThroughput:
         """Measure throughput with mixed endpoints"""
         endpoints = [
             "/api/status/health",
-            "/api/system/status",
+            "/api/system/info",
             "/api/network/status",
-            "/api/video/config",
+            "/api/video/status",
             "/api/vpn/status",
         ]
 
@@ -131,7 +134,7 @@ class TestThroughput:
         for _ in range(num_cycles):
             for endpoint in endpoints:
                 response = client.get(endpoint)
-                assert response.status_code in [200, 404, 500]
+                assert response.status_code == 200
 
         end = time.perf_counter()
         duration = end - start
@@ -172,7 +175,7 @@ class TestMemoryUsage:
 
         # Make requests
         for _ in range(10):
-            response = client.get("/api/system/status")
+            response = client.get("/api/system/info")
 
         # Get end memory
         final_memory = process.memory_info().rss / 1024 / 1024
@@ -210,7 +213,7 @@ class TestCPUUsage:
         end_cpu = process.cpu_num()
 
         # Should complete without excessive CPU
-        assert response.status_code in [200, 404, 500]
+        assert response.status_code == 200
 
     def test_cpu_efficiency_sustained_load(self, client):
         """Test CPU efficiency under sustained load"""
@@ -297,7 +300,7 @@ class TestConcurrentLoad:
         """Test concurrent requests to different endpoints"""
         endpoints = [
             "/api/status/health",
-            "/api/system/status",
+            "/api/system/info",
             "/api/network/status",
         ]
 
@@ -337,10 +340,10 @@ class TestEndpointBottlenecks:
             "/api/status/health",
             "/api/status/dependencies",
             "/api/system/info",
-            "/api/system/status",
+            "/api/system/info",
             "/api/network/status",
             "/api/network/interfaces",
-            "/api/video/config",
+            "/api/video/status",
             "/api/vpn/status",
             "/api/vpn/peers",
             "/api/modem/status",
@@ -354,7 +357,7 @@ class TestEndpointBottlenecks:
                 start = time.perf_counter()
                 response = client.get(endpoint)
                 end = time.perf_counter()
-                if response.status_code in [200, 404, 500]:
+                if response.status_code == 200:
                     times.append((end - start) * 1000)
 
             if times:
@@ -430,5 +433,6 @@ class TestResponseTimeDistribution:
         variance = sum((x - mean) ** 2 for x in latencies) / len(latencies)
         std_dev = variance**0.5
 
-        # Should be consistent (low standard deviation)
-        assert std_dev < mean * 0.5, f"Inconsistent latency: std_dev={std_dev}ms, mean={mean}ms"
+        # Should be consistent. Allow a small absolute floor: at sub-50 ms
+        # latencies the measurement jitter of a shared CI runner dominates.
+        assert std_dev < max(mean * 0.5, 50.0), f"Inconsistent latency: std_dev={std_dev}ms, mean={mean}ms"

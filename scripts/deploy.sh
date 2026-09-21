@@ -17,9 +17,6 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
-# Resolve the actual invoking user (handles: sudo bash deploy.sh, bash deploy.sh, root)
-ACTUAL_USER="${SUDO_USER:-$USER}"
-
 cd "$PROJECT_DIR"
 
 # Ensure local data directory exists
@@ -42,11 +39,12 @@ sudo chmod 755 "$DATA_DIR"
 
 # Initialize version file if it doesn't exist
 if [ ! -f "$DATA_DIR/version" ]; then
-    # Try to get version from git tag, fallback to 1.0.0
-    if git describe --tags --exact-match HEAD 2>/dev/null; then
-        INITIAL_VERSION=$(git describe --tags --exact-match HEAD 2>/dev/null | sed 's/^v//')
+    # Get version from git tag on current HEAD
+    if INITIAL_VERSION=$(git describe --tags --exact-match HEAD 2>/dev/null | sed 's/^v//'); then
+        echo -e "${GREEN}✅ Version detected from git tag: $INITIAL_VERSION${NC}"
     else
-        INITIAL_VERSION="1.0.0"
+        INITIAL_VERSION="unknown"
+        echo -e "${YELLOW}⚠️  No git tag on HEAD, version set to 'unknown'${NC}"
     fi
     echo "$INITIAL_VERSION" > "$DATA_DIR/version.tmp"
     sudo mv "$DATA_DIR/version.tmp" "$DATA_DIR/version"
@@ -69,18 +67,25 @@ fi
 # Step 1: Build Frontend
 echo -e "\n${BLUE}📦 Building frontend...${NC}"
 cd frontend/client
-npm run build
-# Fix ownership so the service user (fpvcopilotsky) can overwrite dist on future updates
+# Build as root: works on hardened (root-owned) installs and keeps the dist
+# output readable by nginx. The service never needs to write it.
+sudo npm run build
 if id "fpvcopilotsky" &>/dev/null; then
-    chown -R fpvcopilotsky:fpvcopilotsky dist
-elif [ -n "$SUDO_USER" ]; then
-    chown -R "$SUDO_USER:$SUDO_USER" dist
+    sudo chown -R root:fpvcopilotsky dist
+else
+    sudo chown -R root:root dist
 fi
+sudo chmod -R a+rX dist
 echo -e "${GREEN}✅ Frontend built successfully${NC}"
 
 # Step 2: Install systemd service
 echo -e "\n${BLUE}🔧 Installing systemd service...${NC}"
 sudo cp "$PROJECT_DIR/systemd/fpvcopilot-sky.service" /etc/systemd/system/
+# Privileged updater: oneshot unit (root) triggered by the backend.
+sudo cp "$PROJECT_DIR/systemd/fpvcopilot-update.service" /etc/systemd/system/
+# Privileged helper: root daemon the main service uses instead of sudo.
+sudo cp "$PROJECT_DIR/systemd/fpvcopilot-privd.service" /etc/systemd/system/
+chmod +x "$PROJECT_DIR/scripts/privileged-update.sh" 2>/dev/null || true
 sudo systemctl daemon-reload
 echo -e "${GREEN}✅ Systemd service installed${NC}"
 
@@ -93,10 +98,14 @@ if command -v nginx &> /dev/null; then
         sudo cp /etc/nginx/sites-available/fpvcopilot-sky /etc/nginx/sites-available/fpvcopilot-sky.backup
     fi
 
-    # Copy nginx config with production optimizations:
-    # - Uses 127.0.0.1 instead of localhost (avoids IPv6 resolution issues)
-    # - Optimized timeouts for API (10s) and WebSocket (7d)
-    sudo cp "$PROJECT_DIR/systemd/fpvcopilot-sky.nginx" /etc/nginx/sites-available/fpvcopilot-sky
+    # Copy nginx config. If a TLS certificate exists (see scripts/setup-tls.sh),
+    # install the HTTPS config; otherwise the plain HTTP config.
+    if [ -f /etc/ssl/fpvcopilot/fpvcopilot.crt ]; then
+        echo -e "${BLUE}🔒 TLS certificate found — installing HTTPS nginx config${NC}"
+        sudo cp "$PROJECT_DIR/systemd/fpvcopilot-sky.tls.nginx" /etc/nginx/sites-available/fpvcopilot-sky
+    else
+        sudo cp "$PROJECT_DIR/systemd/fpvcopilot-sky.nginx" /etc/nginx/sites-available/fpvcopilot-sky
+    fi
 
     # Enable FPV site
     sudo ln -sf /etc/nginx/sites-available/fpvcopilot-sky /etc/nginx/sites-enabled/
@@ -107,17 +116,13 @@ if command -v nginx &> /dev/null; then
         sudo rm /etc/nginx/sites-enabled/default
     fi
 
-    # Fix permissions for frontend build:
-    # - Owner: ACTUAL_USER so the dev user can rebuild without sudo
-    # - Group: fpvcopilotsky (if it exists) so the service can overwrite files during git-based updates
-    # - Mode: 775/664 so group members can write; other (nginx/www-data) gets read-only
+    # dist is build output served by nginx; root-owned and world-readable.
     if id "fpvcopilotsky" &>/dev/null; then
-        sudo chown -R "$ACTUAL_USER:fpvcopilotsky" "$PROJECT_DIR/frontend/client/dist"
+        sudo chown -R root:fpvcopilotsky "$PROJECT_DIR/frontend/client/dist"
     else
-        sudo chown -R "$ACTUAL_USER:$ACTUAL_USER" "$PROJECT_DIR/frontend/client/dist"
+        sudo chown -R root:root "$PROJECT_DIR/frontend/client/dist"
     fi
-    sudo chmod -R 775 "$PROJECT_DIR/frontend/client/dist"
-    sudo find "$PROJECT_DIR/frontend/client/dist" -type f -exec chmod 664 {} \;
+    sudo chmod -R a+rX "$PROJECT_DIR/frontend/client/dist"
 
     # Test nginx config
     if sudo nginx -t; then
@@ -133,22 +138,31 @@ else
     echo -e "   Install nginx: sudo apt-get install nginx"
 fi
 
-# Step 4: Enable and start service
+# Step 4: Enable and start services
 echo -e "\n${BLUE}🚀 Starting service...${NC}"
+# Privileged helper first: the main service no longer uses sudo and relies on
+# /run/fpvcopilot-priv.sock for every privileged operation.
+sudo systemctl enable fpvcopilot-privd.service
+sudo systemctl restart fpvcopilot-privd.service
 sudo systemctl enable fpvcopilot-sky.service
 sudo systemctl restart fpvcopilot-sky.service
 
-# Wait for service to fully start (backend takes ~30-45s on cold start due to GStreamer registry build)
+# Wait for service to fully start (backend typically ready in ~25s)
 echo -e "\n${BLUE}🏥 Health check...${NC}"
 
 HEALTH_OK=false
-for i in $(seq 1 12); do
-    sleep 5
-    if curl -s --connect-timeout 3 http://127.0.0.1:8000/api/status/health > /dev/null 2>&1; then
+MAX_WAIT=60
+INTERVAL=2
+ELAPSED=0
+while [ "$ELAPSED" -lt "$MAX_WAIT" ]; do
+    if curl -s --connect-timeout 2 http://127.0.0.1:8000/api/status/health > /dev/null 2>&1; then
         HEALTH_OK=true
+        echo -e "   Backend ready in ${ELAPSED}s"
         break
     fi
-    echo -e "   Waiting for backend... (${i}/12)"
+    sleep "$INTERVAL"
+    ELAPSED=$((ELAPSED + INTERVAL))
+    echo -e "   Waiting for backend... (${ELAPSED}s / ${MAX_WAIT}s max)"
 done
 
 # Step 5: Health check results

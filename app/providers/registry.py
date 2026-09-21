@@ -5,6 +5,8 @@ Enables dynamic provider discovery and instantiation
 
 import logging
 import time
+import copy
+import threading
 from typing import Dict, Type, Optional, List
 from .base import (
     VPNProvider,
@@ -40,6 +42,9 @@ class ProviderRegistry:
 
         # Cache for discover_sources() results: {source_type: (timestamp, results)}
         self._source_discovery_cache: Dict[str, tuple] = {}
+        # Cache for encoder availability probing: (timestamp, results)
+        self._video_encoder_availability_cache: Optional[tuple] = None
+        self._video_encoder_probe_lock = threading.Lock()
 
     # ==================== VPN PROVIDERS ====================
 
@@ -321,7 +326,7 @@ class ProviderRegistry:
         """Get list of registered Video Encoder provider codec IDs"""
         return list(self._video_encoder_providers.keys())
 
-    def get_available_video_encoders(self) -> List[Dict]:
+    def get_available_video_encoders(self, ttl: Optional[float] = None, force_refresh: bool = False) -> List[Dict]:
         """
         Get list of available Video Encoder providers with capabilities.
         Only returns encoders that are actually available on the system.
@@ -340,36 +345,46 @@ class ProviderRegistry:
                 ...
             ]
         """
-        available = []
+        with self._video_encoder_probe_lock:
+            now = time.time()
+            cached = self._video_encoder_availability_cache
+            if not force_refresh and cached:
+                if ttl is None or ttl <= 0:
+                    return copy.deepcopy(cached[1])
+                if (now - cached[0]) < ttl:
+                    return copy.deepcopy(cached[1])
 
-        for codec_id in self._video_encoder_providers:
-            provider = self.get_video_encoder(codec_id)
-            if provider:
-                try:
-                    is_available = provider.is_available()
-                    capabilities = provider.get_capabilities()
+            available = []
 
-                    available.append(
-                        {
-                            "codec_id": codec_id,
-                            "display_name": provider.display_name,
-                            "codec_family": provider.codec_family,
-                            "encoder_type": provider.encoder_type,
-                            "available": is_available,
-                            "capabilities": capabilities,
-                            "class": self._video_encoder_providers[codec_id].__name__,
-                        }
-                    )
-                except Exception as e:
-                    logger.error(f"Error getting capabilities for encoder '{codec_id}': {e}")
+            for codec_id in self._video_encoder_providers:
+                provider = self.get_video_encoder(codec_id)
+                if provider:
+                    try:
+                        is_available = provider.is_available()
+                        capabilities = provider.get_capabilities()
 
-        # Sort by priority (higher first), then by availability
-        available.sort(
-            key=lambda x: (x["available"], x["capabilities"].get("priority", 0)),
-            reverse=True,
-        )
+                        available.append(
+                            {
+                                "codec_id": codec_id,
+                                "display_name": provider.display_name,
+                                "codec_family": provider.codec_family,
+                                "encoder_type": provider.encoder_type,
+                                "available": is_available,
+                                "capabilities": capabilities,
+                                "class": self._video_encoder_providers[codec_id].__name__,
+                            }
+                        )
+                    except Exception as e:
+                        logger.error(f"Error getting capabilities for encoder '{codec_id}': {e}")
 
-        return available
+            # Sort by priority (higher first), then by availability
+            available.sort(
+                key=lambda x: (x["available"], x["capabilities"].get("priority", 0)),
+                reverse=True,
+            )
+
+            self._video_encoder_availability_cache = (now, available)
+            return copy.deepcopy(available)
 
     def get_best_video_encoder(self, codec_family: Optional[str] = None) -> Optional[VideoEncoderProvider]:
         """
@@ -583,6 +598,7 @@ class ProviderRegistry:
         self._video_encoder_instances.clear()
         self._video_source_instances.clear()
         self._source_discovery_cache.clear()
+        self._video_encoder_availability_cache = None
         logger.info("Provider cache cleared")
 
 

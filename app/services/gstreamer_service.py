@@ -12,6 +12,8 @@ import asyncio
 import queue
 import time
 from typing import Optional, Dict, Any
+from app.utils.cmd import run_cmd
+from app.services.gstreamer_helpers import calculate_health, format_uptime
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +76,7 @@ class GStreamerService:
 
         # Provider tracking
         self.current_encoder_provider: Optional[str] = None
+        self.current_encoder_codec_id: Optional[str] = None
         self.current_source_provider: Optional[str] = None
 
         # RTSP Server for RTSP streaming mode
@@ -108,6 +111,7 @@ class GStreamerService:
             "last_frames_count": 0,
             "last_bytes_count": 0,
             "current_fps": 0,
+            "fps_ema": None,
             "current_bitrate": 0,
         }
 
@@ -150,7 +154,7 @@ class GStreamerService:
         # If RTSP server already exists, connect it
         if self.rtsp_server:
             self.rtsp_server.set_opencv_service(opencv_service)
-        print("✅ OpenCV service connected to video stream service")
+        logger.info("OpenCV service connected to video stream service")
 
     def _is_opencv_enabled(self) -> bool:
         """Check if OpenCV processing is enabled and configured (filter or OSD)"""
@@ -181,7 +185,10 @@ class GStreamerService:
             caps = Gst.Caps.from_string(caps_str)
             appsink.set_property("caps", caps)
 
-            print(f"   📥 OpenCV appsink configured: {width}x{height}@{framerate}fps, BGR format")
+            logger.info(
+                "OpenCV appsink configured",
+                extra={"width": width, "height": height, "framerate": framerate, "format": "BGR"},
+            )
 
             # Connect callback
             appsink.connect("new-sample", self._on_opencv_new_sample)
@@ -202,7 +209,7 @@ class GStreamerService:
             appsrc.set_property("min-latency", -1)
             appsrc.set_property("max-latency", -1)
 
-            print("   📤 OpenCV appsrc configured with explicit BGR caps")
+            logger.info("OpenCV appsrc configured with explicit BGR caps")
 
             pipeline.add(appsink)
             pipeline.add(appsrc)
@@ -212,10 +219,7 @@ class GStreamerService:
             return appsink, appsrc
 
         except Exception as e:
-            print(f"❌ Failed to create OpenCV elements: {e}")
-            import traceback
-
-            traceback.print_exc()
+            logger.exception("Failed to create OpenCV elements", extra={"error": str(e)})
             return None, None
 
     def _push_initial_frame_to_appsrc(self, width, height):
@@ -253,20 +257,20 @@ class GStreamerService:
         try:
             sample = appsink.emit("pull-sample")
             if not sample:
-                print("❌ No sample from appsink")
+                logger.error("No sample from appsink")
                 return Gst.FlowReturn.ERROR
 
             buf = sample.get_buffer()
             caps = sample.get_caps()
 
             if not buf or not caps:
-                print("❌ Invalid buffer or caps")
+                logger.error("Invalid appsink buffer or caps")
                 return Gst.FlowReturn.ERROR
 
             # Extract frame data
             success, map_info = buf.map(Gst.MapFlags.READ)
             if not success:
-                print("❌ Failed to map buffer")
+                logger.error("Failed to map appsink buffer")
                 return Gst.FlowReturn.ERROR
 
             # Get dimensions from caps
@@ -290,7 +294,10 @@ class GStreamerService:
             expected_size = height * width * channels
             actual_size = map_info.size
             if actual_size != expected_size:
-                print(f"⚠️ Buffer size mismatch: expected {expected_size}, got {actual_size}")
+                logger.warning(
+                    "OpenCV buffer size mismatch",
+                    extra={"expected_size": expected_size, "actual_size": actual_size},
+                )
 
             # Convert to numpy array with correct dimensions
             frame_data = np.ndarray(shape=(height, width, channels), dtype=np.uint8, buffer=map_info.data)
@@ -349,15 +356,12 @@ class GStreamerService:
             return Gst.FlowReturn.OK
 
         except Exception as e:
-            print(f"❌ Error in OpenCV callback: {e}")
-            import traceback
-
-            traceback.print_exc()
+            logger.exception("Error in OpenCV callback", extra={"error": str(e)})
             return Gst.FlowReturn.ERROR
 
     def _opencv_processing_loop(self):
         """Thread loop that processes frames with OpenCV"""
-        print("🎨 OpenCV processing thread started")
+        logger.info("OpenCV processing thread started")
         frame_count = 0
 
         while self._opencv_running:
@@ -377,22 +381,25 @@ class GStreamerService:
                 try:
                     processed_frame = self._opencv_service.process_frame(frame)
                 except Exception as e:
-                    print(f"❌ Frame {frame_count}: Processing failed: {e}")
-                    import traceback
-
-                    traceback.print_exc()
+                    logger.exception(
+                        "OpenCV frame processing failed",
+                        extra={"frame_count": frame_count, "error": str(e)},
+                    )
                     continue
 
                 # Validate processed frame
                 if processed_frame is None or not isinstance(processed_frame, np.ndarray):
-                    print(f"❌ Frame {frame_count}: Invalid frame after processing")
+                    logger.error("Invalid frame after processing", extra={"frame_count": frame_count})
                     continue
 
-                print(f"   Frame {frame_count}: Output valid, shape={processed_frame.shape}")
+                logger.debug(
+                    "Processed OpenCV frame is valid",
+                    extra={"frame_count": frame_count, "shape": str(processed_frame.shape)},
+                )
 
                 # Ensure frame is C-contiguous before converting to bytes
                 if not processed_frame.flags["C_CONTIGUOUS"]:
-                    print(f"   Frame {frame_count}: Making contiguous")
+                    logger.debug("Making processed frame contiguous", extra={"frame_count": frame_count})
                     processed_frame = np.ascontiguousarray(processed_frame)
 
                 self._opencv_frames_processed += 1
@@ -400,48 +407,60 @@ class GStreamerService:
                 # Convert back to bytes
                 try:
                     frame_bytes = processed_frame.tobytes()
-                    print(f"   Frame {frame_count}: Converted to bytes, size={len(frame_bytes)}")
+                    logger.debug(
+                        "Processed frame converted to bytes",
+                        extra={"frame_count": frame_count, "size": len(frame_bytes)},
+                    )
                 except Exception as e:
-                    print(f"❌ Frame {frame_count}: Failed to convert to bytes: {e}")
+                    logger.error(
+                        "Failed to convert processed frame to bytes",
+                        extra={"frame_count": frame_count, "error": str(e)},
+                    )
                     continue
 
                 # Create GStreamer buffer
                 buf = Gst.Buffer.new_allocate(None, len(frame_bytes), None)
                 if buf is None:
-                    print(f"❌ Frame {frame_count}: Failed to create GStreamer buffer")
+                    logger.error("Failed to create GStreamer buffer", extra={"frame_count": frame_count})
                     continue
 
                 buf.fill(0, frame_bytes)
                 buf.pts = pts
                 buf.duration = duration
 
-                print(f"   Frame {frame_count}: GStreamer buffer created, size={buf.get_size()}")
+                logger.debug(
+                    "GStreamer buffer created for processed frame",
+                    extra={"frame_count": frame_count, "size": buf.get_size()},
+                )
 
                 # Push to appsrc
                 if self._opencv_appsrc:
                     try:
                         ret = self._opencv_appsrc.emit("push-buffer", buf)
                         if ret == Gst.FlowReturn.OK:
-                            print(f"   Frame {frame_count}: ✅ Pushed to appsrc")
+                            logger.debug("Processed frame pushed to appsrc", extra={"frame_count": frame_count})
                         else:
-                            print(f"❌ Frame {frame_count}: Failed to push buffer, return code: {ret}")
+                            logger.error(
+                                "Failed to push processed frame to appsrc",
+                                extra={"frame_count": frame_count, "return_code": str(ret)},
+                            )
                     except Exception as e:
-                        print(f"❌ Frame {frame_count}: Exception pushing buffer: {e}")
+                        logger.error(
+                            "Exception pushing processed frame to appsrc",
+                            extra={"frame_count": frame_count, "error": str(e)},
+                        )
                 else:
-                    print(f"❌ Frame {frame_count}: appsrc is None")
+                    logger.error("OpenCV appsrc is None", extra={"frame_count": frame_count})
 
                 frame_count += 1
 
             except queue.Empty:
                 continue
             except Exception as e:
-                print(f"❌ Error in OpenCV processing loop: {e}")
-                import traceback
-
-                traceback.print_exc()
+                logger.exception("Error in OpenCV processing loop", extra={"error": str(e)})
                 time.sleep(0.01)  # Brief pause on error
 
-        print(f"🎨 OpenCV processing thread stopped (processed {frame_count} frames)")
+        logger.info("OpenCV processing thread stopped", extra={"processed_frames": frame_count})
 
     def _start_opencv_processing_thread(self):
         """Start the OpenCV processing thread"""
@@ -456,7 +475,7 @@ class GStreamerService:
         self._opencv_thread = threading.Thread(target=self._opencv_processing_loop, daemon=True)
         self._opencv_thread.start()
 
-        print("✅ OpenCV processing thread started")
+        logger.info("OpenCV processing thread launched")
 
     def _stop_opencv_processing_thread(self):
         """Stop the OpenCV processing thread"""
@@ -471,7 +490,7 @@ class GStreamerService:
         if self._opencv_frames_processed > 0:
             processed = self._opencv_frames_processed
             dropped = self._opencv_frames_dropped
-            print(f"📊 OpenCV stats: {processed} frames processed, {dropped} dropped")
+            logger.info("OpenCV processing stats", extra={"processed": processed, "dropped": dropped})
 
         self._opencv_thread = None
         self._opencv_queue = None
@@ -495,9 +514,13 @@ class GStreamerService:
                 if hasattr(self.streaming_config, key):
                     setattr(self.streaming_config, key, value)
 
-        print(
-            f"📹 Video config updated: "
-            f"{self.video_config.width}x{self.video_config.height}@{self.video_config.framerate}fps"
+        logger.info(
+            "Video config updated",
+            extra={
+                "width": self.video_config.width,
+                "height": self.video_config.height,
+                "framerate": self.video_config.framerate,
+            },
         )
 
         # Log streaming destination based on mode
@@ -505,15 +528,15 @@ class GStreamerService:
         if mode == "udp":
             host = self.streaming_config.udp_host
             port = self.streaming_config.udp_port
-            print(f"📡 Streaming mode: UDP unicast → {host}:{port}")
+            logger.info("Streaming mode configured", extra={"mode": "udp", "host": host, "port": port})
         elif mode == "multicast":
             group = self.streaming_config.multicast_group
             mport = self.streaming_config.multicast_port
-            print(f"📡 Streaming mode: UDP multicast → {group}:{mport}")
+            logger.info("Streaming mode configured", extra={"mode": "multicast", "group": group, "port": mport})
         elif mode == "rtsp":
-            print(f"📡 Streaming mode: RTSP Server → {self.streaming_config.rtsp_url}")
+            logger.info("Streaming mode configured", extra={"mode": "rtsp", "url": self.streaming_config.rtsp_url})
         else:
-            print(f"📡 Streaming mode: {mode}")
+            logger.info("Streaming mode configured", extra={"mode": mode})
 
         # Broadcast updated status
         self._broadcast_status()
@@ -530,12 +553,17 @@ class GStreamerService:
 
             detected_board = BoardRegistry().get_detected_board()
             if detected_board:
-                print(f"\n🎯 Building video pipeline for: {detected_board.board_name}")
-                print(f"   - Variant: {detected_board.variant.name}")
-                print(f"   - Available encoders: {', '.join([f.value for f in detected_board.variant.video_encoders])}")
-                print(f"   - Available sources: {', '.join([f.value for f in detected_board.variant.video_sources])}")
+                logger.info(
+                    "Building video pipeline for detected board",
+                    extra={
+                        "board_name": detected_board.board_name,
+                        "variant": detected_board.variant.name,
+                        "available_encoders": ", ".join([f.value for f in detected_board.variant.video_encoders]),
+                        "available_sources": ", ".join([f.value for f in detected_board.variant.video_sources]),
+                    },
+                )
         except Exception as e:
-            print(f"   (Board info unavailable: {e})")
+            logger.debug("Board info unavailable during pipeline build", extra={"error": str(e)})
 
         # WebRTC mode uses its own lightweight pipeline (camera → jpegenc → appsink)
         if self.streaming_config.mode == "webrtc":
@@ -643,7 +671,7 @@ class GStreamerService:
 
             if source_is_jpeg:
                 # MJPEG source → decode JPEG to raw video
-                print("   → Source outputs MJPEG, adding jpegdec")
+                logger.info("WebRTC source outputs MJPEG, adding jpegdec")
                 jpegdec = Gst.ElementFactory.make("jpegdec", "webrtc_jpegdec")
                 if not jpegdec:
                     self.last_error = "jpegdec GStreamer plugin not available"
@@ -661,7 +689,7 @@ class GStreamerService:
             opencv_appsrc = None
             opencv_appsink_idx = -1
             if self._is_opencv_enabled():
-                print("   → OpenCV processing ENABLED")
+                logger.info("OpenCV processing enabled for WebRTC pipeline")
                 w = self.video_config.width
                 h = self.video_config.height
                 fps = self.video_config.framerate
@@ -677,7 +705,7 @@ class GStreamerService:
                         capsfilter_bgr.set_property("caps", caps)
                         pipeline.add(capsfilter_bgr)
                         elements.append(capsfilter_bgr)
-                        print("   🔧 BGR capsfilter inserted before appsink")
+                        logger.info("BGR capsfilter inserted before OpenCV appsink")
 
                     # Mark position for special linking AFTER adding capsfilter
                     # opencv_appsink_idx points to the appsink element that receives data
@@ -694,11 +722,11 @@ class GStreamerService:
                     # Start OpenCV processing thread
                     self._start_opencv_processing_thread()
                 else:
-                    print("   ⚠️  OpenCV elements creation failed, continuing without processing")
+                    logger.warning("OpenCV elements creation failed, continuing without processing")
                     opencv_appsink = None
                     opencv_appsrc = None
             else:
-                print("   → OpenCV processing DISABLED")
+                logger.info("OpenCV processing disabled for WebRTC pipeline")
 
             # ── H264 encoder selection: try x264enc first, then openh264enc ──
             bitrate_kbps = self.video_config.h264_bitrate or 1500
@@ -716,7 +744,7 @@ class GStreamerService:
                 elements.append(x264enc)
                 # Install encoder stats probes
                 self._install_encoder_probes(x264enc)
-                print(f"   → Using x264enc (ultrafast/zerolatency) @ {bitrate_kbps} kbps")
+                logger.info("Using x264enc for WebRTC pipeline", extra={"bitrate_kbps": bitrate_kbps})
             else:
                 openh264enc = Gst.ElementFactory.make("openh264enc", "webrtc_h264enc")
                 if openh264enc:
@@ -727,7 +755,7 @@ class GStreamerService:
                     elements.append(openh264enc)
                     # Install encoder stats probes
                     self._install_encoder_probes(openh264enc)
-                    print(f"   → Using openh264enc @ {bitrate_kbps} kbps")
+                    logger.info("Using openh264enc for WebRTC pipeline", extra={"bitrate_kbps": bitrate_kbps})
                 else:
                     self.last_error = "No H264 encoder available (need x264enc or openh264enc)"
                     return False
@@ -788,40 +816,67 @@ class GStreamerService:
                 self._push_initial_frame_to_appsrc(config["width"], config["height"])
 
             decode_step = "jpegdec → " if source_is_jpeg else ""
-            print(
-                f"✅ WebRTC H264 pipeline built: {src_cfg['element']} → {decode_step}"
-                f"videoconvert → {encoder_name} → h264parse → appsink "
-                f"({config['width']}x{config['height']}@{config['framerate']}fps @ {bitrate_kbps}kbps)"
+            logger.info(
+                "WebRTC H264 pipeline built",
+                extra={
+                    "source_element": src_cfg["element"],
+                    "decode_step": decode_step.strip(),
+                    "encoder": encoder_name,
+                    "width": config["width"],
+                    "height": config["height"],
+                    "framerate": config["framerate"],
+                    "bitrate_kbps": bitrate_kbps,
+                },
             )
             return True
 
         except Exception as e:
             self.last_error = f"WebRTC pipeline error: {e}"
-            print(f"❌ {self.last_error}")
-            import traceback
-
-            traceback.print_exc()
+            logger.exception(self.last_error)
             return False
 
     def force_keyframe(self):
         """Force the GStreamer H264 encoder to produce an IDR keyframe.
-        Called when a new WebRTC peer connects so it gets SPS/PPS/IDR."""
+        Called when a new WebRTC peer connects so it gets SPS/PPS/IDR.
+
+        Two cases:
+        - Software/hardware encoder (webrtc_h264enc): send GstForceKeyUnit
+          event upstream from the encoder's srcpad.
+        - Passthrough mode (no encoder): send GstForceKeyUnit upstream from
+          the h264parse sinkpad so v4l2src passes it to the UVC camera via
+          V4L2_CID_MPEG_VIDEO_FORCE_KEY_FRAME. This requests an immediate IDR
+          from the Firefly instead of waiting up to 2-5s for the next natural one.
+        """
         if not self.pipeline or not GSTREAMER_AVAILABLE:
             return False
         try:
+            # ── Case 1: active software/HW encoder ──────────────────────
             encoder = self.pipeline.get_by_name("webrtc_h264enc")
             if encoder:
-                # Send force-keyunit event on the encoder's srcpad (upstream event
-                # must be sent on a downstream-facing pad to travel into the encoder)
                 result = Gst.Structure.new_from_string("GstForceKeyUnit, all-headers=(boolean)true")
                 structure = result[0] if isinstance(result, tuple) else result
                 event = Gst.Event.new_custom(Gst.EventType.CUSTOM_UPSTREAM, structure)
                 srcpad = encoder.get_static_pad("src")
                 success = srcpad.send_event(event)
-                print(f"🔑 Force keyframe requested → {success}")
+                logger.debug(f"🔑 Force keyframe requested → {success}")
+                return success
+
+            # ── Case 2: passthrough mode (h264parse element present) ─────
+            # Send GstForceKeyUnit upstream from h264parse's sinkpad.
+            # GStreamer's v4l2src will handle the event and invoke
+            # V4L2_CID_MPEG_VIDEO_FORCE_KEY_FRAME on the UVC camera, triggering
+            # an IDR frame from the Firefly's built-in H.264 encoder.
+            h264parse = self.pipeline.get_by_name("h264parse")
+            if h264parse:
+                result = Gst.Structure.new_from_string("GstForceKeyUnit, all-headers=(boolean)true")
+                structure = result[0] if isinstance(result, tuple) else result
+                event = Gst.Event.new_custom(Gst.EventType.CUSTOM_UPSTREAM, structure)
+                sinkpad = h264parse.get_static_pad("sink")
+                success = sinkpad.send_event(event)
+                logger.debug(f"🔑 Force keyframe (passthrough→UVC camera) requested → {success}")
                 return success
         except Exception as e:
-            print(f"⚠️ Force keyframe failed: {e}")
+            logger.warning(f"⚠️ Force keyframe failed: {e}")
         return False
 
     def _install_encoder_probes(self, encoder_element):
@@ -841,8 +896,8 @@ class GStreamerService:
         for pad, probe_id in self._encoder_probe_ids:
             try:
                 pad.remove_probe(probe_id)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Suppressed exception", exc_info=e)
         self._encoder_probe_ids.clear()
 
     def _install_passthrough_probes(self, rtppay_element):
@@ -884,7 +939,7 @@ class GStreamerService:
                 buf.unmap(map_info)
 
         except Exception as e:
-            print(f"⚠️ WebRTC appsink error: {e}")
+            logger.warning("WebRTC appsink error", extra={"error": str(e)})
 
         return Gst.FlowReturn.OK
 
@@ -917,8 +972,8 @@ class GStreamerService:
             available_encoders = []
             if detected_board:
                 available_encoders = [f.value for f in detected_board.variant.video_encoders]
-                print(f"📊 Board supports encoders: {available_encoders}")
-            print(f"   User requested: {codec_id}")
+                logger.info("Board encoder capabilities detected", extra={"available_encoders": available_encoders})
+            logger.info("Requested codec received", extra={"codec_id": codec_id})
 
             # Normalize aliases
             requested_codec_id = codec_id
@@ -930,21 +985,21 @@ class GStreamerService:
             if requested_codec_id in ("h264", "x264"):
                 hw_provider = registry.get_video_encoder("h264_hardware")
                 if hw_provider and hw_provider.is_available():
-                    print("🚀 Hardware H.264 encoder detected — auto-upgrading from software")
+                    logger.info("Hardware H.264 encoder detected, auto-upgrading from software")
                     return "h264_hardware"
 
             # If explicitly requesting hardware and it's available, use it
             if requested_codec_id in ("h264_hardware", "h264_hw", "h264_hw_meson"):
                 hw_provider = registry.get_video_encoder("h264_hardware")
                 if hw_provider and hw_provider.is_available():
-                    print("✅ Using hardware H.264 encoder")
+                    logger.info("Using hardware H.264 encoder")
                     return "h264_hardware"
                 # HW not available — fall back
-                print("⚠️ Hardware H.264 encoder not available, falling back to x264")
+                logger.warning("Hardware H.264 encoder not available, falling back to x264")
                 sw_provider = registry.get_video_encoder("h264")
                 if sw_provider and sw_provider.is_available():
                     return "h264"
-                print("⚠️ x264 also unavailable, falling back to MJPEG")
+                logger.warning("x264 unavailable, falling back to MJPEG")
                 return "mjpeg"
 
             # Map codec ID to board feature names for feature-gate check
@@ -960,24 +1015,32 @@ class GStreamerService:
             # If board info available, verify codec is in feature list
             if detected_board and requested_feature:
                 if requested_feature in available_encoders:
-                    print(f"✅ Using {normalized_codec_id} (supported on board)")
+                    logger.info("Using board-supported codec", extra={"codec_id": normalized_codec_id})
                     return normalized_codec_id
                 else:
                     # Feature not declared, but the provider might still work
                     provider = registry.get_video_encoder(normalized_codec_id)
                     if provider and provider.is_available():
-                        print(f"⚠️ {normalized_codec_id} not in board features but GStreamer reports available")
+                        logger.warning(
+                            "Codec not in board features but GStreamer reports available",
+                            extra={"codec_id": normalized_codec_id},
+                        )
                         return normalized_codec_id
                     # Fallback chain: h264 → mjpeg
                     if normalized_codec_id != "mjpeg":
-                        print(f"⚠️ {requested_codec_id} not available, falling back to mjpeg")
+                        logger.warning(
+                            "Requested codec unavailable, falling back to MJPEG",
+                            extra={"requested_codec_id": requested_codec_id},
+                        )
                         return "mjpeg"
 
             # No board detection — trust the requested codec
             return normalized_codec_id
 
         except Exception as e:
-            print(f"⚠️ Board adaptation error: {e}, using requested codec")
+            logger.warning(
+                "Board adaptation error, using requested codec", extra={"error": str(e), "codec_id": codec_id}
+            )
             return codec_id
 
     def _build_pipeline_from_provider(self, codec_id: str) -> bool:  # noqa: C901
@@ -993,11 +1056,11 @@ class GStreamerService:
             provider = registry.get_video_encoder(codec_id)
 
             if not provider:
-                print(f"⚠️ No provider found for codec: {codec_id}")
+                logger.warning("No provider found for codec", extra={"codec_id": codec_id})
                 return False
 
             if not provider.is_available():
-                print(f"⚠️ Provider {codec_id} not available on system")
+                logger.warning("Codec provider not available on system", extra={"codec_id": codec_id})
                 return False
 
             # Get video source provider FIRST to determine source format
@@ -1027,7 +1090,7 @@ class GStreamerService:
                 self.current_source_provider = source_provider.display_name
 
             if not source_provider:
-                print(f"❌ No video source provider available for {self.video_config.device}")
+                logger.error("No video source provider available", extra={"device": self.video_config.device})
                 self.last_error = "No video source provider available"
                 return False
 
@@ -1057,7 +1120,7 @@ class GStreamerService:
                     # Use board-recommended GOP if user hasn't explicitly set one
                     if not self.video_config.gop_size or self.video_config.gop_size <= 0:
                         config["gop_size"] = hints.get("recommended_gop", 30)
-                        print(f"   📋 Board hint: gop_size={config['gop_size']}")
+                        logger.info("Applied board GOP hint", extra={"gop_size": config["gop_size"]})
             except Exception:
                 pass  # Board hints are optional optimizations
 
@@ -1075,17 +1138,20 @@ class GStreamerService:
             if validation and not validation.get("valid", True):
                 errors = validation.get("errors", [])
                 self.last_error = "; ".join(errors) if errors else "Invalid video configuration for this camera"
-                print(f"❌ Source validation failed: {self.last_error}")
+                logger.error("Source validation failed", extra={"error": self.last_error})
                 return False
             if validation:
                 for warning in validation.get("warnings", []):
-                    print(f"⚠️ Source config: {warning}")
+                    logger.warning("Source config warning", extra={"warning": warning})
                 adjusted = validation.get("adjusted_config")
                 if adjusted:
                     # Apply auto-corrected values (e.g. nearest supported resolution)
                     for key in ("width", "height", "framerate"):
                         if key in adjusted and adjusted[key] != config.get(key):
-                            print(f"   ↳ Auto-adjusted {key}: {config[key]} → {adjusted[key]}")
+                            logger.info(
+                                "Auto-adjusted source config",
+                                extra={"key": key, "previous": config[key], "adjusted": adjusted[key]},
+                            )
                             config[key] = adjusted[key]
                             setattr(self.video_config, key, adjusted[key])
 
@@ -1093,7 +1159,7 @@ class GStreamerService:
             source_config_result = source_provider.build_source_element(self.video_config.device, config)
 
             if not source_config_result["success"]:
-                print(f"❌ Failed to build source element: {source_config_result.get('error')}")
+                logger.error("Failed to build source element", extra={"error": source_config_result.get("error")})
                 self.last_error = source_config_result.get("error", "Unknown error")
                 return False
 
@@ -1112,7 +1178,7 @@ class GStreamerService:
                 # Check if passthrough encoder is available
                 passthrough_provider = registry.get_video_encoder("h264_passthrough")
                 if passthrough_provider and passthrough_provider.is_available():
-                    print("🚀 Camera outputs native H.264, using passthrough mode (ultra low latency)")
+                    logger.info("Camera outputs native H.264, using passthrough mode")
                     codec_id = "h264_passthrough"
                     provider = passthrough_provider
                     # Update encoder provider name
@@ -1122,33 +1188,37 @@ class GStreamerService:
             # Validate config
             validation = provider.validate_config(config)
             if not validation["valid"]:
-                print(f"❌ Invalid config: {validation['errors']}")
+                logger.error("Invalid encoder config", extra={"errors": validation["errors"]})
                 self.last_error = "; ".join(validation["errors"])
                 return False
 
             if validation["warnings"]:
                 for warning in validation["warnings"]:
-                    print(f"⚠️ {warning}")
+                    logger.warning("Encoder config warning", extra={"warning": warning})
 
             # Get pipeline elements from provider
             pipeline_config = provider.build_pipeline_elements(config)
             if not pipeline_config["success"]:
-                print(f"❌ Failed to build pipeline elements: {pipeline_config.get('error', 'Unknown error')}")
+                logger.error(
+                    "Failed to build pipeline elements",
+                    extra={"error": pipeline_config.get("error", "Unknown error")},
+                )
                 self.last_error = pipeline_config.get("error", "Unknown error")
                 return False
 
             # Create GStreamer pipeline
-            print(f"🔧 Building pipeline with encoder: {provider.display_name}")
+            logger.info("Building pipeline with encoder", extra={"provider": provider.display_name})
             pipeline = Gst.Pipeline.new(f"fpv-{codec_id}-pipeline")
 
             # Store encoder provider name for status reporting
             self.current_encoder_provider = provider.display_name
+            self.current_encoder_codec_id = codec_id
 
             # Create source element
             source_cfg = source_config_result["source_element"]
             source = Gst.ElementFactory.make(source_cfg["element"], source_cfg["name"])
             if not source:
-                print(f"❌ Failed to create source element: {source_cfg['element']}")
+                logger.error("Failed to create source element instance", extra={"element": source_cfg["element"]})
                 return False
 
             # Set source properties
@@ -1169,7 +1239,7 @@ class GStreamerService:
             for elem_config in source_config_result.get("post_elements", []):
                 element = Gst.ElementFactory.make(elem_config["element"], elem_config["name"])
                 if not element:
-                    print(f"❌ Failed to create post-source element: {elem_config['element']}")
+                    logger.error("Failed to create post-source element", extra={"element": elem_config["element"]})
                     return False
 
                 for prop, value in elem_config.get("properties", {}).items():
@@ -1191,10 +1261,10 @@ class GStreamerService:
             is_h264_source = "video/x-h264" in caps_filter_str or "video/x-h264" in output_format
 
             if opencv_enabled:
-                print("🎨 OpenCV processing enabled - inserting into pipeline")
+                logger.info("OpenCV processing enabled, inserting into pipeline")
 
                 if is_jpeg_source:
-                    print("   → Detected MJPEG source, adding jpegdec + videoconvert")
+                    logger.info("Detected MJPEG source, adding jpegdec and videoconvert")
                     # Add jpegdec to decode MJPEG
                     jpegdec = Gst.ElementFactory.make("jpegdec", "opencv_jpegdec")
                     if jpegdec:
@@ -1207,7 +1277,7 @@ class GStreamerService:
                         pipeline.add(videoconv)
                         elements_list.append(videoconv)
                 elif is_h264_source:
-                    print("   → Detected H.264 source, adding avdec_h264 + videoconvert")
+                    logger.info("Detected H.264 source, adding avdec_h264 and videoconvert")
                     # Add avdec_h264 to decode H.264
                     h264dec = Gst.ElementFactory.make("avdec_h264", "opencv_h264dec")
                     if h264dec:
@@ -1235,7 +1305,7 @@ class GStreamerService:
                         capsfilter_bgr.set_property("caps", caps)
                         pipeline.add(capsfilter_bgr)
                         elements_list.append(capsfilter_bgr)
-                        print("   🔧 BGR capsfilter inserted before appsink")
+                        logger.info("BGR capsfilter inserted before OpenCV appsink")
 
                     # Mark position for special linking AFTER adding capsfilter
                     opencv_appsink_idx = len(elements_list)
@@ -1250,7 +1320,7 @@ class GStreamerService:
                     # Start OpenCV processing thread
                     self._start_opencv_processing_thread()
                 else:
-                    print("⚠️ Failed to create OpenCV elements, continuing without processing")
+                    logger.warning("Failed to create OpenCV elements, continuing without processing")
                     opencv_enabled = False
                     opencv_appsink_idx = -1
             # ══════════════════════════════════════════════════════════════
@@ -1264,7 +1334,7 @@ class GStreamerService:
 
                 element = Gst.ElementFactory.make(elem_config["element"], elem_config["name"])
                 if not element:
-                    print(f"❌ Failed to create element: {elem_config['element']}")
+                    logger.error("Failed to create pipeline element", extra={"element": elem_config["element"]})
                     return False
 
                 # Set properties
@@ -1276,7 +1346,15 @@ class GStreamerService:
                         else:
                             element.set_property(prop, value)
                     except Exception as e:
-                        print(f"⚠️ Failed to set property {prop}={value} on {elem_config['name']}: {e}")
+                        logger.warning(
+                            "Failed to set pipeline element property",
+                            extra={
+                                "property": prop,
+                                "value": str(value),
+                                "element": elem_config["name"],
+                                "error": str(e),
+                            },
+                        )
 
                 pipeline.add(element)
                 elements_list.append(element)
@@ -1290,12 +1368,12 @@ class GStreamerService:
                 self._install_encoder_probes(encoder_element)
             else:
                 # No encoder (passthrough mode) - install probe on RTP payloader instead
-                print("📊 Passthrough mode: Installing probe on RTP payloader for stats")
+                logger.info("Passthrough mode detected, installing probe on RTP payloader")
 
             # Add RTP payloader
             rtppay = Gst.ElementFactory.make(pipeline_config["rtp_payloader"], "rtppay")
             if not rtppay:
-                print(f"❌ Failed to create RTP payloader: {pipeline_config['rtp_payloader']}")
+                logger.error("Failed to create RTP payloader", extra={"element": pipeline_config["rtp_payloader"]})
                 return False
 
             for prop, value in pipeline_config["rtp_payloader_properties"].items():
@@ -1311,7 +1389,7 @@ class GStreamerService:
             # Create sink based on streaming mode
             sink = self._create_sink_for_mode()
             if not sink:
-                print(f"❌ Failed to create sink for mode: {self.streaming_config.mode}")
+                logger.error("Failed to create sink for mode", extra={"mode": self.streaming_config.mode})
                 return False
 
             pipeline.add(sink)
@@ -1343,14 +1421,11 @@ class GStreamerService:
             bus.connect("message", self._on_bus_message)
 
             self.pipeline = pipeline
-            print(f"✅ Pipeline built successfully using provider: {provider.display_name}")
+            logger.info("Pipeline built successfully using provider", extra={"provider": provider.display_name})
             return True
 
         except Exception as e:
-            print(f"❌ Exception building pipeline from provider: {e}")
-            import traceback
-
-            traceback.print_exc()
+            logger.exception("Exception building pipeline from provider", extra={"error": str(e)})
             self.last_error = str(e)
             return False
 
@@ -1360,7 +1435,7 @@ class GStreamerService:
         Returns GStreamer sink element or None on error.
         """
         mode = self.streaming_config.mode
-        print(f"📡 Creating sink for mode: {mode}")
+        logger.info("Creating sink for mode", extra={"mode": mode})
 
         try:
             if mode == "udp":
@@ -1372,7 +1447,10 @@ class GStreamerService:
                 sink.set_property("port", self.streaming_config.udp_port)
                 sink.set_property("sync", False)
                 sink.set_property("async", False)
-                print(f"   → UDP unicast to {self.streaming_config.udp_host}:{self.streaming_config.udp_port}")
+                logger.info(
+                    "Using UDP unicast sink",
+                    extra={"host": self.streaming_config.udp_host, "port": self.streaming_config.udp_port},
+                )
                 return sink
 
             elif mode == "multicast":
@@ -1388,7 +1466,7 @@ class GStreamerService:
                 sink.set_property("async", False)
                 group = self.streaming_config.multicast_group
                 mport = self.streaming_config.multicast_port
-                print(f"   → UDP multicast to {group}:{mport}")
+                logger.info("Using UDP multicast sink", extra={"group": group, "port": mport})
                 return sink
 
             elif mode == "webrtc":
@@ -1399,15 +1477,15 @@ class GStreamerService:
                     return None
                 sink.set_property("sync", False)
                 sink.set_property("async", False)
-                print("   → WebRTC mode (fakesink + appsink for aiortc)")
+                logger.info("Using WebRTC sink mode with fakesink plus appsink")
                 return sink
 
             else:
-                print(f"⚠️ Unknown streaming mode: {mode}, falling back to UDP")
+                logger.warning("Unknown streaming mode, falling back to UDP", extra={"mode": mode})
                 return self._create_fallback_udp_sink()
 
         except Exception as e:
-            print(f"❌ Error creating sink for mode {mode}: {e}")
+            logger.error("Error creating sink for mode", extra={"mode": mode, "error": str(e)})
             return None
 
     def _create_fallback_udp_sink(self):
@@ -1418,7 +1496,10 @@ class GStreamerService:
             sink.set_property("port", self.streaming_config.udp_port)
             sink.set_property("sync", False)
             sink.set_property("async", False)
-            print(f"   → Fallback to UDP: {self.streaming_config.udp_host}:{self.streaming_config.udp_port}")
+            logger.info(
+                "Using fallback UDP sink",
+                extra={"host": self.streaming_config.udp_host, "port": self.streaming_config.udp_port},
+            )
         return sink
 
     def _setup_stats_probes(self):
@@ -1485,15 +1566,30 @@ class GStreamerService:
                 if elapsed >= 0.5:
                     frames_delta = self.stats["frames_sent"] - self.stats["last_frames_count"]
 
-                    self.stats["current_fps"] = int(frames_delta / elapsed)
+                    target_fps = max(1, int(self.video_config.framerate or 30))
+                    instant_fps = max(0.0, frames_delta / max(elapsed, 1e-3))
+                    instant_fps = min(instant_fps, target_fps * 1.05)
+
+                    previous_ema = self.stats.get("fps_ema")
+                    if previous_ema is None:
+                        fps_ema = instant_fps
+                    else:
+                        alpha = 0.22
+                        fps_ema = (1.0 - alpha) * float(previous_ema) + alpha * instant_fps
+
+                    if fps_ema >= (target_fps - 0.35):
+                        fps_ema = float(target_fps)
+
+                    smoothed_fps = int(round(min(fps_ema, float(target_fps))))
+                    self.stats["fps_ema"] = fps_ema
+                    self.stats["current_fps"] = smoothed_fps
 
                     # Estimate bitrate from configured value (byte queries not
                     # supported by udpsink/rtppay in TIME-based pipelines)
                     bitrate = self.video_config.h264_bitrate or 0
                     if self.stats["current_fps"] > 0 and bitrate > 0:
                         # Scale configured bitrate by actual/target FPS ratio
-                        target_fps = self.video_config.framerate or 30
-                        ratio = self.stats["current_fps"] / target_fps
+                        ratio = min(1.0, max(0.0, fps_ema / target_fps))
                         self.stats["current_bitrate"] = int(bitrate * ratio)
                     else:
                         self.stats["current_bitrate"] = bitrate
@@ -1519,29 +1615,34 @@ class GStreamerService:
             err, debug = message.parse_error()
             self.last_error = str(err)
             self.stats["errors"] += 1
-            print(f"❌ GStreamer Error: {err}")
-            if debug:
-                print(f"   Debug: {debug}")
-            # Print element that caused the error
-            if message.src:
-                print(f"   Element: {message.src.get_name()}")
+            logger.error(
+                "GStreamer error",
+                extra={
+                    "error": str(err),
+                    "debug": debug or "",
+                    "element": message.src.get_name() if message.src else "",
+                },
+            )
             self._broadcast_status()
             # Auto-stop to clean up pipeline state
             try:
                 self.stop()
             except Exception as e:
-                print(f"⚠️ Error during auto-stop after pipeline error: {e}")
+                logger.warning("Error during auto-stop after pipeline error", extra={"error": str(e)})
 
         elif t == Gst.MessageType.WARNING:
             warn, debug = message.parse_warning()
-            print(f"⚠️ GStreamer Warning: {warn}")
-            if debug:
-                print(f"   Debug: {debug}")
-            if message.src:
-                print(f"   Element: {message.src.get_name()}")
+            logger.warning(
+                "GStreamer warning",
+                extra={
+                    "warning": str(warn),
+                    "debug": debug or "",
+                    "element": message.src.get_name() if message.src else "",
+                },
+            )
 
         elif t == Gst.MessageType.EOS:
-            print("📹 End of stream")
+            logger.info("GStreamer end of stream")
             self.stop()
 
         elif t == Gst.MessageType.ASYNC_DONE:
@@ -1579,29 +1680,13 @@ class GStreamerService:
                 except PermissionError:
                     pass
             if changed:
-                print(f"⚡ CPU governor set to PERFORMANCE on {changed} cores")
+                logger.info("CPU governor set to performance", extra={"cores_changed": changed})
             elif governors:
-                # Try via sudo as last resort (non-blocking)
-                import subprocess
-
-                try:
-                    subprocess.run(
-                        [
-                            "sudo",
-                            "-n",
-                            "sh",
-                            "-c",
-                            "for g in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; "
-                            'do echo performance > "$g"; done',
-                        ],
-                        timeout=2,
-                        capture_output=True,
-                    )
-                    print("⚡ CPU governor set to PERFORMANCE via sudo")
-                except Exception:
-                    pass
-        except Exception:
-            pass
+                # The systemd unit sets the governor via ExecStartPre; the
+                # privileged helper does not run shells, so nothing more here.
+                logger.debug("CPU governor not set directly (handled by systemd ExecStartPre)")
+        except Exception as e:
+            logger.debug("Suppressed exception", exc_info=e)
 
     def _restore_cpu_mode(self):
         """Restore CPU to power-saving mode"""
@@ -1618,9 +1703,9 @@ class GStreamerService:
                 except PermissionError:
                     pass
             if changed:
-                print(f"💤 CPU governor restored to ONDEMAND on {changed} cores")
-        except Exception:
-            pass
+                logger.info("CPU governor restored to ondemand", extra={"cores_changed": changed})
+        except Exception as e:
+            logger.debug("Suppressed exception", exc_info=e)
 
     def start(self) -> Dict[str, Any]:
         """Start video streaming"""
@@ -1637,17 +1722,26 @@ class GStreamerService:
                 old_device = self.video_config.device
                 self.video_config.device = detected
                 if old_device:
-                    print(f"⚠️ Camera {old_device} not found, using detected: {detected}")
+                    logger.warning(
+                        "Configured camera not found, using detected camera",
+                        extra={"configured_device": old_device, "detected_device": detected},
+                    )
                 else:
-                    print(f"📷 Auto-detected camera: {detected}")
+                    logger.info("Auto-detected camera", extra={"detected_device": detected})
 
                 # Save detected device to preferences for persistence
                 if self.preferences_service:
                     try:
                         self.preferences_service.update_video_source_device(detected)
-                        print(f"💾 Saved detected device to preferences: {detected}")
+                        logger.info(
+                            "Saved detected camera device to preferences",
+                            extra={"detected_device": detected},
+                        )
                     except Exception as e:
-                        print(f"⚠️ Failed to save device to preferences: {e}")
+                        logger.warning(
+                            "Failed to save detected camera device to preferences",
+                            extra={"detected_device": detected, "error": str(e)},
+                        )
             else:
                 msg = (
                     f"Camera not found: {self.video_config.device}"
@@ -1666,9 +1760,9 @@ class GStreamerService:
                 self.webrtc_service.activate()
                 # Give WebRTC service a back-reference for keyframe requests
                 self.webrtc_service._gstreamer_service = self
-                print("\u2705 WebRTC service activated")
+                logger.info("WebRTC service activated")
             except Exception as e:
-                print(f"\u26a0\ufe0f WebRTC activation error: {e}")
+                logger.warning("WebRTC activation error", extra={"error": str(e)})
 
         # Validate streaming configuration for UDP/multicast modes (skip for webrtc)
         if self.streaming_config.mode not in ("webrtc",) and not self.streaming_config.udp_host:
@@ -1700,14 +1794,17 @@ class GStreamerService:
                                     "Consider using WebRTC mode or a VPN (Tailscale/ZeroTier) "
                                     "for reliable 4G streaming."
                                 )
-                                print(f"⚠️ {warning_msg}")
+                                logger.warning(
+                                    "UDP streaming over 4G/LTE detected",
+                                    extra={"warning_message": warning_msg},
+                                )
                                 if self.websocket_manager and self.event_loop:
                                     await self.websocket_manager.broadcast(
                                         "video_warning",
                                         {"type": "udp_over_4g", "message": warning_msg},
                                     )
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.debug("Suppressed exception", exc_info=e)
 
                     asyncio.run_coroutine_threadsafe(_check_and_warn(), self.event_loop)
                 # If no loop running, skip - non-critical warning
@@ -1744,6 +1841,7 @@ class GStreamerService:
             self.stats["last_frames_count"] = 0
             self.stats["last_bytes_count"] = 0
             self.stats["current_fps"] = 0
+            self.stats["fps_ema"] = None
             self.stats["current_bitrate"] = 0
 
             # Reset encoder stats
@@ -1791,7 +1889,7 @@ class GStreamerService:
         """Start RTSP server for RTSP streaming mode"""
         import time
 
-        print("📡 Starting RTSP Server mode...")
+        logger.info("Starting RTSP server mode")
 
         # Create RTSP server if not exists
         if not self.rtsp_server:
@@ -1837,8 +1935,7 @@ class GStreamerService:
             ip_address = self._get_streaming_ip()
             rtsp_url = self.rtsp_server.get_url(ip_address)
 
-            print("✅ RTSP Server started successfully")
-            print(f"   📺 Connect with VLC: {rtsp_url}")
+            logger.info("RTSP server started successfully", extra={"url": rtsp_url})
 
             self._broadcast_status()
 
@@ -1850,7 +1947,7 @@ class GStreamerService:
                 "url": rtsp_url,
             }
         except Exception as e:
-            print(f"❌ Failed to start RTSP Server: {e}")
+            logger.error("Failed to start RTSP server", extra={"error": str(e)})
             return {"success": False, "message": f"Failed to start RTSP Server: {str(e)}"}
 
     def stop(self) -> Dict[str, Any]:
@@ -1863,7 +1960,7 @@ class GStreamerService:
 
         # Check if RTSP server is running
         if self.rtsp_server and self.rtsp_server.is_running():
-            print("🛑 Stopping RTSP Server...")
+            logger.info("Stopping RTSP server")
             self.rtsp_server.stop()
             self.rtsp_server = None
             self.is_streaming = False
@@ -1873,23 +1970,23 @@ class GStreamerService:
         if not self.is_streaming and not self.pipeline:
             return {"success": False, "message": "Not streaming"}
 
-        print("🛑 Stopping video stream...")
+        logger.info("Stopping video stream")
 
         # Stop WebRTC adapter if active
         if self.webrtc_adapter:
             try:
                 self.webrtc_adapter.detach()
                 self.webrtc_adapter = None
-                print("✅ WebRTC adapter stopped")
+                logger.info("WebRTC adapter stopped")
             except Exception as e:
-                print(f"⚠️ Error stopping WebRTC adapter: {e}")
+                logger.warning("Error stopping WebRTC adapter", extra={"error": str(e)})
 
         # Deactivate WebRTC service if active
         if self.webrtc_service and self.webrtc_service.is_active:
             try:
                 self.webrtc_service.deactivate()
             except Exception as e:
-                print(f"⚠️ Error deactivating WebRTC service: {e}")
+                logger.warning("Error deactivating WebRTC service", extra={"error": str(e)})
 
         # Stop OpenCV processing thread if running
         self._stop_opencv_processing_thread()
@@ -1906,6 +2003,7 @@ class GStreamerService:
 
         self.is_streaming = False
         self.current_encoder_provider = None
+        self.current_encoder_codec_id = None
         self.current_source_provider = None
         self._stop_stats_broadcast()
         self._restore_cpu_mode()
@@ -1938,13 +2036,16 @@ class GStreamerService:
 
                 # Start stats when first client connects
                 if clients > 0 and not stats_active:
-                    print("📊 First RTSP client connected, starting stats estimation")
+                    logger.info(
+                        "First RTSP client connected, starting stats estimation",
+                        extra={"clients_connected": clients},
+                    )
                     self._start_rtsp_stats_estimator()
                     stats_active = True
 
                 # Stop stats when all clients disconnect
                 elif clients == 0 and stats_active:
-                    print("⏹️  All RTSP clients disconnected, stopping stats estimation")
+                    logger.info("All RTSP clients disconnected, stopping stats estimation")
                     self._stop_rtsp_stats_estimator()
                     stats_active = False
                     # Reset stats to 0
@@ -2045,7 +2146,7 @@ class GStreamerService:
         if not encoder:
             return {"success": False, "message": "Encoder element not found"}
 
-        codec_id = self.video_config.codec.lower()
+        codec_id = self.current_encoder_codec_id or self._adapt_codec_to_board(self.video_config.codec.lower())
 
         try:
             # Import here to avoid circular dependency
@@ -2074,7 +2175,14 @@ class GStreamerService:
                 actual_value = value * prop_info.get("multiplier", 1)
 
                 # Set the property on the encoder
-                encoder.set_property(prop_info["property"], actual_value)
+                encoder_property = prop_info["property"]
+                if encoder.find_property(encoder_property) is None:
+                    return {
+                        "success": False,
+                        "message": f"Encoder does not support live property '{encoder_property}'",
+                    }
+
+                encoder.set_property(encoder_property, actual_value)
 
                 # Update config
                 if property_name == "quality":
@@ -2082,7 +2190,14 @@ class GStreamerService:
                 elif property_name == "bitrate" or property_name == "h264_bitrate":
                     self.video_config.h264_bitrate = value
 
-                print(f"🎛️ Live update ({provider.display_name}): {property_name} → {value}")
+                logger.info(
+                    "Applied live update",
+                    extra={
+                        "provider": provider.display_name,
+                        "property_name": property_name,
+                        "value": value,
+                    },
+                )
                 self._broadcast_status()
 
                 return {
@@ -2094,7 +2209,7 @@ class GStreamerService:
 
         except Exception as e:
             error_msg = f"Failed to update property: {e}"
-            print(f"❌ {error_msg}")
+            logger.error("Failed to update property", extra={"error": str(e)})
             return {"success": False, "message": error_msg}
 
     def restart(self) -> Dict[str, Any]:
@@ -2191,61 +2306,28 @@ class GStreamerService:
         }
 
     def _format_uptime(self, seconds: int) -> str:
-        """Format uptime in seconds to HH:MM:SS format"""
-        if not seconds:
-            return "-"
-        hours = seconds // 3600
-        minutes = (seconds % 3600) // 60
-        secs = seconds % 60
-        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+        """Format uptime in seconds to HH:MM:SS format (see gstreamer_helpers)."""
+        return format_uptime(seconds)
 
     def _calculate_health(self, errors: int, current_fps: int, target_fps: int) -> str:
-        """Calculate holistic stream health from FPS, errors, encoder stats,
-        and (when available) the NetworkQualityScore from the event bridge.
-
-        Returns ``'good'``, ``'fair'``, or ``'poor'``.
-        """
-        # --- 1. Pipeline component (0-100) ---
-        if target_fps > 0:
-            fps_pct = current_fps / target_fps * 100
-        else:
-            fps_pct = 100
-        error_penalty = min(errors * 3, 30)  # up to -30
-        pipeline_score = max(0, min(100, fps_pct - error_penalty))
-
-        # --- 2. Encoder component (0-100) ---
-        enc = self.encoder_stats
-        encode_ms = enc.get("avg_encode_time_ms", 0.0)
-        # Budget: ~33 ms at 30 fps, ~16 ms at 60 fps
-        budget_ms = (1000 / target_fps * 0.8) if target_fps > 0 else 33
-        if budget_ms > 0:
-            enc_load = min(encode_ms / budget_ms, 1.0)
-        else:
-            enc_load = 0
-        dropped = enc.get("frames_dropped_pre_encoder", 0) + enc.get("frames_dropped_post_encoder", 0)
-        drop_penalty = min(dropped * 2, 20)
-        encoder_score = max(0, 100 - int(enc_load * 50) - drop_penalty)
-
-        # --- 3. Network component (0-100) — optional ---
-        network_score: float = 75  # neutral default when bridge is not running
+        """Calculate holistic stream health (see gstreamer_helpers.calculate_health)."""
+        network_score: float = 75  # neutral default when the bridge is not running
         try:
             from app.services.network_event_bridge import get_network_event_bridge
 
             bridge = get_network_event_bridge()
             if bridge._monitoring:
                 network_score = bridge._quality_score.score
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Suppressed exception", exc_info=e)
 
-        # --- Weighted composite ---
-        composite = 0.45 * pipeline_score + 0.25 * encoder_score + 0.30 * network_score
-
-        if composite >= 70:
-            return "good"
-        elif composite >= 40:
-            return "fair"
-        else:
-            return "poor"
+        return calculate_health(
+            errors=errors,
+            current_fps=current_fps,
+            target_fps=target_fps,
+            encoder_stats=self.encoder_stats,
+            network_score=network_score,
+        )
 
     # ------------------------------------------------------------------
     # Client receive-pipeline helpers
@@ -2341,7 +2423,7 @@ class GStreamerService:
                 return provider.get_pipeline_string_for_client(port)
 
         except Exception as e:
-            print(f"⚠️ Failed to get pipeline string from provider: {e}")
+            logger.warning("Failed to get pipeline string from provider", extra={"error": str(e)})
 
         # Should never reach here if providers are properly configured
         return f"udpsrc port={port} ! fakesink"
@@ -2414,7 +2496,6 @@ class GStreamerService:
         Priority: VPN IP (Tailscale) > Local WiFi IP > Fallback
         Uses caching to avoid excessive recalculation and logging.
         """
-        import subprocess
         import time
 
         # Check cache first
@@ -2427,25 +2508,31 @@ class GStreamerService:
 
         try:
             # Check for Tailscale VPN interface
-            result = subprocess.run(
-                ["ip", "-o", "-4", "addr", "show", "tailscale0"], capture_output=True, text=True, timeout=1
+            stdout, _, returncode = run_cmd(
+                ["ip", "-o", "-4", "addr", "show", "tailscale0"],
+                timeout=1,
+                check=False,
             )
-            if result.returncode == 0 and result.stdout:
+            if returncode == 0 and stdout:
                 # Extract IP from: "5: tailscale0    inet 100.x.x.x/32 ..."
-                parts = result.stdout.split()
+                parts = stdout.split()
                 for i, part in enumerate(parts):
                     if part == "inet" and i + 1 < len(parts):
                         new_ip = parts[i + 1].split("/")[0]
                         break
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Suppressed exception", exc_info=e)
 
         if not new_ip:
             try:
                 # Get local WiFi/Ethernet IP (exclude loopback and docker)
-                result = subprocess.run(["ip", "-o", "-4", "addr", "show"], capture_output=True, text=True, timeout=1)
-                if result.returncode == 0:
-                    for line in result.stdout.split("\n"):
+                stdout, _, returncode = run_cmd(
+                    ["ip", "-o", "-4", "addr", "show"],
+                    timeout=1,
+                    check=False,
+                )
+                if returncode == 0:
+                    for line in stdout.split("\n"):
                         # Skip loopback, docker, and local interfaces
                         if any(iface in line for iface in ["lo:", "docker", "veth"]):
                             continue
@@ -2460,8 +2547,8 @@ class GStreamerService:
                                         break
                             if new_ip:
                                 break
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Suppressed exception", exc_info=e)
 
         # Fallback to localhost if nothing found
         if not new_ip:
@@ -2474,11 +2561,11 @@ class GStreamerService:
         # Only log if IP changed or first time
         if old_ip != new_ip:
             if "tailscale0" in str(new_ip) or new_ip.startswith("100."):
-                print(f"📡 Using VPN IP for streaming: {new_ip}")
+                logger.info("Using VPN IP for streaming", extra={"ip_address": new_ip})
             elif new_ip == "localhost":
-                print("⚠️ Using fallback IP: localhost")
+                logger.warning("Using fallback IP for streaming", extra={"ip_address": "localhost"})
             else:
-                print(f"📡 Using local IP for streaming: {new_ip}")
+                logger.info("Using local IP for streaming", extra={"ip_address": new_ip})
 
         return new_ip
 
@@ -2492,8 +2579,8 @@ class GStreamerService:
                 self.websocket_manager.broadcast("video_status", self.get_status()),
                 self.event_loop,
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Suppressed exception", exc_info=e)
 
     def _broadcast_stats_fast(self):
         """Broadcast lightweight numeric stats at high frequency.
@@ -2520,8 +2607,8 @@ class GStreamerService:
                 self.websocket_manager.broadcast("video_stats_fast", payload),
                 self.event_loop,
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Suppressed exception", exc_info=e)
 
     def _start_stats_broadcast(self):
         if self.stats_thread and self.stats_thread.is_alive():
@@ -2557,7 +2644,7 @@ class GStreamerService:
     def shutdown(self):
         """Cleanup on shutdown"""
         self.stop()
-        print("🛑 GStreamer service shutdown")
+        logger.info("GStreamer service shutdown")
 
 
 # Global instance

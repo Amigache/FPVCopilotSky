@@ -12,9 +12,9 @@
 #   - /etc/netplan/30-wifis-dhcp.yaml → renderer: networkd → renderer: NetworkManager
 #   - wlan0 interface set to managed mode via nmcli
 #
-# Sudo Permissions (no-password):
-#   - /etc/sudoers.d/tailscale → Tailscale VPN management
-#   - /etc/sudoers.d/fpvcopilot-wifi → WiFi scan, connect, disconnect
+# Sudo Permissions:
+#   - No NOPASSWD entries. Privileged operations use fpvcopilot-privd
+#     (systemd/fpvcopilot-privd.service + app/security/privd_policy.py).
 #
 # System Services:
 #   - NetworkManager service enabled and started
@@ -41,49 +41,78 @@ NC='\033[0m' # No Color
 # Function to create fpvcopilotsky user if it doesn't exist
 setup_fpvcopilotsky_user() {
     local USERNAME="fpvcopilotsky"
+    # NOTE: no `sudo` group. The service performs privileged operations only
+    # through fpvcopilot-privd (root daemon + command whitelist); there are no
+    # NOPASSWD sudoers rules. Keeping the account out of `sudo` prevents full
+    # root escalation if the web backend is compromised.
+    local REQUIRED_GROUPS=(dialout video netdev adm)
 
     if id "$USERNAME" &>/dev/null; then
         echo -e "${GREEN}✓${NC} User '$USERNAME' already exists"
-        return 0
+    else
+        echo ""
+        echo -e "${BLUE}👤 Setting up FPVCopilotSky system user...${NC}"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+        echo "The FPVCopilotSky service runs as a dedicated system user for security."
+        echo "This user needs access to hardware (serial ports, cameras, network)."
+        echo ""
+
+        # Create user with home directory
+        echo -e "${BLUE}Creating user '$USERNAME'...${NC}"
+        sudo useradd -m -s /bin/bash "$USERNAME" || {
+            echo -e "${RED}✗ Failed to create user '$USERNAME'${NC}"
+            return 1
+        }
+
+        # Set password
+        echo ""
+        echo -e "${YELLOW}Please set a password for user '$USERNAME':${NC}"
+        sudo passwd "$USERNAME"
+
+        # Add user to required groups
+        echo ""
+        echo -e "${BLUE}Adding '$USERNAME' to system groups...${NC}"
+        sudo usermod -a -G dialout "$USERNAME"     # Serial port access
+        sudo usermod -a -G video "$USERNAME"       # Camera + MPP access
+        sudo usermod -a -G netdev "$USERNAME"      # Network device access
+        sudo usermod -a -G adm "$USERNAME"         # Read system journal (journalctl)
+
+        echo -e "${GREEN}✓${NC} User '$USERNAME' created and configured"
+        echo -e "${GREEN}✓${NC} Groups: dialout, video, netdev, adm (no sudo group — see scripts/setup-sudoers.sh)"
+        echo ""
     fi
 
-    echo ""
-    echo -e "${BLUE}👤 Setting up FPVCopilotSky system user...${NC}"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo ""
-    echo "The FPVCopilotSky service runs as a dedicated system user for security."
-    echo "This user needs access to hardware (serial ports, cameras, network)."
-    echo ""
+    # Always enforce required groups (also when user already existed)
+    for grp in "${REQUIRED_GROUPS[@]}"; do
+        if ! id -nG "$USERNAME" | tr ' ' '\n' | grep -qx "$grp"; then
+            sudo usermod -a -G "$grp" "$USERNAME"
+            echo -e "${GREEN}✓${NC} Added '$USERNAME' to group '$grp'"
+        fi
+    done
 
-    # Create user with home directory
-    echo -e "${BLUE}Creating user '$USERNAME'...${NC}"
-    sudo useradd -m -s /bin/bash "$USERNAME" || {
-        echo -e "${RED}✗ Failed to create user '$USERNAME'${NC}"
-        return 1
-    }
-
-    # Set password
-    echo ""
-    echo -e "${YELLOW}Please set a password for user '$USERNAME':${NC}"
-    sudo passwd "$USERNAME"
-
-    # Add user to required groups
-    echo ""
-    echo -e "${BLUE}Adding '$USERNAME' to system groups...${NC}"
-    sudo usermod -a -G dialout "$USERNAME"     # Serial port access
-    sudo usermod -a -G video "$USERNAME"       # Camera access
-    sudo usermod -a -G netdev "$USERNAME"      # Network device access
-    sudo usermod -a -G sudo "$USERNAME"        # Sudo access for system management
-
-    echo -e "${GREEN}✓${NC} User '$USERNAME' created and configured"
-    echo -e "${GREEN}✓${NC} Groups: dialout, video, netdev, sudo"
-    echo ""
-
-    # Set ownership of project directory
+    # Always ensure correct ownership and group permissions of project directory
     if [ -d "/opt/FPVCopilotSky" ]; then
-        echo -e "${BLUE}Setting ownership of /opt/FPVCopilotSky...${NC}"
+        echo -e "${BLUE}Setting ownership of /opt/FPVCopilotSky to $USERNAME...${NC}"
         sudo chown -R "$USERNAME:$USERNAME" /opt/FPVCopilotSky
-        echo -e "${GREEN}✓${NC} Directory ownership updated"
+        # Allow group members to read/write (developer user will join the group)
+        sudo chmod -R g+rw /opt/FPVCopilotSky
+        sudo find /opt/FPVCopilotSky -type d -exec chmod g+s {} \;
+        echo -e "${GREEN}✓${NC} Directory ownership and group permissions updated"
+    fi
+
+    # Add the user who ran the install (via sudo) to the fpvcopilotsky group
+    # so they can still read/write the repository after installation
+    INSTALLER_USER="${SUDO_USER:-}"
+    if [ -n "$INSTALLER_USER" ] && [ "$INSTALLER_USER" != "$USERNAME" ]; then
+        echo -e "${BLUE}Adding installer user '$INSTALLER_USER' to '$USERNAME' group...${NC}"
+        sudo usermod -a -G "$USERNAME" "$INSTALLER_USER"
+        # Also ensure installer can access /dev/mpp_service when testing locally
+        if ! id -nG "$INSTALLER_USER" | tr ' ' '\n' | grep -qx "video"; then
+            sudo usermod -a -G video "$INSTALLER_USER"
+            echo -e "${GREEN}✓${NC} '$INSTALLER_USER' added to 'video' group"
+        fi
+        echo -e "${GREEN}✓${NC} '$INSTALLER_USER' added to '$USERNAME' group (re-login required to apply)"
     fi
 
     echo ""
@@ -121,6 +150,7 @@ sudo apt-get install -y \
     gstreamer1.0-libav \
     gir1.2-gstreamer-1.0 \
     gir1.2-gst-plugins-base-1.0 \
+    gir1.2-gst-rtsp-server-1.0 \
     python3-gi \
     python3-gi-cairo \
     libcairo2-dev \
@@ -155,7 +185,9 @@ sudo apt-get install -y \
     iproute2 \
     ethtool \
     curl \
-    iptables
+    iptables \
+    libcap2-bin \
+    wireguard-tools
 
 # Install CAKE qdisc and tc for bufferbloat control (Flight Mode)
 echo "⚙️  Installing traffic control tools for CAKE bufferbloat mitigation..."
@@ -307,14 +339,36 @@ source venv/bin/activate
 # Install Python packages
 echo "📚 Installing Python packages..."
 pip install --upgrade pip
-pip install -r requirements.txt
-pip install -r requirements-dev.txt
+if [ -f requirements.lock ]; then
+    echo "  ℹ️  Using pinned requirements.lock (reproducible versions)"
+    pip install -r requirements.lock
+else
+    pip install -r requirements.txt
+    pip install -r requirements-dev.txt
+fi
 
 # Install Node.js if not installed
+# Uses the NodeSource apt repository with its signed GPG key instead of
+# piping a remote script to bash.
 if ! command -v node &> /dev/null; then
-    echo "📦 Installing Node.js..."
-    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-    sudo apt-get install -y nodejs
+    echo "📦 Installing Node.js 20 (NodeSource apt repository, signed key)..."
+    if ! command -v gpg >/dev/null 2>&1; then
+        sudo apt-get install -y gnupg
+    fi
+    NODESOURCE_KEY_TMP="$(mktemp)"
+    if curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key -o "$NODESOURCE_KEY_TMP"; then
+        sudo gpg --dearmor --yes -o /usr/share/keyrings/nodesource.gpg "$NODESOURCE_KEY_TMP"
+        sudo chmod 644 /usr/share/keyrings/nodesource.gpg
+        rm -f "$NODESOURCE_KEY_TMP"
+        echo "deb [signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" \
+            | sudo tee /etc/apt/sources.list.d/nodesource.list > /dev/null
+        sudo apt-get update
+        sudo apt-get install -y nodejs
+    else
+        rm -f "$NODESOURCE_KEY_TMP"
+        echo "  ⚠ Could not download the NodeSource signing key. Install Node.js 20 manually:"
+        echo "    https://github.com/nodesource/distributions"
+    fi
 fi
 
 # Install frontend dependencies
@@ -324,26 +378,64 @@ npm install
 cd ../..
 
 # Install Tailscale for VPN support
+# Uses the signed Tailscale apt repository instead of piping a remote script
+# to a shell.
 echo ""
 echo "🔐 Installing Tailscale VPN..."
 if command -v tailscale &> /dev/null; then
     echo "  ✓ Tailscale already installed"
 else
-    if curl -fsSL https://tailscale.com/install.sh | sh; then
-        echo "  ✓ Tailscale installed successfully"
-        echo "  ℹ️  To connect: sudo tailscale up"
+    TS_ID="$(grep -E '^ID=' /etc/os-release 2>/dev/null | cut -d= -f2 | tr -d '"')"
+    TS_CODENAME="$(grep -E '^VERSION_CODENAME=' /etc/os-release 2>/dev/null | cut -d= -f2 | tr -d '"')"
+    case "$TS_ID" in
+        ubuntu) TS_DISTRO=ubuntu ;;
+        *) TS_DISTRO=debian ;;
+    esac
+
+    TS_KEY_TMP="$(mktemp)"
+    TS_LIST_TMP="$(mktemp)"
+    if [ -n "$TS_CODENAME" ] \
+        && curl -fsSL "https://pkgs.tailscale.com/stable/${TS_DISTRO}/${TS_CODENAME}.noarmor.gpg" -o "$TS_KEY_TMP" \
+        && curl -fsSL "https://pkgs.tailscale.com/stable/${TS_DISTRO}/${TS_CODENAME}.tailscale-keyring.list" -o "$TS_LIST_TMP"; then
+        sudo install -m 644 "$TS_KEY_TMP" /usr/share/keyrings/tailscale-archive-keyring.gpg
+        sudo install -m 644 "$TS_LIST_TMP" /etc/apt/sources.list.d/tailscale.list
+        rm -f "$TS_KEY_TMP" "$TS_LIST_TMP"
+        sudo apt-get update
+        if sudo apt-get install -y tailscale; then
+            echo "  ✓ Tailscale installed successfully"
+            echo "  ℹ️  To connect: sudo tailscale up"
+        else
+            echo "  ⚠ Tailscale install failed (optional)"
+        fi
     else
-        echo "  ⚠ Tailscale installation failed (optional)"
+        rm -f "$TS_KEY_TMP" "$TS_LIST_TMP"
+        echo "  ⚠ Could not configure the Tailscale apt repository (optional)."
+        echo "    Install manually: https://tailscale.com/download/linux"
     fi
 fi
 
-# Configure sudo permissions (unified file: /etc/sudoers.d/fpvcopilot-sky)
-echo "🔐 Configuring sudo permissions..."
+# Remove legacy NOPASSWD sudoers (privileged helper model)
+echo "🔐 Removing legacy sudoers (privileged helper model)..."
 if [ -f "scripts/setup-sudoers.sh" ]; then
     chmod +x scripts/setup-sudoers.sh
     sudo bash scripts/setup-sudoers.sh
 else
-    echo "  ⚠ Sudoers setup script not found (scripts/setup-sudoers.sh)"
+    echo "  ⚠ scripts/setup-sudoers.sh not found"
+fi
+
+# Grant cap_net_raw to ping so the service user can measure network latency
+# without running as root. setup-sudoers.sh does this too, but running it
+# here ensures it is applied even if the user re-runs install.sh independently.
+echo "🏓 Configuring ping permissions (cap_net_raw for latency monitoring)..."
+PING_BIN="$(command -v ping 2>/dev/null || echo /usr/bin/ping)"
+if [ -x "$PING_BIN" ]; then
+    if sudo setcap cap_net_raw+ep "$PING_BIN" 2>/dev/null; then
+        echo "  ✅ cap_net_raw granted to $PING_BIN — non-root ping enabled"
+    else
+        echo "  ⚠️  setcap failed (libcap2-bin missing?). sudo ping fallback will be used."
+    fi
+else
+    echo "  ⚠️  ping binary not found at $PING_BIN"
 fi
 
 # Configure network priority management (VPN-aware routing)
@@ -358,15 +450,8 @@ else
     sudo apt-get install -y iproute2
 fi
 
-# Verify ip route sudoers are in place
-if [ -f "/etc/sudoers.d/fpvcopilot-system" ]; then
-    if sudo grep -q "ip route" /etc/sudoers.d/fpvcopilot-system 2>/dev/null; then
-        echo "  ✓ Network route management sudo permissions configured"
-    else
-        echo "  ⚠ Route permissions missing, re-running sudoers setup..."
-        sudo bash scripts/setup-system-sudoers.sh
-    fi
-fi
+# Privileged network management goes through fpvcopilot-privd (installed by
+# scripts/deploy.sh); no sudoers entries are required.
 
 # Detect and configure default network priority
 # 4G modem is always primary when available, WiFi is backup
@@ -509,6 +594,34 @@ else
     echo "  ⚠ RTP H.264 payloader not found"
 fi
 
+# Hardware H.264 encoder — Rockchip MPP (RK3566 / RK3568 / RK3588)
+# Only installs on ARM systems with /dev/mpp_service (MPP kernel driver)
+if [ -e /dev/mpp_service ]; then
+    echo ""
+    echo "🔧 Rockchip MPP detected — installing hardware H.264 encoder..."
+    # udev rule: give 'video' group access to /dev/mpp_service (default is root-only)
+    echo 'SUBSYSTEM=="misc", KERNEL=="mpp_service", GROUP="video", MODE="0660"' \
+        | sudo tee /etc/udev/rules.d/99-rockchip-mpp.rules > /dev/null
+    sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=mpp_service || true
+    # Apply permissions immediately in current session too
+    sudo chgrp video /dev/mpp_service 2>/dev/null || true
+    sudo chmod 660 /dev/mpp_service 2>/dev/null || true
+    # Ensure service user keeps access (even on upgrades where user already existed)
+    sudo usermod -a -G video fpvcopilotsky 2>/dev/null || true
+    echo "  ✓ udev rule applied: /dev/mpp_service accessible to 'video' group"
+    sudo apt-get install -y software-properties-common 2>&1 | tail -2
+    sudo add-apt-repository -y ppa:liujianfeng1994/rockchip-multimedia 2>&1 | tail -3
+    sudo apt-get update -qq 2>&1 | tail -3
+    sudo apt-get install -y librockchip-mpp1 librockchip-mpp-dev gstreamer1.0-rockchip1 2>&1 | tail -5
+    if gst-inspect-1.0 mpph264enc > /dev/null 2>&1; then
+        echo "  ✅ Hardware H.264 encoder (mpph264enc) ready — CPU usage <10%"
+    else
+        echo "  ⚠ mpph264enc not found after install — hardware encoding unavailable"
+    fi
+else
+    echo "  ℹ️  Rockchip MPP not detected — skipping hardware encoder (x264 software will be used)"
+fi
+
 # Check for camera
 echo ""
 echo "📷 Checking for cameras..."
@@ -600,6 +713,61 @@ else
 fi
 echo "  ✓ Data directory configured: $DATA_DIR"
 
+# Preconfigure serial defaults for Radxa Zero 3W so Flight Controller tab
+# has a usable port selected on first boot.
+echo ""
+echo "🔌 Applying serial defaults..."
+if [ -f "/proc/device-tree/model" ] && tr -d '\000' < /proc/device-tree/model 2>/dev/null | grep -qi "Radxa ZERO 3"; then
+    PREFS_FILE="$DATA_DIR/preferences.json"
+    python3 - "$PREFS_FILE" <<'PY'
+import json
+import os
+import sys
+
+prefs_path = sys.argv[1]
+data = {}
+
+if os.path.exists(prefs_path):
+    try:
+        with open(prefs_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        data = {}
+
+serial_cfg = data.setdefault("serial", {})
+if not serial_cfg.get("port"):
+    kernel_console_ports = set()
+    try:
+        with open("/proc/cmdline", "r", encoding="utf-8") as f:
+            for token in f.read().strip().split():
+                if token.startswith("console="):
+                    dev = token.split("=", 1)[1].split(",", 1)[0]
+                    if dev.startswith("tty"):
+                        kernel_console_ports.add(f"/dev/{dev}")
+    except Exception:
+        pass
+
+    for candidate in ("/dev/ttyS4", "/dev/ttyS0", "/dev/ttyAML0", "/dev/ttyS1"):
+        if candidate in kernel_console_ports:
+            continue
+        if os.path.exists(candidate):
+            serial_cfg["port"] = candidate
+            serial_cfg["baudrate"] = int(serial_cfg.get("baudrate", 115200) or 115200)
+            serial_cfg["auto_connect"] = bool(serial_cfg.get("auto_connect", False))
+            serial_cfg["last_successful"] = bool(serial_cfg.get("last_successful", False))
+            print(candidate)
+            break
+
+os.makedirs(os.path.dirname(prefs_path), exist_ok=True)
+with open(prefs_path, "w", encoding="utf-8") as f:
+    json.dump(data, f, indent=2)
+PY
+    sudo chown fpvcopilotsky:fpvcopilotsky "$PREFS_FILE" 2>/dev/null || true
+    echo "  ✓ Radxa Zero 3W serial default initialized in preferences"
+else
+    echo "  ℹ️ Non-Radxa Zero 3 board detected — keeping generic serial defaults"
+fi
+
 # Deploy to production (build frontend, install systemd service, start)
 echo ""
 echo "🚀 Deploying to production..."
@@ -609,6 +777,15 @@ if [ -f "scripts/deploy.sh" ]; then
 else
     echo "  ⚠ Deploy script not found (scripts/deploy.sh)"
     echo "  Skipping production deployment — run manually later"
+fi
+
+# Harden source ownership (audit finding C5): root-owned, read-only for the
+# service user. Updates keep working because they run as root via
+# fpvcopilot-update.service. Revert for development with:
+#   sudo bash scripts/harden-ownership.sh --revert
+if [ -f "scripts/harden-ownership.sh" ]; then
+    chmod +x scripts/harden-ownership.sh
+    sudo bash scripts/harden-ownership.sh apply
 fi
 
 echo ""

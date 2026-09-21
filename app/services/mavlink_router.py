@@ -3,11 +3,14 @@ MAVLink Router - Manage multiple outputs (UDP, TCP) for message distribution
 Uses simplified approach: direct sockets without complex pymavlink connections
 """
 
+import logging
 import socket as socket_module
 import threading
 from typing import Dict, List, Optional, Any, Callable
 from dataclasses import dataclass, field
 from enum import Enum
+
+logger = logging.getLogger(__name__)
 
 
 class OutputType(Enum):
@@ -78,7 +81,7 @@ class MAVLinkRouter:
     def set_serial_callback(self, callback: Callable[[bytes], None]):
         """Set callback for forwarding received data to serial."""
         self.on_data_received = callback
-        print("🔗 Router linked to serial bridge")
+        logger.info("Router linked to serial bridge")
 
     def _get_type_value(self, config_type) -> str:
         """Get type value string, handling both enum and string."""
@@ -149,7 +152,10 @@ class MAVLinkRouter:
             self.outputs[config.id] = OutputState(config=config)
             self._save_config()
 
-            print(f"✅ Added output: {config.id} ({config.type.value} {config.host}:{config.port})")
+            logger.info(
+                "Output added",
+                extra={"id": config.id, "type": config.type.value, "host": config.host, "port": config.port},
+            )
 
             # Auto-start if configured
             if config.auto_start and config.enabled:
@@ -171,7 +177,7 @@ class MAVLinkRouter:
             self._save_config()
             self._notify_status_change()  # Notify WebSocket
 
-            print(f"🗑️ Removed output: {output_id}")
+            logger.info("Output removed", extra={"id": output_id})
             return True, "Output removed"
 
     def update_output(self, output_id: str, updated_data: dict) -> tuple[bool, str]:
@@ -186,7 +192,7 @@ class MAVLinkRouter:
             # Stop output if running for safe update
             if was_running:
                 self._stop_output_internal(state)
-                print(f"🔄 Stopping output {output_id} for update")
+                logger.debug("Stopping output for update", extra={"id": output_id})
 
             # Update configuration
             if "type" in updated_data:
@@ -213,16 +219,16 @@ class MAVLinkRouter:
             if was_running and state.config.enabled:
                 success, message = self.start_output(output_id)
                 if success:
-                    print(f"🔄 Restarted output {output_id} after update")
+                    logger.info("Output restarted after update", extra={"id": output_id})
                     self._notify_status_change()
                     return True, "Output updated and restarted"
                 else:
-                    print(f"⚠️ Output {output_id} updated but failed to restart: {message}")
+                    logger.warning("Output updated but restart failed", extra={"id": output_id, "reason": message})
                     self._notify_status_change()
                     return True, f"Output updated but restart failed: {message}"
 
             self._notify_status_change()
-            print(f"✅ Updated output: {output_id}")
+            logger.info("Output updated", extra={"id": output_id})
             return True, "Output updated"
 
     def start_output(self, output_id: str) -> tuple[bool, str]:
@@ -266,7 +272,7 @@ class MAVLinkRouter:
 
             self._stop_output_internal(state)
             self._notify_status_change()  # Notify WebSocket
-            print(f"🛑 Stopped output: {output_id}")
+            logger.info("Output stopped", extra={"id": output_id})
             return True, "Output stopped"
 
     def restart_output(self, output_id: str) -> tuple[bool, str]:
@@ -280,7 +286,7 @@ class MAVLinkRouter:
             # Stop the output if running
             if state.running:
                 self._stop_output_internal(state)
-                print(f"🔄 Stopping output for restart: {output_id}")
+                logger.debug("Stopping output for restart", extra={"id": output_id})
 
             # Start the output
             try:
@@ -296,7 +302,7 @@ class MAVLinkRouter:
                     return False, f"Unknown output type: {output_type}"
 
                 if success:
-                    print(f"🔄 Restarted output: {output_id}")
+                    logger.info("Output restarted", extra={"id": output_id})
                     self._notify_status_change()  # Notify WebSocket
 
                 return success, message
@@ -353,7 +359,10 @@ class MAVLinkRouter:
             accept_thread.start()
             state.threads.append(accept_thread)
 
-            print(f"🌐 TCP Server started on {state.config.host}:{state.config.port} (ID: {state.config.id})")
+            logger.info(
+                "TCP server started",
+                extra={"id": state.config.id, "host": state.config.host, "port": state.config.port},
+            )
             return True, "TCP Server started"
 
         except Exception as e:
@@ -364,7 +373,7 @@ class MAVLinkRouter:
         while state.running and self.running:
             try:
                 client, addr = state.sock.accept()
-                print(f"✅ Router: TCP client connected from {addr} (output: {state.config.id})")
+                logger.info("TCP client connected", extra={"id": state.config.id, "addr": str(addr)})
 
                 client.settimeout(0.1)
                 client.setsockopt(socket_module.IPPROTO_TCP, socket_module.TCP_NODELAY, 1)
@@ -389,7 +398,7 @@ class MAVLinkRouter:
                 continue
             except Exception as e:
                 if state.running:
-                    print(f"⚠️ Router: TCP accept error: {e}")
+                    logger.warning("TCP accept error", extra={"id": state.config.id, "error": str(e)})
 
     def _tcp_client_reader(self, state: OutputState, client: socket_module.socket, addr):
         """Read from TCP client and forward to serial."""
@@ -418,7 +427,7 @@ class MAVLinkRouter:
             client.close()
         except Exception:
             pass
-        print(f"📤 Router: TCP client {addr} disconnected (output: {state.config.id})")
+        logger.info("TCP client disconnected", extra={"id": state.config.id, "addr": str(addr)})
 
         # Notify status change
         self._notify_status_change()
@@ -447,7 +456,10 @@ class MAVLinkRouter:
             reader.start()
             state.threads.append(reader)
 
-            print(f"🔗 TCP Client connected to {state.config.host}:{state.config.port} (ID: {state.config.id})")
+            logger.info(
+                "TCP client connected to remote",
+                extra={"id": state.config.id, "host": state.config.host, "port": state.config.port},
+            )
             return True, "TCP Client connected"
 
         except ConnectionRefusedError:
@@ -482,7 +494,7 @@ class MAVLinkRouter:
             except Exception:
                 break
 
-        print(f"📤 Router: TCP client disconnected (output: {state.config.id})")
+        logger.info("TCP client connection closed", extra={"id": state.config.id})
         state.running = False
 
     # ==================== UDP ====================
@@ -510,7 +522,10 @@ class MAVLinkRouter:
             reader.start()
             state.threads.append(reader)
 
-            print(f"📡 UDP output started for {state.config.host}:{state.config.port} (ID: {state.config.id})")
+            logger.info(
+                "UDP output started",
+                extra={"id": state.config.id, "host": state.config.host, "port": state.config.port},
+            )
             return True, "UDP output started"
 
         except Exception as e:
@@ -589,7 +604,7 @@ class MAVLinkRouter:
             prefs = get_preferences()
             prefs.set_router_outputs(configs)
         except Exception as e:
-            print(f"⚠️ Failed to save router config: {e}")
+            logger.error("Failed to save router config", extra={"error": str(e)})
 
     def _load_config(self):
         """Load configuration from preferences service."""
@@ -614,19 +629,19 @@ class MAVLinkRouter:
                 )
                 self.outputs[output_config.id] = OutputState(config=output_config)
 
-            print(f"✅ Loaded {len(configs)} router outputs from preferences")
+            logger.info("Router outputs loaded from preferences", extra={"count": len(configs)})
 
             # Auto-start enabled outputs
             for output_id, state in self.outputs.items():
                 if state.config.auto_start and state.config.enabled:
                     success, msg = self.start_output(output_id)
                     if success:
-                        print(f"🔄 Auto-started output: {output_id}")
+                        logger.info("Output auto-started", extra={"id": output_id})
                     else:
-                        print(f"⚠️ Failed to auto-start {output_id}: {msg}")
+                        logger.warning("Failed to auto-start output", extra={"id": output_id, "reason": msg})
 
         except Exception as e:
-            print(f"⚠️ Failed to load router config: {e}")
+            logger.error("Failed to load router config", extra={"error": str(e)})
 
     def shutdown(self):
         """Shutdown all outputs."""
@@ -637,7 +652,7 @@ class MAVLinkRouter:
                 if state.running:
                     self._stop_output_internal(state)
 
-        print("🛑 Router shutdown complete")
+        logger.info("Router shutdown complete")
 
 
 # Global instance

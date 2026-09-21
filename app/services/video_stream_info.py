@@ -4,10 +4,13 @@ Sends VIDEO_STREAM_INFORMATION MAVLink message (269) to advertise video stream
 compatible with Mission Planner's "Pop-Out or within Map" video detection
 """
 
+import logging
 import os
 import threading
 import time
 from typing import Optional, TYPE_CHECKING
+
+logger = logging.getLogger(__name__)
 
 # MAVLink environment - set before importing pymavlink
 os.environ["MAVLINK20"] = "1"
@@ -67,15 +70,15 @@ class VideoStreamInfoService:
             return True
 
         if not self.mavlink_bridge or not self.gstreamer_service:
-            print("⚠️ VideoStreamInfo: MAVLink bridge or GStreamer service not available")
+            logger.warning("VideoStreamInfo: MAVLink bridge or GStreamer service not available")
             return False
 
         self.running = True
         self.sender_thread = threading.Thread(target=self._sender_loop, daemon=True, name="VideoStreamInfoSender")
         self.sender_thread.start()
-        print(
-            f"✅ Video Stream Information service started "
-            f"(SysID={self.mavlink_bridge.source_system_id}, CompID=100 CAMERA)"
+        logger.info(
+            "Video Stream Information service started",
+            extra={"sys_id": self.mavlink_bridge.source_system_id, "comp_id": 100},
         )
         return True
 
@@ -104,7 +107,7 @@ class VideoStreamInfoService:
                     self._send_video_stream_information()
                     self._send_video_stream_status()
             except Exception as e:
-                print(f"⚠️ VideoStreamInfo error: {e}")
+                logger.warning("VideoStreamInfo sender error", extra={"error": str(e)})
 
             time.sleep(self.send_interval)
 
@@ -120,7 +123,7 @@ class VideoStreamInfoService:
             mav_sender_camera.srcComponent = 100  # MAV_COMP_ID_CAMERA
 
             # Send HEARTBEAT to announce the CAMERA component
-            # type: 30 (MAV_TYPE_CAMERA), autopilot: 0 (GENERIC)
+            # MAV type 30 (MAV_TYPE_CAMERA), autopilot 0 (GENERIC)
             # base_mode: 0, system_status: 4 (ACTIVE)
             msg = mav_sender_camera.heartbeat_encode(
                 type=30,  # MAV_TYPE_CAMERA

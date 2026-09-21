@@ -2,7 +2,7 @@ import './TelemetryView.css'
 import { useTranslation } from 'react-i18next'
 import { useState, useEffect, useCallback } from 'react'
 import { useToast } from '../../../contexts/ToastContext'
-import { useWebSocket } from '../../../contexts/WebSocketContext'
+import { useWsMessage } from '../../../contexts/WebSocketContext'
 import { fetchWithTimeout } from '../../../services/api'
 import OutputForm from './OutputForm'
 import OutputItem from './OutputItem'
@@ -11,7 +11,7 @@ import { API_ENDPOINTS, WEBSOCKET_EVENTS, DEFAULT_PRESETS } from './telemetryCon
 const TelemetryView = () => {
   const { t } = useTranslation()
   const { showToast } = useToast()
-  const { messages } = useWebSocket()
+  const routerStatus = useWsMessage(WEBSOCKET_EVENTS.ROUTER_STATUS)
 
   // State
   const [outputs, setOutputs] = useState([])
@@ -67,17 +67,17 @@ const TelemetryView = () => {
   // Listen for WebSocket updates (debounced to prevent conflicts)
   useEffect(() => {
     let timeoutId
-    if (messages[WEBSOCKET_EVENTS.ROUTER_STATUS]) {
+    if (routerStatus) {
       // Debounce WebSocket updates to prevent conflicts during user operations
       timeoutId = setTimeout(() => {
-        const routerData = messages[WEBSOCKET_EVENTS.ROUTER_STATUS]
+        const routerData = routerStatus
         if (Array.isArray(routerData)) {
           setOutputs(routerData)
         }
       }, 200) // 200ms debounce
     }
     return () => clearTimeout(timeoutId)
-  }, [messages])
+  }, [routerStatus])
 
   // Handle edit mode
   const handleEdit = useCallback((outputId, outputData) => {

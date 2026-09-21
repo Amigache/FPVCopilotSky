@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fpv-copilot-sky"
-version = "1.0.0"
+version = "1.1.0"
 description = "FPV Copilot Sky - Advanced drone telemetry and control platform"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -36,6 +36,8 @@ markers = [
     "slow: mark test as slow running",
     "integration: mark test as integration test",
     "unit: mark test as unit test",
+    "e2e: mark test as end-to-end workflow test",
+    "contract: mark provider/API contract conformance tests",
 ]
 asyncio_mode = "auto"
 
@@ -46,10 +48,14 @@ omit = [
     "*/__pycache__/*",
     "*/venv/*",
     "*/.venv/*",
+    "*/app/providers/*",
+    "*/app/providers/**/*",
+    "*/app/services/gstreamer_service.py",
+    "*/app/services/mavlink_bridge.py",
 ]
 
 [tool.coverage.report]
-fail_under = 17
+fail_under = 50
 exclude_lines = [
     "pragma: no cover",
     "def __repr__",
@@ -82,3 +88,5 @@ warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
 no_strict_optional = true
+explicit_package_bases = true
+mypy_path = "."

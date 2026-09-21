@@ -1,0 +1,22 @@
+[Unit]
+Description=FPV Copilot Sky - Privileged helper (root)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/FPVCopilotSky
+ExecStart=/opt/FPVCopilotSky/venv/bin/python3 -m app.security.privd_daemon
+Restart=always
+RestartSec=3
+
+# Minimal hardening for the privileged helper. It must keep full capabilities
+# (load modules, write /etc and /proc/sys, manage networking), so no filesystem
+# or kernel protections are set here — only privilege-escalation guards.
+NoNewPrivileges=true
+ProtectHome=true
+PrivateTmp=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

@@ -2,18 +2,22 @@ import './App.css'
 import './components/Modal.css'
 import Header from './components/Header/Header'
 import TabBar from './components/TabBar/TabBar'
+import ArmedBanner from './components/ArmedBanner/ArmedBanner'
 import Content from './components/Content/Content'
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { WebSocketProvider } from './contexts/WebSocketContext'
 import { ToastProvider } from './contexts/ToastContext'
 import { ModalProvider } from './contexts/ModalContext'
+import { ParamCacheProvider } from './contexts/ParamCacheContext'
+import { AuthProvider } from './contexts/AuthContext'
+import AuthGate from './components/AuthGate/AuthGate'
 import api from './services/api'
 
 function App() {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState('dashboard')
-  const [experimentalTabEnabled, setExperimentalTabEnabled] = useState(true)
+  const [experimentalTabEnabled, setExperimentalTabEnabled] = useState(false)
 
   // Load preferences to check if experimental tab is enabled
   useEffect(() => {
@@ -65,17 +69,24 @@ function App() {
   const tabs = experimentalTabEnabled ? allTabs : allTabs.filter((tab) => tab.id !== 'experimental')
 
   return (
-    <ModalProvider>
-      <ToastProvider>
-        <WebSocketProvider>
-          <div className="app">
-            <Header />
-            <TabBar tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
-            <Content activeTab={activeTab} />
-          </div>
-        </WebSocketProvider>
-      </ToastProvider>
-    </ModalProvider>
+    <AuthProvider>
+      <ModalProvider>
+        <ToastProvider>
+          <AuthGate>
+            <WebSocketProvider>
+              <ParamCacheProvider>
+                <div className="app">
+                  <Header />
+                  <TabBar tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
+                  <ArmedBanner />
+                  <Content activeTab={activeTab} />
+                </div>
+              </ParamCacheProvider>
+            </WebSocketProvider>
+          </AuthGate>
+        </ToastProvider>
+      </ModalProvider>
+    </AuthProvider>
   )
 }
 

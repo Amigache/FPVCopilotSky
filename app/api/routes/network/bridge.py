@@ -13,6 +13,7 @@ Features:
 
 from fastapi import APIRouter, HTTPException
 from app.services.network_event_bridge import get_network_event_bridge
+from app.exceptions import NetworkException, ServiceInitError
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -30,8 +31,8 @@ async def get_bridge_status():
     try:
         bridge = get_network_event_bridge()
         return {"success": True, **bridge.get_status()}
-    except Exception as e:
-        logger.error(f"Error getting bridge status: {e}")
+    except (NetworkException, ServiceInitError) as e:
+        logger.error("Error getting bridge status", extra=e.to_dict())
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -47,8 +48,8 @@ async def start_event_bridge():
         bridge = get_network_event_bridge()
         await bridge.start()
         return {"success": True, "message": "Network event bridge started"}
-    except Exception as e:
-        logger.error(f"Error starting bridge: {e}")
+    except (NetworkException, ServiceInitError) as e:
+        logger.error("Error starting bridge", extra=e.to_dict())
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -59,8 +60,8 @@ async def stop_event_bridge():
         bridge = get_network_event_bridge()
         await bridge.stop()
         return {"success": True, "message": "Network event bridge stopped"}
-    except Exception as e:
-        logger.error(f"Error stopping bridge: {e}")
+    except (NetworkException, ServiceInitError) as e:
+        logger.error("Error stopping bridge", extra=e.to_dict())
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -76,8 +77,8 @@ async def get_bridge_events(last_n: int = 100):
         bridge = get_network_event_bridge()
         events = bridge.get_event_history(last_n)
         return {"success": True, "events": events, "count": len(events)}
-    except Exception as e:
-        logger.error(f"Error getting bridge events: {e}")
+    except (NetworkException, ServiceInitError, ValueError) as e:
+        logger.error("Error getting bridge events", extra={"error": str(e), "last_n": last_n})
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -93,8 +94,8 @@ async def get_quality_score():
         bridge = get_network_event_bridge()
         status = bridge.get_status()
         return {"success": True, **status.get("quality_score", {})}
-    except Exception as e:
-        logger.error(f"Error getting quality score: {e}")
+    except (NetworkException, ServiceInitError, KeyError, TypeError) as e:
+        logger.error("Error getting quality score", extra={"error": str(e)})
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -110,6 +111,6 @@ async def clear_bridge_events():
         bridge = get_network_event_bridge()
         bridge.clear_events()
         return {"success": True, "message": "Event history cleared"}
-    except Exception as e:
-        logger.error(f"Error clearing bridge events: {e}")
+    except (NetworkException, ServiceInitError) as e:
+        logger.error("Error clearing bridge events", extra=e.to_dict())
         raise HTTPException(status_code=500, detail=str(e))

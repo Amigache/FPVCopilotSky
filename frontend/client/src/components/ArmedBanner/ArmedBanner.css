@@ -1,0 +1,20 @@
+.armed-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 1rem;
+  background: rgba(255, 152, 0, 0.12);
+  border-bottom: 1px solid rgba(255, 152, 0, 0.35);
+  font-size: 0.78rem;
+  color: #ff9800;
+  letter-spacing: 0.02em;
+}
+
+.armed-banner__icon {
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.armed-banner__text {
+  opacity: 0.9;
+}

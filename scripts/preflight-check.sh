@@ -181,20 +181,26 @@ echo ""
 # ============================================
 echo -e "${BLUE}📝 Sudoers Files${NC}"
 
-if [ -f "/etc/sudoers.d/fpvcopilot-sky" ]; then
-    echo -e "${GREEN}✅ /etc/sudoers.d/fpvcopilot-sky (unified)${NC}"
+if systemctl is-active --quiet fpvcopilot-privd 2>/dev/null; then
+    echo -e "${GREEN}✅ fpvcopilot-privd (privileged helper) active${NC}"
+    if [ -S /run/fpvcopilot-priv.sock ]; then
+        echo -e "${GREEN}✅ privileged socket present${NC}"
+    else
+        echo -e "${YELLOW}⚠️  /run/fpvcopilot-priv.sock missing${NC}"
+        ((WARNINGS++))
+    fi
 else
     # Check for legacy split files
     LEGACY_COUNT=0
-    for f in /etc/sudoers.d/fpvcopilot-wifi /etc/sudoers.d/fpvcopilot-system /etc/sudoers.d/tailscale; do
+    for f in /etc/sudoers.d/fpvcopilot-sky /etc/sudoers.d/fpvcopilot-wifi /etc/sudoers.d/fpvcopilot-system /etc/sudoers.d/tailscale; do
         [ -f "$f" ] && ((LEGACY_COUNT++))
     done
     if [ $LEGACY_COUNT -gt 0 ]; then
-        echo -e "${YELLOW}⚠️  Found $LEGACY_COUNT legacy sudoers file(s) — run: sudo bash scripts/setup-sudoers.sh${NC}"
+        echo -e "${YELLOW}⚠️  Legacy sudoers file(s) found — run: sudo bash scripts/setup-sudoers.sh${NC}"
         ((WARNINGS++))
     else
-        echo -e "${RED}❌ /etc/sudoers.d/fpvcopilot-sky missing - CRITICAL${NC}"
-        echo -e "   Fix: sudo bash scripts/setup-sudoers.sh"
+        echo -e "${RED}❌ fpvcopilot-privd not running and no sudoers — CRITICAL${NC}"
+        echo -e "   Fix: sudo bash scripts/deploy.sh"
         ((CRITICAL_FAILURES++))
     fi
 fi

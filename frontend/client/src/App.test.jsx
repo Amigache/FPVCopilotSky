@@ -12,10 +12,8 @@ import App from './App'
 // Mock the useTranslation hook
 vi.mock('./contexts/WebSocketContext', () => ({
   WebSocketProvider: ({ children }) => <div>{children}</div>,
-  useWebSocket: () => ({
-    messages: {},
-    send: vi.fn(),
-  }),
+  useWebSocket: () => ({ send: vi.fn() }),
+  useWsMessage: () => undefined,
 }))
 
 vi.mock('./contexts/ToastContext', () => ({
@@ -31,6 +29,35 @@ vi.mock('./contexts/ModalContext', () => ({
     openModal: vi.fn(),
     closeModal: vi.fn(),
   }),
+}))
+
+vi.mock('./contexts/ParamCacheContext', () => ({
+  ParamCacheProvider: ({ children }) => <div>{children}</div>,
+  useParamCache: () => ({
+    params: {},
+    isDownloading: false,
+    isLoaded: false,
+    status: { total: 0, loaded: 0, phase: '', progress: 0 },
+    refreshParamsCache: vi.fn(),
+    clearCache: vi.fn(),
+    mergeParams: vi.fn(),
+  }),
+}))
+
+vi.mock('./contexts/AuthContext', () => ({
+  AuthProvider: ({ children }) => <div>{children}</div>,
+  useAuth: () => ({
+    loading: false,
+    authRequired: false,
+    authenticated: true,
+    login: vi.fn(),
+    logout: vi.fn(),
+    refresh: vi.fn(),
+  }),
+}))
+
+vi.mock('./components/AuthGate/AuthGate', () => ({
+  default: ({ children }) => <div>{children}</div>,
 }))
 
 vi.mock('react-i18next', () => ({

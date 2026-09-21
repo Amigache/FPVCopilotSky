@@ -8,12 +8,14 @@ Type=simple
 User=fpvcopilotsky
 Group=fpvcopilotsky
 # Ensure we have access to serial ports and video devices
-SupplementaryGroups=dialout video
+SupplementaryGroups=dialout video adm
 WorkingDirectory=/opt/FPVCopilotSky
 Environment="PATH=/opt/FPVCopilotSky/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
-# Use virtual environment Python
-ExecStart=/opt/FPVCopilotSky/venv/bin/python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+# Bind to loopback only: nginx is the single network entry point and proxies
+# to 127.0.0.1:8000. For a direct LAN/dev exposure override FPV_BIND_HOST.
+# The application also reads FPV_API_TOKEN to enable API authentication.
+ExecStart=/opt/FPVCopilotSky/venv/bin/python3 -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 # Restart policy
 Restart=always
@@ -29,18 +31,31 @@ LimitNOFILE=65536
 LimitNPROC=4096
 
 # --- Security hardening ---
+# The service no longer uses sudo: every privileged operation goes through
+# fpvcopilot-privd (root, whitelisted) over /run/fpvcopilot-priv.sock.
+NoNewPrivileges=true
+CapabilityBoundingSet=
 # Isolate /tmp so other services cannot access our temp files
 PrivateTmp=true
 # Prevent access to /home, /root, /run/user
 ProtectHome=true
-# Make /usr, /boot, /efi read-only (not /opt, which we need writable for preferences)
-ProtectSystem=full
+# Entire filesystem read-only (except /dev, /proc, /sys); allow the data dir.
+ProtectSystem=strict
+ReadWritePaths=/var/lib/fpvcopilot-sky
 # Prevent loading kernel modules
 ProtectKernelModules=true
 # Prevent modifying control groups
 ProtectControlGroups=true
+# Miscellaneous hardening
+ProtectClock=true
+ProtectHostname=true
+LockPersonality=true
+RestrictNamespaces=true
+SystemCallArchitectures=native
 # Deny creating SUID/SGID files
 RestrictSUIDSGID=true
+# NOTE: ProtectKernelTunables is intentionally NOT set: ExecStartPre writes the
+# CPU governor under /sys (and the helper handles any sysctl changes).
 
 # --- Resource limits ---
 # Cap memory at 512 MB to prevent OOM on embedded boards
@@ -52,6 +67,8 @@ MemoryMax=512M
 # --- CPU governor: lock to 'performance' while service is running ---
 # '+' prefix runs as root (needed for sysfs writes) even though service runs as fpvcopilotsky
 ExecStartPre=+/bin/sh -c 'for g in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo performance > "$$g" 2>/dev/null || true; done'
+# Ensure Rockchip MPP device is accessible by service user via 'video' group
+ExecStartPre=+/bin/sh -c 'if [ -e /dev/mpp_service ]; then chgrp video /dev/mpp_service 2>/dev/null || true; chmod 660 /dev/mpp_service 2>/dev/null || true; fi'
 ExecStopPost=+/bin/sh -c 'for g in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo ondemand > "$$g" 2>/dev/null || true; done'
 
 [Install]

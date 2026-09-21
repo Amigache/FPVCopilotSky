@@ -1,0 +1,21 @@
+# Codecov configuration
+#
+# The hard coverage gates live in CI itself:
+#   - backend:  pytest --cov-fail-under (50%) in .github/workflows/ci.yml
+#   - frontend: vitest coverage.thresholds in frontend/client/vitest.config.js
+#
+# Codecov's patch status is only informational so it does not add noise/blocking
+# on top of those gates.
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+    patch:
+      default:
+        informational: true
+
+comment:
+  layout: 'reach, diff, flags, files'
+  behavior: default

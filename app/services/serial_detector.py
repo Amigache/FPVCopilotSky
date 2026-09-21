@@ -6,7 +6,10 @@ Scans hardware serial ports and USB devices for MAVLink heartbeats
 import os
 import serial
 import time
+import logging
 from typing import Optional, List, Dict, Any
+
+logger = logging.getLogger(__name__)
 
 # MAVLink environment - set before importing pymavlink
 os.environ["MAVLINK20"] = "1"
@@ -62,9 +65,10 @@ class SerialDetector:
         ports = self._get_ports_to_scan(preferred_port)
         baudrates = self._get_baudrates_to_try(preferred_baudrate)
 
-        print("🔍 Auto-detecting flight controller...")
-        print(f"   Ports: {ports[:5]}...")  # Show first 5
-        print(f"   Baudrates: {baudrates}")
+        logger.info(
+            "Starting flight controller auto-detection",
+            extra={"ports_count": len(ports), "baudrates_count": len(baudrates)},
+        )
 
         for port in ports:
             # Try preferred baudrate first for this port
@@ -74,7 +78,7 @@ class SerialDetector:
                     self.last_detection = result
                     return result
 
-        print("❌ No flight controller detected")
+        logger.warning("No flight controller detected after scan")
         return None
 
     def _get_ports_to_scan(self, preferred_port: str = "") -> List[str]:
@@ -121,7 +125,10 @@ class SerialDetector:
             Dict with connection info if successful, None otherwise
         """
         try:
-            print(f"   Trying {port} @ {baudrate}...", end=" ", flush=True)
+            logger.debug(
+                "Attempting flight controller detection",
+                extra={"port": port, "baudrate": baudrate},
+            )
 
             ser = serial.Serial(port=port, baudrate=baudrate, timeout=0.1, write_timeout=1)
 
@@ -159,7 +166,14 @@ class SerialDetector:
                                         "autopilot": autopilot,
                                     }
 
-                                    print(f"✅ Found! (System {system_id})")
+                                    logger.info(
+                                        "Flight controller detected",
+                                        extra={
+                                            "port": port,
+                                            "baudrate": baudrate,
+                                            "system_id": system_id,
+                                        },
+                                    )
                                     return result
                     except Exception:
                         pass
@@ -167,12 +181,21 @@ class SerialDetector:
                 time.sleep(0.01)
 
             ser.close()
-            print("❌")
+            logger.debug(
+                "Flight controller detection timeout",
+                extra={"port": port, "baudrate": baudrate},
+            )
 
         except serial.SerialException as e:
-            print(f"⚠️ ({e})")
+            logger.debug(
+                "Serial connection error during detection",
+                extra={"port": port, "baudrate": baudrate, "error": str(e)},
+            )
         except Exception as e:
-            print(f"⚠️ ({e})")
+            logger.debug(
+                "Unexpected error during flight controller detection",
+                extra={"port": port, "baudrate": baudrate, "error": str(e)},
+            )
 
         return None
 

@@ -33,7 +33,7 @@ The `fpv` command provides a user-friendly menu to access all operations.
 
 - **configure-modem.sh** - USB modem configuration (4G/LTE)
 - **setup-serial-ports.sh** - Serial port configuration for MAVLink
-- **setup-sudoers.sh** - Unified sudo permissions setup
+- **setup-sudoers.sh** - Remove legacy NOPASSWD sudoers (privileged helper model)
 - **setup-system-sudoers.sh** - System-level sudoers (deprecated - use setup-sudoers.sh)
 - **setup-tailscale-sudoers.sh** - Tailscale sudoers (deprecated - use setup-sudoers.sh)
 
@@ -41,6 +41,7 @@ The `fpv` command provides a user-friendly menu to access all operations.
 
 - **test-network-management.sh** - Network management system tests
 - **test_network_features.sh** - Network feature tests
+- **collect-baseline.sh** - Baseline latency/system snapshot for weekly KPI tracking
 
 ### Maintenance & Recovery
 

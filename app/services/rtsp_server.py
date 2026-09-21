@@ -49,7 +49,7 @@ class RTSPServer:
         self.stats = {"frames_sent": 0, "bytes_sent": 0, "clients_connected": 0}
         self.stats_lock = threading.Lock()
 
-        print(f"📡 Initializing RTSP Server on port {port}, mount point: {mount_point}")
+        logger.info("Initializing RTSP server", extra={"port": port, "mount_point": mount_point})
 
     def set_opencv_service(self, opencv_service):
         """Set OpenCV service for video processing"""
@@ -98,8 +98,10 @@ class RTSPServer:
                 # appsink/appsrc elements with frame processing callbacks.
                 # For now, we mark the pipeline with identity for future implementation.
                 opencv_element = "identity name=opencv_marker ! "
-                print(f"⚠️  OpenCV filter '{filter_type}' configured but frame processing not yet implemented")
-                print("   Full GStreamer integration with appsink/appsrc is required")
+                logger.warning(
+                    "OpenCV filter configured but RTSP frame processing is not implemented",
+                    extra={"filter_type": filter_type, "operation": "create_pipeline_string"},
+                )
 
         # --- Encoder via provider registry ---
         encoder_str, payloader_str = self._build_encoder_string(codec, config)
@@ -254,10 +256,21 @@ class RTSPServer:
             quality: JPEG quality
         """
         if self.running:
-            print("⚠️ RTSP Server already running")
+            logger.warning("RTSP server already running")
             return
 
-        print("🚀 Starting RTSP Server...")
+        logger.info(
+            "Starting RTSP server",
+            extra={
+                "device": device,
+                "codec": codec,
+                "width": width,
+                "height": height,
+                "framerate": framerate,
+                "bitrate": bitrate,
+                "quality": quality,
+            },
+        )
 
         # Create server
         self.server = GstRtspServer.RTSPServer()
@@ -272,7 +285,7 @@ class RTSPServer:
         factory.set_launch(f"( {pipeline_str} )")
         factory.set_shared(True)  # Share pipeline with multiple clients
 
-        print(f"   📹 Pipeline: {pipeline_str}")
+        logger.info("RTSP pipeline created", extra={"pipeline": pipeline_str})
 
         # Mount factory
         mounts = self.server.get_mount_points()
@@ -287,8 +300,14 @@ class RTSPServer:
         self.thread.start()
 
         self.running = True
-        print(f"✅ RTSP Server started on port {self.port}")
-        print(f"   📺 Connect with: rtsp://IP:{self.port}{self.mount_point}")
+        logger.info(
+            "RTSP server started",
+            extra={
+                "port": self.port,
+                "mount_point": self.mount_point,
+                "url_template": f"rtsp://IP:{self.port}{self.mount_point}",
+            },
+        )
 
     def _run_mainloop(self):
         """Run GLib main loop in dedicated thread"""
@@ -305,21 +324,21 @@ class RTSPServer:
         # Connect to client closed signal to track disconnections
         client.connect("closed", self._on_client_closed)
 
-        print(f"📊 RTSP client connected. Total: {self.stats['clients_connected']}")
+        logger.info("RTSP client connected", extra={"total_clients": self.stats["clients_connected"]})
 
     def _on_client_closed(self, client):
         """Callback when a client disconnects"""
         with self.stats_lock:
             self.stats["clients_connected"] = max(0, self.stats["clients_connected"] - 1)
 
-        print(f"⏹️  RTSP client disconnected. Total: {self.stats['clients_connected']}")
+        logger.info("RTSP client disconnected", extra={"total_clients": self.stats["clients_connected"]})
 
     def stop(self):
         """Stop the RTSP server"""
         if not self.running:
             return
 
-        print("⏹️ Stopping RTSP Server...")
+        logger.info("Stopping RTSP server")
 
         # Close all active client sessions before stopping
         if self.server:
@@ -337,11 +356,11 @@ class RTSPServer:
 
                     # Remove all sessions (closes connections)
                     for session_id in session_ids:
-                        print(f"   Closing RTSP session: {session_id}")
+                        logger.info("Closing RTSP session", extra={"session_id": session_id})
                         session_pool.remove(session_id)
 
                     if session_ids:
-                        print(f"   Closed {len(session_ids)} RTSP client session(s)")
+                        logger.info("Closed RTSP client sessions", extra={"count": len(session_ids)})
                         # Brief pause to allow connections to close gracefully
                         import time
 
@@ -364,7 +383,7 @@ class RTSPServer:
         self.mainloop = None
         self.thread = None
 
-        print("✅ RTSP Server stopped")
+        logger.info("RTSP server stopped")
 
     def is_running(self):
         """Check if server is running"""

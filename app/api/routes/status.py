@@ -1,12 +1,12 @@
 """Status endpoint for system and application information."""
 
-import subprocess
 import os
 import sys
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from importlib import metadata
 from app.services.cache_service import get_cache_service
+from app.utils.cmd import run_cmd
 
 router = APIRouter(prefix="/api/status", tags=["status"])
 
@@ -66,7 +66,7 @@ def check_python_dependencies():
         # Cache result for 30 minutes
         _cache.set("python_dependencies", result, ttl=1800)
         return result
-    except Exception as e:
+    except (OSError, ValueError, TypeError) as e:
         result = {"status": "error", "message": str(e)}
         # Cache errors for shorter time (5 minutes)
         _cache.set("python_dependencies", result, ttl=300)
@@ -100,7 +100,7 @@ def check_npm_dependencies():
         # Cache result for 30 minutes
         _cache.set("npm_dependencies", result, ttl=1800)
         return result
-    except Exception as e:
+    except (OSError, ValueError, TypeError) as e:
         result = {"status": "error", "message": str(e)}
         # Cache errors for shorter time (5 minutes)
         _cache.set("npm_dependencies", result, ttl=300)
@@ -129,7 +129,7 @@ def get_user_permissions():
                         line = line.strip()
                         if line and not line.startswith("#") and user.pw_name in line:
                             sudoers_list.append({"source": "sudoers", "entry": line})
-        except Exception:
+        except (OSError, PermissionError, UnicodeError):
             pass
 
         # Check /etc/sudoers.d
@@ -148,9 +148,9 @@ def get_user_permissions():
                                             "entry": line,
                                         }
                                     )
-                    except Exception:
+                    except (OSError, PermissionError, UnicodeError):
                         pass
-        except Exception:
+        except (OSError, PermissionError):
             pass
 
         perms = {
@@ -166,7 +166,7 @@ def get_user_permissions():
         }
 
         return {"status": "ok", "permissions": perms}
-    except Exception as e:
+    except (ImportError, KeyError, LookupError, OSError, ValueError, TypeError) as e:
         return {"status": "error", "message": str(e)}
 
 
@@ -185,7 +185,7 @@ def check_system_info():
                 "python_executable": sys.executable,
             },
         }
-    except Exception as e:
+    except (AttributeError, OSError, ValueError, TypeError) as e:
         return {"status": "error", "message": str(e)}
 
 
@@ -205,7 +205,7 @@ def get_app_version():
                     return {"status": "ok", "version": version}
 
         return {"status": "warning", "version": "unknown"}
-    except Exception as e:
+    except (OSError, ValueError, TypeError) as e:
         return {"status": "error", "message": str(e)}
 
 
@@ -222,23 +222,24 @@ def get_frontend_version():
                     return {"status": "ok", "version": data["version"]}
 
         return {"status": "warning", "version": "unknown"}
-    except Exception as e:
+    except (OSError, ValueError, TypeError) as e:
         return {"status": "error", "message": str(e)}
 
 
 def get_node_version():
     """Get Node.js version from the runtime if available."""
     try:
-        result = subprocess.run(["node", "-v"], capture_output=True, text=True, check=True, timeout=5)
-        version = result.stdout.strip()
+        stdout, stderr, returncode = run_cmd(["node", "-v"], timeout=5, check=False)
+        if returncode == -1:
+            return {"status": "warning", "version": "not available"}
+        if returncode != 0:
+            return {"status": "error", "message": stderr or "Failed to get Node.js version"}
+
+        version = stdout.strip()
         if version.startswith("v"):
             version = version[1:]
         return {"status": "ok", "version": version or "unknown"}
-    except FileNotFoundError:
-        return {"status": "warning", "version": "not installed"}
-    except subprocess.CalledProcessError as e:
-        return {"status": "error", "message": e.stderr.strip() or str(e)}
-    except Exception as e:
+    except (OSError, ValueError, TypeError) as e:
         return {"status": "error", "message": str(e)}
 
 
@@ -268,7 +269,7 @@ async def health_check():
             "permissions": permissions,
             "timestamp": int(__import__("time").time()),
         }
-    except Exception as e:
+    except (RuntimeError, OSError, ValueError, TypeError) as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -1,7 +1,7 @@
 import './VideoView.css'
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useWebSocket } from '../../../contexts/WebSocketContext'
+import { useWsMessage } from '../../../contexts/WebSocketContext'
 import { useToast } from '../../../contexts/ToastContext'
 import api from '../../../services/api'
 import { VIDEO_DEFAULTS, FALLBACK_FPS, EMPTY_STATUS, TIMING, safeInt } from './videoConstants'
@@ -13,10 +13,13 @@ import StreamControlCard from './StreamControlCard'
 import PipelineCard from './PipelineCard'
 import StatsCard from './StatsCard'
 import WebRTCViewerCard from './WebRTCViewerCard'
+import { useArmedState } from '../../../hooks/useArmedState'
 
 const VideoView = () => {
   const { t } = useTranslation()
-  const { messages } = useWebSocket()
+  const statusMessage = useWsMessage('video_status')
+  const webrtcStatusMessage = useWsMessage('webrtc_status')
+  const resolutionChanged = useWsMessage('resolution_changed')
   const { showToast } = useToast()
 
   // ── State ──────────────────────────────────────────────────────────────────
@@ -79,16 +82,17 @@ const VideoView = () => {
   }, [videoDevices, config])
 
   // ── WebSocket status ───────────────────────────────────────────────────────
-  const status = messages.video_status || EMPTY_STATUS
-  const webrtcStatus = messages.webrtc_status || null
+  const status = statusMessage || EMPTY_STATUS
+  const webrtcStatus = webrtcStatusMessage || null
+  const isArmed = useArmedState()
 
   // Sync remote config → local when no pending changes
   useEffect(() => {
-    if (messages.video_status?.config && !hasChanges) {
-      setConfig((prev) => ({ ...prev, ...messages.video_status.config }))
+    if (statusMessage?.config && !hasChanges) {
+      setConfig((prev) => ({ ...prev, ...statusMessage.config }))
       initialLoadDone.current = true
     }
-  }, [messages.video_status, hasChanges])
+  }, [statusMessage, hasChanges])
 
   // Track local changes
   const updateConfig = useCallback((updater) => {
@@ -156,13 +160,16 @@ const VideoView = () => {
   useEffect(() => {
     const loadData = async () => {
       setLoading(true)
-      await Promise.all([
-        loadVideoDevices(),
-        loadCodecs(),
-        loadNetworkIp(),
-        loadAutoAdaptiveBitrate(),
-      ])
-      setLoading(false)
+      try {
+        // Load critical data first so the page becomes interactive quickly.
+        await Promise.all([loadCodecs(), loadNetworkIp(), loadAutoAdaptiveBitrate()])
+      } finally {
+        setLoading(false)
+      }
+
+      // Device inventory can be slow on cold boot (v4l2/libcamera probing),
+      // so fetch it after rendering instead of blocking the whole tab.
+      loadVideoDevices()
     }
     loadData()
   }, [loadVideoDevices, loadCodecs, loadNetworkIp, loadAutoAdaptiveBitrate])
@@ -182,8 +189,8 @@ const VideoView = () => {
 
   // Listen for resolution changes from auto-adaptive system
   useEffect(() => {
-    if (messages.resolution_changed) {
-      const { old_resolution, new_resolution, reason } = messages.resolution_changed
+    if (resolutionChanged) {
+      const { old_resolution, new_resolution, reason } = resolutionChanged
       const reasonText =
         reason === 'adaptive_downscale'
           ? t('views.video.qualityDrop')
@@ -195,7 +202,7 @@ const VideoView = () => {
         'info'
       )
     }
-  }, [messages.resolution_changed, showToast, t])
+  }, [resolutionChanged, showToast, t])
 
   // ── Action handlers ────────────────────────────────────────────────────────
   const applyConfigAndStart = async () => {
@@ -394,18 +401,26 @@ const VideoView = () => {
     setAvailableCodecs(filtered)
 
     // Determine best codec for this device:
-    // - Prefer passthrough for H264-capable cameras (ultra-low latency)
+    // - Prefer passthrough for H264-capable cameras (ultra-low latency) ONLY
+    //   when the backend config has not been synced yet (initialLoadDone).
+    //   After backend config arrives, respect the saved/preferred codec.
     // - Otherwise keep current codec if compatible, else switch to first compatible
     if (filtered.length > 0) {
-      const hasPassthrough = deviceCodecs.some(
-        (c) => c.codec_id === 'h264_passthrough' && c.compatible
-      )
-      const passthroughCodec = filtered.find((c) => c.id === 'h264_passthrough')
       const currentCompatible = filtered.some((c) => c.id === config.codec)
 
-      if (hasPassthrough && passthroughCodec && config.codec !== 'h264_passthrough') {
-        setConfig((prev) => ({ ...prev, codec: 'h264_passthrough' }))
-      } else if (!currentCompatible) {
+      if (!initialLoadDone.current) {
+        const hasPassthrough = deviceCodecs.some(
+          (c) => c.codec_id === 'h264_passthrough' && c.compatible
+        )
+        const passthroughCodec = filtered.find((c) => c.id === 'h264_passthrough')
+
+        if (hasPassthrough && passthroughCodec && config.codec !== 'h264_passthrough') {
+          setConfig((prev) => ({ ...prev, codec: 'h264_passthrough' }))
+          return
+        }
+      }
+
+      if (!currentCompatible) {
         setConfig((prev) => ({ ...prev, codec: filtered[0].id }))
       }
     }
@@ -522,7 +537,7 @@ const VideoView = () => {
           <VideoSourceCard
             config={config}
             videoDevices={videoDevices}
-            streaming={status.streaming}
+            streaming={status.streaming || isArmed}
             handleCameraChange={handleCameraChange}
             handleResolutionChange={handleResolutionChange}
             updateConfig={updateConfig}
@@ -542,7 +557,7 @@ const VideoView = () => {
           )}
           <NetworkSettingsCard
             config={config}
-            streaming={status.streaming}
+            streaming={status.streaming || isArmed}
             updateConfig={updateConfig}
             webrtcStatus={webrtcStatus}
             onValidationChange={handleNetworkValidation}
@@ -559,6 +574,7 @@ const VideoView = () => {
             stopStream={stopStream}
             restartStream={restartStream}
             hasValidationErrors={networkValidationErrors}
+            isArmed={isArmed}
           />
           {/* WebRTC Viewer — shown when WebRTC mode is active and streaming */}
           {config.mode === 'webrtc' && status.streaming && (

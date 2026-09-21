@@ -132,9 +132,9 @@ class TestNetworkStatusCache:
             response3 = client.get("/api/network/status")
 
             # All should succeed
-            assert response1.status_code in [200, 500]
-            assert response2.status_code in [200, 500]
-            assert response3.status_code in [200, 500]
+            assert response1.status_code == 200
+            assert response2.status_code == 200
+            assert response3.status_code == 200
 
             # Due to caching, subsequent calls should hit cache
             # So system calls should be minimal

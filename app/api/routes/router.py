@@ -142,7 +142,7 @@ async def list_outputs(request: Request) -> JSONResponse:
     try:
         lang = get_language_from_request(request)
 
-        print(f"DEBUG: list_outputs called, _router_service = {_router_service}")
+        logger.debug("list_outputs called", extra={"service_ready": _router_service is not None})
         if not _router_service:
             logger.error("Router service not initialized")
             return JSONResponse(
@@ -345,7 +345,7 @@ async def get_presets(request: Request) -> JSONResponse:
 
         return JSONResponse(content={"success": True, "presets": presets})
 
-    except Exception as e:
+    except (KeyError, TypeError, ValueError) as e:
         logger.error(f"Error getting presets: {e}")
         return JSONResponse(status_code=500, content={"success": False, "error": "Failed to get presets"})
 

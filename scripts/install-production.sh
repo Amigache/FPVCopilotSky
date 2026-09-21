@@ -23,9 +23,31 @@ fi
 # Get the actual user (not root if using sudo)
 ACTUAL_USER=${SUDO_USER:-$USER}
 
-echo -e "\n${BLUE}📦 Installing nginx...${NC}"
+echo -e "\n${BLUE}📦 Installing nginx and system utilities...${NC}"
 apt-get update
-apt-get install -y nginx
+apt-get install -y nginx libcap2-bin wireguard-tools
+
+# Rockchip MPP hardware H.264 encoder (RK3566 / RK3568 / RK3588)
+if [ -e /dev/mpp_service ]; then
+    echo -e "\n${BLUE}🔧 Rockchip MPP detected — installing hardware H.264 encoder...${NC}"
+    # udev rule: give 'video' group access to /dev/mpp_service (default is root-only)
+    echo 'SUBSYSTEM=="misc", KERNEL=="mpp_service", GROUP="video", MODE="0660"' \
+        > /etc/udev/rules.d/99-rockchip-mpp.rules
+    udevadm control --reload-rules && udevadm trigger --name-match=mpp_service || true
+    # Apply immediately for current runtime too
+    chgrp video /dev/mpp_service 2>/dev/null || true
+    chmod 660 /dev/mpp_service 2>/dev/null || true
+    # Ensure service user can always access MPP
+    id fpvcopilotsky >/dev/null 2>&1 && usermod -a -G video fpvcopilotsky || true
+    # Ensure installer user can test hardware encoder directly
+    [ -n "$ACTUAL_USER" ] && id "$ACTUAL_USER" >/dev/null 2>&1 && usermod -a -G video "$ACTUAL_USER" || true
+    echo -e "  ${GREEN}✓${NC} udev rule: /dev/mpp_service accessible to 'video' group"
+    apt-get install -y software-properties-common 2>&1 | tail -2
+    add-apt-repository -y ppa:liujianfeng1994/rockchip-multimedia 2>&1 | tail -3
+    apt-get update -qq 2>&1 | tail -3
+    apt-get install -y librockchip-mpp1 librockchip-mpp-dev gstreamer1.0-rockchip1 2>&1 | tail -5
+    echo -e "${GREEN}✅ Hardware H.264 encoder installed${NC}"
+fi
 
 echo -e "${GREEN}✅ Nginx installed${NC}"
 

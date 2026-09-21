@@ -2,7 +2,8 @@ import './VPNView.css'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useToast } from '../../../contexts/ToastContext'
-import { useWebSocket } from '../../../contexts/WebSocketContext'
+import { useWsMessage } from '../../../contexts/WebSocketContext'
+import { useArmedState } from '../../../hooks/useArmedState'
 import api from '../../../services/api'
 import VPNStatusCard from './VPNStatusCard'
 import VPNPeersList from './VPNPeersList'
@@ -26,7 +27,8 @@ const copyToClipboard = async (text) => {
 const VPNView = () => {
   const { t } = useTranslation()
   const { showToast } = useToast()
-  const { messages } = useWebSocket()
+  const isArmed = useArmedState()
+  const vpnStatusMessage = useWsMessage('vpn_status')
 
   // State
   const [loading, setLoading] = useState(true)
@@ -132,13 +134,19 @@ const VPNView = () => {
 
   // Initial data load
   useEffect(() => {
+    let cancelled = false
     const loadData = async () => {
       setLoading(true)
       await loadProviders()
       await loadPreferences()
-      setLoading(false)
+      if (!cancelled) {
+        setLoading(false)
+      }
     }
     loadData()
+    return () => {
+      cancelled = true
+    }
   }, [loadProviders, loadPreferences])
 
   // Refresh status when provider changes
@@ -161,8 +169,8 @@ const VPNView = () => {
 
   // WebSocket status updates
   useEffect(() => {
-    if (messages.vpn_status) {
-      const data = messages.vpn_status
+    if (vpnStatusMessage) {
+      const data = vpnStatusMessage
       setStatus(data)
 
       if (data.needs_auth && data.auth_url && !authUrlRef.current) {
@@ -174,7 +182,7 @@ const VPNView = () => {
         setAuthPolling(false)
       }
     }
-  }, [messages.vpn_status, showToast, t])
+  }, [vpnStatusMessage, showToast, t])
 
   // Load peers when connected
   useEffect(() => {
@@ -451,7 +459,7 @@ const VPNView = () => {
               <button
                 className="vpn-btn vpn-btn-danger"
                 onClick={handleDisconnect}
-                disabled={!isInstalled || !isConnected || connecting}
+                disabled={!isInstalled || !isConnected || connecting || isArmed}
               >
                 {connecting && isConnected ? '⏳' : '🔌'} {t('vpn.disconnect')}
               </button>
@@ -459,10 +467,10 @@ const VPNView = () => {
               <button
                 className="vpn-btn vpn-btn-warning"
                 onClick={handleLogout}
-                disabled={!isInstalled || !isAuthenticated || isConnected || connecting}
+                disabled={!isInstalled || !isAuthenticated || isConnected || connecting || isArmed}
                 title={t('vpn.logoutTooltip')}
               >
-                {connecting ? '⏳' : '🚪'} {t('vpn.logout')}
+                {connecting ? '⏳' : '🚶'} {t('vpn.logout')}
               </button>
             </div>
           </div>

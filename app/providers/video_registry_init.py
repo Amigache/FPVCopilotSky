@@ -49,13 +49,10 @@ def register_all_video_encoders():
     except Exception as e:
         logger.error(f"❌ Failed to register OpenH264 encoder: {e}")
 
-    # Log available encoders
-    available = registry.get_available_video_encoders()
-    available_names = [e["display_name"] for e in available if e["available"]]
-    if available_names:
-        logger.info(f"📹 Available video encoders: {', '.join(available_names)}")
-    else:
-        logger.warning("⚠️ No video encoders available!")
+    # NOTE: Encoder availability probing (gst-inspect-1.0, v4l2-ctl) is intentionally
+    # NOT triggered here. It runs as a background task after startup to avoid
+    # blocking the asyncio event loop for up to several minutes on first boot.
+    logger.info("Video encoder classes registered (availability probe deferred to background)")
 
 
 # Auto-register on import

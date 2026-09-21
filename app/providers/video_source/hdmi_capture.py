@@ -3,12 +3,12 @@ HDMI Capture Source Provider
 Handles HDMI capture cards/dongles (USB or PCIe)
 """
 
-import subprocess
 import glob
 import re
 import logging
 from typing import Dict, List, Optional, Any
 from ..base.video_source_provider import VideoSourceProvider
+from app.utils.cmd import run_cmd
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +38,8 @@ class HDMICaptureSource(VideoSourceProvider):
     def is_available(self) -> bool:
         """Check if v4l2-ctl is available (needed to detect HDMI capture)"""
         try:
-            result = subprocess.run(["which", "v4l2-ctl"], capture_output=True, timeout=2)
-            return result.returncode == 0
+            _, _, returncode = run_cmd(["which", "v4l2-ctl"], timeout=2, check=False)
+            return returncode == 0
         except Exception:
             return False
 
@@ -97,14 +97,13 @@ class HDMICaptureSource(VideoSourceProvider):
         for device in devices:
             try:
                 # Get device info
-                info_result = subprocess.run(
+                info_stdout, _, info_returncode = run_cmd(
                     ["v4l2-ctl", "-d", device, "--info"],
-                    capture_output=True,
-                    text=True,
                     timeout=5,
+                    check=False,
                 )
 
-                if info_result.returncode != 0:
+                if info_returncode != 0:
                     continue
 
                 device_name = device
@@ -112,7 +111,7 @@ class HDMICaptureSource(VideoSourceProvider):
                 driver = ""
                 is_capture = False
 
-                for line in info_result.stdout.split("\n"):
+                for line in info_stdout.split("\n"):
                     if "Card type" in line:
                         parts = line.split(":", 1)
                         if len(parts) > 1:
@@ -166,21 +165,20 @@ class HDMICaptureSource(VideoSourceProvider):
             device = source_id
 
             # Get device info
-            info_result = subprocess.run(
+            info_stdout, _, info_returncode = run_cmd(
                 ["v4l2-ctl", "-d", device, "--info"],
-                capture_output=True,
-                text=True,
                 timeout=5,
+                check=False,
             )
 
-            if info_result.returncode != 0:
+            if info_returncode != 0:
                 return None
 
             card_type = ""
             driver = ""
             bus_info = ""
 
-            for line in info_result.stdout.split("\n"):
+            for line in info_stdout.split("\n"):
                 if "Card type" in line:
                     parts = line.split(":", 1)
                     if len(parts) > 1:
@@ -195,11 +193,10 @@ class HDMICaptureSource(VideoSourceProvider):
                         bus_info = parts[1].strip()
 
             # Get formats
-            formats_result = subprocess.run(
+            formats_stdout, _, _ = run_cmd(
                 ["v4l2-ctl", "-d", device, "--list-formats-ext"],
-                capture_output=True,
-                text=True,
                 timeout=5,
+                check=False,
             )
 
             formats = []
@@ -208,7 +205,7 @@ class HDMICaptureSource(VideoSourceProvider):
             current_format = None
             current_resolution = None
 
-            for line in formats_result.stdout.split("\n"):
+            for line in formats_stdout.split("\n"):
                 if "'" in line:
                     parts = line.split("'")
                     if len(parts) >= 2:

@@ -3,9 +3,14 @@ System API Routes
 Endpoints for system information
 """
 
-from fastapi import APIRouter, BackgroundTasks, Request
+import asyncio
+import logging
+
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from app.services.system_service import SystemService
 from app.i18n import get_language_from_request, translate
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -13,19 +18,19 @@ router = APIRouter()
 @router.get("/version/current")
 async def get_current_version():
     """Get current installed version"""
-    return SystemService.get_version()
+    return await asyncio.to_thread(SystemService.get_version)
 
 
 @router.get("/version/check")
 async def check_for_updates():
     """Check for updates on GitHub"""
-    return SystemService.check_for_updates()
+    return await asyncio.to_thread(SystemService.check_for_updates)
 
 
 @router.get("/version/can-rollback")
 async def can_rollback():
     """Check if rollback to previous version is available"""
-    return SystemService.can_rollback()
+    return await asyncio.to_thread(SystemService.can_rollback)
 
 
 @router.post("/version/update")
@@ -38,8 +43,8 @@ async def apply_system_update(background_tasks: BackgroundTasks):
     The restart is scheduled as a BackgroundTask so the client receives
     the success response first.
     """
-    result = SystemService.apply_update(do_restart=False)
-    if result.get("success"):
+    result = await asyncio.to_thread(SystemService.apply_update, do_restart=False)
+    if result.get("success") and not result.get("privileged"):
         background_tasks.add_task(SystemService._restart_service_delayed)
     return result
 
@@ -54,8 +59,8 @@ async def rollback_to_previous_version(background_tasks: BackgroundTasks):
     The restart is scheduled as a BackgroundTask so the client receives
     the success response first.
     """
-    result = SystemService.rollback_to_previous_version(do_restart=False)
-    if result.get("success"):
+    result = await asyncio.to_thread(SystemService.rollback_to_previous_version, do_restart=False)
+    if result.get("success") and not result.get("privileged"):
         background_tasks.add_task(SystemService._restart_service_delayed)
     return result
 
@@ -63,13 +68,13 @@ async def rollback_to_previous_version(background_tasks: BackgroundTasks):
 @router.get("/info")
 async def get_system_info():
     """Get system information"""
-    return SystemService.get_system_info()
+    return await asyncio.to_thread(SystemService.get_system_info)
 
 
 @router.get("/ports")
 async def get_available_ports():
     """Get list of available serial ports"""
-    ports = SystemService.get_available_serial_ports()
+    ports = await asyncio.to_thread(SystemService.get_available_serial_ports)
 
     return {"ports": ports, "count": len(ports)}
 
@@ -77,7 +82,7 @@ async def get_available_ports():
 @router.get("/services")
 async def get_services_status():
     """Get status of monitored systemd services (fpvcopilot-sky, nginx) with resource usage"""
-    services = SystemService.get_services_status()
+    services = await asyncio.to_thread(SystemService.get_services_status)
 
     return {"services": services, "count": len(services)}
 
@@ -85,22 +90,23 @@ async def get_services_status():
 @router.get("/memory")
 async def get_memory_info():
     """Get RAM memory usage information"""
-    return SystemService.get_memory_info()
+    return await asyncio.to_thread(SystemService.get_memory_info)
 
 
 @router.get("/cpu")
 async def get_cpu_info():
     """Get CPU usage and information"""
-    return SystemService.get_cpu_info()
+    return await asyncio.to_thread(SystemService.get_cpu_info)
 
 
 @router.get("/resources")
 async def get_system_resources():
     """Get combined CPU and memory information"""
-    return {
-        "cpu": SystemService.get_cpu_info(),
-        "memory": SystemService.get_memory_info(),
-    }
+    cpu, memory = await asyncio.gather(
+        asyncio.to_thread(SystemService.get_cpu_info),
+        asyncio.to_thread(SystemService.get_memory_info),
+    )
+    return {"cpu": cpu, "memory": memory}
 
 
 @router.get("/processes/cpu")
@@ -113,7 +119,7 @@ async def get_top_cpu_processes(limit: int = 10):
     """
     # Limit the limit parameter to prevent excessive processing
     limit = min(limit, 50)
-    processes = SystemService.get_top_processes_by_cpu(limit)
+    processes = await asyncio.to_thread(SystemService.get_top_processes_by_cpu, limit)
     return {"processes": processes, "count": len(processes)}
 
 
@@ -127,7 +133,7 @@ async def get_top_memory_processes(limit: int = 10):
     """
     # Limit the limit parameter to prevent excessive processing
     limit = min(limit, 50)
-    processes = SystemService.get_top_processes_by_memory(limit)
+    processes = await asyncio.to_thread(SystemService.get_top_processes_by_memory, limit)
     return {"processes": processes, "count": len(processes)}
 
 
@@ -139,8 +145,9 @@ async def get_preferences_all():
 
         prefs = get_preferences()
         return prefs.get_all_preferences()
-    except Exception as e:
-        return {"error": str(e)}
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
+        logger.error("Failed to read preferences", exc_info=e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/preferences")
@@ -152,13 +159,10 @@ async def update_preferences(request: Request):
         prefs = get_preferences()
         data = await request.json()
 
-        # Update each preference section provided
+        # Update each preference section provided (all setters take the lock).
         for key, value in data.items():
             if key == "flight_session":
-                # Deep merge flight_session preferences
-                current = prefs.get_all_preferences().get("flight_session", {})
-                current.update(value)
-                prefs._preferences["flight_session"] = current
+                prefs.set_flight_session_config(value)
             elif key == "serial":
                 if "port" in value and "baudrate" in value:
                     prefs.set_serial_config(value["port"], value["baudrate"])
@@ -174,13 +178,12 @@ async def update_preferences(request: Request):
                 for ui_key, ui_value in value.items():
                     prefs.set_ui_preference(ui_key, ui_value)
             else:
-                # Generic update for other keys
-                prefs._preferences[key] = value
+                prefs.set_section(key, value)
 
-        prefs._save()
         return {"success": True, "message": "Preferences updated"}
-    except Exception as e:
-        return {"success": False, "message": str(e)}
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
+        logger.error("Failed to update preferences", exc_info=e)
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.post("/preferences/reset")
@@ -203,53 +206,53 @@ async def reset_preferences(request: Request):
                 "success": False,
                 "message": translate("system.preferences_reset_failed", lang),
             }
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
         lang = get_language_from_request(request)
-        return {
-            "success": False,
-            "message": translate("system.preferences_reset_error", lang, error=str(e)),
-        }
+        raise HTTPException(
+            status_code=500,
+            detail=translate("system.preferences_reset_error", lang, error=str(e)),
+        ) from e
 
 
 @router.post("/restart/backend")
 async def restart_backend(request: Request):
     """Restart backend service (fpvcopilot-sky)"""
     try:
-        result = SystemService.restart_backend()
+        result = await asyncio.to_thread(SystemService.restart_backend)
         return result
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
         lang = get_language_from_request(request)
-        return {
-            "success": False,
-            "message": translate("system.restart_backend_error", lang, error=str(e)),
-        }
+        raise HTTPException(
+            status_code=500,
+            detail=translate("system.restart_backend_error", lang, error=str(e)),
+        ) from e
 
 
 @router.post("/restart/frontend")
 async def restart_frontend(request: Request):
     """Rebuild frontend (requires manual deployment)"""
     try:
-        result = SystemService.restart_frontend()
+        result = await asyncio.to_thread(SystemService.restart_frontend)
         return result
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
         lang = get_language_from_request(request)
-        return {
-            "success": False,
-            "message": translate("system.restart_frontend_error", lang, error=str(e)),
-        }
+        raise HTTPException(
+            status_code=500,
+            detail=translate("system.restart_frontend_error", lang, error=str(e)),
+        ) from e
 
 
 @router.get("/logs/backend")
 async def get_backend_logs(lines: int = 100, request: Request = None):
     """Get backend service logs (journalctl)"""
     try:
-        logs = SystemService.get_backend_logs(lines)
+        logs = await asyncio.to_thread(SystemService.get_backend_logs, lines)
         return {
             "success": True,
             "logs": logs,
             "lines": len(logs.split("\n")) if logs else 0,
         }
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
         lang = get_language_from_request(request) if request else "en"
         return {
             "success": False,
@@ -262,13 +265,13 @@ async def get_backend_logs(lines: int = 100, request: Request = None):
 async def get_frontend_logs(lines: int = 100, request: Request = None):
     """Get frontend logs (nginx access/error logs)"""
     try:
-        logs = SystemService.get_frontend_logs(lines)
+        logs = await asyncio.to_thread(SystemService.get_frontend_logs, lines)
         return {
             "success": True,
             "logs": logs,
             "lines": len(logs.split("\n")) if logs else 0,
         }
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
         lang = get_language_from_request(request) if request else "en"
         return {
             "success": False,
@@ -285,7 +288,7 @@ async def get_board_info(request: Request):
         from app.providers.board import BoardRegistry
 
         registry = BoardRegistry()
-        detected_board = registry.get_detected_board()
+        detected_board = await asyncio.to_thread(registry.get_detected_board)
 
         if detected_board:
             return {"success": True, "data": detected_board.to_dict()}
@@ -295,7 +298,7 @@ async def get_board_info(request: Request):
                 "message": translate("system.board_not_detected", lang),
                 "data": None,
             }
-    except Exception as e:
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
         lang = get_language_from_request(request)
         return {
             "success": False,
@@ -310,7 +313,7 @@ async def get_video_devices():
     from app.services.video_device_service import get_video_device_service
 
     service = get_video_device_service()
-    return service.get_scan_info()
+    return await asyncio.to_thread(service.get_scan_info)
 
 
 @router.post("/video-devices/scan")
@@ -319,5 +322,5 @@ async def rescan_video_devices():
     from app.services.video_device_service import get_video_device_service
 
     service = get_video_device_service()
-    service.scan_devices()
-    return service.get_scan_info()
+    await asyncio.to_thread(service.scan_devices)
+    return await asyncio.to_thread(service.get_scan_info)

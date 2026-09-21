@@ -10,10 +10,11 @@ Features:
 - Interface optimization: Disables power saving, optimizes buffers
 """
 
-import subprocess
 import logging
+import subprocess  # noqa: F401 - backward-compatible patch target for tests/mocks.
 from typing import Dict, Optional, List
 from dataclasses import dataclass, field
+from app.utils.cmd import run_cmd
 
 logger = logging.getLogger(__name__)
 
@@ -71,21 +72,8 @@ class NetworkOptimizer:
         self.config = FlightModeConfig()
 
     def _run_command(self, cmd: List[str], check: bool = True) -> tuple[str, str, int]:
-        """Execute command and return (stdout, stderr, returncode)"""
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-
-            if check and result.returncode != 0:
-                logger.error(f"Command failed: {' '.join(cmd)}")
-                logger.error(f"stderr: {result.stderr}")
-
-            return result.stdout.strip(), result.stderr.strip(), result.returncode
-        except subprocess.TimeoutExpired:
-            logger.error(f"Command timeout: {' '.join(cmd)}")
-            return "", "Timeout", -1
-        except Exception as e:
-            logger.error(f"Error running command {cmd}: {e}")
-            return "", str(e), -1
+        """Execute command via unified cmd layer (timeout=10s)."""
+        return run_cmd(cmd, timeout=10, check=check)
 
     def _get_modem_interface(self) -> Optional[str]:
         """Detect 4G modem interface (192.168.8.x subnet)"""

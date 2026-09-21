@@ -6,7 +6,7 @@ Implementation for modems in router/gateway mode (e.g., TP-Link M7200)
 from typing import Dict, Optional
 from ..base import ModemProvider, ModemStatus, ModemInfo, NetworkInfo
 import logging
-import subprocess
+from app.utils.cmd import run_cmd
 
 logger = logging.getLogger(__name__)
 
@@ -37,12 +37,12 @@ class RouterModemProvider(ModemProvider):
         """Detect if router is accessible"""
         try:
             # Try ping to router
-            result = subprocess.run(
+            _, _, returncode = run_cmd(
                 ["ping", "-c", "1", "-W", "2", self.router_ip],
-                capture_output=True,
                 timeout=3,
+                check=False,
             )
-            return result.returncode == 0
+            return returncode == 0
         except Exception:
             return False
 

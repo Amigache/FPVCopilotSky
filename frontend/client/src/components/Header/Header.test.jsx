@@ -15,27 +15,24 @@ vi.mock('react-i18next', () => ({
   }),
 }))
 
-// Mock the useWebSocket hook
-vi.mock('../../contexts/WebSocketContext', () => ({
-  useWebSocket: () => ({
-    messages: {
-      mavlink_status: {
-        connected: true,
-        port: '/dev/ttyUSB0',
-        baudrate: 115200,
-      },
-      telemetry: {
-        system: { armed: false, mode: 'GUIDED' },
-      },
-      video_status: {
-        streaming: true,
-      },
-      vpn_status: {
-        connected: true,
-        authenticated: true,
-        installed: true,
-      },
-    },
+// Mock the WebSocket hooks
+vi.mock('../../contexts/WebSocketContext', () => {
+  const messages = {
+    mavlink_status: { connected: true, port: '/dev/ttyUSB0', baudrate: 115200 },
+    telemetry: { system: { armed: false, mode: 'GUIDED' } },
+    video_status: { streaming: true },
+    vpn_status: { connected: true, authenticated: true, installed: true },
+  }
+  return {
+    useWebSocket: () => ({ isConnected: true, send: () => {} }),
+    useWsMessage: (type) => messages[type],
+  }
+})
+
+vi.mock('../../contexts/ParamCacheContext', () => ({
+  useParamCache: () => ({
+    isDownloading: false,
+    status: { progress: 0 },
   }),
 }))
 

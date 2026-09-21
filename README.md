@@ -5,11 +5,11 @@
 FPV Copilot Sky convierte un SBC Linux (Radxa Zero, Raspberry Pi, Orange Pi…) en un hub inteligente que gestiona telemetría MAVLink, streaming de video en baja latencia y conectividad 4G/VPN — todo controlable desde una interfaz web moderna.
 
 ![CI Status](https://github.com/Amigache/FPVCopilotSky/workflows/CI%20-%20Lint%20&%20Test/badge.svg)
-![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![Version](https://img.shields.io/badge/version-1.1.0-blue)
 ![Platform](https://img.shields.io/badge/platform-Linux_ARM/x86-green)
 ![License](https://img.shields.io/badge/license-MIT-yellow)
 ![Python](https://img.shields.io/badge/python-3.12+-blue)
-![React](https://img.shields.io/badge/react-19-61dafb)
+![React](https://img.shields.io/badge/react-18-61dafb)
 
 ---
 
@@ -149,6 +149,34 @@ bash scripts/deploy.sh                   # Recompilar y desplegar
 bash scripts/dev.sh                      # Modo desarrollo con hot-reload
 ```
 
+### CORS por entorno
+
+El backend configura CORS mediante variables de entorno:
+
+- `FPV_CORS_ALLOW_ORIGINS`
+- `FPV_CORS_ALLOW_CREDENTIALS`
+- `FPV_CORS_ALLOW_METHODS`
+- `FPV_CORS_ALLOW_HEADERS`
+
+Configuración detallada y ejemplos dev/prod en [docs/INSTALLATION.md](docs/INSTALLATION.md).
+
+### 🔐 Autenticación de la API (opcional)
+
+Define `FPV_API_TOKEN` para exigir `Authorization: Bearer <token>` en toda la API
+y `?token=<token>` en el WebSocket `/ws`. Si no se define, la API queda abierta
+(modo desarrollo) y el backend emite un aviso por log.
+
+| Variable          | Por defecto       | Descripción                                                      |
+| ----------------- | ----------------- | ---------------------------------------------------------------- |
+| `FPV_API_TOKEN`   | _(vacío)_         | Secreto compartido. Al definirlo se **activa** la autenticación. |
+| `FPV_ENABLE_DOCS` | `false` con token | `true` para seguir sirviendo `/docs` y `/openapi.json`.          |
+| `FPV_BIND_HOST`   | `127.0.0.1`       | Interfaz de escucha de uvicorn.                                  |
+| `FPV_BIND_PORT`   | `8000`            | Puerto de uvicorn.                                               |
+
+La unidad systemd escucha solo en `127.0.0.1`; nginx es la única entrada de red
+y bloquea `/docs`, `/redoc` y `/openapi.json`. Guía TLS en
+[`systemd/fpvcopilot-sky.nginx`](../systemd/fpvcopilot-sky.nginx).
+
 ## 📚 Documentación
 
 Toda la documentación extendida está en la **[Wiki del proyecto](docs/INDEX.md)**:
@@ -165,7 +193,7 @@ Toda la documentación extendida está en la **[Wiki del proyecto](docs/INDEX.md
 | Capa         | Stack                                                               |
 | ------------ | ------------------------------------------------------------------- |
 | **Backend**  | Python 3.12, FastAPI, Uvicorn, PyMAVLink, GStreamer, huawei-lte-api |
-| **Frontend** | React 19, Vite, i18next, WebSocket                                  |
+| **Frontend** | React 18, Vite, i18next, WebSocket                                  |
 | **Infra**    | Nginx, systemd, NetworkManager, Tailscale, tc/CAKE, MPTCP, iptables |
 
 ## 📄 Licencia

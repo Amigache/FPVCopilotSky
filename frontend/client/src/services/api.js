@@ -38,6 +38,40 @@ export const API_MAVLINK = `${API_BASE}/api/mavlink`
 export const API_MAVLINK_ROUTER = `${API_BASE}/api/mavlink-router`
 export const API_SYSTEM = `${API_BASE}/api/system`
 
+// ── API authentication token (opt-in; backend FPV_API_TOKEN) ─────────────────
+export const AUTH_TOKEN_KEY = 'fpv_api_token'
+
+export const getAuthToken = () => {
+  try {
+    return localStorage.getItem(AUTH_TOKEN_KEY)
+  } catch (_e) {
+    return null
+  }
+}
+
+export const setAuthToken = (token) => {
+  try {
+    if (token) localStorage.setItem(AUTH_TOKEN_KEY, token)
+    else localStorage.removeItem(AUTH_TOKEN_KEY)
+  } catch (_e) {
+    /* localStorage unavailable */
+  }
+}
+
+export const clearAuthToken = () => setAuthToken(null)
+
+/**
+ * Read a JSON body, tolerating non-JSON error responses (e.g. an HTML 500 page)
+ * so callers never crash on `response.json()`. Returns {} on parse failure.
+ */
+export const readJson = async (response) => {
+  try {
+    return await response.json()
+  } catch (_error) {
+    return {}
+  }
+}
+
 // Helper function for fetch with timeout and language support
 // Default timeout is 30s to accommodate VPN/remote access latency
 export const fetchWithTimeout = async (url, options = {}, timeout = 30000) => {
@@ -49,6 +83,12 @@ export const fetchWithTimeout = async (url, options = {}, timeout = 30000) => {
     const headers = {
       ...options.headers,
       'Accept-Language': getPreferredLanguage(),
+    }
+
+    // Attach bearer token when the user has configured one.
+    const token = getAuthToken()
+    if (token && !headers.Authorization && !headers.authorization) {
+      headers.Authorization = `Bearer ${token}`
     }
 
     const response = await fetch(url, {
@@ -170,3 +210,40 @@ export const api = {
 }
 
 export default api
+
+// ── Global bearer-token injection for same-origin /api requests ──────────────
+// Some modules call `fetch()` directly. Patch it once so the token is always
+// attached when configured, so no call site can accidentally omit it.
+// Only same-origin `/api/*` requests are affected; everything else is untouched.
+if (
+  typeof window !== 'undefined' &&
+  typeof window.fetch === 'function' &&
+  !window.__fpvFetchPatched
+) {
+  const originalFetch = window.fetch.bind(window)
+
+  window.fetch = (input, init = {}) => {
+    try {
+      const token = getAuthToken()
+      if (token) {
+        const rawUrl = typeof input === 'string' ? input : input?.url || ''
+        const isApiRequest =
+          rawUrl.startsWith('/api') || rawUrl.startsWith(`${window.location.origin}/api`)
+        if (isApiRequest) {
+          const headers = new Headers(
+            init.headers || (typeof input !== 'string' ? input.headers : undefined)
+          )
+          if (!headers.has('Authorization')) {
+            headers.set('Authorization', `Bearer ${token}`)
+          }
+          return originalFetch(input, { ...init, headers })
+        }
+      }
+    } catch (_e) {
+      /* fall through to the original fetch */
+    }
+    return originalFetch(input, init)
+  }
+
+  window.__fpvFetchPatched = true
+}

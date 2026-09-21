@@ -129,10 +129,16 @@ video    # Acceso a cámaras
 - IPv6 deshabilitado
 - swappiness=10
 
-**Puertos serie**:
+**Puertos serie y USB OTG**:
 
-- Reglas udev para `/dev/ttyAML*`
-- `serial-getty@ttyAML0` deshabilitado (evita conflictos con MAVLink)
+- Reglas udev para `/dev/ttyAML*`, `/dev/ttyS*`, `/dev/ttyUSB*`, `/dev/ttyACM*`
+- `serial-getty@ttyAML0` y `serial-getty@ttyS4` deshabilitados (evita conflictos con MAVLink)
+- En **Radxa Zero 3W (Armbian)** se habilita automáticamente el overlay `rk3568-uart4-m1`
+  para exponer UART4_M1 (requiere reinicio)
+- En **Radxa Zero 3W (Armbian)** se habilita automáticamente el overlay `rk3568-dwc3-host`
+  para forzar el USB-C OTG/power en modo **host** (requiere reinicio)
+- Si conectas periféricos de alto consumo por ese USB-C, se recomienda hub OTG con
+  alimentación externa
 
 > **Nota**: El entorno virtual se crea con `--system-site-packages` para acceder a GStreamer (PyGObject).
 > Requiere **reiniciar sesión** después de la instalación para que los grupos dialout/video tomen efecto.
@@ -160,6 +166,46 @@ Esto:
 - Configura nginx como proxy inverso
 - Arranca el servicio
 - Ejecuta un health-check automático
+
+### 2.4 Configuración CORS por entorno
+
+FPVCopilotSky permite configurar CORS con variables de entorno para evitar
+defaults inseguros en producción.
+
+Variables soportadas:
+
+- `FPV_CORS_ALLOW_ORIGINS`: lista separada por comas de orígenes permitidos
+- `FPV_CORS_ALLOW_CREDENTIALS`: `true` o `false`
+- `FPV_CORS_ALLOW_METHODS`: métodos permitidos, separados por comas
+- `FPV_CORS_ALLOW_HEADERS`: headers permitidos, separados por comas
+
+Ejemplo para desarrollo:
+
+```bash
+export FPV_CORS_ALLOW_ORIGINS="http://localhost:5173,http://127.0.0.1:5173"
+export FPV_CORS_ALLOW_CREDENTIALS="true"
+export FPV_CORS_ALLOW_METHODS="GET,POST,PUT,DELETE,OPTIONS"
+export FPV_CORS_ALLOW_HEADERS="Authorization,Content-Type"
+```
+
+Ejemplo para producción (recomendado):
+
+```bash
+export FPV_CORS_ALLOW_ORIGINS="https://fpv.example.com"
+export FPV_CORS_ALLOW_CREDENTIALS="true"
+export FPV_CORS_ALLOW_METHODS="GET,POST,OPTIONS"
+export FPV_CORS_ALLOW_HEADERS="Authorization,Content-Type"
+```
+
+Notas importantes:
+
+- Si `FPV_CORS_ALLOW_ORIGINS="*"`, el backend desactiva credenciales automáticamente.
+- No uses `*` en producción salvo entornos controlados.
+- Tras cambiar variables de entorno, reinicia el servicio:
+
+```bash
+sudo systemctl restart fpvcopilot-sky
+```
 
 ---
 
@@ -453,14 +499,14 @@ sudo usermod -aG dialout,video $(whoami)
 
 Después de instalar, tienes scripts auxiliares disponibles en `scripts/`:
 
-| Script                           | Propósito                                                    | Cuándo usarlo                                                                     |
-| -------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------- |
-| **`deploy.sh`**                  | Compila frontend, reinstala systemd/nginx, reinicia servicio | Después de cambios en frontend o backend; despliegue a producción                 |
-| **`dev.sh`**                     | Inicia backend con hot-reload y frontend dev server          | Desarrollo local; requiere dos terminales                                         |
-| **`status.sh`**                  | Diagnosis completa: servicios, logs, conexiones, recursos    | Troubleshooting; para entender el estado actual                                   |
-| **`configure-modem.sh`**         | Detecta e inicializa modem Huawei HiLink y CSQ/RSSI          | Si el modem no se detecta automáticamente en `status.sh`                          |
-| **`setup-system-sudoers.sh`**    | Configura permisos sudo para network/modem/tailscale         | Reparar permisos si algunos comandos fallan; `install.sh` lo hace automáticamente |
-| **`setup-tailscale-sudoers.sh`** | Configura permisos sudo específicos para Tailscale           | Reparar permisos de Tailscale si `install.sh` falló                               |
+| Script                           | Propósito                                                        | Cuándo usarlo                                                     |
+| -------------------------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------- |
+| **`deploy.sh`**                  | Compila frontend, reinstala systemd/nginx, reinicia servicio     | Después de cambios en frontend o backend; despliegue a producción |
+| **`dev.sh`**                     | Inicia backend con hot-reload y frontend dev server              | Desarrollo local; requiere dos terminales                         |
+| **`status.sh`**                  | Diagnosis completa: servicios, logs, conexiones, recursos        | Troubleshooting; para entender el estado actual                   |
+| **`configure-modem.sh`**         | Detecta e inicializa modem Huawei HiLink y CSQ/RSSI              | Si el modem no se detecta automáticamente en `status.sh`          |
+| **`setup-sudoers.sh`**           | Elimina las reglas sudoers NOPASSWD (modelo helper privilegiado) | Limpiar permisos antiguos; `install.sh` lo hace automáticamente   |
+| **`setup-tailscale-sudoers.sh`** | Configura permisos sudo específicos para Tailscale               | Reparar permisos de Tailscale si `install.sh` falló               |
 
 ### Troubleshooting común
 
@@ -498,22 +544,18 @@ sudo bash scripts/configure-modem.sh   # Si modem no funciona
 
 Esta sección cubre la configuración de red avanzada — detección multi-modem, policy routing y VPN health checks — que se instala **automáticamente** con `install.sh`. No se requieren pasos manuales en una instalación limpia.
 
-### 5.1 Permisos sudo (sudoers)
+### 5.1 Permisos (helper privilegiado)
 
-`install.sh` ejecuta `scripts/setup-sudoers.sh` que crea `/etc/sudoers.d/fpvcopilot-sky` con los permisos necesarios para las operaciones de red:
+`install.sh` ejecuta `scripts/setup-sudoers.sh`, que **elimina** cualquier regla
+NOPASSWD antigua. Las operaciones privilegiadas (red, iptables, VPN…) las realiza
+el helper `fpvcopilot-privd` (root, socket `/run/fpvcopilot-priv.sock`) con una
+whitelist de comandos en `app/security/privd_policy.py`.
 
-```
-fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/sbin/iptables -t mangle *
-fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/sbin/ip rule *
-fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/sbin/ip route add *
-fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/sbin/ip route del *
-fpvcopilotsky ALL=(ALL) NOPASSWD: /usr/sbin/ip route show *
-```
-
-Verificar que están presentes:
+Verificar que el helper está activo:
 
 ```bash
-sudo cat /etc/sudoers.d/fpvcopilot-sky | grep -E "iptables|ip rule|ip route"
+systemctl is-active fpvcopilot-privd
+ls -l /run/fpvcopilot-priv.sock
 ```
 
 ### 5.2 Dependencias instaladas por install.sh

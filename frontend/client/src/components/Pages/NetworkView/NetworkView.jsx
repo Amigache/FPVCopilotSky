@@ -3,18 +3,23 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 
 import { useTranslation } from 'react-i18next'
 import { useToast } from '../../../contexts/ToastContext'
-import { useWebSocket } from '../../../contexts/WebSocketContext'
+import { useWsMessage } from '../../../contexts/WebSocketContext'
+import { useArmedState } from '../../../hooks/useArmedState'
 import api from '../../../services/api'
 import { API_TIMEOUTS, getSignalBars } from './networkConstants'
 import { formatBitrate } from '../../../utils/formatters'
 
 const NetworkView = () => {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { showToast } = useToast()
-  const { messages } = useWebSocket()
+  const networkStatusMessage = useWsMessage('network_status')
+  const modemStatusMessage = useWsMessage('modem_status')
+  const networkQualityMessage = useWsMessage('network_quality')
+  const videoStatusMessage = useWsMessage('video_status')
+  const isArmed = useArmedState()
 
   // Video stats from WebSocket (as in VideoView)
-  const videoStatus = messages.video_status || {}
+  const videoStatus = videoStatusMessage || {}
   const videoStats = videoStatus.stats || {}
   const videoConfig = videoStatus.config || {}
 
@@ -28,7 +33,6 @@ const NetworkView = () => {
 
   // Flight Mode
   const [flightMode, setFlightMode] = useState(null)
-  const [togglingFlightMode, setTogglingFlightMode] = useState(false)
 
   // Network Quality Bridge (Self-healing streaming)
   const [bridgeStatus, setBridgeStatus] = useState({
@@ -116,42 +120,13 @@ const NetworkView = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Toggle Flight Mode
-  const handleToggleFlightMode = async () => {
-    const isActive = flightMode?.flight_mode_active
-    setTogglingFlightMode(true)
-
-    try {
-      const endpoint = isActive
-        ? '/api/network/flight-mode/disable'
-        : '/api/network/flight-mode/enable'
-
-      const response = await api.post(endpoint)
-      if (response.ok) {
-        const data = await response.json()
-        showToast(
-          data.message || (isActive ? 'Flight Mode desactivado' : 'Flight Mode activado'),
-          data.success ? 'success' : 'warning'
-        )
-        // Reload dashboard to get updated state
-        await loadDashboard(true)
-      } else {
-        const data = await response.json()
-        showToast(data.detail || 'Error al cambiar Flight Mode', 'error')
-      }
-    } catch (error) {
-      showToast(error.message || 'Error al cambiar Flight Mode', 'error')
-    }
-    setTogglingFlightMode(false)
-  }
-
   // Update from WebSocket - network status
   useEffect(() => {
-    if (messages.network_status) {
+    if (networkStatusMessage) {
       const prevModemDetected = status?.modem?.detected || false
-      const newModemDetected = messages.network_status?.modem?.detected || false
+      const newModemDetected = networkStatusMessage?.modem?.detected || false
 
-      setStatus(messages.network_status)
+      setStatus(networkStatusMessage)
       setLoading(false)
 
       // If modem was just detected, refresh dashboard to get HiLink status
@@ -159,24 +134,24 @@ const NetworkView = () => {
         loadDashboard(true)
       }
     }
-  }, [messages.network_status, status?.modem?.detected, loadDashboard])
+  }, [networkStatusMessage, status?.modem?.detected, loadDashboard])
 
   // Update from WebSocket - modem HiLink status
   useEffect(() => {
-    if (messages.modem_status) {
-      setHilinkStatus(messages.modem_status)
+    if (modemStatusMessage) {
+      setHilinkStatus(modemStatusMessage)
     }
-  }, [messages.modem_status])
+  }, [modemStatusMessage])
 
   // Update from WebSocket - network quality bridge
   useEffect(() => {
-    if (messages.network_quality) {
-      setBridgeStatus(messages.network_quality)
+    if (networkQualityMessage) {
+      setBridgeStatus(networkQualityMessage)
       if (!bridgeInitialized) {
         setBridgeInitialized(true)
       }
     }
-  }, [messages.network_quality, bridgeInitialized])
+  }, [networkQualityMessage, bridgeInitialized])
 
   // Auto-start bridge if inactive
   const startBridge = useCallback(async () => {
@@ -373,29 +348,27 @@ const NetworkView = () => {
           <button
             className={`mode-btn ${currentMode === 'wifi' ? 'active' : ''}`}
             onClick={() => handleSetMode('wifi')}
-            disabled={changingMode || currentMode === 'wifi' || !status?.wifi_interface}
+            disabled={changingMode || currentMode === 'wifi' || !status?.wifi?.interface || isArmed}
           >
             📡 WiFi
           </button>
           <button
             className={`mode-btn ${currentMode === 'modem' ? 'active' : ''}`}
             onClick={() => handleSetMode('modem')}
-            disabled={changingMode || currentMode === 'modem' || !modem.detected}
+            disabled={changingMode || currentMode === 'modem' || !modem.detected || isArmed}
           >
             📶 4G
           </button>
-          <button
-            className={`mode-btn flight-mode-btn ${flightMode?.flight_mode_active ? 'active' : ''}`}
-            onClick={handleToggleFlightMode}
-            disabled={togglingFlightMode || !modem.detected}
+          <span
+            className={`flight-mode-badge ${flightMode?.flight_mode_active ? 'active' : ''}`}
             title={
               flightMode?.flight_mode_active
-                ? 'Flight Mode: Optimizaciones activas'
-                : 'Activar Flight Mode (Optimización completa)'
+                ? 'Flight Mode activo (automático)'
+                : 'Flight Mode inactivo'
             }
           >
-            {togglingFlightMode ? '⏳' : flightMode?.flight_mode_active ? '🚀✓' : '🚀'} Flight
-          </button>
+            🚀 Flight {flightMode?.flight_mode_active ? '✓' : '–'}
+          </span>
         </div>
       </div>
 
@@ -418,13 +391,13 @@ const NetworkView = () => {
                       <div className="bridge-inactive-icon">{bridgeStarting ? '⏳' : '⚠️'}</div>
                       <div>
                         {bridgeStarting
-                          ? 'Iniciando monitoreo...'
-                          : 'Servicio de monitoreo inactivo'}
+                          ? t('network.startingMonitoring', 'Iniciando monitoreo...')
+                          : t('network.monitorInactive', 'Servicio de monitoreo inactivo')}
                       </div>
                       <div className="bridge-inactive-hint">
                         {bridgeStarting
-                          ? 'Espera unos segundos...'
-                          : 'Intentando iniciar automáticamente...'}
+                          ? t('network.waitSeconds', 'Espera unos segundos...')
+                          : t('network.autoStarting', 'Intentando iniciar automáticamente...')}
                       </div>
                       {!bridgeStarting && (
                         <button
@@ -681,8 +654,10 @@ const NetworkView = () => {
                           color: '#2196f3',
                         }}
                       >
-                        ℹ️ Conectado vía {primaryType === 'wifi' ? 'WiFi' : 'Ethernet'} — Calidad
-                        basada en latencia
+                        {'ℹ️ '}
+                        {t('network.connectedViaQuality', {
+                          type: primaryType === 'wifi' ? 'WiFi' : 'Ethernet',
+                        })}
                       </div>
                     )}
                     {hasModem && (
@@ -705,14 +680,20 @@ const NetworkView = () => {
 
                     {/* Actual vs Recommended Video Stats */}
                     <div className="bridge-recommended">
-                      <span className="rec-item" title="Actual bitrate">
+                      <span
+                        className="rec-item"
+                        title={t('network.actualBitrate', 'Actual bitrate')}
+                      >
                         🎥 <b>{formatBitrate(videoStats.current_bitrate)}</b>
                         <span style={{ opacity: 0.6, marginLeft: 4, marginRight: 4 }}>/</span>
-                        <span title="Recomendado">
+                        <span title={t('network.recommended', 'Recomendado')}>
                           {formatBitrate(qs.recommended?.bitrate_kbps)}
                         </span>
                       </span>
-                      <span className="rec-item" title="Actual resolución">
+                      <span
+                        className="rec-item"
+                        title={t('network.actualResolution', 'Actual resolución')}
+                      >
                         📐{' '}
                         <b>
                           {videoConfig.width && videoConfig.height
@@ -720,12 +701,16 @@ const NetworkView = () => {
                             : '—'}
                         </b>
                         <span style={{ opacity: 0.6, marginLeft: 4, marginRight: 4 }}>/</span>
-                        <span title="Recomendado">{qs.recommended?.resolution || '—'}</span>
+                        <span title={t('network.recommended', 'Recomendado')}>
+                          {qs.recommended?.resolution || '—'}
+                        </span>
                       </span>
-                      <span className="rec-item" title="Actual FPS">
+                      <span className="rec-item" title={t('network.actualFps', 'Actual FPS')}>
                         🎞️ <b>{videoConfig.framerate || videoStats.current_fps || '—'} fps</b>
                         <span style={{ opacity: 0.6, marginLeft: 4, marginRight: 4 }}>/</span>
-                        <span title="Recomendado">{qs.recommended?.framerate || '—'} fps</span>
+                        <span title={t('network.recommended', 'Recomendado')}>
+                          {qs.recommended?.framerate || '—'} fps
+                        </span>
                       </span>
                     </div>
 
@@ -741,7 +726,9 @@ const NetworkView = () => {
 
                     {/* Recent Events */}
                     <div className="bridge-events">
-                      <div className="events-title">Eventos recientes</div>
+                      <div className="events-title">
+                        {t('network.recentEvents', 'Eventos recientes')}
+                      </div>
                       {lastEvents.length > 0 ? (
                         lastEvents.map((ev, idx) => {
                           const eventIcons = {
@@ -759,11 +746,14 @@ const NetworkView = () => {
                             reconnection: '🔁',
                           }
                           const icon = eventIcons[ev.event] || '📋'
-                          const time = new Date(ev.timestamp * 1000).toLocaleTimeString('es-ES', {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            second: '2-digit',
-                          })
+                          const time = new Date(ev.timestamp * 1000).toLocaleTimeString(
+                            i18n.language || 'es-ES',
+                            {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              second: '2-digit',
+                            }
+                          )
                           return (
                             <div key={idx} className="bridge-event-item">
                               <span className="event-icon">{icon}</span>
@@ -780,7 +770,7 @@ const NetworkView = () => {
                           className="bridge-event-item"
                           style={{ opacity: 0.6, fontStyle: 'italic' }}
                         >
-                          <span>Sin eventos recientes</span>
+                          <span>{t('network.noRecentEvents', 'Sin eventos recientes')}</span>
                         </div>
                       )}
                     </div>
@@ -790,8 +780,10 @@ const NetworkView = () => {
             ) : (
               <div className="bridge-inactive">
                 <div className="bridge-inactive-icon">📊</div>
-                <div>Recopilando datos...</div>
-                <div className="bridge-inactive-hint">Las métricas aparecerán en unos segundos</div>
+                <div>{t('network.collectingData', 'Recopilando datos...')}</div>
+                <div className="bridge-inactive-hint">
+                  {t('network.metricsSoon', 'Las métricas aparecerán en unos segundos')}
+                </div>
               </div>
             )}
           </div>
@@ -881,7 +873,7 @@ const NetworkView = () => {
                   <div
                     key={network.ssid}
                     className={`wifi-network ${network.connected ? 'connected' : ''}`}
-                    onClick={() => handleWifiClick(network)}
+                    onClick={() => !isArmed && handleWifiClick(network)}
                   >
                     <div className="wifi-info">
                       <div className="wifi-signal">
@@ -1154,12 +1146,13 @@ export default NetworkView
 
 // ── ModemPool Card ─────────────────────────────────────────────────────────
 const ModemPoolCard = ({ pool, onSelectModem }) => {
+  const { t } = useTranslation()
   const modeLabels = {
-    best_score: 'Auto · mejor puntuación',
-    best_sinr: 'Auto · mejor SINR',
-    best_latency: 'Auto · menor latencia',
-    manual: 'Manual',
-    round_robin: 'Round Robin',
+    best_score: t('network.modeBestScore', 'Auto · mejor puntuación'),
+    best_sinr: t('network.modeBestSinr', 'Auto · mejor SINR'),
+    best_latency: t('network.modeBestLatency', 'Auto · menor latencia'),
+    manual: t('network.modeManual', 'Manual'),
+    round_robin: t('network.modeRoundRobin', 'Round Robin'),
   }
 
   const scoreColor = (score) => {
@@ -1171,7 +1164,13 @@ const ModemPoolCard = ({ pool, onSelectModem }) => {
   return (
     <div className="card modem-pool-card">
       <div className="modem-pool-header">
-        <h2>📶 Pool de Modems ({pool.total_modems} detectados)</h2>
+        <h2>
+          📶{' '}
+          {t('network.modemPoolTitle', {
+            count: pool.total_modems,
+            defaultValue: 'Pool de Modems ({{count}} detectados)',
+          })}
+        </h2>
         <span className="modem-pool-mode">
           {modeLabels[pool.selection_mode] || pool.selection_mode}
         </span>
@@ -1197,13 +1196,23 @@ const ModemPoolCard = ({ pool, onSelectModem }) => {
                   )}
                 </div>
                 <div className="modem-pool-item-tags">
-                  {modem.is_active && <span className="tag tag-active">ACTIVO</span>}
-                  {!modem.is_connected && <span className="tag tag-offline">DESCONECTADO</span>}
+                  {modem.is_active && (
+                    <span className="tag tag-active">{t('network.tagActive', 'ACTIVO')}</span>
+                  )}
+                  {!modem.is_connected && (
+                    <span className="tag tag-offline">
+                      {t('network.tagDisconnected', 'DESCONECTADO')}
+                    </span>
+                  )}
                   {modem.is_connected && !modem.is_healthy && (
-                    <span className="tag tag-warn">NO SALUDABLE</span>
+                    <span className="tag tag-warn">
+                      {t('network.tagUnhealthy', 'NO SALUDABLE')}
+                    </span>
                   )}
                   {modem.is_connected && modem.signal_score >= 70 && (
-                    <span className="tag tag-good">Señal Excelente</span>
+                    <span className="tag tag-good">
+                      {t('network.signalExcellent', 'Señal Excelente')}
+                    </span>
                   )}
                 </div>
               </div>

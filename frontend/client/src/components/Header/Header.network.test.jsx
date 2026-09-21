@@ -13,6 +13,14 @@ const mockUseWebSocket = vi.fn()
 
 vi.mock('../../contexts/WebSocketContext', () => ({
   useWebSocket: () => mockUseWebSocket(),
+  useWsMessage: (type) => mockUseWebSocket()?.messages?.[type],
+}))
+
+vi.mock('../../contexts/ParamCacheContext', () => ({
+  useParamCache: () => ({
+    isDownloading: false,
+    status: { progress: 0 },
+  }),
 }))
 
 // Mock the useTranslation hook

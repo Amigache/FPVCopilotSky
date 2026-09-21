@@ -4,10 +4,14 @@ Stores serial connection, router outputs, and user preferences
 """
 
 import json
+import logging
 import os
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
+from app.utils.cmd import run_cmd
 import threading
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -16,7 +20,7 @@ class SerialConfig:
 
     port: str = ""
     baudrate: int = 115200
-    auto_connect: bool = True
+    auto_connect: bool = False
     last_successful: bool = False
 
 
@@ -65,10 +69,16 @@ class PreferencesService:
         self._load()
 
     def _get_config_path(self) -> str:
-        """Get path to preferences file."""
-        # Store in FPVCopilotSky root directory
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        return os.path.join(base_dir, "..", self.PREFERENCES_FILE)
+        """Get path to preferences file.
+
+        Stores in /var/lib/fpvcopilot-sky/ (owned by fpvcopilotsky) so the
+        service user can always write preferences regardless of who owns the
+        source tree (/opt/FPVCopilotSky may be owned by a different user
+        during development).
+        """
+        data_dir = "/var/lib/fpvcopilot-sky"
+        os.makedirs(data_dir, mode=0o755, exist_ok=True)
+        return os.path.join(data_dir, self.PREFERENCES_FILE)
 
     def _default_preferences(self) -> Dict[str, Any]:
         """Return default preferences structure."""
@@ -76,7 +86,7 @@ class PreferencesService:
             "serial": {
                 "port": "",
                 "baudrate": 115200,
-                "auto_connect": True,
+                "auto_connect": False,
                 "last_successful": False,
             },
             "router": {"outputs": []},  # No outputs by default, user creates them
@@ -105,12 +115,21 @@ class PreferencesService:
                 "auto_connect": False,  # Don't auto-connect on startup
                 "provider_settings": {},  # Provider-specific settings (e.g., exit_node, etc.)
             },
+            "network": {
+                "policy_routing_enabled": True,
+                "vpn_health_check_enabled": True,
+                "auto_failover_enabled": False,
+                "auto_failover_preferred_mode": "modem",  # modem|wifi
+            },
             "flight_session": {
                 "auto_start_on_arm": False,  # Auto-start flight session when drone arms
                 "log_directory": os.path.expanduser("~/flight-records"),  # Default log directory
             },
             "ui": {"language": "es", "theme": "dark"},
-            "system": {"version": "1.0.0", "first_run": True},
+            "system": {"version": "1.1.0", "first_run": True},
+            "extras": {
+                "experimental_tab_enabled": False,  # Hidden by default
+            },
         }
 
     def _load(self):
@@ -125,15 +144,15 @@ class PreferencesService:
                 self._deep_merge(defaults, loaded)
                 self._preferences = defaults
 
-                print(f"✅ Loaded preferences from {self._config_path}")
+                logger.info("Preferences loaded", extra={"path": self._config_path})
             else:
                 # First run - create preferences file with defaults
-                print("📝 First run detected - creating preferences file")
+                logger.info("First run detected — creating preferences file")
                 self._preferences = self._default_preferences()
                 self._save()
-                print(f"✅ Created default preferences at {self._config_path}")
+                logger.info("Default preferences created", extra={"path": self._config_path})
         except Exception as e:
-            print(f"⚠️ Failed to load preferences: {e}")
+            logger.error("Failed to load preferences", extra={"error": str(e)})
             self._preferences = self._default_preferences()
 
     def _deep_merge(self, base: dict, override: dict):
@@ -156,7 +175,7 @@ class PreferencesService:
 
                     os.fsync(f.fileno())
         except Exception as e:
-            print(f"⚠️ Failed to save preferences: {e}")
+            logger.error("Failed to save preferences", extra={"error": str(e)})
 
     # ==================== Serial Configuration ====================
 
@@ -167,7 +186,7 @@ class PreferencesService:
             return SerialConfig(
                 port=cfg.get("port", ""),
                 baudrate=cfg.get("baudrate", 115200),
-                auto_connect=cfg.get("auto_connect", True),
+                auto_connect=cfg.get("auto_connect", False),
                 last_successful=cfg.get("last_successful", False),
             )
 
@@ -189,11 +208,13 @@ class PreferencesService:
                     and saved_config.get("baudrate") == baudrate
                     and saved_config.get("last_successful") == successful
                 ):
-                    print(f"✅ Serial preferences saved: {port} @ {baudrate} baud (successful={successful})")
+                    logger.info(
+                        "Serial config saved", extra={"port": port, "baudrate": baudrate, "successful": successful}
+                    )
                 else:
-                    print("⚠️ Serial preferences save verification failed")
+                    logger.warning("Serial config save verification failed", extra={"port": port})
         except Exception as e:
-            print(f"⚠️ Failed to save serial config: {e}")
+            logger.error("Failed to save serial config", extra={"error": str(e)})
 
     def set_serial_auto_connect(self, enabled: bool):
         """Enable/disable auto-connect."""
@@ -280,13 +301,19 @@ class PreferencesService:
                     # Find the camera by its name/bus_info
                     new_device = find_device_by_identity(saved_name, saved_bus)
                     if new_device:
-                        print(f"🔄 Camera '{saved_name}' moved: {device} → {new_device}")
+                        logger.info(
+                            "Camera device path updated",
+                            extra={"camera_name": saved_name, "old": device, "new": new_device},
+                        )
                         config["device"] = new_device
                         # Persist the corrected device path
                         self._preferences["video"]["device"] = new_device
                         self._save()
                     else:
-                        print(f"⚠️ Camera '{saved_name}' not found on any /dev/video* device")
+                        logger.warning(
+                            "Camera not found on any /dev/video* device",
+                            extra={"camera_name": saved_name},
+                        )
                         # Fallback: find any capture device
                         self._fallback_detect_device(config, device)
             elif device and not os.path.exists(device):
@@ -301,37 +328,35 @@ class PreferencesService:
     def _fallback_detect_device(self, config: Dict, old_device: str):
         """Fallback device detection when smart matching isn't possible."""
         import glob
-        import subprocess
 
         devices = sorted(glob.glob("/dev/video*"))
         if devices:
             for dev in devices:
                 try:
-                    result = subprocess.run(
+                    stdout, _, returncode = run_cmd(
                         ["v4l2-ctl", "--device", dev, "--info"],
-                        capture_output=True,
-                        text=True,
                         timeout=2,
+                        check=False,
                     )
-                    if result.returncode == 0 and "video capture" in result.stdout.lower():
+                    if returncode == 0 and "video capture" in stdout.lower():
                         config["device"] = dev
                         if old_device:
-                            print(f"⚠️ Video device {old_device} not found, using {dev}")
+                            logger.warning("Video device replaced", extra={"old": old_device, "new": dev})
                         else:
-                            print(f"ℹ️ Auto-detected video device: {dev}")
+                            logger.info("Video device auto-detected", extra={"device": dev})
                         break
                 except Exception:
                     continue
             else:
                 if old_device:
-                    print(f"⚠️ Video device {old_device} not found and no alternative detected")
+                    logger.warning("Video device not found, no alternative detected", extra={"device": old_device})
                 else:
-                    print("ℹ️ No video capture devices detected")
+                    logger.info("No video capture devices detected")
         else:
             if old_device:
-                print(f"⚠️ Video device {old_device} not found, no /dev/video* devices available")
+                logger.warning("Video device not found, no /dev/video* available", extra={"device": old_device})
             else:
-                print("ℹ️ No video devices detected")
+                logger.info("No video devices detected")
 
     def set_video_config(self, config: Dict[str, Any]):
         """Set video configuration."""
@@ -348,7 +373,7 @@ class PreferencesService:
                 self._preferences["video"] = self._default_preferences()["video"]
             self._preferences["video"]["auto_adaptive_bitrate"] = enabled
             self._save()
-            print(f"✅ Auto-adaptive bitrate: {'enabled' if enabled else 'disabled'}")
+            logger.info("Auto-adaptive bitrate updated", extra={"enabled": enabled})
 
     def get_auto_adaptive_bitrate(self) -> bool:
         """Get auto-adaptive bitrate setting."""
@@ -362,7 +387,7 @@ class PreferencesService:
                 self._preferences["video"] = self._default_preferences()["video"]
             self._preferences["video"]["auto_adaptive_resolution"] = enabled
             self._save()
-            print(f"✅ Auto-adaptive resolution: {'enabled' if enabled else 'disabled'}")
+            logger.info("Auto-adaptive resolution updated", extra={"enabled": enabled})
 
     def get_auto_adaptive_resolution(self) -> bool:
         """Get auto-adaptive resolution setting."""
@@ -391,11 +416,11 @@ class PreferencesService:
                 auto_start = config.get("auto_start", False)
 
                 if saved.get("enabled") == enabled and saved.get("auto_start") == auto_start:
-                    print(f"✅ Streaming preferences saved: enabled={enabled}, auto_start={auto_start}")
+                    logger.info("Streaming config saved", extra={"enabled": enabled, "auto_start": auto_start})
                 else:
-                    print("⚠️ Streaming preferences save verification failed")
+                    logger.warning("Streaming config save verification failed")
         except Exception as e:
-            print(f"⚠️ Failed to save streaming config: {e}")
+            logger.error("Failed to save streaming config", extra={"error": str(e)})
 
     # ==================== VPN Configuration ====================
 
@@ -424,13 +449,14 @@ class PreferencesService:
                     and saved.get("enabled") == enabled
                     and saved.get("auto_connect") == auto_connect
                 ):
-                    print(
-                        f"✅ VPN preferences saved: provider={provider}, enabled={enabled}, auto_connect={auto_connect}"
+                    logger.info(
+                        "VPN config saved",
+                        extra={"provider": provider, "enabled": enabled, "auto_connect": auto_connect},
                     )
                 else:
-                    print("⚠️ VPN preferences save verification failed")
+                    logger.warning("VPN config save verification failed", extra={"provider": provider})
         except Exception as e:
-            print(f"⚠️ Failed to save VPN config: {e}")
+            logger.error("Failed to save VPN config", extra={"error": str(e)})
 
     def set_vpn_provider(self, provider: str):
         """Set VPN provider (e.g., 'tailscale', 'zerotier', 'wireguard', or '' for none)."""
@@ -454,6 +480,38 @@ class PreferencesService:
             if "vpn" not in self._preferences:
                 self._preferences["vpn"] = {}
             self._preferences["vpn"]["auto_connect"] = auto_connect
+            self._save()
+
+    # ==================== Network Configuration ====================
+
+    def get_network_config(self) -> Dict[str, Any]:
+        """Get network configuration."""
+        with self._lock:
+            defaults = self._default_preferences().get("network", {})
+            current = self._preferences.get("network", {})
+            merged = defaults.copy()
+            merged.update(current)
+            return merged
+
+    def set_network_config(self, config: Dict[str, Any]):
+        """Set network configuration."""
+        with self._lock:
+            if "network" not in self._preferences:
+                self._preferences["network"] = self._default_preferences()["network"].copy()
+            self._preferences["network"].update(config)
+            self._save()
+
+    def set_flight_session_config(self, config: Dict[str, Any]):
+        """Deep-merge and persist flight_session preferences under the lock."""
+        with self._lock:
+            current = self._preferences.setdefault("flight_session", {})
+            current.update(config)
+            self._save()
+
+    def set_section(self, key: str, value: Any):
+        """Set an arbitrary top-level preference section under the lock."""
+        with self._lock:
+            self._preferences[key] = value
             self._save()
 
     # ==================== Auto-Detection ====================
@@ -520,15 +578,15 @@ class PreferencesService:
                     import shutil
 
                     shutil.copy2(self._config_path, backup_path)
-                    print(f"📦 Backed up preferences to {backup_path}")
+                    logger.info("Preferences backed up", extra={"backup": backup_path})
 
                 # Reset to defaults
                 self._preferences = self._default_preferences()
                 self._save()
-                print("✅ Preferences reset to defaults")
+                logger.info("Preferences reset to defaults")
                 return True
         except Exception as e:
-            print(f"⚠️ Failed to reset preferences: {e}")
+            logger.error("Failed to reset preferences", extra={"error": str(e)})
             return False
 
 

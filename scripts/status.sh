@@ -700,10 +700,12 @@ else
 
     if [ -n "$LEGACY_FILES" ]; then
         echo -e "${YELLOW}⚠️${NC}  Legacy sudoers files found:$LEGACY_FILES"
-        echo -e "    ${BLUE}ℹ️${NC}  Migrate to unified file: sudo bash scripts/setup-sudoers.sh"
+        echo -e "    ${BLUE}ℹ️${NC}  Remove them: sudo bash scripts/setup-sudoers.sh"
+    elif systemctl is-active --quiet fpvcopilot-privd; then
+        echo -e "${GREEN}✓${NC} Privileged helper model (fpvcopilot-privd) — no sudoers required"
     else
-        echo -e "${RED}❌${NC} No sudoers files found"
-        echo -e "    ${BLUE}ℹ️${NC}  Run: sudo bash scripts/setup-sudoers.sh"
+        echo -e "${RED}❌${NC} Neither sudoers nor fpvcopilot-privd are configured"
+        echo -e "    ${BLUE}ℹ️${NC}  Run: sudo bash scripts/deploy.sh"
     fi
 fi
 
@@ -805,11 +807,11 @@ else
 fi
 
 # Check route permissions
-if sudo -n ip route show default &>/dev/null; then
-    echo -e "${GREEN}✓${NC} Route management permissions OK"
+if systemctl is-active --quiet fpvcopilot-privd && [ -S /run/fpvcopilot-priv.sock ]; then
+    echo -e "${GREEN}✓${NC} Privileged helper available for route management"
 else
-    echo -e "${YELLOW}⚠️${NC}  Route management may require password"
-    echo -e "    ${BLUE}ℹ️${NC}  Run: sudo bash scripts/setup-system-sudoers.sh"
+    echo -e "${YELLOW}⚠️${NC}  fpvcopilot-privd is not running — privileged ops unavailable"
+    echo -e "    ${BLUE}ℹ️${NC}  Run: sudo systemctl enable --now fpvcopilot-privd"
 fi
 
 echo -e "\n${BLUE}🌐 Connectivity${NC}"

@@ -5,9 +5,9 @@ Shared helper functions and Pydantic models
 
 from pydantic import BaseModel
 from typing import Optional, List
-import asyncio
 import logging
 import re
+from app.utils.cmd import run_cmd_async
 
 logger = logging.getLogger(__name__)
 
@@ -42,29 +42,13 @@ class ForgetConnectionRequest(BaseModel):
 
 
 async def run_command(cmd: List[str], timeout: float = 30) -> tuple:
-    """Run a command asynchronously and return stdout, stderr, returncode
+    """Run a command asynchronously via unified cmd layer.
 
     Args:
         cmd: Command and arguments to execute
         timeout: Maximum seconds to wait for the command (default: 30)
     """
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-        )
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-        return stdout.decode().strip(), stderr.decode().strip(), proc.returncode
-    except asyncio.TimeoutError:
-        logger.error(f"Command {cmd} timed out after {timeout}s")
-        try:
-            proc.kill()
-            await proc.wait()
-        except ProcessLookupError:
-            pass
-        return "", f"Command timed out after {timeout}s", -1
-    except Exception as e:
-        logger.error(f"Error running command {cmd}: {e}")
-        return "", str(e), -1
+    return await run_cmd_async(cmd, timeout=timeout)
 
 
 async def detect_wifi_interface() -> Optional[str]:
@@ -101,16 +85,34 @@ async def detect_modem_interface() -> Optional[str]:
 
 
 async def get_gateway_for_interface(interface: str) -> Optional[str]:
-    """Get gateway for a specific interface"""
+    """Get gateway for a specific interface.
+
+    Tries in order:
+    1. Explicit default route: 'default via <gw> dev <iface>'
+    2. Any DHCP 'via' route (e.g. Tailscale / host routes injected on DHCP):
+       '100.x.x.x via <gw> proto dhcp'
+    3. .1 inference from the interface's own IP address.
+    """
     stdout, _, returncode = await run_command(["ip", "route", "show", "dev", interface])
     if returncode == 0:
+        # 1. Explicit default route
         for line in stdout.split("\n"):
-            if "default" in line or line.startswith("default"):
+            if line.startswith("default") or "default" in line:
                 match = re.search(r"via\s+(\d+\.\d+\.\d+\.\d+)", line)
                 if match:
                     return match.group(1)
-        # Fallback: try to infer gateway from interface IP
-        match = re.search(r"inet\s+(\d+\.\d+\.\d+)\.\d+", stdout)
-        if match:
-            return f"{match.group(1)}.1"
+
+        # 2. Any DHCP 'via' entry (covers wlan0 that has host/tailscale routes but no default)
+        for line in stdout.split("\n"):
+            match = re.search(r"via\s+(\d+\.\d+\.\d+\.\d+)", line)
+            if match:
+                return match.group(1)
+
+        # 3. Infer gateway from interface IP (.1 assumption)
+        addr_stdout, _, addr_rc = await run_command(["ip", "addr", "show", "dev", interface])
+        if addr_rc == 0:
+            match = re.search(r"inet\s+(\d+\.\d+\.\d+)\.\d+", addr_stdout)
+            if match:
+                return f"{match.group(1)}.1"
+
     return None
