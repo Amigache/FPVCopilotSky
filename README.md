@@ -9,7 +9,7 @@ FPV Copilot Sky convierte un SBC Linux (Radxa Zero, Raspberry Pi, Orange Pi…) 
 ![Platform](https://img.shields.io/badge/platform-Linux_ARM/x86-green)
 ![License](https://img.shields.io/badge/license-MIT-yellow)
 ![Python](https://img.shields.io/badge/python-3.12+-blue)
-![React](https://img.shields.io/badge/react-19-61dafb)
+![React](https://img.shields.io/badge/react-18-61dafb)
 
 ---
 
@@ -193,7 +193,7 @@ Toda la documentación extendida está en la **[Wiki del proyecto](docs/INDEX.md
 | Capa         | Stack                                                               |
 | ------------ | ------------------------------------------------------------------- |
 | **Backend**  | Python 3.12, FastAPI, Uvicorn, PyMAVLink, GStreamer, huawei-lte-api |
-| **Frontend** | React 19, Vite, i18next, WebSocket                                  |
+| **Frontend** | React 18, Vite, i18next, WebSocket                                  |
 | **Infra**    | Nginx, systemd, NetworkManager, Tailscale, tc/CAKE, MPTCP, iptables |
 
 ## 📄 Licencia

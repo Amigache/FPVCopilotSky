@@ -60,6 +60,18 @@ export const setAuthToken = (token) => {
 
 export const clearAuthToken = () => setAuthToken(null)
 
+/**
+ * Read a JSON body, tolerating non-JSON error responses (e.g. an HTML 500 page)
+ * so callers never crash on `response.json()`. Returns {} on parse failure.
+ */
+export const readJson = async (response) => {
+  try {
+    return await response.json()
+  } catch (_error) {
+    return {}
+  }
+}
+
 // Helper function for fetch with timeout and language support
 // Default timeout is 30s to accommodate VPN/remote access latency
 export const fetchWithTimeout = async (url, options = {}, timeout = 30000) => {

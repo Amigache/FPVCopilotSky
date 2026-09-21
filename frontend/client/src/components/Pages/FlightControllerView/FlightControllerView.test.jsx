@@ -65,6 +65,7 @@ vi.mock('../../../services/api', () => ({
   API_MAVLINK: '/api/mavlink',
   API_SYSTEM: '/api/system',
   fetchWithTimeout: (...args) => mockFetchWithTimeout(...args),
+  readJson: async (response) => response.json(),
 }))
 
 vi.mock('../../Toggle/Toggle', () => ({

@@ -134,13 +134,19 @@ const VPNView = () => {
 
   // Initial data load
   useEffect(() => {
+    let cancelled = false
     const loadData = async () => {
       setLoading(true)
       await loadProviders()
       await loadPreferences()
-      setLoading(false)
+      if (!cancelled) {
+        setLoading(false)
+      }
     }
     loadData()
+    return () => {
+      cancelled = true
+    }
   }, [loadProviders, loadPreferences])
 
   // Refresh status when provider changes

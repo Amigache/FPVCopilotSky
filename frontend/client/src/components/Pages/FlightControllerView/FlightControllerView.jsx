@@ -4,7 +4,7 @@ import { useWsMessage } from '../../../contexts/WebSocketContext'
 import { useToast } from '../../../contexts/ToastContext'
 import { useModal } from '../../../contexts/ModalContext'
 import { useParamCache } from '../../../contexts/ParamCacheContext'
-import { API_SYSTEM, API_MAVLINK, fetchWithTimeout } from '../../../services/api'
+import { API_SYSTEM, API_MAVLINK, fetchWithTimeout, readJson } from '../../../services/api'
 import {
   AVAILABLE_BAUDRATES,
   DEFAULT_BAUDRATE,
@@ -77,7 +77,11 @@ const FlightControllerView = () => {
     const fetchPorts = async () => {
       try {
         const response = await fetchWithTimeout(`${API_SYSTEM}/ports`)
-        const data = await response.json()
+        if (!response.ok) {
+          setAvailablePorts([])
+          return
+        }
+        const data = await readJson(response)
         const ports = data.ports?.length > 0 ? data.ports : []
         setAvailablePorts(ports)
         if (ports.length > 0) {
@@ -94,7 +98,8 @@ const FlightControllerView = () => {
     const loadSerialPreferences = async () => {
       try {
         const response = await fetchWithTimeout(`${API_MAVLINK}/preferences`)
-        const data = await response.json()
+        if (!response.ok) return
+        const data = await readJson(response)
         if (data.success && data.preferences) {
           setSerialPreferences(data.preferences)
           // Restore saved port and baudrate
@@ -125,7 +130,11 @@ const FlightControllerView = () => {
         },
         body: JSON.stringify(newPrefs),
       })
-      const data = await response.json()
+      const data = await readJson(response)
+      if (!response.ok) {
+        showToast(t('views.flightController.preferencesError'), 'error')
+        return
+      }
       if (data.success) {
         setSerialPreferences(data.preferences || newPrefs)
         showToast(t('views.flightController.preferencesSaved'), 'success')
@@ -164,7 +173,7 @@ const FlightControllerView = () => {
         30000
       )
 
-      const data = await response.json()
+      const data = await readJson(response)
 
       if (response.ok && data.success) {
         setIsConnected(true)
@@ -189,7 +198,7 @@ const FlightControllerView = () => {
         method: 'POST',
       })
 
-      const data = await response.json()
+      const data = await readJson(response)
       const notConnected = !response.ok && data.detail === 'Not connected'
 
       if (data.success || notConnected) {
@@ -289,7 +298,7 @@ const FlightControllerView = () => {
         60000
       )
 
-      const data = await response.json()
+      const data = await readJson(response)
 
       // Process results: update successful params and track failures
       const successfulUpdates = {}
@@ -376,7 +385,7 @@ const FlightControllerView = () => {
             60000
           )
 
-          const data = await response.json()
+          const data = await readJson(response)
 
           // Count successes and failures
           const successCount = data.results
