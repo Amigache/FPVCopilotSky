@@ -116,7 +116,7 @@ El proyecto tiene una **arquitectura por capas bien pensada**, una **capa de eje
 
 ### Fase 2 — Rendimiento y calidad (1 mes)
 
-- [ ] Partir `WebSocketContext` (contextos por sector + `useMemo`/selectores) para eliminar el re-render storm.
+- [x] Partir `WebSocketContext` (suscripciones por tipo con `useWsMessage`) para eliminar el re-render storm. (PR #61)
 - [x] Trocear vistas grandes con `React.lazy`/`Suspense` y `manualChunks` (hecho, PR #58); pendiente memoizar tarjetas.
 - [ ] Empezar a dividir los god services (builder de pipeline, RTSP, stats en `gstreamer_service.py`).
 - [ ] Backoff exponencial + jitter en la reconexión WS; limpieza de timers; tests de contextos/hooks/`api.js`.
@@ -247,6 +247,10 @@ Todo lo siguiente está **mergeado en `develop`** y con CI en verde:
 | Logging por comando en el helper                      | ✅                   | #53      |
 | Sandbox + helper en deploy/install (M7 Incremento 3)  | ✅                   | #55      |
 | Fix stdin del helper (hallado al validar)             | ✅                   | #56      |
+| Code-splitting de vistas + manualChunks               | ✅                   | #58      |
+| CI: umbrales cobertura, upload, mypy operativo        | ✅                   | #59      |
+| Desofilar rutas de system + setters con lock          | ✅                   | #60      |
+| WebSocketContext: suscripciones por tipo (perf)       | ✅                   | #61      |
 
 **Validado en el equipo (2026-09-21):** `fpvcopilot-privd` activo, socket
 `root:fpvcopilotsky 0660`; `ip route show` permitido y comandos peligrosos
