@@ -1380,6 +1380,18 @@ class GStreamerService:
                 # No encoder (passthrough mode) - install probe on RTP payloader instead
                 logger.info("Passthrough mode detected, installing probe on RTP payloader")
 
+            # C-level byte/frame counter (read by the stats thread at 4 Hz).
+            # `identity` counts buffers/bytes natively — no per-frame Python.
+            # Placed BEFORE the RTP payloader so num-buffers counts encoded
+            # video frames (one buffer per frame), not RTP packets.
+            stats_counter = Gst.ElementFactory.make("identity", "stats_counter")
+            if stats_counter:
+                stats_counter.set_property("silent", True)
+                pipeline.add(stats_counter)
+                elements_list.append(stats_counter)
+            else:
+                logger.debug("Could not create stats_counter identity element; stats will be estimated")
+
             # Add RTP payloader
             rtppay = Gst.ElementFactory.make(pipeline_config["rtp_payloader"], "rtppay")
             if not rtppay:
@@ -1401,16 +1413,6 @@ class GStreamerService:
             if not sink:
                 logger.error("Failed to create sink for mode", extra={"mode": self.streaming_config.mode})
                 return False
-
-            # C-level byte/frame counter (read by the stats thread at 4 Hz).
-            # `identity` counts buffers/bytes natively — no per-frame Python.
-            stats_counter = Gst.ElementFactory.make("identity", "stats_counter")
-            if stats_counter:
-                stats_counter.set_property("silent", True)
-                pipeline.add(stats_counter)
-                elements_list.append(stats_counter)
-            else:
-                logger.debug("Could not create stats_counter identity element; stats will be estimated")
 
             pipeline.add(sink)
             elements_list.append(sink)
