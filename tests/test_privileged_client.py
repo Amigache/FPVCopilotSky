@@ -84,3 +84,29 @@ class TestCmdRouting:
 
     def test_extract_sudo_plain_command(self):
         assert cmd_mod._extract_sudo(["ip", "route"]) == (["ip", "route"], False)
+
+
+class TestPrivdDaemonExecute:
+    def test_passes_stdin_as_str_with_text_mode(self):
+        from app.security import privd_daemon
+
+        captured = {}
+
+        def fake_run(argv, **kwargs):
+            captured["argv"] = argv
+            captured.update(kwargs)
+            return SimpleNamespace(returncode=0, stdout="ok", stderr="")
+
+        with patch.object(privd_daemon.subprocess, "run", side_effect=fake_run):
+            result = privd_daemon._execute({"cmd": ["ip", "route", "show"], "timeout": 5, "input": "hello\n"})
+
+        assert result == {"returncode": 0, "stdout": "ok", "stderr": ""}
+        # text=True requires a str for stdin; passing bytes breaks subprocess.
+        assert captured["input"] == "hello\n"
+        assert captured["text"] is True
+
+    def test_denies_non_whitelisted_command(self):
+        from app.security import privd_daemon
+
+        result = privd_daemon._execute({"cmd": ["tee", "/etc/sudoers.d/evil"]})
+        assert result["returncode"] == 126
