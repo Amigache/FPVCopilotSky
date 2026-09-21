@@ -112,7 +112,7 @@ El proyecto tiene una **arquitectura por capas bien pensada**, una **capa de eje
 - [x] Desofilar con `run_in_executor`/`run_cmd_async` las llamadas síncronas de `system.py` (`asyncio.to_thread`). (PR pendiente)
 - [x] Unificar manejo de errores: handler global (`FPVCopilotException` + `Exception`) y rutas de `system.py` convertidas a `HTTPException` (PR #63, #64).
 - [x] Usar setters con lock en `system.py` (eliminar acceso a `_preferences`). (PR #60)
-- [~] Sustituir `except Exception: pass` por logging: `_lifespan_shutdown` y `_broadcast_router_status` (PR #63); los de `gstreamer_service` siguen pendientes.
+- [~] Sustituir `except Exception: pass` por logging: `main.py` (PR #63) y 19 bloques en `gstreamer_service`/`network_event_bridge` (PR #71); quedan otros módulos.
 
 ### Fase 2 — Rendimiento y calidad (1 mes)
 
@@ -124,7 +124,7 @@ El proyecto tiene una **arquitectura por capas bien pensada**, una **capa de eje
 
 ### Fase 3 — Extraer el código no cubierto (continuo)
 
-- [~] Incluir en cobertura `providers/*` y los servicios grandes: `mavlink_router` ya incluido con tests unitarios (44% propio, total 52.9%); `gstreamer_service`/`mavlink_bridge`/`network_event_bridge`/`providers/*` pendientes (PR #69).
+- [~] Incluir en cobertura `providers/*` y los servicios grandes: `mavlink_router` (44%) y `network_event_bridge` (35%) ya incluidos con tests unitarios (total **51.6%**); `gstreamer_service`/`mavlink_bridge`/`providers/*` pendientes (PRs #69, #71).
 - [x] Mover `slow`/`e2e` a un job **no bloqueante** (`test-slow`, `continue-on-error`); el job principal corre `-m "not slow"` con el gate de cobertura (PR #69). Subir el gate progresivo queda pendiente.
 - [x] Sustituir las assertions permisivas (`status_code in [...]`) por **códigos exactos** (0 restantes). Además se corrigieron paths/métodos inexistentes que las hacían pasar con 404/405 (PR #68).
 - [ ] Capa de integración real (contenedores) y tests de seguridad (auth, CSRF, sanitización).
@@ -258,6 +258,7 @@ Todo lo siguiente está **mergeado en `develop`** y con CI en verde:
 | Fase 3: assertions estrictas (0 permisivas)           | ✅                   | #68      |
 | Fase 3: cobertura mavlink_router + job slow/e2e       | ✅                   | #69      |
 | Cierre: M8/M10/M12, M2, higiene (LICENSE, docs)       | ✅                   | #70      |
+| Fase 3: network_event_bridge en cobertura + A2        | ✅                   | #71      |
 
 **Validado en el equipo (2026-09-21):** `fpvcopilot-privd` activo, socket
 `root:fpvcopilotsky 0660`; `ip route show` permitido y comandos peligrosos

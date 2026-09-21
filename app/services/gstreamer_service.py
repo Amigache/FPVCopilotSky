@@ -896,8 +896,8 @@ class GStreamerService:
         for pad, probe_id in self._encoder_probe_ids:
             try:
                 pad.remove_probe(probe_id)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Suppressed exception", exc_info=e)
         self._encoder_probe_ids.clear()
 
     def _install_passthrough_probes(self, rtppay_element):
@@ -1685,8 +1685,8 @@ class GStreamerService:
                 # The systemd unit sets the governor via ExecStartPre; the
                 # privileged helper does not run shells, so nothing more here.
                 logger.debug("CPU governor not set directly (handled by systemd ExecStartPre)")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Suppressed exception", exc_info=e)
 
     def _restore_cpu_mode(self):
         """Restore CPU to power-saving mode"""
@@ -1704,8 +1704,8 @@ class GStreamerService:
                     pass
             if changed:
                 logger.info("CPU governor restored to ondemand", extra={"cores_changed": changed})
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Suppressed exception", exc_info=e)
 
     def start(self) -> Dict[str, Any]:
         """Start video streaming"""
@@ -1803,8 +1803,8 @@ class GStreamerService:
                                         "video_warning",
                                         {"type": "udp_over_4g", "message": warning_msg},
                                     )
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.debug("Suppressed exception", exc_info=e)
 
                     asyncio.run_coroutine_threadsafe(_check_and_warn(), self.event_loop)
                 # If no loop running, skip - non-critical warning
@@ -2318,8 +2318,8 @@ class GStreamerService:
             bridge = get_network_event_bridge()
             if bridge._monitoring:
                 network_score = bridge._quality_score.score
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Suppressed exception", exc_info=e)
 
         return calculate_health(
             errors=errors,
@@ -2520,8 +2520,8 @@ class GStreamerService:
                     if part == "inet" and i + 1 < len(parts):
                         new_ip = parts[i + 1].split("/")[0]
                         break
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Suppressed exception", exc_info=e)
 
         if not new_ip:
             try:
@@ -2547,8 +2547,8 @@ class GStreamerService:
                                         break
                             if new_ip:
                                 break
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Suppressed exception", exc_info=e)
 
         # Fallback to localhost if nothing found
         if not new_ip:
@@ -2579,8 +2579,8 @@ class GStreamerService:
                 self.websocket_manager.broadcast("video_status", self.get_status()),
                 self.event_loop,
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Suppressed exception", exc_info=e)
 
     def _broadcast_stats_fast(self):
         """Broadcast lightweight numeric stats at high frequency.
@@ -2607,8 +2607,8 @@ class GStreamerService:
                 self.websocket_manager.broadcast("video_stats_fast", payload),
                 self.event_loop,
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Suppressed exception", exc_info=e)
 
     def _start_stats_broadcast(self):
         if self.stats_thread and self.stats_thread.is_alive():
