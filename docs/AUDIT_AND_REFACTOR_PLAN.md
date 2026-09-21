@@ -124,10 +124,10 @@ El proyecto tiene una **arquitectura por capas bien pensada**, una **capa de eje
 
 ### Fase 3 — Extraer el código no cubierto (continuo)
 
-- [~] Incluir en cobertura `providers/*` y los servicios grandes: `mavlink_router` (44%) y `network_event_bridge` (35%) ya incluidos con tests unitarios (total **51.6%**); `gstreamer_service`/`mavlink_bridge`/`providers/*` pendientes (PRs #69, #71).
+- [~] Incluir en cobertura `providers/*` y los servicios grandes: `mavlink_router` (44%) y `network_event_bridge` (35%) ya incluidos con tests unitarios (total **51.6%**); `gstreamer_service`/`mavlink_bridge`/`providers/*` quedan **documentados como excluidos por hardware** con su riesgo (ver [`TESTING.md`](TESTING.md)).
 - [x] Mover `slow`/`e2e` a un job **no bloqueante** (`test-slow`, `continue-on-error`); el job principal corre `-m "not slow"` con el gate de cobertura (PR #69). Subir el gate progresivo queda pendiente.
 - [x] Sustituir las assertions permisivas (`status_code in [...]`) por **códigos exactos** (0 restantes). Además se corrigieron paths/métodos inexistentes que las hacían pasar con 404/405 (PR #68).
-- [ ] Capa de integración real (contenedores) y tests de seguridad (auth, CSRF, sanitización).
+- [ ] Capa de integración real (contenedores) y tests de seguridad (auth, CSRF, sanitización). Documentado como pendiente en [`TESTING.md`](TESTING.md).
 
 ---
 
