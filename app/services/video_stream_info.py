@@ -123,7 +123,7 @@ class VideoStreamInfoService:
             mav_sender_camera.srcComponent = 100  # MAV_COMP_ID_CAMERA
 
             # Send HEARTBEAT to announce the CAMERA component
-            # type: 30 (MAV_TYPE_CAMERA), autopilot: 0 (GENERIC)
+            # MAV type 30 (MAV_TYPE_CAMERA), autopilot 0 (GENERIC)
             # base_mode: 0, system_status: 4 (ACTIVE)
             msg = mav_sender_camera.heartbeat_encode(
                 type=30,  # MAV_TYPE_CAMERA
