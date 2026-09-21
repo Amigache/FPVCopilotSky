@@ -1,4 +1,7 @@
 {
+  "armedBanner": {
+    "message": "Drone armed — some controls are disabled during flight"
+  },
   "auth": {
     "title": "Authentication required",
     "help": "Enter the API token (FPV_API_TOKEN) configured on the device.",
@@ -423,6 +426,8 @@
     "edit": "Edit",
     "presetQGC": "Preset QGC/MP (UDP 14550)",
     "presetMP": "Preset TCP Server 5760",
+    "presetUDPLocal": "UDP Local (127.0.0.1:14551)",
+    "presetTCPListen": "TCP Server Listen (0.0.0.0:5761)",
     "tcpServer": "TCP Server (listen)",
     "tcpClient": "TCP Client (outbound)",
     "udp": "UDP",

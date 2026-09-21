@@ -97,10 +97,14 @@ export const createMessageStore = () => {
   }
 }
 
+const RECONNECT_BASE_MS = 1000
+const RECONNECT_MAX_MS = 30000
+
 export const WebSocketProvider = ({ children }) => {
   const [isConnected, setIsConnected] = useState(false)
   const wsRef = useRef(null)
   const reconnectTimeoutRef = useRef(null)
+  const reconnectAttemptRef = useRef(0)
   const isConnectingRef = useRef(false)
   const isMountedRef = useRef(true)
   const storeRef = useRef(null)
@@ -139,6 +143,7 @@ export const WebSocketProvider = ({ children }) => {
         }
 
         isConnectingRef.current = false
+        reconnectAttemptRef.current = 0
         setIsConnected(true)
       }
 
@@ -169,7 +174,11 @@ export const WebSocketProvider = ({ children }) => {
 
         setIsConnected(false)
 
-        // Attempt to reconnect after 3 seconds
+        // Exponential backoff with jitter (1s → 30s) to avoid reconnect storms.
+        const attempt = reconnectAttemptRef.current
+        reconnectAttemptRef.current = attempt + 1
+        const backoff = Math.min(RECONNECT_BASE_MS * 2 ** attempt, RECONNECT_MAX_MS)
+        const delay = Math.round(backoff + Math.random() * 0.3 * backoff)
         if (reconnectTimeoutRef.current) {
           clearTimeout(reconnectTimeoutRef.current)
         }
@@ -177,12 +186,25 @@ export const WebSocketProvider = ({ children }) => {
           if (isMountedRef.current) {
             connect()
           }
-        }, 3000)
+        }, delay)
       }
 
       wsRef.current = ws
     } catch (_error) {
       isConnectingRef.current = false
+      // The constructor can throw (e.g. invalid URL); retry with backoff.
+      const attempt = reconnectAttemptRef.current
+      reconnectAttemptRef.current = attempt + 1
+      const backoff = Math.min(RECONNECT_BASE_MS * 2 ** attempt, RECONNECT_MAX_MS)
+      const delay = Math.round(backoff + Math.random() * 0.3 * backoff)
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current)
+      }
+      reconnectTimeoutRef.current = setTimeout(() => {
+        if (isMountedRef.current) {
+          connect()
+        }
+      }, delay)
     }
   }, [store])
 
