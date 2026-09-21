@@ -93,7 +93,7 @@ stream rates de telemetría + tuning de red según el enlace detectado.
 - [ ] Refrescar `mavlink_status` periódicamente.
 - [ ] `parse_buffer` en vez de `parse_char` byte a byte.
 - [ ] Parámetros: respetar `timeout` y TTL de caché.
-- [ ] Frontend: `useMemo` en `ParamCacheContext`; memoizar `Dashboard`/`MapView`; caché de tiles.
+- [x] Frontend: `useMemo` en `ParamCacheContext`/`Toast`/`Modal` (evita re-render por telemetría). `Dashboard`/`MapView` siguen re-renderizando por diseño (suscritos a telemetría); Leaflet ya cachea tiles.
 
 ### Sobra
 
@@ -119,7 +119,8 @@ stream rates de telemetría + tuning de red según el enlace detectado.
 
 ### P3 — Limpieza y frontend
 
-- [ ] Quitar MPTCP/DSCP+wash/VPN policy duplicado/TCP server/probes muertos · `useMemo` en `ParamCacheContext` · memoizar Dashboard/MapView · caché de tiles
+- [x] **P3a** Frontend: `useMemo` en `ParamCacheContext`/`Toast`/`Modal` (evita re-render por telemetría)
+- [ ] **P3b** Limpieza: MPTCP/DSCP+wash/VPN policy duplicado/TCP server embebido/probes muertos · dedupe rutas default · sysctl cleanup
 
 ---
 
