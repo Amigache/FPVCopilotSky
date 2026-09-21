@@ -399,6 +399,116 @@ class TestGStreamerServiceCleanup:
         assert service._opencv_running is False
 
 
+class TestGStreamerServiceRealStats:
+    """V4: real stats via the C-level ``identity`` counter and live adaptation."""
+
+    @patch("app.services.gstreamer_service.GSTREAMER_AVAILABLE", True)
+    def test_read_pipeline_counter_returns_real_values(self, mock_gstreamer):
+        from app.services.gstreamer_service import GStreamerService
+
+        service = GStreamerService()
+
+        stats_obj = MagicMock()
+        stats_obj.get_uint64.side_effect = [(True, 120), (True, 5000)]
+        counter = MagicMock()
+        counter.get_property.return_value = stats_obj
+        service.pipeline = MagicMock()
+        service.pipeline.get_by_name.return_value = counter
+
+        assert service._read_pipeline_counter() == (120, 5000)
+
+    @patch("app.services.gstreamer_service.GSTREAMER_AVAILABLE", True)
+    def test_read_pipeline_counter_missing_element(self, mock_gstreamer):
+        from app.services.gstreamer_service import GStreamerService
+
+        service = GStreamerService()
+        service.pipeline = MagicMock()
+        service.pipeline.get_by_name.return_value = None
+
+        assert service._read_pipeline_counter() is None
+
+    @patch("app.services.gstreamer_service.GSTREAMER_AVAILABLE", True)
+    def test_update_rates_locked_uses_real_byte_delta(self, mock_gstreamer):
+        from app.services.gstreamer_service import GStreamerService
+
+        service = GStreamerService()
+        service.video_config.framerate = 30
+        service.stats["frames_sent"] = 30
+        service.stats["bytes_sent"] = 375000  # 3000 kbps * 1 s / 8
+        service.stats["last_stats_time"] = 100.0
+        service.stats["last_frames_count"] = 0
+        service.stats["last_bytes_count"] = 0
+
+        service._update_rates_locked(101.0)
+
+        assert service.stats["current_fps"] == 30
+        assert service.stats["current_bitrate"] == 3000
+
+    @patch("app.services.gstreamer_service.GSTREAMER_AVAILABLE", True)
+    def test_resolve_encoder_element_by_webrtc_name(self, mock_gstreamer):
+        from app.services.gstreamer_service import GStreamerService
+
+        service = GStreamerService()
+        enc = MagicMock()
+        service.pipeline = MagicMock()
+        service.pipeline.get_by_name.side_effect = lambda name: enc if name == "webrtc_h264enc" else None
+
+        assert service._resolve_encoder_element("bitrate") is enc
+
+    @patch("app.services.gstreamer_service.GSTREAMER_AVAILABLE", True)
+    def test_update_live_property_delegates_to_rtsp(self, mock_gstreamer):
+        from app.services.gstreamer_service import GStreamerService
+
+        service = GStreamerService()
+        service.is_streaming = True
+        service.pipeline = None
+        service.streaming_config.mode = "rtsp"
+        service.current_encoder_codec_id = "h264"
+        rtsp = MagicMock()
+        rtsp.update_live_property.return_value = {"success": True}
+        service.rtsp_server = rtsp
+
+        result = service.update_live_property("bitrate", 1500)
+
+        assert result["success"] is True
+        rtsp.update_live_property.assert_called_once_with("bitrate", 1500, "h264")
+
+    @patch("app.services.gstreamer_service.GSTREAMER_AVAILABLE", True)
+    def test_update_live_property_webrtc_encoder(self, mock_gstreamer):
+        from app.services.gstreamer_service import GStreamerService
+
+        service = GStreamerService()
+        service.is_streaming = True
+        service.current_encoder_codec_id = "h264"
+        service.video_config.h264_bitrate = 1500
+
+        enc = MagicMock()
+        enc.find_property.return_value = object()
+        service.pipeline = MagicMock()
+        service.pipeline.get_by_name.side_effect = lambda name: enc if name == "webrtc_h264enc" else None
+
+        provider = MagicMock()
+        provider.display_name = "x264"
+        provider.get_live_adjustable_properties.return_value = {
+            "bitrate": {
+                "element": "encoder",
+                "property": "bitrate",
+                "min": 100,
+                "max": 10000,
+                "default": 2000,
+                "description": "Bitrate H.264",
+            }
+        }
+        registry = MagicMock()
+        registry.get_video_encoder.return_value = provider
+
+        with patch("app.providers.registry.get_provider_registry", return_value=registry):
+            result = service.update_live_property("bitrate", 2200)
+
+        assert result["success"] is True
+        enc.set_property.assert_called_once_with("bitrate", 2200)
+
+
 class TestGStreamerServiceNotAvailable:
     """Test behavior when GStreamer is not available"""
 

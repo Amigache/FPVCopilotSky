@@ -120,6 +120,14 @@ class MAVLinkBridge:
         }
         self.max_messages = 20  # Keep last 20 messages
 
+        # Telemetry WebSocket coalescing. Reader threads only flag that the
+        # snapshot changed; a dedicated thread performs the (deepcopy + JSON)
+        # broadcast at a bounded rate. This keeps the serial parser from
+        # blocking on a full snapshot for every incoming message.
+        self._telemetry_dirty = threading.Event()
+        self._telemetry_broadcast_thread: Optional[threading.Thread] = None
+        self.telemetry_broadcast_interval: float = 0.1  # max 10 Hz
+
         # Parameter handling (individual requests)
         self._param_callbacks: Dict[str, threading.Event] = {}
         self._param_values: Dict[str, Any] = {}
@@ -236,6 +244,13 @@ class MAVLinkBridge:
                 extra={"source_system_id": self.source_system_id, "source_component_id": self.source_component_id},
             )
 
+            # Start telemetry coalescing broadcast thread
+            self._telemetry_dirty.clear()
+            self._telemetry_broadcast_thread = threading.Thread(
+                target=self._telemetry_broadcast_loop, daemon=True, name="TelemetryBroadcast"
+            )
+            self._telemetry_broadcast_thread.start()
+
             # Start TCP accept thread only if TCP server is enabled
             if self.tcp_server:
                 self.tcp_accept_thread = threading.Thread(target=self._tcp_accept_loop, daemon=True, name="TCPAccept")
@@ -276,6 +291,12 @@ class MAVLinkBridge:
             logger.info("Disconnecting MAVLink bridge")
 
             self.running = False
+
+            # Stop the telemetry coalescing thread
+            self._telemetry_dirty.set()
+            if self._telemetry_broadcast_thread and self._telemetry_broadcast_thread.is_alive():
+                self._telemetry_broadcast_thread.join(timeout=1)
+            self._telemetry_broadcast_thread = None
 
             # Close TCP clients
             with self.tcp_clients_lock:
@@ -686,25 +707,25 @@ class MAVLinkBridge:
             self.telemetry_data["system"]["system_status"] = msg.system_status
             self.telemetry_data["system"]["custom_mode"] = custom_mode
 
-            self._broadcast_telemetry()
+            self._mark_telemetry_dirty()
 
         elif msg_type == "ATTITUDE":
             self.telemetry_data["attitude"]["roll"] = msg.roll
             self.telemetry_data["attitude"]["pitch"] = msg.pitch
             self.telemetry_data["attitude"]["yaw"] = msg.yaw
-            self._broadcast_telemetry()
+            self._mark_telemetry_dirty()
 
         elif msg_type == "GLOBAL_POSITION_INT":
             self.telemetry_data["gps"]["lat"] = msg.lat / 1e7
             self.telemetry_data["gps"]["lon"] = msg.lon / 1e7
             self.telemetry_data["gps"]["alt"] = msg.alt / 1000.0
-            self._broadcast_telemetry()
+            self._mark_telemetry_dirty()
 
         elif msg_type == "SYS_STATUS":
             self.telemetry_data["battery"]["voltage"] = msg.voltage_battery / 1000.0
             self.telemetry_data["battery"]["current"] = msg.current_battery / 100.0
             self.telemetry_data["battery"]["remaining"] = msg.battery_remaining
-            self._broadcast_telemetry()
+            self._mark_telemetry_dirty()
 
         elif msg_type == "STATUSTEXT":
             # Decode severity: 0=EMERGENCY, 1=ALERT, 2=CRITICAL, 3=ERROR, 4=WARNING, 5=NOTICE, 6=INFO, 7=DEBUG
@@ -740,17 +761,17 @@ class MAVLinkBridge:
                 self.telemetry_data["messages"] = self.telemetry_data["messages"][: self.max_messages]
 
             logger.info("STATUSTEXT received", extra={"severity": severity, "text": text})
-            self._broadcast_telemetry()
+            self._mark_telemetry_dirty()
 
         elif msg_type == "VFR_HUD":
             self.telemetry_data["speed"]["ground_speed"] = msg.groundspeed
             self.telemetry_data["speed"]["air_speed"] = msg.airspeed
             self.telemetry_data["speed"]["climb_rate"] = msg.climb
-            self._broadcast_telemetry()
+            self._mark_telemetry_dirty()
 
         elif msg_type == "GPS_RAW_INT":
             self.telemetry_data["gps"]["satellites"] = msg.satellites_visible
-            self._broadcast_telemetry()
+            self._mark_telemetry_dirty()
 
         elif msg_type == "PARAM_VALUE":
             # Handle parameter response
@@ -1264,8 +1285,29 @@ class MAVLinkBridge:
         except Exception:
             pass
 
+    def _mark_telemetry_dirty(self):
+        """Flag that telemetry changed (called from reader threads, non-blocking)."""
+        self._telemetry_dirty.set()
+
+    def _telemetry_broadcast_loop(self):
+        """Coalescing broadcaster: emits at most one telemetry snapshot per interval.
+
+        The serial parser never waits on snapshotting/serialisation; it only sets
+        the dirty event. This thread performs the deepcopy + JSON broadcast.
+        """
+        while self.running:
+            # Wait up to interval for a change — naturally rate-limits to
+            # 1 / telemetry_broadcast_interval Hz.
+            if not self._telemetry_dirty.wait(timeout=self.telemetry_broadcast_interval):
+                continue
+            self._telemetry_dirty.clear()
+            try:
+                self._broadcast_telemetry()
+            except Exception as e:
+                logger.debug("Suppressed exception in telemetry broadcast loop", exc_info=e)
+
     def _broadcast_telemetry(self):
-        """Broadcast telemetry via WebSocket.
+        """Broadcast telemetry via WebSocket (called from the broadcaster thread).
 
         OPTIMIZATION: Skip if no clients connected to save CPU.
         """

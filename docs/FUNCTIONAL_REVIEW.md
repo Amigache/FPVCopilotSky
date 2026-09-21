@@ -29,8 +29,8 @@ stream rates de telemetría + tuning de red según el enlace detectado.
 - [x] **V1** `self.preferences_service` no existe → `AttributeError` en `start()` si autodetecta cámara (`gstreamer_service.py:1733-1735`).
 - [x] **V2** `_attach_webrtc_appsink` llamado pero no definido (inalcanzable hoy) (`gstreamer_service.py:1416`).
 - [x] **V3** `h264_passthrough` (preferido por la UI) se degrada a MJPEG en `VideoConfig` (`video_config.py:151`).
-- [ ] **V4** Stats inventadas: probes no-op; FPS/bitrate estimados de la config (`gstreamer_service.py:882-906,1518-1605`).
-- [ ] **V5** Adaptación de red no aplica en WebRTC ni RTSP (`gstreamer_service.py:2140-2148`).
+- [x] **V4** Stats inventadas: probes no-op; FPS/bitrate estimados de la config (`gstreamer_service.py:882-906,1518-1605`).
+- [x] **V5** Adaptación de red no aplica en WebRTC ni RTSP (`gstreamer_service.py:2140-2148`).
 
 ### Mejoras
 
@@ -80,9 +80,9 @@ stream rates de telemetría + tuning de red según el enlace detectado.
 ### Bugs duros
 
 - [x] **T1** `/api/mavlink-router/restart` llama a `restart()` inexistente → 500 siempre (`router.py:365` vs `mavlink_router.py:278`).
-- [ ] **T2** Broadcast WS por **cada** mensaje (7 puntos) → ~20-30 fps con snapshot completo (`mavlink_bridge.py:689-753`).
-- [ ] **T3** `get_telemetry()` hace `deepcopy`+JSON por mensaje en el hilo lector (`mavlink_bridge.py:825-830`).
-- [ ] **T4** El router mantiene el lock durante `sendall` bloqueante → un TCP lento bloquea el lector serial (`mavlink_router.py:90-133`).
+- [x] **T2** Broadcast WS por **cada** mensaje (7 puntos) → ~20-30 fps con snapshot completo (`mavlink_bridge.py:689-753`).
+- [x] **T3** `get_telemetry()` hace `deepcopy`+JSON por mensaje en el hilo lector (`mavlink_bridge.py:825-830`).
+- [x] **T4** El router mantiene el lock durante `sendall` bloqueante → un TCP lento bloquea el lector serial (`mavlink_router.py:90-133`).
 - [ ] **T5** Carreras en `_param_list_*` y `mav_sender` sin lock (`mavlink_bridge.py:785-799,487; mavlink.py:221-225`).
 
 ### Mejoras
@@ -109,7 +109,7 @@ stream rates de telemetría + tuning de red según el enlace detectado.
 
 ### P1 — Ancho de banda y CPU
 
-- [ ] T2 · T3 · T4 · V4 · V5
+- [x] T2 · T3 · T4 · V4 · V5
 
 ### P2 — Adaptación por enlace
 
