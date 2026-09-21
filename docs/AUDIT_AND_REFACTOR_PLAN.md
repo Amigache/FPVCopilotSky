@@ -273,7 +273,7 @@ errores en el journal.
 
 ## 9. Próxima sesión
 
-1. **TLS (C2)** — \*implementado, activación **aplazada al final del proyecto\*** (decisión del equipo, 2026-09-21). Cuando se quiera: `sudo bash scripts/setup-tls.sh` (self-signed) o `--tailscale`.
+1. **TLS (C2)** — implementado. **Recomendación**: mantener **HTTP en la LAN** (desarrollo) y usar el **HTTPS de Tailscale** en vuelo (`sudo tailscale serve --bg https / http://127.0.0.1:80`) o `sudo bash scripts/setup-tls.sh --tailscale` (no activar nginx 443 globalmente).
 2. Ejercitar Flight Mode / prioridad de red / VPN desde la UI observando
    `journalctl -u fpvcopilot-privd -f` para completar la cobertura de whitelist.
 3. (Opcional) `AmbientCapabilities=CAP_NET_RAW` en el servicio para que `ping` no
