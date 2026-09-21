@@ -132,7 +132,8 @@ existe, con fallback a `sudo` si no.
   `setup-sudoers.sh` elimina todas las reglas NOPASSWD; `fpvcopilot-sky.service`
   activa `NoNewPrivileges`, `ProtectSystem=strict` (+ `ReadWritePaths`),
   `CapabilityBoundingSet=` vacío y varias protecciones más. El servicio ya no
-  usa `sudo` en absoluto.
+  usa `sudo` en absoluto. **Validado en el equipo (2026-09-21):** sandbox activo,
+  sin reglas sudoers, helper operativo con stdin y sin errores en el journal.
 
 > Rollback del sandbox: revertir `systemd/fpvcopilot-sky.service` (quitar
 > `NoNewPrivileges`/`ProtectSystem`), `daemon-reload` y reiniciar. El helper
@@ -165,4 +166,4 @@ existe, con fallback a `sudo` si no.
 | C6 Instaladores remotos | ✅ implementado (PR #46): repos APT firmados                          |
 | M5 Lock deps            | ✅ implementado: lock usado en install/updater/fallback               |
 | M6 Serial 666           | ✅ aplicado                                                           |
-| M7 Sandbox systemd      | ✅ implementado: helper + sandbox (validar en equipo)                 |
+| M7 Sandbox systemd      | ✅ implementado y validado en el equipo                               |
