@@ -310,6 +310,21 @@ class MAVLinkRouter:
             except Exception as e:
                 return False, str(e)
 
+    def restart(self) -> tuple[bool, str]:
+        """Restart every currently running output (used by the API)."""
+        with self.lock:
+            running_ids = [output_id for output_id, state in self.outputs.items() if state.running]
+
+        if not running_ids:
+            return True, "No running outputs"
+
+        succeeded = 0
+        for output_id in running_ids:
+            ok, _ = self.restart_output(output_id)
+            if ok:
+                succeeded += 1
+        return succeeded == len(running_ids), f"Restarted {succeeded}/{len(running_ids)} outputs"
+
     def _stop_output_internal(self, state: OutputState):
         """Internal method to stop an output."""
         state.running = False
