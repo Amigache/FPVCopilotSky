@@ -100,3 +100,6 @@ preferences.json
 
 # Backup files
 *_backup*.tar.gz
+
+# Working/history docs (not part of the published wiki)
+.docs/
