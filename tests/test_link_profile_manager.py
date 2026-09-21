@@ -116,3 +116,19 @@ def test_profile_when_not_streaming_only_configures():
     assert result["actions"] == ["video-config-only"]
     gst.configure.assert_called_once()
     gst.start.assert_not_called()
+
+
+def test_unsupported_resolution_keeps_current(monkeypatch):
+    monkeypatch.setattr("app.services.link_profile_manager.time.sleep", lambda *_: None)
+    manager = LinkProfileManager()
+    gst = make_gstreamer(mode="udp", width=1920, height=1080, framerate=30)
+    manager.set_services(gstreamer_service=gst)
+    monkeypatch.setattr(manager, "_supported_resolutions", lambda device: {"3840x2160", "1920x1080"})
+
+    with patch("app.services.preferences.get_preferences", return_value=make_prefs()):
+        result = asyncio.run(manager.apply_profile("modem"))
+
+    assert any(a.startswith("resolution-kept:1920x1080") for a in result["actions"])
+    # It still switches mode (udp -> webrtc) but keeps 1080p capture
+    assert gst.configure.call_args.kwargs["video_config"]["width"] == 1920
+    assert gst.configure.call_args.kwargs["video_config"]["height"] == 1080

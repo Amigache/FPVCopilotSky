@@ -44,6 +44,7 @@ class LinkProfileManager:
         self._active_profile: str = ""
         self._last_apply_time: float = 0.0
         self._last_actions: list = []
+        self._res_cache: Dict[str, set] = {}
 
         # Read from preferences each cycle; defaults are safe.
         self._telemetry_apply = False
@@ -217,6 +218,43 @@ class LinkProfileManager:
         await self._broadcast_status()
         return {"success": True, "profile": profile_name, "reason": reason, "actions": actions}
 
+    def _supported_resolutions(self, device: str) -> set:
+        """Camera resolutions according to v4l2-ctl (cached). Empty = unknown."""
+        if not device:
+            return set()
+        if device in self._res_cache:
+            return self._res_cache[device]
+        resolutions = set()
+        try:
+            from app.utils.cmd import run_cmd
+
+            stdout, _, rc = run_cmd(["v4l2-ctl", "-d", device, "--list-formats-ext"], timeout=3, check=False)
+            if rc == 0:
+                for line in stdout.splitlines():
+                    line = line.strip()
+                    if line.startswith("Size: Discrete"):
+                        resolutions.add(line.split()[-1])
+        except Exception as e:
+            logger.debug(f"Could not query camera resolutions: {e}")
+        self._res_cache[device] = resolutions
+        return resolutions
+
+    def _target_resolution(self, profile: Dict[str, Any], cfg) -> tuple:
+        """Resolve the profile resolution, falling back to current if unsupported."""
+        width = int(profile.get("width", cfg.width))
+        height = int(profile.get("height", cfg.height))
+        if (width, height) == (cfg.width, cfg.height):
+            return width, height, False
+
+        supported = self._supported_resolutions(getattr(cfg, "device", ""))
+        if supported and f"{width}x{height}" not in supported:
+            logger.info(
+                "Profile resolution not supported by camera, keeping current",
+                extra={"requested": f"{width}x{height}", "keeping": f"{cfg.width}x{cfg.height}"},
+            )
+            return cfg.width, cfg.height, True
+        return width, height, False
+
     async def _apply_video(self, profile: Dict[str, Any]) -> list:
         """Apply the profile's video settings, restarting only if needed."""
         service = self._gstreamer_service
@@ -224,10 +262,17 @@ class LinkProfileManager:
         current_mode = service.streaming_config.mode
 
         target_mode = profile.get("video_mode", current_mode)
+        width, height, res_unavailable = self._target_resolution(profile, cfg)
+
+        # Use the resolved resolution for the (possible) restart.
+        effective_profile = dict(profile)
+        effective_profile["width"] = width
+        effective_profile["height"] = height
+
         needs_restart = (
             target_mode != current_mode
-            or int(profile.get("width", cfg.width)) != cfg.width
-            or int(profile.get("height", cfg.height)) != cfg.height
+            or width != cfg.width
+            or height != cfg.height
             or int(profile.get("framerate", cfg.framerate)) != cfg.framerate
         )
 
@@ -235,19 +280,28 @@ class LinkProfileManager:
             result = await asyncio.to_thread(
                 service.update_live_property, "bitrate", int(profile.get("h264_bitrate", 0))
             )
+            actions = []
+            if res_unavailable:
+                actions.append(f"resolution-kept:{width}x{height}")
             if result.get("success"):
-                return [f"bitrate:{profile.get('h264_bitrate')}"]
-            return [f"bitrate-failed:{result.get('message')}"]
+                actions.append(f"bitrate:{profile.get('h264_bitrate')}")
+            else:
+                actions.append(f"bitrate-failed:{result.get('message')}")
+            return actions
 
-        result = await asyncio.to_thread(self._restart_video, profile, target_mode)
+        result = await asyncio.to_thread(self._restart_video, effective_profile, target_mode)
         if not (isinstance(result, dict) and result.get("success")):
             message = result.get("message") if isinstance(result, dict) else str(result)
             logger.warning("Link profile video restart failed", extra={"mode": target_mode, "error": message})
             return [f"video-restart-failed:{message}"]
-        return [
-            f"video-restart:{target_mode} {profile.get('width')}x{profile.get('height')}@{profile.get('framerate')} "
-            f"{profile.get('h264_bitrate')}kbps"
-        ]
+        actions = []
+        if res_unavailable:
+            actions.append(f"resolution-kept:{width}x{height}")
+        actions.append(
+            f"video-restart:{target_mode} {width}x{height}@{effective_profile.get('framerate')} "
+            f"{effective_profile.get('h264_bitrate')}kbps"
+        )
+        return actions
 
     def _video_config_from_profile(self, profile: Dict[str, Any]) -> Dict[str, Any]:
         service = self._gstreamer_service
