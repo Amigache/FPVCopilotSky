@@ -13,6 +13,17 @@ export default defineConfig({
   optimizeDeps: {
     include: ['react', 'react-dom'],
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ['react', 'react-dom'],
+          leaflet: ['leaflet', 'react-leaflet'],
+          motion: ['framer-motion'],
+        },
+      },
+    },
+  },
   server: {
     host: '0.0.0.0',
     port: 5173,
