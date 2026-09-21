@@ -66,6 +66,10 @@ genera el certificado, instala `systemd/fpvcopilot-sky.tls.nginx` (443 + redirec
 80→443) y recarga nginx. `deploy.sh` conserva el config TLS mientras exista el
 certificado.
 
+> **Activación aplazada al final del proyecto** (decisión del equipo, 2026-09-21):
+> el código está listo pero no se activa aún. Cuando se decida, ejecutar
+> `sudo bash scripts/setup-tls.sh` (self-signed) o `--tailscale`.
+
 ### C5 — Código fuente escribible por el servicio
 
 El updater actual ejecuta `git reset/checkout`, `pip install` y `npm build`
