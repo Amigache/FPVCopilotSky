@@ -66,9 +66,16 @@ genera el certificado, instala `systemd/fpvcopilot-sky.tls.nginx` (443 + redirec
 80→443) y recarga nginx. `deploy.sh` conserva el config TLS mientras exista el
 certificado.
 
-> **Activación aplazada al final del proyecto** (decisión del equipo, 2026-09-21):
-> el código está listo pero no se activa aún. Cuando se decida, ejecutar
-> `sudo bash scripts/setup-tls.sh` (self-signed) o `--tailscale`.
+> **Recomendación por escenario** (red doméstica para desarrollo, VPN para vuelo):
+>
+> - **Desarrollo en LAN**: mantener **HTTP** (nginx `:80`). Un self-signed daría avisos
+>   del navegador y no aporta sobre una red de confianza.
+> - **Vuelo por VPN (Tailscale)**: usar el HTTPS nativo de Tailscale (certificado
+>   **válido** de Let's Encrypt, sin avisos):
+>   `sudo tailscale serve --bg https / http://127.0.0.1:80` (recomendado, no toca
+>   nginx) o `sudo bash scripts/setup-tls.sh --tailscale` (TLS en nginx).
+> - **No mezclar**: el certificado de Tailscale no es válido para la IP de LAN, así
+>   que activar nginx 443 globalmente reintroduciría avisos en casa.
 
 ### C5 — Código fuente escribible por el servicio
 
