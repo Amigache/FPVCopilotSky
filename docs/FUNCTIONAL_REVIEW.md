@@ -26,9 +26,9 @@ stream rates de telemetría + tuning de red según el enlace detectado.
 
 ### Bugs duros
 
-- [ ] **V1** `self.preferences_service` no existe → `AttributeError` en `start()` si autodetecta cámara (`gstreamer_service.py:1733-1735`).
-- [ ] **V2** `_attach_webrtc_appsink` llamado pero no definido (inalcanzable hoy) (`gstreamer_service.py:1416`).
-- [ ] **V3** `h264_passthrough` (preferido por la UI) se degrada a MJPEG en `VideoConfig` (`video_config.py:151`).
+- [x] **V1** `self.preferences_service` no existe → `AttributeError` en `start()` si autodetecta cámara (`gstreamer_service.py:1733-1735`).
+- [x] **V2** `_attach_webrtc_appsink` llamado pero no definido (inalcanzable hoy) (`gstreamer_service.py:1416`).
+- [x] **V3** `h264_passthrough` (preferido por la UI) se degrada a MJPEG en `VideoConfig` (`video_config.py:151`).
 - [ ] **V4** Stats inventadas: probes no-op; FPS/bitrate estimados de la config (`gstreamer_service.py:882-906,1518-1605`).
 - [ ] **V5** Adaptación de red no aplica en WebRTC ni RTSP (`gstreamer_service.py:2140-2148`).
 
@@ -51,9 +51,9 @@ stream rates de telemetría + tuning de red según el enlace detectado.
 
 ### Bugs duros
 
-- [ ] **N1** Deadlock en AutoFailover: lock no reentrante (`auto_failover.py:231/246` + `:360`).
-- [ ] **N2** `mode="auto"` deja WiFi y módem en `metric 200` → sin primaria (`status.py:368,397`).
-- [ ] **N3** `ModemPool` borra **todas** las default routes (`modem_pool.py:604-610`).
+- [x] **N1** Deadlock en AutoFailover: lock no reentrante (`auto_failover.py:231/246` + `:360`).
+- [x] **N2** `mode="auto"` deja WiFi y módem en `metric 200` → sin primaria (`status.py:368,397`).
+- [x] **N3** `ModemPool` borra **todas** las default routes (`modem_pool.py:604-610`).
 - [ ] **N4** Tres escritores de rutas se pisan (`modem_pool`, `set_priority_mode`, `set_metric`).
 - [ ] **N5** CAKE mal calibrado: burst al gateway, solo subida, bajada fija 30, `ifb0` compartido (`network_optimizer.py:307-379,54,413-433`).
 - [ ] **N6** DSCP inútil: se marca EF-46 y CAKE subida aplica `wash` (`network_optimizer.py:132-173` vs `:414`).
@@ -79,7 +79,7 @@ stream rates de telemetría + tuning de red según el enlace detectado.
 
 ### Bugs duros
 
-- [ ] **T1** `/api/mavlink-router/restart` llama a `restart()` inexistente → 500 siempre (`router.py:365` vs `mavlink_router.py:278`).
+- [x] **T1** `/api/mavlink-router/restart` llama a `restart()` inexistente → 500 siempre (`router.py:365` vs `mavlink_router.py:278`).
 - [ ] **T2** Broadcast WS por **cada** mensaje (7 puntos) → ~20-30 fps con snapshot completo (`mavlink_bridge.py:689-753`).
 - [ ] **T3** `get_telemetry()` hace `deepcopy`+JSON por mensaje en el hilo lector (`mavlink_bridge.py:825-830`).
 - [ ] **T4** El router mantiene el lock durante `sendall` bloqueante → un TCP lento bloquea el lector serial (`mavlink_router.py:90-133`).
@@ -105,7 +105,7 @@ stream rates de telemetría + tuning de red según el enlace detectado.
 
 ### P0 — Correctitud (bugs que rompen función)
 
-- [ ] N1 · N2 · N3 · T1 · V1 · V3 · V2
+- [x] N1 · N2 · N3 · T1 · V1 · V3 · V2
 
 ### P1 — Ancho de banda y CPU
 
