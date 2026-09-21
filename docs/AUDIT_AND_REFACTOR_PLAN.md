@@ -109,9 +109,9 @@ El proyecto tiene una **arquitectura por capas bien pensada**, una **capa de eje
 - [x] Añadir `coverage.thresholds` en `vitest.config.js` (baseline 40/70/49/60) y arreglar el upload de coverage (ahora en `test-backend`); `StatusView.test.jsx` sigue excluido por flaky.
 - [x] `mypy` arreglado para que **ejecute** (`# type:` inválido + `explicit_package_bases`); reporta 192 errores → aún no bloqueante.
 - [x] Trocear vistas grandes con `React.lazy`/`Suspense` y `manualChunks` (leaflet/framer-motion aparte). (PR #58)
-- [ ] Desofilar con `run_in_executor`/`run_cmd_async` las llamadas síncronas de `system.py`.
+- [x] Desofilar con `run_in_executor`/`run_cmd_async` las llamadas síncronas de `system.py` (`asyncio.to_thread`). (PR pendiente)
 - [ ] Unificar manejo de errores con `HTTPException` (no 200 + `{"error"}`); middleware común de errores.
-- [ ] Usar setters con lock en `system.py` (eliminar acceso a `_preferences`).
+- [x] Usar setters con lock en `system.py` (eliminar acceso a `_preferences`). (PR pendiente)
 - [ ] Sustituir `except Exception: pass` por excepciones concretas + `logger.warning(..., exc_info=True)`.
 
 ### Fase 2 — Rendimiento y calidad (1 mes)

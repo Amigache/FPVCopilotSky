@@ -501,6 +501,19 @@ class PreferencesService:
             self._preferences["network"].update(config)
             self._save()
 
+    def set_flight_session_config(self, config: Dict[str, Any]):
+        """Deep-merge and persist flight_session preferences under the lock."""
+        with self._lock:
+            current = self._preferences.setdefault("flight_session", {})
+            current.update(config)
+            self._save()
+
+    def set_section(self, key: str, value: Any):
+        """Set an arbitrary top-level preference section under the lock."""
+        with self._lock:
+            self._preferences[key] = value
+            self._save()
+
     # ==================== Auto-Detection ====================
 
     def get_serial_ports_to_scan(self) -> List[str]:
