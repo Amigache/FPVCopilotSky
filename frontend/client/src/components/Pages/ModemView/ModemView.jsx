@@ -1,5 +1,5 @@
 import './ModemView.css'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useToast } from '../../../contexts/ToastContext'
 import { useModal } from '../../../contexts/ModalContext'
@@ -19,6 +19,10 @@ const ModemView = () => {
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState(null)
   const [bandPresets, setBandPresets] = useState(null)
+  const rebootPollTimerRef = useRef(null)
+
+  // Clear the reboot poll timer on unmount (avoids updates after unmount).
+  useEffect(() => () => clearTimeout(rebootPollTimerRef.current), [])
 
   // Loading states
   const [changingBand, setChangingBand] = useState(false)
@@ -159,7 +163,7 @@ const ModemView = () => {
               }
 
               if (attempts < maxAttempts) {
-                setTimeout(checkModem, 5000)
+                rebootPollTimerRef.current = setTimeout(checkModem, 5000)
               } else {
                 setModemRebooting(false)
                 showToast(`⚠️ ${t('modem.modemNoResponse')}`, 'warning')
@@ -167,7 +171,7 @@ const ModemView = () => {
             }
 
             // Start checking after initial delay
-            setTimeout(checkModem, REBOOT_CONFIG.CHECK_INTERVAL)
+            rebootPollTimerRef.current = setTimeout(checkModem, REBOOT_CONFIG.CHECK_INTERVAL)
           } else {
             setModemRebooting(false)
             const data = await response.json()

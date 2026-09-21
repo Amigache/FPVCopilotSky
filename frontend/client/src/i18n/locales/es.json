@@ -1,4 +1,7 @@
 {
+  "armedBanner": {
+    "message": "Drone armado — algunos controles están deshabilitados durante el vuelo"
+  },
   "auth": {
     "title": "Autenticación requerida",
     "help": "Introduce el token de API (FPV_API_TOKEN) configurado en el dispositivo.",

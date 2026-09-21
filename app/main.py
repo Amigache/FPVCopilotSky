@@ -4,8 +4,9 @@ FPV Copilot Sky - Main Application
 FastAPI server for MAVLink drone control
 """
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import asyncio
 import threading
@@ -27,6 +28,7 @@ from app.providers.network import (  # noqa: E402
     VPNInterface,
     ModemInterface,
 )
+from app.exceptions import FPVCopilotException  # noqa: E402
 from app.services.flight_data_logger import FlightDataLogger  # noqa: E402
 from app.services.network_event_bridge import get_network_event_bridge  # noqa: E402
 from app.services.latency_monitor import get_latency_monitor  # noqa: E402
@@ -436,34 +438,34 @@ async def _lifespan_shutdown():
         from app.services.modem_pool import get_modem_pool
 
         await get_modem_pool().stop()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Shutdown: modem pool stop failed", exc_info=e)
     try:
         await stop_auto_failover()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Shutdown: auto-failover stop failed", exc_info=e)
     try:
         from app.services.policy_routing_manager import get_policy_routing_manager
 
         policy_manager = get_policy_routing_manager()
         if policy_manager._initialized:
             await policy_manager.cleanup()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Shutdown: policy routing cleanup failed", exc_info=e)
     try:
         await get_network_event_bridge().stop()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Shutdown: network event bridge stop failed", exc_info=e)
     try:
         await get_latency_monitor().stop()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Shutdown: latency monitor stop failed", exc_info=e)
     try:
         ws = get_webrtc_service()
         if ws:
             ws.shutdown()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Shutdown: WebRTC shutdown failed", exc_info=e)
     svc = get_video_stream_info_service()
     if svc:
         svc.stop()
@@ -619,6 +621,21 @@ app.add_middleware(
 # Authentication middleware (no-op unless FPV_API_TOKEN is set). Registered
 # after CORS so that 401 responses still carry CORS headers.
 app.middleware("http")(require_auth)
+
+
+@app.exception_handler(FPVCopilotException)
+async def _handle_domain_exception(request: Request, exc: FPVCopilotException):
+    """Return a structured response for typed domain exceptions."""
+    logger.error("Domain exception", extra=exc.to_dict())
+    return JSONResponse(status_code=500, content={"detail": exc.message, **exc.to_dict()})
+
+
+@app.exception_handler(Exception)
+async def _handle_unexpected_exception(request: Request, exc: Exception):
+    """Log unexpected errors with a traceback and return a generic 500."""
+    logger.error("Unhandled exception", exc_info=exc)
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+
 
 # Include routers
 app.include_router(auth_routes.router, prefix="/api/auth", tags=["auth"])
