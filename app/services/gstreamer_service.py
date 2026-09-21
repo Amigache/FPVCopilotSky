@@ -1411,10 +1411,6 @@ class GStreamerService:
                     logger.error(f"Failed to link {src_name} → {dst_name}")
                     return False
 
-            # WebRTC mode: add tee + appsink branch for JPEG frames to aiortc
-            if self.streaming_config.mode == "webrtc" and self.webrtc_service:
-                self._attach_webrtc_appsink(pipeline, elements_list)
-
             # Setup bus for messages
             bus = pipeline.get_bus()
             bus.add_signal_watch()
@@ -1729,19 +1725,17 @@ class GStreamerService:
                 else:
                     logger.info("Auto-detected camera", extra={"detected_device": detected})
 
-                # Save detected device to preferences for persistence
-                if self.preferences_service:
-                    try:
-                        self.preferences_service.update_video_source_device(detected)
-                        logger.info(
-                            "Saved detected camera device to preferences",
-                            extra={"detected_device": detected},
-                        )
-                    except Exception as e:
-                        logger.warning(
-                            "Failed to save detected camera device to preferences",
-                            extra={"detected_device": detected, "error": str(e)},
-                        )
+                # Persist the detected device so the next start reuses it.
+                try:
+                    from app.services.preferences import get_preferences
+
+                    get_preferences().set_video_config({"device": detected})
+                    logger.info("Saved detected camera device to preferences", extra={"detected_device": detected})
+                except Exception as e:
+                    logger.warning(
+                        "Failed to save detected camera device to preferences",
+                        extra={"detected_device": detected, "error": str(e)},
+                    )
             else:
                 msg = (
                     f"Camera not found: {self.video_config.device}"

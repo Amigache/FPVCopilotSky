@@ -602,20 +602,34 @@ class ModemPool:
         from app.api.routes.network.common import run_command
 
         try:
-            # Remove all existing default routes
+            # Keep other paths (WiFi/LAN) as backups instead of deleting every
+            # default route: raise their metric to 200 and make the selected
+            # modem the primary (metric 100).
             stdout, _, _ = await run_command(["ip", "route", "show", "default"])
             for line in stdout.splitlines():
-                if "default" in line:
-                    parts = line.split()
-                    await run_command(["sudo", "ip", "route", "del"] + parts)
+                if "default" not in line:
+                    continue
+                if f"dev {interface}" in line:
+                    # Re-added below as the primary route; drop the stale copy.
+                    await run_command(["sudo", "ip", "route", "del"] + line.split())
+                    continue
+                parts = line.split()
+                try:
+                    via = parts[parts.index("via") + 1]
+                    dev = parts[parts.index("dev") + 1]
+                except ValueError:
+                    continue
+                await run_command(
+                    ["sudo", "ip", "route", "replace", "default", "via", via, "dev", dev, "metric", "200"]
+                )
 
-            # Add new default route via selected modem
+            # Add the modem default with the best metric (idempotent).
             _, _, rc = await run_command(
                 [
                     "sudo",
                     "ip",
                     "route",
-                    "add",
+                    "replace",
                     "default",
                     "via",
                     gateway,

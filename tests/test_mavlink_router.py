@@ -166,3 +166,28 @@ class TestShutdown:
         router.shutdown()
         assert router.running is False
         assert state.running is False
+
+
+class TestRestart:
+    def test_restart_without_running_outputs(self):
+        router = make_router()
+        router.add_output(cfg())
+        ok, msg = router.restart()
+        assert ok is True
+        assert "No running" in msg
+
+    def test_restart_restarts_running_outputs(self, monkeypatch):
+        router = make_router()
+        router.add_output(cfg("a"))
+        router.outputs["a"].running = True
+        called = []
+
+        def fake_restart(output_id):
+            called.append(output_id)
+            return True, "ok"
+
+        monkeypatch.setattr(router, "restart_output", fake_restart)
+        ok, msg = router.restart()
+        assert ok is True
+        assert called == ["a"]
+        assert "1/1" in msg

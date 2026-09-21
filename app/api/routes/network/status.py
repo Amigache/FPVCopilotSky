@@ -361,12 +361,20 @@ async def set_priority_mode(request: PriorityModeRequest):
 
         routes_changed = []
 
+        # Determine metrics by mode. "auto" prefers WiFi when available, otherwise
+        # the modem, so there is always exactly one primary route (metric 100).
+        if mode == "auto":
+            primary = "wifi" if wifi_interface else "modem"
+        else:
+            primary = mode
+
+        wifi_metric = 100 if primary == "wifi" else 200
+        modem_metric = 100 if primary == "modem" else 200
+
         # Set WiFi metric
         if wifi_interface:
             wifi_gateway = await get_gateway_for_interface(wifi_interface)
             if wifi_gateway:
-                wifi_metric = 100 if mode == "wifi" else 200
-
                 # Delete old route
                 await run_command(["sudo", "ip", "route", "del", "default", "via", wifi_gateway, "dev", wifi_interface])
 
@@ -394,8 +402,6 @@ async def set_priority_mode(request: PriorityModeRequest):
         if modem_interface:
             modem_gateway = await get_gateway_for_interface(modem_interface)
             if modem_gateway:
-                modem_metric = 100 if mode == "modem" else 200
-
                 # Delete old route
                 await run_command(
                     ["sudo", "ip", "route", "del", "default", "via", modem_gateway, "dev", modem_interface]
