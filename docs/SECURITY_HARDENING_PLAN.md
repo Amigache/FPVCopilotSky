@@ -59,12 +59,12 @@ Diseño propuesto, **compatible y por fases**:
 
 ### C2 — Exposición de red y TLS
 
-1. Backend a `127.0.0.1:8000` (quitar `0.0.0.0` del unit systemd y del arranque
-   manual); dejar nginx como única entrada.
-2. TLS en nginx (`listen 443 ssl`): certificados de **Tailscale** (`tailscale
-cert`) o self-signed; redirigir 80→443.
-3. CORS por allowlist (`FPV_CORS_ALLOW_ORIGINS`), nunca `*` en producción.
-4. Rate limiting (`limit_req`) y `access_log` activado.
+✅ **Resuelto.** Backend escuchando en `127.0.0.1` (nginx es la única entrada),
+`/docs`/`/redoc`/`/openapi.json` bloqueados, CORS configurable por entorno. TLS
+disponible con `scripts/setup-tls.sh` (self-signed para LAN o `--tailscale`):
+genera el certificado, instala `systemd/fpvcopilot-sky.tls.nginx` (443 + redirección
+80→443) y recarga nginx. `deploy.sh` conserva el config TLS mientras exista el
+certificado.
 
 ### C5 — Código fuente escribible por el servicio
 
@@ -156,14 +156,14 @@ existe, con fallback a `sudo` si no.
 
 ## Estado
 
-| Hallazgo                | Estado                                                                |
-| ----------------------- | --------------------------------------------------------------------- |
-| C1 Auth API             | ✅ implementado (PR #44): opt-in `FPV_API_TOKEN` + WebSocket          |
-| C2 TLS / bind           | 🟡 parcial (PR #44): bind `127.0.0.1`, docs bloqueados, plantilla TLS |
-| C3 Sudoers wildcards    | 🟡 mitigado (script obsoleto neutralizado); `ip` wildcards pendientes |
-| C4 Grupo sudo           | ✅ aplicado                                                           |
-| C5 Código escribible    | 🟡 Etapa 1 validada; Etapa 2 implementada (script); Etapa 3 pendiente |
-| C6 Instaladores remotos | ✅ implementado (PR #46): repos APT firmados                          |
-| M5 Lock deps            | ✅ implementado: lock usado en install/updater/fallback               |
-| M6 Serial 666           | ✅ aplicado                                                           |
-| M7 Sandbox systemd      | ✅ implementado y validado en el equipo                               |
+| Hallazgo                | Estado                                                                      |
+| ----------------------- | --------------------------------------------------------------------------- |
+| C1 Auth API             | ✅ implementado (PR #44): opt-in `FPV_API_TOKEN` + WebSocket                |
+| C2 TLS / bind           | ✅ implementado: bind `127.0.0.1`, docs bloqueados, TLS vía `setup-tls.sh`  |
+| C3 Sudoers wildcards    | ✅ resuelto: sin NOPASSWD; operaciones privilegiadas vía `fpvcopilot-privd` |
+| C4 Grupo sudo           | ✅ aplicado                                                                 |
+| C5 Código escribible    | ✅ Etapas 1-3 implementadas (updater root, ownership, helper + sandbox)     |
+| C6 Instaladores remotos | ✅ implementado (PR #46): repos APT firmados                                |
+| M5 Lock deps            | ✅ implementado: lock usado en install/updater/fallback                     |
+| M6 Serial 666           | ✅ aplicado                                                                 |
+| M7 Sandbox systemd      | ✅ implementado y validado en el equipo                                     |
