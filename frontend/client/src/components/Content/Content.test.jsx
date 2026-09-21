@@ -1,7 +1,8 @@
 /**
  * Content Component Tests
  *
- * Tests for the Content component that renders different views based on activeTab
+ * Tests for the Content component that renders different views based on activeTab.
+ * Views are lazy-loaded, so assertions wait for the code-split chunk.
  */
 
 import { describe, it, expect, vi } from 'vitest'
@@ -39,56 +40,64 @@ vi.mock('../Pages/StatusView', () => ({
 vi.mock('../Pages/ExperimentalView', () => ({
   default: () => <div data-testid="experimental-view">Experimental View</div>,
 }))
+vi.mock('../Pages/PreferencesView', () => ({
+  default: () => <div data-testid="preferences-view">Preferences View</div>,
+}))
 
 describe('Content Component', () => {
-  it('renders dashboard view when activeTab is dashboard', () => {
+  it('renders dashboard view when activeTab is dashboard', async () => {
     render(<Content activeTab="dashboard" />)
-    expect(screen.getByTestId('dashboard-view')).toBeInTheDocument()
+    expect(await screen.findByTestId('dashboard-view')).toBeInTheDocument()
   })
 
-  it('renders telemetry view when activeTab is telemetry', () => {
+  it('renders telemetry view when activeTab is telemetry', async () => {
     render(<Content activeTab="telemetry" />)
-    expect(screen.getByTestId('telemetry-view')).toBeInTheDocument()
+    expect(await screen.findByTestId('telemetry-view')).toBeInTheDocument()
   })
 
-  it('renders video view when activeTab is video', () => {
+  it('renders video view when activeTab is video', async () => {
     render(<Content activeTab="video" />)
-    expect(screen.getByTestId('video-view')).toBeInTheDocument()
+    expect(await screen.findByTestId('video-view')).toBeInTheDocument()
   })
 
-  it('renders network view when activeTab is network', () => {
+  it('renders network view when activeTab is network', async () => {
     render(<Content activeTab="network" />)
-    expect(screen.getByTestId('network-view')).toBeInTheDocument()
+    expect(await screen.findByTestId('network-view')).toBeInTheDocument()
   })
 
-  it('renders modem view when activeTab is modem', () => {
+  it('renders modem view when activeTab is modem', async () => {
     render(<Content activeTab="modem" />)
-    expect(screen.getByTestId('modem-view')).toBeInTheDocument()
+    expect(await screen.findByTestId('modem-view')).toBeInTheDocument()
   })
 
-  it('renders vpn view when activeTab is vpn', () => {
+  it('renders vpn view when activeTab is vpn', async () => {
     render(<Content activeTab="vpn" />)
-    expect(screen.getByTestId('vpn-view')).toBeInTheDocument()
+    expect(await screen.findByTestId('vpn-view')).toBeInTheDocument()
   })
 
-  it('renders flight controller view when activeTab is flightController', () => {
+  it('renders flight controller view when activeTab is flightController', async () => {
     render(<Content activeTab="flightController" />)
-    expect(screen.getByTestId('flight-controller-view')).toBeInTheDocument()
+    expect(await screen.findByTestId('flight-controller-view')).toBeInTheDocument()
   })
 
-  it('renders system view when activeTab is system', () => {
+  it('renders system view when activeTab is system', async () => {
     render(<Content activeTab="system" />)
-    expect(screen.getByTestId('system-view')).toBeInTheDocument()
+    expect(await screen.findByTestId('system-view')).toBeInTheDocument()
   })
 
-  it('renders status view when activeTab is status', () => {
+  it('renders status view when activeTab is status', async () => {
     render(<Content activeTab="status" />)
-    expect(screen.getByTestId('status-view')).toBeInTheDocument()
+    expect(await screen.findByTestId('status-view')).toBeInTheDocument()
   })
 
-  it('renders experimental view when activeTab is experimental', () => {
+  it('renders preferences view when activeTab is preferences', async () => {
+    render(<Content activeTab="preferences" />)
+    expect(await screen.findByTestId('preferences-view')).toBeInTheDocument()
+  })
+
+  it('renders experimental view when activeTab is experimental', async () => {
     render(<Content activeTab="experimental" />)
-    expect(screen.getByTestId('experimental-view')).toBeInTheDocument()
+    expect(await screen.findByTestId('experimental-view')).toBeInTheDocument()
   })
 
   it('renders nothing when activeTab is unknown', () => {

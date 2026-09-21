@@ -1,30 +1,40 @@
+import { lazy, Suspense } from 'react'
 import './Content.css'
-import FlightControllerView from '../Pages/FlightControllerView'
-import DashboardView from '../Pages/DashboardView'
-import TelemetryView from '../Pages/TelemetryView'
-import VideoView from '../Pages/VideoView'
-import NetworkView from '../Pages/NetworkView'
-import ModemView from '../Pages/ModemView'
-import VPNView from '../Pages/VPNView'
-import SystemView from '../Pages/SystemView'
-import StatusView from '../Pages/StatusView'
-import ExperimentalView from '../Pages/ExperimentalView'
-import PreferencesView from '../Pages/PreferencesView'
+
+// Views are code-split: each tab is loaded on demand so the initial bundle
+// does not ship every page (Leaflet map, WebRTC, OpenCV, …).
+const DashboardView = lazy(() => import('../Pages/DashboardView'))
+const TelemetryView = lazy(() => import('../Pages/TelemetryView'))
+const VideoView = lazy(() => import('../Pages/VideoView'))
+const NetworkView = lazy(() => import('../Pages/NetworkView'))
+const ModemView = lazy(() => import('../Pages/ModemView'))
+const VPNView = lazy(() => import('../Pages/VPNView'))
+const FlightControllerView = lazy(() => import('../Pages/FlightControllerView'))
+const SystemView = lazy(() => import('../Pages/SystemView'))
+const StatusView = lazy(() => import('../Pages/StatusView'))
+const PreferencesView = lazy(() => import('../Pages/PreferencesView'))
+const ExperimentalView = lazy(() => import('../Pages/ExperimentalView'))
+
+const VIEWS = {
+  dashboard: DashboardView,
+  telemetry: TelemetryView,
+  video: VideoView,
+  network: NetworkView,
+  modem: ModemView,
+  vpn: VPNView,
+  flightController: FlightControllerView,
+  system: SystemView,
+  status: StatusView,
+  preferences: PreferencesView,
+  experimental: ExperimentalView,
+}
 
 const Content = ({ activeTab }) => {
+  const View = VIEWS[activeTab]
+
   return (
     <div className="content">
-      {activeTab === 'dashboard' && <DashboardView />}
-      {activeTab === 'telemetry' && <TelemetryView />}
-      {activeTab === 'video' && <VideoView />}
-      {activeTab === 'network' && <NetworkView />}
-      {activeTab === 'modem' && <ModemView />}
-      {activeTab === 'vpn' && <VPNView />}
-      {activeTab === 'flightController' && <FlightControllerView />}
-      {activeTab === 'system' && <SystemView />}
-      {activeTab === 'status' && <StatusView />}
-      {activeTab === 'preferences' && <PreferencesView />}
-      {activeTab === 'experimental' && <ExperimentalView />}
+      <Suspense fallback={<div className="content-loading" />}>{View ? <View /> : null}</Suspense>
     </div>
   )
 }
