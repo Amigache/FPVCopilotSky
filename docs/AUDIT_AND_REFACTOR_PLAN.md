@@ -245,24 +245,30 @@ Todo lo siguiente está **mergeado en `develop`** y con CI en verde:
 | Migración total al helper (M7 Incremento 2)           | ✅                   | #52      |
 | Logging por comando en el helper                      | ✅                   | #53      |
 | Sandbox + helper en deploy/install (M7 Incremento 3)  | ✅                   | #55      |
+| Fix stdin del helper (hallado al validar)             | ✅                   | #56      |
 
 **Validado en el equipo (2026-09-21):** `fpvcopilot-privd` activo, socket
 `root:fpvcopilotsky 0660`; `ip route show` permitido y comandos peligrosos
-denegados (rc=126); la app en marcha enruta `iw scan` / `ip route` por el helper
-(log `exec:`), sin denegaciones de la app. `deploy.sh` y el arranque verificados.
+denegados (rc=126); la app en marcha enruta `iw scan` / `ip route` / `ping` por el
+helper (log `exec:`), sin denegaciones de la app. `deploy.sh` y el arranque
+verificados.
+
+**Incremento 3 validado en el equipo (2026-09-21):** `NoNewPrivileges=yes`,
+`ProtectSystem=strict`, `CapabilityBoundingSet=`; sin `/etc/sudoers.d/fpvcopilot-*`;
+helper con stdin OK (`iptables-restore`, `ip -batch -`) tras el fix #56; sin
+errores en el journal.
 
 ## 9. Próxima sesión
 
-1. **Validar el Incremento 3 en el equipo**: desplegar, comprobar que
-   `fpvcopilot-privd` queda habilitado, que no queda ningún `/etc/sudoers.d/fpvcopilot-*`
-   y que el servicio arranca con `NoNewPrivileges`/`ProtectSystem=strict`
-   (`systemctl show fpvcopilot-sky -p NoNewPrivileges -p ProtectSystem`).
-2. **TLS (C2)**: emitir certificado (Tailscale `cert` o self-signed), activar el
+1. **TLS (C2)**: emitir certificado (Tailscale `cert` o self-signed), activar el
    `server` block 443 y redirigir 80→443.
-3. Ejercitar Flight Mode / prioridad de red / VPN desde la UI observando
+2. Ejercitar Flight Mode / prioridad de red / VPN desde la UI observando
    `journalctl -u fpvcopilot-privd -f` para completar la cobertura de whitelist.
+3. (Opcional) `AmbientCapabilities=CAP_NET_RAW` en el servicio para que `ping` no
+   tenga que pasar por el helper (reduce llamadas), manteniendo
+   `CapabilityBoundingSet=CAP_NET_RAW`.
 
-Pendiente global: **TLS (C2)** y la validación en equipo del Incremento 3.
+Pendiente global: **TLS (C2)** y completar cobertura de whitelist.
 Detalle en [`SECURITY_HARDENING_PLAN.md`](SECURITY_HARDENING_PLAN.md).
 
 ---
