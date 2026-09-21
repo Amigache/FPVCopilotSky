@@ -97,17 +97,18 @@ El proyecto tiene una **arquitectura por capas bien pensada**, una **capa de eje
 
 ### Fase 0 — Seguridad (bloqueante, antes de exponer a Internet)
 
-- [ ] Añadir autenticación a la API (token/`HTTPBearer` + dependencia global); deshabilitar `/docs` en producción; proteger update/rollback/restart.
-- [ ] No publicar el puerto 8000: escuchar solo `127.0.0.1`, servir por nginx; añadir TLS (o Tailscale `serve`); fijar CORS a orígenes concretos.
-- [ ] Purga de sudoers: eliminar `setup-system-sudoers.sh` (referencia en `install.sh:411`), quitar `tee *`, `sysctl -w *`, `ip -force -batch *`; sacar a `fpvcopilotsky` del grupo `sudo`; validar con `visudo -c` en CI.
-- [ ] systemd: `NoNewPrivileges=true`, `ProtectSystem=strict` + `ReadWritePaths=/var/lib/fpvcopilot-sky`, `CapabilityBoundingSet`.
-- [ ] Verificar checksums/GPG de instaladores remotos; serial `0660 group=dialout` en vez de `666`; mover credenciales de modem a config.
+- [x] Añadir autenticación a la API (token/`HTTPBearer` + dependencia global); deshabilitar `/docs` en producción; proteger update/rollback/restart. (PR #44)
+- [ ] No publicar el puerto 8000: escuchar solo `127.0.0.1` (**hecho**), servir por nginx (**hecho**); añadir TLS (**pendiente**); fijar CORS a orígenes concretos.
+- [x] Purga de sudoers: eliminar `setup-system-sudoers.sh`, quitar `tee *`/`sysctl -w *`/`ip -force -batch *`; sacar a `fpvcopilotsky` del grupo `sudo`. (PRs #43, #55)
+- [x] systemd: `NoNewPrivileges=true`, `ProtectSystem=strict` + `ReadWritePaths=/var/lib/fpvcopilot-sky`, `CapabilityBoundingSet`. (PR #55, validado)
+- [x] Verificar checksums/GPG de instaladores remotos (PR #46); serial `0660 group=dialout` (PR #43).
 
 ### Fase 1 — Corrección y CI verde (1-2 semanas)
 
 - [x] Arreglar los tests frontend — bug real en `FlightControllerView.jsx` (PR #41).
-- [ ] Hacer obligatorios mypy, Trivy, Safety y `npm audit`.
-- [ ] Añadir `coverage.thresholds` en `vitest.config.js`; dejar de excluir `StatusView.test.jsx`; arreglar el upload de coverage de `provider-contracts`.
+- [x] Añadir `coverage.thresholds` en `vitest.config.js` (baseline 40/70/49/60) y arreglar el upload de coverage (ahora en `test-backend`); `StatusView.test.jsx` sigue excluido por flaky.
+- [x] `mypy` arreglado para que **ejecute** (`# type:` inválido + `explicit_package_bases`); reporta 192 errores → aún no bloqueante.
+- [x] Trocear vistas grandes con `React.lazy`/`Suspense` y `manualChunks` (leaflet/framer-motion aparte). (PR #58)
 - [ ] Desofilar con `run_in_executor`/`run_cmd_async` las llamadas síncronas de `system.py`.
 - [ ] Unificar manejo de errores con `HTTPException` (no 200 + `{"error"}`); middleware común de errores.
 - [ ] Usar setters con lock en `system.py` (eliminar acceso a `_preferences`).
@@ -116,7 +117,7 @@ El proyecto tiene una **arquitectura por capas bien pensada**, una **capa de eje
 ### Fase 2 — Rendimiento y calidad (1 mes)
 
 - [ ] Partir `WebSocketContext` (contextos por sector + `useMemo`/selectores) para eliminar el re-render storm.
-- [ ] Trocear vistas grandes con `React.lazy`/`Suspense` y `manualChunks` (leaflet/framer-motion aparte); memoizar tarjetas.
+- [x] Trocear vistas grandes con `React.lazy`/`Suspense` y `manualChunks` (hecho, PR #58); pendiente memoizar tarjetas.
 - [ ] Empezar a dividir los god services (builder de pipeline, RTSP, stats en `gstreamer_service.py`).
 - [ ] Backoff exponencial + jitter en la reconexión WS; limpieza de timers; tests de contextos/hooks/`api.js`.
 - [ ] Cerrar brechas i18n y sincronizar docs (RUNBOOKS, React 18/19, LICENSE, anchors).

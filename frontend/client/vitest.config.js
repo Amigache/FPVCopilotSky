@@ -15,6 +15,13 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'json', 'html', 'lcov'],
       exclude: ['node_modules/', 'src/test/', '**/*.config.js', '**/dist/**'],
+      // Progressive baseline (measured ~41.3/74.4/51.7). Raise as coverage grows.
+      thresholds: {
+        statements: 40,
+        branches: 70,
+        functions: 49,
+        lines: 40,
+      },
     },
     // Reduce memory usage for embedded systems
     pool: 'threads',

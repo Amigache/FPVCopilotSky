@@ -83,7 +83,7 @@ jobs:
       # (hardware-coupled providers/bridges are excluded from this threshold).
       COVERAGE_GATE_CURRENT: "50"
       COVERAGE_GATE_NEXT: "55"
-      COVERAGE_GATE_FINAL: "50"
+      COVERAGE_GATE_FINAL: "60"
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -128,6 +128,24 @@ jobs:
             --cov-report=term-missing \
             -v \
             --tb=short
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.xml
+          flags: backend
+          name: backend-coverage
+          fail_ci_if_error: false
+
+      - name: Upload coverage HTML report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report-backend
+          path: htmlcov/
+          retention-days: 7
 
       - name: Check next coverage target (non-blocking)
         continue-on-error: true
@@ -207,24 +225,6 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}
         run: |
           pytest tests/test_provider_contracts.py -q --no-cov
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
-        if: success()
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          file: ./coverage.xml
-          flags: backend
-          name: backend-coverage
-          fail_ci_if_error: false
-
-      - name: Upload coverage HTML report
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: coverage-report-backend
-          path: htmlcov/
-          retention-days: 7
 
   test-frontend:
     name: 🎯 Test React Frontend
