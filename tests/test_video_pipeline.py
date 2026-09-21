@@ -23,8 +23,8 @@ class TestVideoSourceDetection:
 
     def test_get_available_sources(self, client):
         """Test retrieving available video sources"""
-        response = client.get("/api/video/config")
-        assert response.status_code in [200, 404, 500]
+        response = client.get("/api/video/status")
+        assert response.status_code == 200
 
         if response.status_code == 200:
             data = response.json()
@@ -35,16 +35,16 @@ class TestVideoSourceDetection:
         """Test camera detection workflow"""
         # Get system info (includes devices)
         response = client.get("/api/system/info")
-        assert response.status_code in [200, 404, 500]
+        assert response.status_code == 200
 
         # Get video config
-        response = client.get("/api/video/config")
-        assert response.status_code in [200, 404, 500]
+        response = client.get("/api/video/status")
+        assert response.status_code == 200
 
     def test_hdmi_capture_detection(self, client):
         """Test HDMI capture device detection"""
-        response = client.get("/api/video/config")
-        assert response.status_code in [200, 404, 500]
+        response = client.get("/api/video/status")
+        assert response.status_code == 200
 
         if response.status_code == 200:
             config = response.json()
@@ -53,8 +53,8 @@ class TestVideoSourceDetection:
 
     def test_usb_camera_detection(self, client):
         """Test USB camera detection"""
-        response = client.get("/api/video/config")
-        assert response.status_code in [200, 404, 500]
+        response = client.get("/api/video/status")
+        assert response.status_code == 200
 
         if response.status_code == 200:
             config = response.json()
@@ -66,8 +66,8 @@ class TestVideoCodecSelection:
 
     def test_available_encoders(self, client):
         """Test querying available video encoders"""
-        response = client.get("/api/video/config")
-        assert response.status_code in [200, 404, 500]
+        response = client.get("/api/video/status")
+        assert response.status_code == 200
 
         if response.status_code == 200:
             data = response.json()
@@ -76,8 +76,8 @@ class TestVideoCodecSelection:
 
     def test_hardware_encoder_preference(self, client):
         """Test hardware encoder preference"""
-        response = client.get("/api/video/config")
-        assert response.status_code in [200, 404, 500]
+        response = client.get("/api/video/status")
+        assert response.status_code == 200
 
         if response.status_code == 200:
             config = response.json()
@@ -86,8 +86,8 @@ class TestVideoCodecSelection:
 
     def test_software_encoder_fallback(self, client):
         """Test software encoder fallback"""
-        response = client.get("/api/video/config")
-        assert response.status_code in [200, 404, 500]
+        response = client.get("/api/video/status")
+        assert response.status_code == 200
 
         if response.status_code == 200:
             config = response.json()
@@ -95,8 +95,8 @@ class TestVideoCodecSelection:
 
     def test_encoder_optimization(self, client):
         """Test encoder optimization based on hardware"""
-        response = client.get("/api/video/config")
-        assert response.status_code in [200, 404, 500]
+        response = client.get("/api/video/status")
+        assert response.status_code == 200
 
 
 class TestVideoStreamConfiguration:
@@ -104,8 +104,8 @@ class TestVideoStreamConfiguration:
 
     def test_resolution_configuration(self, client):
         """Test video resolution configuration"""
-        response = client.get("/api/video/config")
-        assert response.status_code in [200, 404, 500]
+        response = client.get("/api/video/status")
+        assert response.status_code == 200
 
         if response.status_code == 200:
             config = response.json()
@@ -114,8 +114,8 @@ class TestVideoStreamConfiguration:
 
     def test_bitrate_configuration(self, client):
         """Test video bitrate configuration"""
-        response = client.get("/api/video/config")
-        assert response.status_code in [200, 404, 500]
+        response = client.get("/api/video/status")
+        assert response.status_code == 200
 
         if response.status_code == 200:
             config = response.json()
@@ -124,8 +124,8 @@ class TestVideoStreamConfiguration:
 
     def test_framerate_configuration(self, client):
         """Test video frame rate configuration"""
-        response = client.get("/api/video/config")
-        assert response.status_code in [200, 404, 500]
+        response = client.get("/api/video/status")
+        assert response.status_code == 200
 
         if response.status_code == 200:
             config = response.json()
@@ -133,8 +133,8 @@ class TestVideoStreamConfiguration:
 
     def test_quality_settings(self, client):
         """Test video quality settings"""
-        response = client.get("/api/video/config")
-        assert response.status_code in [200, 404, 500]
+        response = client.get("/api/video/status")
+        assert response.status_code == 200
 
         if response.status_code == 200:
             config = response.json()
@@ -148,25 +148,25 @@ class TestStreamingPipeline:
     def test_pipeline_initialization(self, client):
         """Test streaming pipeline initialization"""
         # Get video config (step 1)
-        response = client.get("/api/video/config")
-        assert response.status_code in [200, 404, 500]
+        response = client.get("/api/video/status")
+        assert response.status_code == 200
 
         # Get system info (step 2)
         response = client.get("/api/system/info")
-        assert response.status_code in [200, 404, 500]
+        assert response.status_code == 200
 
     def test_stream_startup_sequence(self, client):
         """Test stream startup sequence"""
         startup_steps = [
-            ("/api/video/config", "Get video config"),
+            ("/api/video/status", "Get video config"),
             ("/api/system/info", "Get system info"),
-            ("/api/system/status", "Get system status"),
+            ("/api/system/info", "Get system status"),
         ]
 
         results = []
         for endpoint, step in startup_steps:
             response = client.get(endpoint)
-            success = response.status_code in [200, 404, 500]
+            success = response.status_code == 200
             results.append({"step": step, "success": success})
 
         # All steps should complete
@@ -175,19 +175,19 @@ class TestStreamingPipeline:
     def test_stream_configuration_flow(self, client):
         """Test stream configuration flow"""
         # Load config
-        response = client.get("/api/video/config")
-        assert response.status_code in [200, 404, 500]
+        response = client.get("/api/video/status")
+        assert response.status_code == 200
 
         # Apply settings (simulated via config request)
-        response = client.get("/api/video/config")
-        assert response.status_code in [200, 404, 500]
+        response = client.get("/api/video/status")
+        assert response.status_code == 200
 
     def test_stream_monitoring(self, client):
         """Test stream monitoring during transmission"""
         # Monitor stream status multiple times
         for i in range(3):
-            response = client.get("/api/video/config")
-            assert response.status_code in [200, 404, 500]
+            response = client.get("/api/video/status")
+            assert response.status_code == 200
 
 
 class TestStreamControl:
@@ -196,39 +196,39 @@ class TestStreamControl:
     def test_stream_start_stop_cycle(self, client):
         """Test stream start/stop cycle"""
         # Get initial config
-        response = client.get("/api/video/config")
-        assert response.status_code in [200, 404, 500]
+        response = client.get("/api/video/status")
+        assert response.status_code == 200
 
         # Simulate stream operations
         for cycle in range(2):
             # Check stream status
-            response = client.get("/api/video/config")
-            assert response.status_code in [200, 404, 500]
+            response = client.get("/api/video/status")
+            assert response.status_code == 200
 
     def test_stream_pause_resume(self, client):
         """Test stream pause/resume"""
         # Get config
-        response = client.get("/api/video/config")
-        assert response.status_code in [200, 404, 500]
+        response = client.get("/api/video/status")
+        assert response.status_code == 200
 
         # Simulate pause/resume
         for _ in range(2):
-            response = client.get("/api/video/config")
-            assert response.status_code in [200, 404, 500]
+            response = client.get("/api/video/status")
+            assert response.status_code == 200
 
     def test_quality_adjustment_during_stream(self, client):
         """Test quality adjustment during streaming"""
         # Start with config
-        response = client.get("/api/video/config")
-        assert response.status_code in [200, 404, 500]
+        response = client.get("/api/video/status")
+        assert response.status_code == 200
 
         # Adjust quality (simulate via requests)
-        response = client.get("/api/video/config")
-        assert response.status_code in [200, 404, 500]
+        response = client.get("/api/video/status")
+        assert response.status_code == 200
 
         # Verify adjustment
-        response = client.get("/api/video/config")
-        assert response.status_code in [200, 404, 500]
+        response = client.get("/api/video/status")
+        assert response.status_code == 200
 
 
 class TestNetworkStreamingIntegration:
@@ -238,49 +238,49 @@ class TestNetworkStreamingIntegration:
         """Test streaming while monitoring network"""
         # Check network
         response = client.get("/api/network/status")
-        assert response.status_code in [200, 404, 500]
+        assert response.status_code == 200
 
         # Start stream
-        response = client.get("/api/video/config")
-        assert response.status_code in [200, 404, 500]
+        response = client.get("/api/video/status")
+        assert response.status_code == 200
 
         # Monitor both
         for _ in range(2):
             response = client.get("/api/network/status")
-            assert response.status_code in [200, 404, 500]
+            assert response.status_code == 200
 
-            response = client.get("/api/video/config")
-            assert response.status_code in [200, 404, 500]
+            response = client.get("/api/video/status")
+            assert response.status_code == 200
 
     def test_streaming_on_wifi(self, client):
         """Test streaming over WiFi connection"""
         # Check network interface
         response = client.get("/api/network/interfaces")
-        assert response.status_code in [200, 404, 500]
+        assert response.status_code == 200
 
         # Get video config
-        response = client.get("/api/video/config")
-        assert response.status_code in [200, 404, 500]
+        response = client.get("/api/video/status")
+        assert response.status_code == 200
 
     def test_streaming_on_ethernet(self, client):
         """Test streaming over Ethernet"""
         # Check network status
         response = client.get("/api/network/status")
-        assert response.status_code in [200, 404, 500]
+        assert response.status_code == 200
 
         # Get video config
-        response = client.get("/api/video/config")
-        assert response.status_code in [200, 404, 500]
+        response = client.get("/api/video/status")
+        assert response.status_code == 200
 
     def test_streaming_with_vpn(self, client):
         """Test streaming over VPN connection"""
         # Check VPN status
         response = client.get("/api/vpn/status")
-        assert response.status_code in [200, 404, 500]
+        assert response.status_code == 200
 
         # Start stream
-        response = client.get("/api/video/config")
-        assert response.status_code in [200, 404, 500]
+        response = client.get("/api/video/status")
+        assert response.status_code == 200
 
 
 class TestStreamErrorRecovery:
@@ -289,40 +289,40 @@ class TestStreamErrorRecovery:
     def test_stream_reconnection(self, client):
         """Test stream reconnection on failure"""
         # Get config
-        response = client.get("/api/video/config")
-        assert response.status_code in [200, 404, 500]
+        response = client.get("/api/video/status")
+        assert response.status_code == 200
 
         # Simulate failure and recovery
         for attempt in range(3):
-            response = client.get("/api/video/config")
-            assert response.status_code in [200, 404, 500]
+            response = client.get("/api/video/status")
+            assert response.status_code == 200
 
     def test_encoder_failure_recovery(self, client):
         """Test encoder failure recovery"""
         # Start streaming
-        response = client.get("/api/video/config")
-        assert response.status_code in [200, 404, 500]
+        response = client.get("/api/video/status")
+        assert response.status_code == 200
 
         # Simulate encoder error and recovery
-        response = client.get("/api/video/config")
-        assert response.status_code in [200, 404, 500]
+        response = client.get("/api/video/status")
+        assert response.status_code == 200
 
     def test_network_interruption_handling(self, client):
         """Test handling of network interruptions during streaming"""
         # Check network
         response = client.get("/api/network/status")
-        assert response.status_code in [200, 404, 500]
+        assert response.status_code == 200
 
         # Begin streaming
-        response = client.get("/api/video/config")
-        assert response.status_code in [200, 404, 500]
+        response = client.get("/api/video/status")
+        assert response.status_code == 200
 
         # Handle interruption (check both endpoints)
         response = client.get("/api/network/status")
-        assert response.status_code in [200, 404, 500]
+        assert response.status_code == 200
 
-        response = client.get("/api/video/config")
-        assert response.status_code in [200, 404, 500]
+        response = client.get("/api/video/status")
+        assert response.status_code == 200
 
 
 class TestStreamPerformance:
@@ -334,10 +334,10 @@ class TestStreamPerformance:
 
         # Measure response time
         start = time.time()
-        response = client.get("/api/video/config")
+        response = client.get("/api/video/status")
         latency = time.time() - start
 
-        assert response.status_code in [200, 404, 500]
+        assert response.status_code == 200
         assert latency >= 0
 
     def test_stream_throughput(self, client):
@@ -345,28 +345,28 @@ class TestStreamPerformance:
         # Multiple stream requests to simulate throughput
         responses = []
         for _ in range(5):
-            response = client.get("/api/video/config")
+            response = client.get("/api/video/status")
             responses.append(response.status_code)
 
         # All should succeed or fail consistently
-        assert all(status in [200, 404, 500] for status in responses)
+        assert all(status in [200] for status in responses)
 
     def test_cpu_usage_during_streaming(self, client):
         """Test CPU usage during streaming"""
         # Get system status (includes CPU info)
-        response = client.get("/api/system/status")
-        assert response.status_code in [200, 404, 500]
+        response = client.get("/api/system/info")
+        assert response.status_code == 200
 
         # Simulate streaming and measure CPU
-        response = client.get("/api/video/config")
-        assert response.status_code in [200, 404, 500]
+        response = client.get("/api/video/status")
+        assert response.status_code == 200
 
     def test_memory_usage_streaming(self, client):
         """Test memory usage during streaming"""
         # Get system status
-        response = client.get("/api/system/status")
-        assert response.status_code in [200, 404, 500]
+        response = client.get("/api/system/info")
+        assert response.status_code == 200
 
         # Begin streaming
-        response = client.get("/api/video/config")
-        assert response.status_code in [200, 404, 500]
+        response = client.get("/api/video/status")
+        assert response.status_code == 200

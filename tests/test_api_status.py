@@ -22,7 +22,7 @@ class TestStatusEndpoints:
         """Test that status health endpoint exists or gracefully fails"""
         response = client.get("/api/status/health")
         # Accept 200, 404, or 500 - may not be available in test environment
-        assert response.status_code in [200, 404, 500]
+        assert response.status_code == 200
 
     def test_status_dependencies_endpoint(self, client):
         """Test that dependencies endpoint returns valid JSON"""
@@ -36,14 +36,14 @@ class TestStatusEndpoints:
         """Test that system info endpoint exists or gracefully fails"""
         response = client.get("/api/status/system")
         # Accept 200, 404, or 500 - may not be available in test environment
-        assert response.status_code in [200, 404, 500]
+        assert response.status_code == 200
 
     def test_mavlink_status_endpoint(self, client, mock_api_services):
         """Test MAVLink status endpoint"""
         response = client.get("/api/mavlink/status")
 
         # Should return 200 or error (mocked or unavailable)
-        assert response.status_code in [200, 404, 503, 500]
+        assert response.status_code == 200
 
         if response.status_code == 200:
             data = response.json()
@@ -54,7 +54,7 @@ class TestStatusEndpoints:
         response = client.get("/api/video/cameras")
 
         # Should succeed or gracefully fail
-        assert response.status_code in [200, 404, 503, 500]
+        assert response.status_code == 200
 
         if response.status_code == 200:
             data = response.json()
@@ -65,7 +65,7 @@ class TestStatusEndpoints:
         response = client.get("/api/mavlink-router/outputs")
 
         # Accept success or service unavailable
-        assert response.status_code in [200, 503, 500]
+        assert response.status_code == 200
 
         if response.status_code == 200:
             data = response.json()
@@ -80,7 +80,7 @@ class TestAPIHealthCheck:
         response = client.get("/")
 
         # Should either redirect or return 200
-        assert response.status_code in [200, 307, 404]
+        assert response.status_code == 200
 
     def test_api_docs_accessible(self, client):
         """Test that API documentation is accessible"""
@@ -108,9 +108,9 @@ class TestAPIErrorHandling:
 
     def test_invalid_method_returns_405(self, client):
         """Test that invalid HTTP methods return 405"""
-        response = client.post("/api/status")
-        # Status is GET only, POST should fail
-        assert response.status_code in [404, 405, 422]
+        response = client.post("/api/status/health")
+        # Health is GET only, POST should fail
+        assert response.status_code == 405
 
     def test_malformed_json_returns_422(self, client):
         """Test that malformed JSON in POST returns 422"""
@@ -120,7 +120,7 @@ class TestAPIErrorHandling:
         )
 
         # Should return validation error
-        assert response.status_code in [422, 400, 404]
+        assert response.status_code == 422
 
 
 @pytest.mark.integration

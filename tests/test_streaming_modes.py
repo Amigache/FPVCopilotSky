@@ -164,12 +164,8 @@ class TestStreamingModeAPI:
         config_data = {"mode": "invalid_mode"}
 
         response = client.post("/api/video/config/streaming", json=config_data)
-        # Service might not be available in CI
-        if response.status_code == 503:
-            pytest.skip("Video service not available")
-
-        # Should accept but will fallback to UDP when pipeline is built
-        assert response.status_code in [200, 400, 422]
+        # Invalid mode must be rejected by validation
+        assert response.status_code == 422
 
 
 class TestStreamingPipelineModes:

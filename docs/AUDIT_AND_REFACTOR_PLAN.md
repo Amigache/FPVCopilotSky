@@ -126,7 +126,7 @@ El proyecto tiene una **arquitectura por capas bien pensada**, una **capa de eje
 
 - [ ] Incluir `providers/*` y los 4 servicios grandes en cobertura con tests unitarios sobre los mocks existentes.
 - [ ] Subir el gate progresivamente (55 % → 65 %); mover `slow`/`e2e` a un job no bloqueante.
-- [ ] Sustituir las ~115 assertions permisivas por códigos exactos (prohibir `500` como válido).
+- [x] Sustituir las assertions permisivas (`status_code in [...]`) por **códigos exactos** (0 restantes). Además se corrigieron paths/métodos inexistentes que las hacían pasar con 404/405 (PR #68).
 - [ ] Capa de integración real (contenedores) y tests de seguridad (auth, CSRF, sanitización).
 
 ---
@@ -255,6 +255,7 @@ Todo lo siguiente está **mergeado en `develop`** y con CI en verde:
 | Bloque Fase1+2 restante: HTTPException, memo, i18n    | ✅                   | #64      |
 | TLS (C2): setup-tls.sh + config nginx 443             | ✅                   | #65      |
 | Fase 2: helpers gstreamer + i18n NetworkView          | ✅                   | #67      |
+| Fase 3: assertions estrictas (0 permisivas)           | ✅                   | #68      |
 
 **Validado en el equipo (2026-09-21):** `fpvcopilot-privd` activo, socket
 `root:fpvcopilotsky 0660`; `ip route show` permitido y comandos peligrosos

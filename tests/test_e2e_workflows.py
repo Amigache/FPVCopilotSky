@@ -31,35 +31,19 @@ class TestInitialStartupWorkflow:
         """
         # Step 1: Check dependencies
         response = client.get("/api/status/dependencies")
-        assert response.status_code in [
-            200,
-            404,
-            500,
-        ], f"Dependencies endpoint failed: {response.status_code}"
+        assert response.status_code == 200, f"Dependencies endpoint failed: {response.status_code}"
 
         # Step 2: Verify health
         response = client.get("/api/status/health")
-        assert response.status_code in [
-            200,
-            404,
-            500,
-        ], f"Health endpoint failed: {response.status_code}"
+        assert response.status_code == 200, f"Health endpoint failed: {response.status_code}"
 
         # Step 3: Load system info
         response = client.get("/api/system/info")
-        assert response.status_code in [
-            200,
-            404,
-            500,
-        ], f"System info endpoint failed: {response.status_code}"
+        assert response.status_code == 200, f"System info endpoint failed: {response.status_code}"
 
         # Step 4: Get network config
         response = client.get("/api/network/status")
-        assert response.status_code in [
-            200,
-            404,
-            500,
-        ], f"Network status endpoint failed: {response.status_code}"
+        assert response.status_code == 200, f"Network status endpoint failed: {response.status_code}"
 
     def test_dashboard_initial_load(self, client):
         """
@@ -71,21 +55,17 @@ class TestInitialStartupWorkflow:
         5. Get modem status
         """
         endpoints = [
-            ("/api/system/status", "system status"),
+            ("/api/system/info", "system status"),
             ("/api/network/interfaces", "network interfaces"),
-            ("/api/video/config", "video config"),
+            ("/api/video/status", "video config"),
             ("/api/vpn/status", "VPN status"),
-            ("/api/modem/status", "modem status"),
+            ("/api/modem/available-providers", "modem status"),
         ]
 
         responses = {}
         for endpoint, name in endpoints:
             response = client.get(endpoint)
-            assert response.status_code in [
-                200,
-                404,
-                500,
-            ], f"{name} endpoint failed: {response.status_code}"
+            assert response.status_code == 200, f"{name} endpoint failed: {response.status_code}"
             responses[name] = response
 
         # Verify we got responses from all endpoints
@@ -106,23 +86,23 @@ class TestNetworkConfigurationWorkflow:
         """
         # Step 1: Get current status
         response = client.get("/api/network/status")
-        assert response.status_code in [200, 404, 500]
+        assert response.status_code == 200
 
         # Step 2: List interfaces
         response = client.get("/api/network/interfaces")
-        assert response.status_code in [200, 404, 500]
+        assert response.status_code == 200
 
         # Step 3: Check WiFi (via network endpoints)
         response = client.get("/api/network/status")
-        assert response.status_code in [200, 404, 500]
+        assert response.status_code == 200
 
         # Step 4: Check modem
-        response = client.get("/api/modem/status")
-        assert response.status_code in [200, 404, 500]
+        response = client.get("/api/modem/available-providers")
+        assert response.status_code == 200
 
         # Step 5: Verify VPN
         response = client.get("/api/vpn/status")
-        assert response.status_code in [200, 404, 500]
+        assert response.status_code == 200
 
     def test_dynamic_network_update_flow(self, client):
         """
@@ -132,12 +112,12 @@ class TestNetworkConfigurationWorkflow:
         3. Verify state consistency
         """
         initial_response = client.get("/api/network/status")
-        assert initial_response.status_code in [200, 404, 500]
+        assert initial_response.status_code == 200
 
         # Simulate polling for updates
         for _ in range(3):
             response = client.get("/api/network/status")
-            assert response.status_code in [200, 404, 500]
+            assert response.status_code == 200
 
 
 class TestSystemMonitoringWorkflow:
@@ -151,7 +131,7 @@ class TestSystemMonitoringWorkflow:
         3. Track state changes
         """
         monitoring_endpoints = [
-            "/api/system/status",
+            "/api/system/info",
             "/api/system/info",
             "/api/status/health",
         ]
@@ -160,14 +140,14 @@ class TestSystemMonitoringWorkflow:
         baseline = {}
         for endpoint in monitoring_endpoints:
             response = client.get(endpoint)
-            assert response.status_code in [200, 404, 500]
+            assert response.status_code == 200
             baseline[endpoint] = response.status_code
 
         # Poll for updates
         for iteration in range(3):
             for endpoint in monitoring_endpoints:
                 response = client.get(endpoint)
-                assert response.status_code in [200, 404, 500]
+                assert response.status_code == 200
                 # Status code should be consistent
                 assert response.status_code == baseline[endpoint]
 
@@ -179,17 +159,17 @@ class TestSystemMonitoringWorkflow:
         3. Check storage
         """
         # Get system status (includes resource info)
-        response = client.get("/api/system/status")
-        assert response.status_code in [200, 404, 500]
+        response = client.get("/api/system/info")
+        assert response.status_code == 200
 
         # Get network statistics
         response = client.get("/api/network/status")
-        assert response.status_code in [200, 404, 500]
+        assert response.status_code == 200
 
         # Repeat monitoring
         for _ in range(2):
-            response = client.get("/api/system/status")
-            assert response.status_code in [200, 404, 500]
+            response = client.get("/api/system/info")
+            assert response.status_code == 200
 
 
 class TestVideoStreamingWorkflow:
@@ -203,12 +183,12 @@ class TestVideoStreamingWorkflow:
         3. Prepare stream settings
         """
         # Get video config
-        response = client.get("/api/video/config")
-        assert response.status_code in [200, 404, 500]
+        response = client.get("/api/video/status")
+        assert response.status_code == 200
 
         # Get system info (includes video sources)
         response = client.get("/api/system/info")
-        assert response.status_code in [200, 404, 500]
+        assert response.status_code == 200
 
     def test_video_stream_control_flow(self, client):
         """
@@ -218,13 +198,13 @@ class TestVideoStreamingWorkflow:
         3. Stop stream
         """
         # Attempt to get stream config
-        response = client.get("/api/video/config")
-        assert response.status_code in [200, 404, 500]
+        response = client.get("/api/video/status")
+        assert response.status_code == 200
 
         # Monitor stream multiple times
         for _ in range(2):
-            response = client.get("/api/video/config")
-            assert response.status_code in [200, 404, 500]
+            response = client.get("/api/video/status")
+            assert response.status_code == 200
 
 
 class TestDroneControlWorkflow:
@@ -239,11 +219,11 @@ class TestDroneControlWorkflow:
         """
         # Check status endpoints
         response = client.get("/api/status/health")
-        assert response.status_code in [200, 404, 500]
+        assert response.status_code == 200
 
         # Get system info
         response = client.get("/api/system/info")
-        assert response.status_code in [200, 404, 500]
+        assert response.status_code == 200
 
     def test_flight_control_workflow(self, client):
         """
@@ -253,14 +233,14 @@ class TestDroneControlWorkflow:
         3. Verify safety checks
         """
         # Get system status
-        response = client.get("/api/system/status")
-        assert response.status_code in [200, 404, 500]
+        response = client.get("/api/system/info")
+        assert response.status_code == 200
 
         # Verify endpoints accessible
         endpoints = ["/api/status/health", "/api/system/info"]
         for endpoint in endpoints:
             response = client.get(endpoint)
-            assert response.status_code in [200, 404, 500]
+            assert response.status_code == 200
 
 
 class TestVPNConnectivityWorkflow:
@@ -275,11 +255,11 @@ class TestVPNConnectivityWorkflow:
         """
         # Get VPN status
         response = client.get("/api/vpn/status")
-        assert response.status_code in [200, 404, 500]
+        assert response.status_code == 200
 
         # Get connected peers
         response = client.get("/api/vpn/peers")
-        assert response.status_code in [200, 404, 500]
+        assert response.status_code == 200
 
     def test_vpn_monitoring_workflow(self, client):
         """
@@ -291,10 +271,10 @@ class TestVPNConnectivityWorkflow:
         # Monitor VPN status multiple times
         for _ in range(3):
             response = client.get("/api/vpn/status")
-            assert response.status_code in [200, 404, 500]
+            assert response.status_code == 200
 
             response = client.get("/api/vpn/peers")
-            assert response.status_code in [200, 404, 500]
+            assert response.status_code == 200
 
 
 class TestCompleteSystemWorkflow:
@@ -315,16 +295,16 @@ class TestCompleteSystemWorkflow:
             ("/api/system/info", "System Info"),
             ("/api/network/status", "Network Status"),
             ("/api/network/interfaces", "Network Interfaces"),
-            ("/api/video/config", "Video Config"),
+            ("/api/video/status", "Video Config"),
             ("/api/vpn/status", "VPN Status"),
             ("/api/vpn/peers", "VPN Peers"),
-            ("/api/system/status", "System Status"),
+            ("/api/system/info", "System Status"),
         ]
 
         results = []
         for endpoint, step_name in workflow_steps:
             response = client.get(endpoint)
-            success = response.status_code in [200, 404, 500]
+            success = response.status_code == 200
             results.append({"step": step_name, "success": success, "status": response.status_code})
 
         # All steps should complete
@@ -339,7 +319,7 @@ class TestCompleteSystemWorkflow:
         2. Make multiple calls
         3. Verify consistency
         """
-        endpoints = ["/api/system/status", "/api/network/status", "/api/status/health"]
+        endpoints = ["/api/system/info", "/api/network/status", "/api/status/health"]
 
         # Get initial state
         initial_states = {}

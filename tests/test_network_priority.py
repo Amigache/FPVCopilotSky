@@ -64,7 +64,7 @@ class TestNetworkPriorityMode:
         response = client.post("/api/network/priority", json={"mode": "auto"})
 
         # May succeed or return error if no interfaces
-        assert response.status_code in [200, 503, 400]
+        assert response.status_code == 200
 
     def test_invalid_priority_mode(self, client):
         """Invalid priority mode should return error"""
@@ -82,12 +82,8 @@ class TestNetworkPriorityMode:
 
         response = client.post("/api/network/priority", json={"mode": "wifi"})
 
-        # Should return error (no interfaces) or graceful response
-        assert response.status_code in [
-            503,
-            400,
-            200,
-        ]  # May return 200 with error in body
+        # Returns 200 with success=false in the body when no interfaces are found
+        assert response.status_code == 200
 
     def test_network_status_includes_current_mode(self, client):
         """Network status should indicate current priority mode"""
@@ -186,7 +182,7 @@ class TestNetworkPriorityEdgeCases:
             # Try to set to same mode
             response = client.post("/api/network/priority", json={"mode": current_mode})
             # Should succeed or gracefully handle
-            assert response.status_code in [200, 400]
+            assert response.status_code == 200
 
     @patch("app.api.routes.network.status.run_command", new_callable=AsyncMock)
     def test_rapid_mode_changes(self, mock_cmd, client):
@@ -197,7 +193,7 @@ class TestNetworkPriorityEdgeCases:
         for mode in modes:
             response = client.post("/api/network/priority", json={"mode": mode})
             # Should handle repeated changes
-            assert response.status_code in [200, 400, 503]
+            assert response.status_code == 200
 
     def test_mode_persistence_on_restart(self, client):
         """Priority mode should persist application restart"""
