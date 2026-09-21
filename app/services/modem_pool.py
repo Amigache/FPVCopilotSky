@@ -599,46 +599,12 @@ class ModemPool:
                 return False
             gateway = modem.gateway
 
-        from app.api.routes.network.common import run_command
-
         try:
-            # Keep other paths (WiFi/LAN) as backups instead of deleting every
-            # default route: raise their metric to 200 and make the selected
-            # modem the primary (metric 100).
-            stdout, _, _ = await run_command(["ip", "route", "show", "default"])
-            for line in stdout.splitlines():
-                if "default" not in line:
-                    continue
-                if f"dev {interface}" in line:
-                    # Re-added below as the primary route; drop the stale copy.
-                    await run_command(["sudo", "ip", "route", "del"] + line.split())
-                    continue
-                parts = line.split()
-                try:
-                    via = parts[parts.index("via") + 1]
-                    dev = parts[parts.index("dev") + 1]
-                except ValueError:
-                    continue
-                await run_command(
-                    ["sudo", "ip", "route", "replace", "default", "via", via, "dev", dev, "metric", "200"]
-                )
+            # Main-table default-route metrics are owned by RouteManager so this
+            # pool and the /priority API cannot clobber each other.
+            from app.services.route_manager import get_route_manager
 
-            # Add the modem default with the best metric (idempotent).
-            _, _, rc = await run_command(
-                [
-                    "sudo",
-                    "ip",
-                    "route",
-                    "replace",
-                    "default",
-                    "via",
-                    gateway,
-                    "dev",
-                    interface,
-                    "metric",
-                    "100",
-                ]
-            )
+            await get_route_manager().set_priority(interface)
 
             # ── FASE 2: update policy routing tables (VPN + Video) ────────
             try:
@@ -654,7 +620,7 @@ class ModemPool:
                 logger.warning(f"ModemPool: policy routing error (non-fatal): {pe}")
             # ─────────────────────────────────────────────────────────────
 
-            return rc == 0
+            return True
         except Exception as e:
             logger.error(f"ModemPool: routing error: {e}")
             return False
