@@ -17,6 +17,16 @@ from app.services.gstreamer_helpers import calculate_health, format_uptime
 
 logger = logging.getLogger(__name__)
 
+
+def _stats_counter_enabled() -> bool:
+    """Whether to insert the C-level ``identity`` stats counter element.
+
+    Set ``FPV_VIDEO_STATS_COUNTER=0`` to disable it (falls back to the
+    position-based estimate). Useful to A/B test pipeline changes on device.
+    """
+    return os.environ.get("FPV_VIDEO_STATS_COUNTER", "1").strip().lower() not in ("0", "false", "no", "off")
+
+
 # Try to import numpy (required for OpenCV frame processing)
 try:
     import numpy as np
@@ -773,8 +783,9 @@ class GStreamerService:
                 elements.append(h264parse)
 
             # ── C-level counter before the appsink ──
-            stats_counter = Gst.ElementFactory.make("identity", "stats_counter")
+            stats_counter = Gst.ElementFactory.make("identity", "stats_counter") if _stats_counter_enabled() else None
             if stats_counter:
+                stats_counter.set_property("sync", False)
                 stats_counter.set_property("silent", True)
                 pipeline.add(stats_counter)
                 elements.append(stats_counter)
@@ -1384,13 +1395,14 @@ class GStreamerService:
             # `identity` counts buffers/bytes natively — no per-frame Python.
             # Placed BEFORE the RTP payloader so num-buffers counts encoded
             # video frames (one buffer per frame), not RTP packets.
-            stats_counter = Gst.ElementFactory.make("identity", "stats_counter")
+            stats_counter = Gst.ElementFactory.make("identity", "stats_counter") if _stats_counter_enabled() else None
             if stats_counter:
+                stats_counter.set_property("sync", False)
                 stats_counter.set_property("silent", True)
                 pipeline.add(stats_counter)
                 elements_list.append(stats_counter)
             else:
-                logger.debug("Could not create stats_counter identity element; stats will be estimated")
+                logger.debug("stats_counter disabled/unavailable; stats will be estimated")
 
             # Add RTP payloader
             rtppay = Gst.ElementFactory.make(pipeline_config["rtp_payloader"], "rtppay")
