@@ -29,8 +29,8 @@ stream rates de telemetría + tuning de red según el enlace detectado.
 - [x] **V1** `self.preferences_service` no existe → `AttributeError` en `start()` si autodetecta cámara (`gstreamer_service.py:1733-1735`).
 - [x] **V2** `_attach_webrtc_appsink` llamado pero no definido (inalcanzable hoy) (`gstreamer_service.py:1416`).
 - [x] **V3** `h264_passthrough` (preferido por la UI) se degrada a MJPEG en `VideoConfig` (`video_config.py:151`).
-- [ ] **V4** Stats inventadas: probes no-op; FPS/bitrate estimados de la config (`gstreamer_service.py:882-906,1518-1605`).
-- [ ] **V5** Adaptación de red no aplica en WebRTC ni RTSP (`gstreamer_service.py:2140-2148`).
+- [x] **V4** Stats inventadas: probes no-op; FPS/bitrate estimados de la config (`gstreamer_service.py:882-906,1518-1605`). _(RTSP real; UDP/WebRTC estimado por defecto — ver validación)_
+- [x] **V5** Adaptación de red no aplica en WebRTC ni RTSP (`gstreamer_service.py:2140-2148`).
 
 ### Mejoras
 
@@ -80,9 +80,9 @@ stream rates de telemetría + tuning de red según el enlace detectado.
 ### Bugs duros
 
 - [x] **T1** `/api/mavlink-router/restart` llama a `restart()` inexistente → 500 siempre (`router.py:365` vs `mavlink_router.py:278`).
-- [ ] **T2** Broadcast WS por **cada** mensaje (7 puntos) → ~20-30 fps con snapshot completo (`mavlink_bridge.py:689-753`).
-- [ ] **T3** `get_telemetry()` hace `deepcopy`+JSON por mensaje en el hilo lector (`mavlink_bridge.py:825-830`).
-- [ ] **T4** El router mantiene el lock durante `sendall` bloqueante → un TCP lento bloquea el lector serial (`mavlink_router.py:90-133`).
+- [x] **T2** Broadcast WS por **cada** mensaje (7 puntos) → ~20-30 fps con snapshot completo (`mavlink_bridge.py:689-753`).
+- [x] **T3** `get_telemetry()` hace `deepcopy`+JSON por mensaje en el hilo lector (`mavlink_bridge.py:825-830`).
+- [x] **T4** El router mantiene el lock durante `sendall` bloqueante → un TCP lento bloquea el lector serial (`mavlink_router.py:90-133`).
 - [ ] **T5** Carreras en `_param_list_*` y `mav_sender` sin lock (`mavlink_bridge.py:785-799,487; mavlink.py:221-225`).
 
 ### Mejoras
@@ -109,7 +109,7 @@ stream rates de telemetría + tuning de red según el enlace detectado.
 
 ### P1 — Ancho de banda y CPU
 
-- [ ] T2 · T3 · T4 · V4 · V5
+- [x] T2 · T3 · T4 · V4 · V5
 
 ### P2 — Adaptación por enlace
 
@@ -118,6 +118,46 @@ stream rates de telemetría + tuning de red según el enlace detectado.
 ### P3 — Limpieza y frontend
 
 - [ ] Quitar MPTCP/DSCP+wash/VPN policy duplicado/TCP server/probes muertos · `useMemo` en `ParamCacheContext` · memoizar Dashboard/MapView · caché de tiles
+
+---
+
+## 🧪 Validación en hardware (Radxa, 1080p30 H.264)
+
+Resultados medidos sobre el equipo real con Mission Planner conectado:
+
+| Ítem                        | Resultado                                                                          |
+| --------------------------- | ---------------------------------------------------------------------------------- |
+| T2/T3 telemetría coalescida | ✅ **~7 msg/s** (tope 10 Hz); antes ~20-30/s                                       |
+| T4 router                   | ✅ cliente TCP lento (`clients:1`) sin bloquear la telemetría (7 msg/s, 0 errores) |
+| V5 live-update UDP          | ✅ aplica (`bitrate` hardware)                                                     |
+| V5 live-update RTSP         | ✅ aplica; contador real ≈27 frames/s                                              |
+| V5 live-update WebRTC       | ✅ resuelve `webrtc_h264enc`                                                       |
+| V4 métricas reales          | ⚠️ RTSP real; **UDP/WebRTC desactivado por defecto** (ver abajo)                   |
+
+### Hallazgo V4 — el contador `identity` inline provocaba flashes grises
+
+- El `identity name=stats_counter` insertado **en la ruta de paquetes RTP**
+  añadía jitter suficiente para que, con ráfagas de keyframes, se perdieran
+  paquetes UDP → flash gris en Mission Planner (cada pocos segundos).
+- Con el contador **desactivado** (deploy `60b7bfb`) los flashes pasaron a ser
+  muy esporádicos. El pipeline de proveedor queda **idéntico a v1.1.1**.
+- Decisión: **`FPV_VIDEO_STATS_COUNTER` por defecto OFF** en UDP/multicast/WebRTC
+  (se vuelve a la estimación); RTSP conserva su contador preexistente.
+  `FPV_VIDEO_STATS_COUNTER=1` lo re-activa para A/B.
+
+### Flash residual = congestión WiFi (no del código)
+
+Con el pipeline idéntico a v1.1.1 todavía aparece un flash ocasional:
+
+- **Canal 7 (2.4 GHz, 20 MHz)**, señal -65 dBm.
+- RTT medio **129 ms**, picos de **790 ms** mientras el stream va a 6.2 Mbps.
+- 0 % pérdida ICMP ⇒ pérdida por saturación de aire/decodificador.
+
+Opciones (base para **P2 - adaptación por enlace**):
+
+- Pasar a **5 GHz** o bajar bitrate/resolución cuando el enlace es marginal.
+- Robustez UDP: `udpsink buffer-size`, o **RTSP/TCP · WebRTC** (retransmisión) en enlaces con pérdidas.
+- Perfiles de enlace que ajusten **modo + bitrate + resolución** automáticamente.
 
 ---
 

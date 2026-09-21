@@ -1,5 +1,6 @@
 """Unit tests for MAVLinkRouter (no real sockets or hardware)."""
 
+import threading
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -191,3 +192,50 @@ class TestRestart:
         assert ok is True
         assert called == ["a"]
         assert "1/1" in msg
+
+
+class TestForwardReleasesLock:
+    """T4: sends must not hold ``self.lock`` (a slow client must not stall others)."""
+
+    def test_forward_does_not_hold_lock_during_blocking_send(self):
+        router = make_router()
+        router.add_output(cfg("udp", type_=OutputType.UDP))
+        state = router.outputs["udp"]
+        state.running = True
+
+        entered = threading.Event()
+        release = threading.Event()
+
+        def slow_sendto(data, addr):
+            entered.set()
+            release.wait(timeout=2)
+
+        state.sock = MagicMock()
+        state.sock.sendto.side_effect = slow_sendto
+
+        worker = threading.Thread(target=router.forward_to_outputs, args=(b"x",))
+        worker.start()
+        try:
+            assert entered.wait(1), "send should have started"
+            # While the send is blocked, the router lock must be available.
+            assert router.lock.acquire(timeout=1) is True
+            router.lock.release()
+        finally:
+            release.set()
+            worker.join(timeout=2)
+
+        assert state.stats["tx"] == 1
+
+    def test_forward_drops_dead_tcp_clients(self):
+        router = make_router()
+        router.add_output(cfg("srv", type_=OutputType.TCP_SERVER))
+        state = router.outputs["srv"]
+        state.running = True
+        dead = MagicMock()
+        dead.sendall.side_effect = BrokenPipeError
+        state.clients = [dead]
+
+        router.forward_to_outputs(b"x")
+
+        assert dead not in state.clients
+        dead.close.assert_called_once()

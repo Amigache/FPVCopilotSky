@@ -17,6 +17,20 @@ from app.services.gstreamer_helpers import calculate_health, format_uptime
 
 logger = logging.getLogger(__name__)
 
+
+def _stats_counter_enabled() -> bool:
+    """Whether to insert the C-level ``identity`` stats counter element.
+
+    Defaults to OFF for the live provider/WebRTC pipelines: hardware testing
+    showed occasional gray frames when the counter sat inline in the RTP
+    packet path, so we keep those pipelines byte-identical to v1.1.1 and fall
+    back to the position-based estimate. RTSP keeps its long-standing counter.
+
+    Set ``FPV_VIDEO_STATS_COUNTER=1`` to force the counter on (for A/B tests).
+    """
+    return os.environ.get("FPV_VIDEO_STATS_COUNTER", "0").strip().lower() in ("1", "true", "yes", "on")
+
+
 # Try to import numpy (required for OpenCV frame processing)
 try:
     import numpy as np
@@ -761,6 +775,9 @@ class GStreamerService:
                     return False
 
             self.current_encoder_provider = f"WebRTC (H264 {encoder_name}→aiortc)"
+            # Track which encoder provider backs the live pipeline so adaptive
+            # bitrate/quality changes can resolve the right adjustable props.
+            self.current_encoder_codec_id = "h264" if encoder_name == "x264enc" else "h264_openh264"
 
             # ── h264parse → normalize NAL format ──
             h264parse = Gst.ElementFactory.make("h264parse", "webrtc_h264parse")
@@ -768,6 +785,14 @@ class GStreamerService:
                 h264parse.set_property("config-interval", -1)  # send SPS/PPS with every keyframe
                 pipeline.add(h264parse)
                 elements.append(h264parse)
+
+            # ── C-level counter before the appsink ──
+            stats_counter = Gst.ElementFactory.make("identity", "stats_counter") if _stats_counter_enabled() else None
+            if stats_counter:
+                stats_counter.set_property("sync", False)
+                stats_counter.set_property("silent", True)
+                pipeline.add(stats_counter)
+                elements.append(stats_counter)
 
             # ── Appsink — outputs H264 byte-stream ──
             appsink = Gst.ElementFactory.make("appsink", "webrtc_appsink")
@@ -1370,6 +1395,19 @@ class GStreamerService:
                 # No encoder (passthrough mode) - install probe on RTP payloader instead
                 logger.info("Passthrough mode detected, installing probe on RTP payloader")
 
+            # C-level byte/frame counter (read by the stats thread at 4 Hz).
+            # `identity` counts buffers/bytes natively — no per-frame Python.
+            # Placed BEFORE the RTP payloader so num-buffers counts encoded
+            # video frames (one buffer per frame), not RTP packets.
+            stats_counter = Gst.ElementFactory.make("identity", "stats_counter") if _stats_counter_enabled() else None
+            if stats_counter:
+                stats_counter.set_property("sync", False)
+                stats_counter.set_property("silent", True)
+                pipeline.add(stats_counter)
+                elements_list.append(stats_counter)
+            else:
+                logger.debug("stats_counter disabled/unavailable; stats will be estimated")
+
             # Add RTP payloader
             rtppay = Gst.ElementFactory.make(pipeline_config["rtp_payloader"], "rtppay")
             if not rtppay:
@@ -1511,12 +1549,157 @@ class GStreamerService:
         """
         pass
 
-    def _poll_pipeline_stats(self):
-        """Poll pipeline elements for stats without pad probes.
+    def _read_pipeline_counter(self):
+        """Read real (frames, bytes) from the C-level ``identity`` counter.
 
-        Called from the stats broadcast thread at ~4 Hz. Uses TIME position
-        queries (supported by all live pipelines) to estimate frame counts
-        and bitrate.  Zero GIL contention with pipeline threads.
+        The element is maintained in C by GStreamer, so polling it introduces
+        zero per-frame GIL contention. Returns ``None`` when unavailable (e.g.
+        the element could not be inserted), letting callers fall back to an
+        estimate.
+        """
+        if not self.pipeline:
+            return None
+        try:
+            counter = self.pipeline.get_by_name("stats_counter")
+            if not counter:
+                return None
+            stats = counter.get_property("stats")
+            if stats is None:
+                return None
+            ok_frames, frames = stats.get_uint64("num-buffers")
+            ok_bytes, nbytes = stats.get_uint64("num-bytes")
+            if not (ok_frames and ok_bytes):
+                return None
+            return int(frames), int(nbytes)
+        except Exception:
+            return None
+
+    def _read_rtsp_counter(self):
+        """Read real (frames, bytes) from the RTSP server's counter element."""
+        if not self.rtsp_server:
+            return None
+        try:
+            return self.rtsp_server.get_counter_stats()
+        except Exception:
+            return None
+
+    def _query_pipeline_position(self) -> int:
+        """Query pipeline running time (ns); -1 if unsupported."""
+        if not self.pipeline:
+            return -1
+        for element_name in ["sink", "rtppay", "encoder"]:
+            elem = self.pipeline.get_by_name(element_name)
+            if not elem:
+                continue
+            pad = elem.get_static_pad("sink") or elem.get_static_pad("src")
+            if not pad:
+                continue
+            query = Gst.Query.new_position(Gst.Format.TIME)
+            if pad.query(query):
+                _, pos = query.parse_position()
+                if pos >= 0:
+                    return int(pos)
+        return -1
+
+    def _update_rates_locked(self, now: float) -> None:
+        """Recompute ``current_fps``/``current_bitrate`` from absolute counters.
+
+        ``stats['frames_sent']`` / ``stats['bytes_sent']`` must already hold
+        absolute totals (from the identity counter). Caller must hold
+        ``self.stats_lock``.
+        """
+        if self.stats["last_stats_time"] is None:
+            self.stats["last_stats_time"] = now
+            self.stats["last_frames_count"] = self.stats["frames_sent"]
+            self.stats["last_bytes_count"] = self.stats["bytes_sent"]
+            return
+
+        elapsed = now - self.stats["last_stats_time"]
+        if elapsed < 0.5:
+            return
+
+        frames_delta = self.stats["frames_sent"] - self.stats["last_frames_count"]
+        bytes_delta = self.stats["bytes_sent"] - self.stats["last_bytes_count"]
+
+        target_fps = max(1, int(self.video_config.framerate or 30))
+        instant_fps = max(0.0, frames_delta / max(elapsed, 1e-3))
+        instant_fps = min(instant_fps, target_fps * 1.05)
+
+        previous_ema = self.stats.get("fps_ema")
+        if previous_ema is None:
+            fps_ema = instant_fps
+        else:
+            alpha = 0.22
+            fps_ema = (1.0 - alpha) * float(previous_ema) + alpha * instant_fps
+        if fps_ema >= (target_fps - 0.35):
+            fps_ema = float(target_fps)
+
+        self.stats["fps_ema"] = fps_ema
+        self.stats["current_fps"] = int(round(min(fps_ema, float(target_fps))))
+        # Real measured bitrate in kbps from byte deltas.
+        self.stats["current_bitrate"] = int((bytes_delta * 8 / 1000) / max(elapsed, 1e-3))
+
+        self.stats["last_stats_time"] = now
+        self.stats["last_frames_count"] = self.stats["frames_sent"]
+        self.stats["last_bytes_count"] = self.stats["bytes_sent"]
+
+    def _estimate_stats_locked(self, now: float) -> None:
+        """Pre-counter fallback: estimate frames from running time and bytes from config.
+
+        Used when the ``identity`` counter is disabled/unavailable so the UI
+        still shows plausible FPS/bitrate instead of zeros. Caller holds
+        ``self.stats_lock``.
+        """
+        target_fps = max(1, int(self.video_config.framerate or 30))
+
+        position_ns = self._query_pipeline_position()
+        if position_ns >= 0:
+            estimated_frames = int((position_ns / 1_000_000_000) * target_fps)
+            self.stats["frames_sent"] = max(self.stats["frames_sent"], estimated_frames)
+            self.encoder_stats["frames_encoded"] = self.stats["frames_sent"]
+
+        if self.stats["last_stats_time"] is None:
+            self.stats["last_stats_time"] = now
+            self.stats["last_frames_count"] = self.stats["frames_sent"]
+            self.stats["last_bytes_count"] = self.stats["bytes_sent"]
+            return
+
+        elapsed = now - self.stats["last_stats_time"]
+        if elapsed < 0.5:
+            return
+
+        frames_delta = self.stats["frames_sent"] - self.stats["last_frames_count"]
+        instant_fps = min(max(0.0, frames_delta / max(elapsed, 1e-3)), target_fps * 1.05)
+
+        previous_ema = self.stats.get("fps_ema")
+        if previous_ema is None:
+            fps_ema = instant_fps
+        else:
+            alpha = 0.22
+            fps_ema = (1.0 - alpha) * float(previous_ema) + alpha * instant_fps
+        if fps_ema >= (target_fps - 0.35):
+            fps_ema = float(target_fps)
+
+        self.stats["fps_ema"] = fps_ema
+        self.stats["current_fps"] = int(round(min(fps_ema, float(target_fps))))
+
+        bitrate = self.video_config.h264_bitrate or 0
+        if bitrate > 0:
+            ratio = min(1.0, max(0.0, fps_ema / target_fps))
+            self.stats["current_bitrate"] = int(bitrate * ratio)
+            self.stats["bytes_sent"] += int((self.stats["current_bitrate"] * 1000 * elapsed) / 8)
+        else:
+            self.stats["current_bitrate"] = 0
+
+        self.stats["last_stats_time"] = now
+        self.stats["last_frames_count"] = self.stats["frames_sent"]
+        self.stats["last_bytes_count"] = self.stats["bytes_sent"]
+
+    def _poll_pipeline_stats(self):
+        """Poll pipeline stats at ~4 Hz from the stats broadcast thread.
+
+        Uses the real C-level ``identity`` counter when present; otherwise
+        falls back to the position/bitrate estimate.
         """
         if not self.pipeline or not self.is_streaming:
             return
@@ -1524,78 +1707,16 @@ class GStreamerService:
         import time
 
         now = time.time()
+        counter = self._read_pipeline_counter()
 
         try:
-            # Use TIME position query — universally supported by live sources.
-            # Estimate frames from elapsed pipeline time × configured framerate.
-            position_ns = -1
-            for element_name in ["sink", "rtppay", "encoder"]:
-                elem = self.pipeline.get_by_name(element_name)
-                if not elem:
-                    continue
-                pad = elem.get_static_pad("sink") or elem.get_static_pad("src")
-                if not pad:
-                    continue
-                query = Gst.Query.new_position(Gst.Format.TIME)
-                if pad.query(query):
-                    _, pos = query.parse_position()
-                    if pos >= 0:
-                        position_ns = pos
-                        break
-
-            if position_ns >= 0:
-                # Estimate frames from pipeline position and configured framerate
-                fps = self.video_config.framerate or 30
-                estimated_frames = int((position_ns / 1_000_000_000) * fps)
-                with self.stats_lock:
-                    self.stats["frames_sent"] = estimated_frames
-                    self.encoder_stats["frames_encoded"] = estimated_frames
-
-            # Update rates (FPS and bitrate) from deltas
             with self.stats_lock:
-                if self.stats["last_stats_time"] is None:
-                    self.stats["last_stats_time"] = now
-                    self.stats["last_frames_count"] = self.stats["frames_sent"]
-                    return
-
-                elapsed = now - self.stats["last_stats_time"]
-                if elapsed >= 0.5:
-                    frames_delta = self.stats["frames_sent"] - self.stats["last_frames_count"]
-
-                    target_fps = max(1, int(self.video_config.framerate or 30))
-                    instant_fps = max(0.0, frames_delta / max(elapsed, 1e-3))
-                    instant_fps = min(instant_fps, target_fps * 1.05)
-
-                    previous_ema = self.stats.get("fps_ema")
-                    if previous_ema is None:
-                        fps_ema = instant_fps
-                    else:
-                        alpha = 0.22
-                        fps_ema = (1.0 - alpha) * float(previous_ema) + alpha * instant_fps
-
-                    if fps_ema >= (target_fps - 0.35):
-                        fps_ema = float(target_fps)
-
-                    smoothed_fps = int(round(min(fps_ema, float(target_fps))))
-                    self.stats["fps_ema"] = fps_ema
-                    self.stats["current_fps"] = smoothed_fps
-
-                    # Estimate bitrate from configured value (byte queries not
-                    # supported by udpsink/rtppay in TIME-based pipelines)
-                    bitrate = self.video_config.h264_bitrate or 0
-                    if self.stats["current_fps"] > 0 and bitrate > 0:
-                        # Scale configured bitrate by actual/target FPS ratio
-                        ratio = min(1.0, max(0.0, fps_ema / target_fps))
-                        self.stats["current_bitrate"] = int(bitrate * ratio)
-                    else:
-                        self.stats["current_bitrate"] = bitrate
-
-                    # Estimate bytes from bitrate
-                    estimated_bytes_delta = int((self.stats["current_bitrate"] * 1000 * elapsed) / 8)
-                    self.stats["bytes_sent"] += estimated_bytes_delta
-
-                    self.stats["last_stats_time"] = now
-                    self.stats["last_frames_count"] = self.stats["frames_sent"]
+                if counter is not None:
+                    self.stats["frames_sent"], self.stats["bytes_sent"] = counter
+                    self.encoder_stats["frames_encoded"] = counter[0]
+                    self._update_rates_locked(now)
+                else:
+                    self._estimate_stats_locked(now)
 
         except Exception as e:
             logger.debug(f"Pipeline stats poll error: {e}")
@@ -1909,6 +2030,7 @@ class GStreamerService:
             # Set provider info for RTSP mode
             encoder_name = self.rtsp_server._encoder_display_name or self.video_config.codec
             self.current_encoder_provider = f"RTSP Server ({encoder_name})"
+            self.current_encoder_codec_id = self._adapt_codec_to_board(self.video_config.codec.lower())
             self.current_source_provider = f"{self.video_config.device}"
 
             # Initialize stats for RTSP mode (keep at 0 - RTSP only streams when clients connect)
@@ -2061,23 +2183,25 @@ class GStreamerService:
             self._rtsp_monitor_thread.join(timeout=2)
 
     def _start_rtsp_stats_estimator(self):
-        """Start a background thread to estimate RTSP statistics.
+        """Start a background thread that collects real RTSP statistics.
 
         RTSP mode runs its own internal GStreamer pipeline inside the RTSP
-        server, so we cannot attach pad probes from outside.  Instead we
-        estimate bytes/frames from configured parameters and use real
-        RTSP session-pool data (client count) to only count stats when
-        at least one client is actually receiving data.
+        server. That pipeline contains a C-level ``identity`` counter
+        (``stats_counter``) which we read through the server — real frames and
+        bytes with no per-frame Python overhead. Rates are only meaningful
+        while at least one client is receiving data.
         """
         import threading
 
         self._rtsp_stats_running = True
 
-        def estimate_stats():
+        def poll_stats():
             import time
 
             with self.stats_lock:
                 self.stats["last_stats_time"] = time.time()
+                self.stats["last_frames_count"] = self.stats["frames_sent"]
+                self.stats["last_bytes_count"] = self.stats["bytes_sent"]
 
             while self._rtsp_stats_running and self.is_streaming:
                 time.sleep(1.0)
@@ -2085,43 +2209,17 @@ class GStreamerService:
                 if not self.is_streaming:
                     break
 
-                # Only accumulate stats when there are active RTSP clients
-                clients = 0
-                if self.rtsp_server:
-                    rtsp_info = self.rtsp_server.get_stats()
-                    clients = rtsp_info.get("clients_connected", 0)
-
-                if clients <= 0:
-                    # No clients — zero out rate but don't accumulate
-                    with self.stats_lock:
-                        now = time.time()
-                        self.stats["current_fps"] = 0
-                        self.stats["current_bitrate"] = 0
-                        self.stats["last_stats_time"] = now
-                    continue
+                counter = self._read_rtsp_counter()
 
                 with self.stats_lock:
-                    # Use configured values as estimate (RTSP internal pipeline)
-                    fps = self.video_config.framerate or 30
-                    self.stats["frames_sent"] += fps
+                    if counter is not None:
+                        # Absolute counters from the identity element.
+                        self.stats["frames_sent"], self.stats["bytes_sent"] = counter
+                        self.encoder_stats["frames_encoded"] = counter[0]
+                    # No clients / no counter → unchanged totals ⇒ 0 fps/bitrate.
+                    self._update_rates_locked(time.time())
 
-                    # Estimate bitrate from config, codec-aware
-                    codec = (self.video_config.codec or "mjpeg").lower()
-                    if "h264" in codec:
-                        bps = (self.video_config.h264_bitrate or 2000) * 1000
-                    else:
-                        # MJPEG: estimate from quality + resolution + fps
-                        quality = self.video_config.quality or 85
-                        pixels = (self.video_config.width or 960) * (self.video_config.height or 720)
-                        bpp = 0.3 + (quality / 100) * 1.7
-                        bps = int(pixels * bpp * fps)
-
-                    self.stats["bytes_sent"] += bps // 8
-
-                    now = time.time()
-                    self._update_rates_locked(now)
-
-        self._rtsp_stats_thread = threading.Thread(target=estimate_stats, daemon=True)
+        self._rtsp_stats_thread = threading.Thread(target=poll_stats, daemon=True, name="RTSPStats")
         self._rtsp_stats_thread.start()
 
     def _stop_rtsp_stats_estimator(self):
@@ -2131,14 +2229,47 @@ class GStreamerService:
         if hasattr(self, "_rtsp_stats_thread") and self._rtsp_stats_thread:
             self._rtsp_stats_thread.join(timeout=2)
 
+    def _resolve_encoder_element(self, encoder_property: Optional[str] = None):
+        """Locate the live encoder element regardless of its pipeline name.
+
+        Provider pipelines name it ``encoder``; WebRTC uses ``webrtc_h264enc``.
+        As a fallback, scan the pipeline for an element that exposes the given
+        property and looks like an encoder.
+        """
+        if not self.pipeline:
+            return None
+        for name in ("encoder", "webrtc_h264enc", "h264enc"):
+            elem = self.pipeline.get_by_name(name)
+            if elem:
+                return elem
+        if not encoder_property:
+            return None
+        try:
+            it = self.pipeline.iterate_elements()
+            while True:
+                result, elem = it.next()
+                if result != Gst.IteratorResult.OK or elem is None:
+                    return None
+                if elem.find_property(encoder_property) is None:
+                    continue
+                factory = elem.get_factory()
+                fname = factory.get_name() if factory else ""
+                if "enc" in fname or "264" in fname:
+                    return elem
+        except Exception:
+            return None
+        return None
+
     def update_live_property(self, property_name: str, value) -> Dict[str, Any]:
         """Update a pipeline element property without restarting using provider info"""
-        if not self.is_streaming or not self.pipeline:
+        if not self.is_streaming:
             return {"success": False, "message": "Not streaming"}
 
-        encoder = self.pipeline.get_by_name("encoder")
-        if not encoder:
-            return {"success": False, "message": "Encoder element not found"}
+        # RTSP mode runs its own pipeline inside the RTSP server.
+        if not self.pipeline:
+            if self.streaming_config.mode == "rtsp" and self.rtsp_server:
+                return self.rtsp_server.update_live_property(property_name, value, self.current_encoder_codec_id)
+            return {"success": False, "message": "Not streaming"}
 
         codec_id = self.current_encoder_codec_id or self._adapt_codec_to_board(self.video_config.codec.lower())
 
@@ -2161,6 +2292,12 @@ class GStreamerService:
                     }
 
                 prop_info = adjustable[property_name]
+                encoder_property = prop_info["property"]
+
+                # Resolve the encoder element (name varies per streaming mode).
+                encoder = self._resolve_encoder_element(encoder_property)
+                if not encoder:
+                    return {"success": False, "message": f"Encoder element not found for '{encoder_property}'"}
 
                 # Clamp value to allowed range
                 value = max(prop_info["min"], min(prop_info["max"], int(value)))
@@ -2169,7 +2306,6 @@ class GStreamerService:
                 actual_value = value * prop_info.get("multiplier", 1)
 
                 # Set the property on the encoder
-                encoder_property = prop_info["property"]
                 if encoder.find_property(encoder_property) is None:
                     return {
                         "success": False,
