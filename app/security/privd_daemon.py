@@ -63,7 +63,8 @@ def _execute(request: dict) -> dict:
     try:
         proc = subprocess.run(
             [str(arg) for arg in argv],
-            input=input_data.encode() if isinstance(input_data, str) else None,
+            # text=True expects a str for stdin (subprocess encodes it).
+            input=input_data if isinstance(input_data, str) else None,
             capture_output=True,
             text=True,
             timeout=timeout,
