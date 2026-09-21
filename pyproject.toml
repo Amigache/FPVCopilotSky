@@ -52,7 +52,6 @@ omit = [
     "*/app/providers/**/*",
     "*/app/services/gstreamer_service.py",
     "*/app/services/mavlink_bridge.py",
-    "*/app/services/mavlink_router.py",
     "*/app/services/network_event_bridge.py",
 ]
 
