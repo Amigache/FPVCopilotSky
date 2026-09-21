@@ -69,7 +69,6 @@ if [ "$ACTION" = "update" ] && [ -n "$CURRENT_VERSION" ]; then
 fi
 
 $GIT checkout --force "$TAG"
-echo "$TARGET" > "$VERSION_FILE"
 
 # Python dependencies
 VENV_PY="$PROJECT_DIR/venv/bin/python3"
@@ -90,6 +89,10 @@ fi
 # development (service-owned) setups keep working.
 log "restoring ownership ($PROJECT_OWNER)"
 chown -R "$PROJECT_OWNER" "$PROJECT_DIR" 2> /dev/null || true
+
+# Mark the target version only once the update has effectively succeeded
+# (a failure before this point aborts via `set -e`).
+echo "$TARGET" > "$VERSION_FILE"
 
 log "restarting fpvcopilot-sky"
 systemctl restart fpvcopilot-sky

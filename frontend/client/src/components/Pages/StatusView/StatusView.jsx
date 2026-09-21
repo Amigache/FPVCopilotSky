@@ -351,6 +351,7 @@ const StatusView = () => {
   }
 
   const checkForUpdates = async () => {
+    if (isUpdating) return
     setCheckingUpdates(true)
     try {
       const response = await api.get('/api/system/version/check')
@@ -395,6 +396,27 @@ const StatusView = () => {
     return false
   }
 
+  // Poll until the installed version matches the target. The privileged updater
+  // writes the version file only when the update has finished, so this is a
+  // reliable "done" signal (unlike waiting for a service restart, which happens
+  // only at the very end and may be missed).
+  const waitForVersion = async (target, maxWaitMs = 300000) => {
+    const startTime = Date.now()
+    while (Date.now() - startTime < maxWaitMs) {
+      try {
+        const response = await api.get('/api/system/version/current', 5000)
+        if (response.ok) {
+          const data = await response.json()
+          if (data.success && data.version === target) return true
+        }
+      } catch {
+        // Service may be restarting — keep polling.
+      }
+      await new Promise((r) => setTimeout(r, 3000))
+    }
+    return false
+  }
+
   const applyUpdate = async () => {
     setIsUpdating(true)
     setShowUpdateModal(false)
@@ -408,9 +430,14 @@ const StatusView = () => {
         const data = await response.json()
 
         if (data.success) {
-          // Response received successfully - service will restart in background
+          // Privileged updater runs asynchronously; wait until the installed
+          // version matches the target before prompting for a reload.
           showToast(t('status.version.serviceRestarting', 'Reiniciando servicio...'), 'info')
-          await waitForServiceRestart()
+          if (data.updated_to) {
+            await waitForVersion(data.updated_to)
+          } else {
+            await waitForServiceRestart()
+          }
           setReloadModal({ type: 'update', version: data.updated_to })
         } else {
           showToast(
@@ -771,7 +798,11 @@ const StatusView = () => {
             )}
 
             <div className="version-status">
-              {updateInfo && updateInfo.success && updateInfo.update_available ? (
+              {isUpdating ? (
+                <span className="version-badge version-badge-update">
+                  ⏳ {t('status.version.updating')}
+                </span>
+              ) : updateInfo && updateInfo.success && updateInfo.update_available ? (
                 <span className="version-badge version-badge-update">
                   🎉 {t('status.version.updateAvailable')}
                 </span>
