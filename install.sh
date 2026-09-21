@@ -12,9 +12,9 @@
 #   - /etc/netplan/30-wifis-dhcp.yaml → renderer: networkd → renderer: NetworkManager
 #   - wlan0 interface set to managed mode via nmcli
 #
-# Sudo Permissions (no-password):
-#   - /etc/sudoers.d/tailscale → Tailscale VPN management
-#   - /etc/sudoers.d/fpvcopilot-wifi → WiFi scan, connect, disconnect
+# Sudo Permissions:
+#   - No NOPASSWD entries. Privileged operations use fpvcopilot-privd
+#     (systemd/fpvcopilot-privd.service + app/security/privd_policy.py).
 #
 # System Services:
 #   - NetworkManager service enabled and started
@@ -41,10 +41,10 @@ NC='\033[0m' # No Color
 # Function to create fpvcopilotsky user if it doesn't exist
 setup_fpvcopilotsky_user() {
     local USERNAME="fpvcopilotsky"
-    # NOTE: no `sudo` group. The service uses scoped NOPASSWD sudoers rules
-    # (scripts/setup-sudoers.sh) which are per-user and do not require group
-    # membership. Keeping the account out of `sudo` prevents full passwordless
-    # root escalation if the (unauthenticated) web backend is compromised.
+    # NOTE: no `sudo` group. The service performs privileged operations only
+    # through fpvcopilot-privd (root daemon + command whitelist); there are no
+    # NOPASSWD sudoers rules. Keeping the account out of `sudo` prevents full
+    # root escalation if the web backend is compromised.
     local REQUIRED_GROUPS=(dialout video netdev adm)
 
     if id "$USERNAME" &>/dev/null; then
@@ -414,13 +414,13 @@ else
     fi
 fi
 
-# Configure sudo permissions (unified file: /etc/sudoers.d/fpvcopilot-sky)
-echo "🔐 Configuring sudo permissions..."
+# Remove legacy NOPASSWD sudoers (privileged helper model)
+echo "🔐 Removing legacy sudoers (privileged helper model)..."
 if [ -f "scripts/setup-sudoers.sh" ]; then
     chmod +x scripts/setup-sudoers.sh
     sudo bash scripts/setup-sudoers.sh
 else
-    echo "  ⚠ Sudoers setup script not found (scripts/setup-sudoers.sh)"
+    echo "  ⚠ scripts/setup-sudoers.sh not found"
 fi
 
 # Grant cap_net_raw to ping so the service user can measure network latency
@@ -450,15 +450,8 @@ else
     sudo apt-get install -y iproute2
 fi
 
-# Verify ip route sudoers are in place
-if [ -f "/etc/sudoers.d/fpvcopilot-system" ]; then
-    if sudo grep -q "ip route" /etc/sudoers.d/fpvcopilot-system 2>/dev/null; then
-        echo "  ✓ Network route management sudo permissions configured"
-    else
-        echo "  ⚠ Legacy sudoers file detected, re-running hardened sudoers setup..."
-        sudo bash scripts/setup-sudoers.sh
-    fi
-fi
+# Privileged network management goes through fpvcopilot-privd (installed by
+# scripts/deploy.sh); no sudoers entries are required.
 
 # Detect and configure default network priority
 # 4G modem is always primary when available, WiFi is backup

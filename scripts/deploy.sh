@@ -83,6 +83,8 @@ echo -e "\n${BLUE}🔧 Installing systemd service...${NC}"
 sudo cp "$PROJECT_DIR/systemd/fpvcopilot-sky.service" /etc/systemd/system/
 # Privileged updater: oneshot unit (root) triggered by the backend.
 sudo cp "$PROJECT_DIR/systemd/fpvcopilot-update.service" /etc/systemd/system/
+# Privileged helper: root daemon the main service uses instead of sudo.
+sudo cp "$PROJECT_DIR/systemd/fpvcopilot-privd.service" /etc/systemd/system/
 chmod +x "$PROJECT_DIR/scripts/privileged-update.sh" 2>/dev/null || true
 sudo systemctl daemon-reload
 echo -e "${GREEN}✅ Systemd service installed${NC}"
@@ -132,8 +134,12 @@ else
     echo -e "   Install nginx: sudo apt-get install nginx"
 fi
 
-# Step 4: Enable and start service
+# Step 4: Enable and start services
 echo -e "\n${BLUE}🚀 Starting service...${NC}"
+# Privileged helper first: the main service no longer uses sudo and relies on
+# /run/fpvcopilot-priv.sock for every privileged operation.
+sudo systemctl enable fpvcopilot-privd.service
+sudo systemctl restart fpvcopilot-privd.service
 sudo systemctl enable fpvcopilot-sky.service
 sudo systemctl restart fpvcopilot-sky.service
 

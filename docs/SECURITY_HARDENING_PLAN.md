@@ -18,20 +18,13 @@ con diseño**, para no romper el appliance.
 
 ## ✅ Aplicado en esta rama
 
-### C3 — Sudoers peligrosos (parcial)
+### C3 — Sudoers peligrosos
 
-- `scripts/setup-system-sudoers.sh` **neutralizado**: ya no escribe wildcards
-  peligrosos (`tee *`, `sysctl -w *`, `mkdir -p *`, `ethtool -s *`). Ahora es un
-  shim que delega en `scripts/setup-sudoers.sh` (política unificada y mínima).
-- `install.sh`: el fallback de permisos de red ya no invoca el script obsoleto,
-  sino el endurecido (`scripts/setup-sudoers.sh`). Ese script además **elimina**
-  los ficheros legacy `/etc/sudoers.d/fpvcopilot-system` y `-wifi`/`tailscale`.
-- `scripts/status.sh` y docs apuntan al script endurecido.
-
-> **Pendiente C3**: `setup-sudoers.sh` aún concede `ip -force -batch *` y
-> `ip rule *`. No permiten ejecución arbitraria como root (a diferencia de
-> `tee *`), pero sí toda la configuración de red. Mitigación propuesta: sustituir
-> por un helper privilegiado validado (ver _Arquitectura de privilegios_).
+✅ **Resuelto.** `scripts/setup-system-sudoers.sh` está neutralizado (shim) y
+`scripts/setup-sudoers.sh` ahora **elimina** todas las reglas NOPASSWD
+(`/etc/sudoers.d/fpvcopilot-*`, `tailscale`). Las operaciones privilegiadas se
+resuelven con el helper `fpvcopilot-privd` (whitelist en
+`app/security/privd_policy.py`), sin wildcards amplios.
 
 ### C4 — Usuario del servicio fuera del grupo `sudo`
 
@@ -97,10 +90,10 @@ se rompe.
    ownership existente, así que sigue funcionando en modo desarrollo. Para
    volver al modo desarrollo: `sudo bash scripts/harden-ownership.sh --revert`.
    `deploy.sh` compila el frontend como root y deja `dist` legible por nginx.
-3. **Etapa 3 — sandbox + helper de red.** Sustituir los `sudo` de red
-   (`ip`/`tc`/`iptables`/`sysctl`/`nmcli`/`tailscale`) por un helper privilegiado,
-   eliminar las reglas NOPASSWD y habilitar `NoNewPrivileges`,
-   `ProtectSystem=strict` y `CapabilityBoundingSet` (M7).
+3. **Etapa 3 — sandbox + helper de red.** ✅ **Implementada (M7 Incrementos
+   1-3):** helper privilegiado `fpvcopilot-privd`, reglas NOPASSWD eliminadas y
+   sandbox activado en `fpvcopilot-sky.service` (`NoNewPrivileges`,
+   `ProtectSystem=strict`, `CapabilityBoundingSet=`).
 
 ### C6 — Instaladores remotos sin verificación
 
@@ -135,14 +128,15 @@ existe, con fallback a `sudo` si no.
   `latency_monitor` (ping), `system_service` (`Popen` → hilo de fondo) y
   `gstreamer_service`. `run_cmd`/`run_cmd_async` soportan stdin. Escaneo AST:
   todos los `sudo` literales cubiertos por la whitelist.
-- **Incremento 3 (pendiente — próxima sesión)**: instalar/habilitar el daemon en
-  `install.sh`/`deploy.sh`, retirar las reglas NOPASSWD y habilitar
-  `NoNewPrivileges`, `ProtectSystem=strict` y `CapabilityBoundingSet` en
-  `fpvcopilot-sky.service`.
+- **Incremento 3 (hecho)**: `deploy.sh` instala y habilita `fpvcopilot-privd`;
+  `setup-sudoers.sh` elimina todas las reglas NOPASSWD; `fpvcopilot-sky.service`
+  activa `NoNewPrivileges`, `ProtectSystem=strict` (+ `ReadWritePaths`),
+  `CapabilityBoundingSet=` vacío y varias protecciones más. El servicio ya no
+  usa `sudo` en absoluto.
 
-> ⚠️ Con `NoNewPrivileges` el fallback a `sudo` deja de funcionar: habilitar y
-> validar el daemon primero. Rollback: revertir la unit del servicio y
-> `sudo systemctl daemon-reload && sudo systemctl restart fpvcopilot-sky`.
+> Rollback del sandbox: revertir `systemd/fpvcopilot-sky.service` (quitar
+> `NoNewPrivileges`/`ProtectSystem`), `daemon-reload` y reiniciar. El helper
+> `fpvcopilot-privd` es imprescindible: sin él no hay operaciones privilegiadas.
 
 ---
 
@@ -150,8 +144,9 @@ existe, con fallback a `sudo` si no.
 
 - `bash -n` sobre `install.sh`, `scripts/setup-system-sudoers.sh`,
   `scripts/setup-serial-ports.sh`.
-- En una máquina de pruebas: `sudo bash scripts/setup-sudoers.sh` y
-  `visudo -c`; comprobar que no existe `/etc/sudoers.d/fpvcopilot-system`.
+- En una máquina de pruebas: `sudo bash scripts/setup-sudoers.sh`; comprobar que
+  no existe ningún `/etc/sudoers.d/fpvcopilot-*` y que `fpvcopilot-privd` está
+  activo.
 - `ls -l /dev/ttyUSB*` → `crw-rw---- … dialout`.
 - CI: el job de lint no cubre scripts; se propone añadir un chequeo que falle si
   reaparecen patrones `tee *`, `sysctl -w *` en los sudoers.
@@ -170,4 +165,4 @@ existe, con fallback a `sudo` si no.
 | C6 Instaladores remotos | ✅ implementado (PR #46): repos APT firmados                          |
 | M5 Lock deps            | ✅ implementado: lock usado en install/updater/fallback               |
 | M6 Serial 666           | ✅ aplicado                                                           |
-| M7 Sandbox systemd      | 🟡 Incrementos 1-2 hechos y validados; Incremento 3 pendiente         |
+| M7 Sandbox systemd      | ✅ implementado: helper + sandbox (validar en equipo)                 |
