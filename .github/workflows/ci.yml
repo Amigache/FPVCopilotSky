@@ -35,7 +35,7 @@ jobs:
 
       - name: Install linting dependencies
         run: |
-          pip install flake8 black mypy
+          pip install flake8 black "mypy==1.19.1"
           grep -v "PyGObject" requirements.txt > /tmp/requirements-filtered.txt
           pip install -r /tmp/requirements-filtered.txt
           grep -v "PyGObject" requirements-dev.txt | grep -v "^-r requirements" > /tmp/requirements-dev-filtered.txt
