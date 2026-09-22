@@ -293,3 +293,30 @@ class TestGetRulesAndTables:
         with patch.object(mgr, "_get_all_table_routes", new=AsyncMock(return_value=tables)):
             result = await mgr.get_tables()
         assert result == tables
+
+
+class TestUpdateModemRequestValidation:
+    """P7: the update-modem request validates interface/gateway (no arbitrary args)."""
+
+    def test_accepts_valid_interface_and_gateway(self):
+        from app.api.routes.network.policy_routing import UpdateModemRequest
+
+        req = UpdateModemRequest(interface="wwan0", gateway="192.168.8.1")
+        assert req.interface == "wwan0"
+        assert req.gateway == "192.168.8.1"
+
+    @pytest.mark.parametrize("iface", ["", "bad iface", "eth0; rm -rf /", "a" * 20])
+    def test_rejects_invalid_interface(self, iface):
+        from pydantic import ValidationError
+        from app.api.routes.network.policy_routing import UpdateModemRequest
+
+        with pytest.raises(ValidationError):
+            UpdateModemRequest(interface=iface, gateway="192.168.8.1")
+
+    @pytest.mark.parametrize("gw", ["", "not-an-ip", "192.168.8.1 dev eth0", "999.1.1.1"])
+    def test_rejects_invalid_gateway(self, gw):
+        from pydantic import ValidationError
+        from app.api.routes.network.policy_routing import UpdateModemRequest
+
+        with pytest.raises(ValidationError):
+            UpdateModemRequest(interface="wwan0", gateway=gw)

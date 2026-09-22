@@ -6,14 +6,37 @@ All under prefix /api/network/policy-routing
 """
 
 from fastapi import APIRouter
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 router = APIRouter(prefix="/policy-routing")
+
+_IFACE_RE = r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,14}$"  # Linux iface names are <= 15 chars
+_GW_RE = r"^(?:(?:25[0-5]|2[0-4]\d|[01]?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d?\d)$"
 
 
 class UpdateModemRequest(BaseModel):
     interface: str
     gateway: str
+
+    @field_validator("interface")
+    @classmethod
+    def _validate_interface(cls, v: str) -> str:
+        import re
+
+        v = (v or "").strip()
+        if not re.match(_IFACE_RE, v):
+            raise ValueError("Invalid interface name")
+        return v
+
+    @field_validator("gateway")
+    @classmethod
+    def _validate_gateway(cls, v: str) -> str:
+        import re
+
+        v = (v or "").strip()
+        if not re.match(_GW_RE, v):
+            raise ValueError("Invalid IPv4 gateway")
+        return v
 
 
 def _get_manager():

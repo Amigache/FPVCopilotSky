@@ -7,9 +7,15 @@ from app.security.privd_policy import allowed_programs, is_allowed
 ALLOWED = [
     ["ip", "route", "add", "default", "via", "192.168.1.1", "dev", "wlan0"],
     ["ip", "link", "set", "wlan0", "mtu", "1400"],
+    ["ip", "link", "set", "wlan0", "txqueuelen", "10000"],
+    ["ip", "link", "set", "ifbwlan0", "up"],
+    ["ip", "rule", "del", "fwmark", "0x100", "table", "100"],
+    ["ip", "rule", "show"],
     ["ip", "-force", "-batch", "-"],
     ["ip", "-o", "-4", "addr", "show"],
     ["tc", "qdisc", "replace", "dev", "wlan0", "root", "cake"],
+    ["tc", "-s", "qdisc", "show", "dev", "wlan0", "root"],
+    ["tc", "filter", "add", "dev", "wlan0", "parent", "ffff:", "protocol", "ip"],
     ["iptables", "-t", "mangle", "-A", "POSTROUTING", "-j", "MARK"],
     ["iptables-restore", "--noflush"],
     ["sysctl", "-w", "net.ipv4.tcp_congestion_control=bbr"],
@@ -24,6 +30,12 @@ ALLOWED = [
     ["cp", "/etc/resolv.conf", "/etc/resolv.conf.backup"],
     ["killall", "-HUP", "dnsmasq"],
     ["apt-get", "install", "-y", "dnsmasq"],
+    ["journalctl", "-u", "fpvcopilot-sky", "-n", "50", "--no-pager"],
+    ["journalctl", "-u", "dnsmasq", "-n", "50", "--no-pager"],
+    ["ping", "-c", "1", "-W", "1", "127.0.0.1"],
+    ["ping", "-c", "1", "-W", "2", "-I", "wlan0", "192.168.1.1"],
+    ["ping", "-c", "3", "-W", "3", "-q", "8.8.8.8"],
+    ["modprobe", "ifb", "numifbs=4"],
 ]
 
 DENIED = [
@@ -40,6 +52,16 @@ DENIED = [
     ["systemctl", "restart", "sshd"],
     ["apt-get", "install", "nginx"],
     ["/usr/bin/python3", "-c", "print(1)"],
+    # Tightened in P7:
+    ["ip", "rule", "flush"],
+    ["ip", "rule", "del", "all"],
+    ["ip", "link", "set", "wlan0", "name", "evil"],
+    ["ip", "link", "set", "wlan0", "address", "aa:bb:cc:dd:ee:ff"],
+    ["tc", "foo", "bar"],
+    ["journalctl", "-u", "fpvcopilot-sky", "-u", "sshd"],
+    ["ping", "-f", "8.8.8.8"],
+    ["ping", "--flood", "8.8.8.8"],
+    ["modprobe", "ifb", "numifbs=1; rm -rf /"],
 ]
 
 

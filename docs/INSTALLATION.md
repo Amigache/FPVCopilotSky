@@ -645,6 +645,23 @@ sudo ip rule del fwmark 0x200 table 200 2>/dev/null || true
 sudo systemctl restart fpvcopilot-sky
 ```
 
+### 5.7 Autenticación de la API (activada por defecto)
+
+`install.sh` ejecuta `scripts/setup-auth.sh`, que **genera un token** y lo guarda en
+`/etc/fpvcopilot-sky/env` (`0600`, root) mediante un drop-in de systemd, de modo que
+el secreto nunca queda en el repositorio.
+
+- La WebUI pedirá el token la primera vez y lo recordará en el navegador.
+- **Rotar** el token: `sudo bash scripts/setup-auth.sh --rotate` (y volver a introducirlo en la WebUI).
+- Para instalaciones sin auth (solo desarrollo): `FPV_SKIP_AUTH=1 ./install.sh`.
+
+```bash
+# Ver el token (como root):
+sudo cat /etc/fpvcopilot-sky/env
+# Probar:
+curl -H "Authorization: Bearer $FPV_API_TOKEN" http://localhost:8000/api/video/status
+```
+
 ---
 
 [← Índice](INDEX.md) · [Siguiente: Guía de Usuario →](USER_GUIDE.md)

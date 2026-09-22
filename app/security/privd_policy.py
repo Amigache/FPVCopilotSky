@@ -20,7 +20,11 @@ _RULES: Dict[str, List[str]] = {
         r"(start|stop|status|restart|enable) dnsmasq(\.service)?",
         r"start --no-block fpvcopilot-update(\.service)?",
     ],
-    "journalctl": [r"-u fpvcopilot-sky(\.service)?( .*)?"],
+    "journalctl": [
+        # Only this app's unit, and no second `-u` (which would read other logs)
+        r"-u fpvcopilot-sky(\.service)?(?!.* -u )( .*)?",
+        r"-u dnsmasq(?!.* -u )( .*)?",
+    ],
     "tailscale": [r"up( .*)?", r"down", r"logout", r"status( .*)?"],
     "iw": [r"dev \S+ scan( .*)?", r"dev \S+ link"],
     "nmcli": [
@@ -32,13 +36,15 @@ _RULES: Dict[str, List[str]] = {
     ],
     "ip": [
         r"route (add|del|change|replace|show)( .*)?",
-        r"link (set|show)( .*)?",
+        r"link show( .*)?",
+        r"link set \S+ (mtu \d+|txqueuelen \d+|up|down)",
         r"addr show( .*)?",
         r"(-o|-o -4|-4) addr show( .*)?",
-        r"rule( .*)?",
+        r"rule show( .*)?",
+        r"rule (add|del) fwmark \S+ table \d+( .*)?",
         r"-force -batch( -)?",
     ],
-    "tc": [r"(-s )?(qdisc|class|filter)( .*)?"],
+    "tc": [r"(-s )?(qdisc|class|filter) (add|del|replace|show)( .*)?"],
     "iptables": [r"-t mangle( .*)?"],
     "iptables-save": [r"(-t mangle)?"],
     "iptables-restore": [r"(--noflush)?"],
@@ -56,8 +62,10 @@ _RULES: Dict[str, List[str]] = {
     ],
     "killall": [r"-(USR1|HUP) dnsmasq"],
     "apt-get": [r"update", r"install -y dnsmasq"],
-    "ping": [r".*"],
-    "modprobe": [r"ifb numifbs=1"],
+    # ping: allow the flags the app uses; forbid flood (-f/--flood) and huge
+    # payload/size abuse. Requires at least one target token.
+    "ping": [r"(?!.*(?:^| )(?:-f|--flood)(?: |$))(?:-(?:c|W|w|i|I) \S+|-(?:q|n|4|6))*(?: \S+)+"],
+    "modprobe": [r"ifb numifbs=\d+"],
 }
 
 _COMPILED: Dict[str, List["re.Pattern[str]"]] = {
