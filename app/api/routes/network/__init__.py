@@ -4,7 +4,6 @@ Network Routes Module
 This package contains all network-related API endpoints, organized by functionality:
 
 - status: Network status, dashboard, interfaces, priority
-- flight_mode: Complete network optimization for FPV streaming
 - flight_session: Network performance recording during flights
 - latency: Latency monitoring and testing
 - failover: Automatic network switching
@@ -17,7 +16,6 @@ from fastapi import APIRouter
 
 # Import all sub-routers
 from .status import router as status_router, get_network_status
-from .flight_mode import router as flight_mode_router
 from .flight_session import router as flight_session_router
 from .latency import router as latency_router
 from .failover import router as failover_router
@@ -33,7 +31,6 @@ router = APIRouter(tags=["network"])
 
 # Include all sub-routers
 router.include_router(status_router, tags=["network-status"])
-router.include_router(flight_mode_router, tags=["network-flight-mode"])
 router.include_router(flight_session_router, tags=["network-flight-session"])
 router.include_router(latency_router, tags=["network-latency"])
 router.include_router(failover_router, tags=["network-failover"])

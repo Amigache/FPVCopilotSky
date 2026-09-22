@@ -58,7 +58,7 @@ FPV Copilot Sky convierte un SBC Linux (Radxa Zero, Raspberry Pi, Orange Pi…) 
 ### 🌐 **Red inteligente - Auto-failover WiFi ⇄ 4G**
 
 - **Priorización dinámica** — Cambia entre WiFi y 4G como ruta principal con un toggle; actualiza métricas automáticamente
-- **Flight Mode** — Activa optimizaciones de red completas para vuelo (tc qdisc, sysctls, prioridades de ruta)
+- **Optimización de red automática** — En enlaces 4G/VPN aplica MTU, CAKE, DSCP y tuning TCP automáticamente según el **perfil de enlace** (sin modo manual)
 - **Calidad de Red en tiempo real** — Score compuesto (0-100) basado en SINR, RSRQ, RTT, jitter y packet loss
 - **Bridge de eventos** — Conecta la calidad de red con el pipeline de video para adaptar parámetros automáticamente
 - **Recomendaciones adaptativas** — El sistema sugiere bitrate, resolución y FPS óptimos según la calidad detectada

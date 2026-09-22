@@ -4,8 +4,20 @@ import asyncio
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from app.services.link_profile_manager import LinkProfileManager
 from app.services.link_profiles import default_link_profiles
+
+
+@pytest.fixture(autouse=True)
+def mock_net_optimizer(monkeypatch):
+    """Avoid touching the real NetworkOptimizer (runs ip/tc commands) in these tests."""
+    optimizer = MagicMock()
+    optimizer.apply_network_optimizations.return_value = {"success": True, "optimizations": ["mtu"]}
+    optimizer.revert_network_optimizations.return_value = {"success": True}
+    monkeypatch.setattr("app.services.network_optimizer.get_network_optimizer", lambda: optimizer)
+    return optimizer
 
 
 def make_prefs(settings=None):
@@ -89,6 +101,28 @@ def test_desired_profile_respects_manual_forced():
     assert manager._desired_profile({"mode": "manual", "forced": ""}) == "lan"
 
 
+def test_modem_profile_applies_network_optimization(monkeypatch, mock_net_optimizer):
+    monkeypatch.setattr("app.services.link_profile_manager.time.sleep", lambda *_: None)
+    manager = LinkProfileManager()
+    manager.set_services(gstreamer_service=make_gstreamer())
+
+    with patch("app.services.preferences.get_preferences", return_value=make_prefs()):
+        asyncio.run(manager.apply_profile("modem"))
+
+    mock_net_optimizer.apply_network_optimizations.assert_called_once()
+
+
+def test_lan_profile_reverts_network_optimization_when_active(mock_net_optimizer):
+    manager = LinkProfileManager()
+    manager._net_optim_active = True
+    manager.set_services(gstreamer_service=make_gstreamer(mode="udp"))
+
+    with patch("app.services.preferences.get_preferences", return_value=make_prefs()):
+        asyncio.run(manager.apply_profile("lan"))
+
+    mock_net_optimizer.revert_network_optimizations.assert_called_once()
+
+
 def test_restart_failure_is_reported_and_retried(monkeypatch):
     monkeypatch.setattr("app.services.link_profile_manager.time.sleep", lambda *_: None)
     manager = LinkProfileManager()
@@ -113,7 +147,8 @@ def test_profile_when_not_streaming_only_configures():
     with patch("app.services.preferences.get_preferences", return_value=make_prefs()):
         result = asyncio.run(manager.apply_profile("modem"))
 
-    assert result["actions"] == ["video-config-only"]
+    assert "video-config-only" in result["actions"]
+    assert any(a.startswith("net-opt:applied") for a in result["actions"])
     gst.configure.assert_called_once()
     gst.start.assert_not_called()
 

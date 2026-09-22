@@ -194,7 +194,6 @@ FPVCopilotSky/
 │   │   │   ├── __init__.py      # Router principal (44 líneas)
 │   │   │   ├── common.py        # Utilidades compartidas (105 líneas)
 │   │   │   ├── status.py        # Estado y dashboard (404 líneas)
-│   │   │   ├── flight_mode.py   # Optimización FPV (275 líneas)
 │   │   │   ├── flight_session.py # Grabación de vuelo (150 líneas)
 │   │   │   ├── latency.py       # Monitoreo de latencia (187 líneas)
 │   │   │   ├── failover.py      # Auto-failover (174 líneas)
@@ -1603,8 +1602,8 @@ FPV Copilot Sky incluye servicios especializados para optimización de red, moni
             │
             ↓
 ┌─────────────────────────────────────────┐
-│    Flight Mode (Network Optimizer)      │
-│  MTU 1420, QoS DSCP, TCP BBR           │
+│  Network Optimizer (perfil 4G/VPN)      │
+│  MTU 1420/1280, QoS DSCP, TCP BBR      │
 │  CAKE bufferbloat, VPN policy routing   │
 │  Buffers 25MB, power saving OFF         │
 └─────────────────────────────────────────┘
@@ -1764,7 +1763,7 @@ POST /api/network/failover/force-switch
 
 ### NetworkOptimizer (`app/services/network_optimizer.py`)
 
-**Propósito**: Optimizaciones de red a nivel sistema para streaming (Flight Mode).
+**Propósito**: Optimizaciones de red a nivel sistema para streaming en enlaces **4G/VPN**. Lo aplica/revierte el **LinkProfileManager** según el perfil de enlace (ya no hay un "modo vuelo" manual).
 
 **Optimizaciones Aplicadas**:
 
@@ -1819,9 +1818,9 @@ from app.services.network_optimizer import get_network_optimizer
 
 optimizer = get_network_optimizer()
 
-# Activar Flight Mode
-result = optimizer.enable_flight_mode(interface="enx001122334455")
-# Aplica: MTU, QoS, TCP BBR, buffers, power saving
+# Aplicar optimizaciones de red (4G/VPN) — normalmente lo hace LinkProfileManager
+result = optimizer.apply_network_optimizations()
+# Aplica: MTU, QoS/DSCP, TCP BBR, buffers, power saving, CAKE, VPN MTU
 
 # Verificar estado
 status = optimizer.get_status()
@@ -1831,30 +1830,28 @@ status = optimizer.get_status()
 metrics = optimizer.get_network_metrics()
 # {"tcp_congestion": "bbr", "rmem_max": "26214400", ...}
 
-# Desactivar
-optimizer.disable_flight_mode()
+# Revertir
+optimizer.revert_network_optimizations()
 ```
 
-**API Endpoints**:
-
-```
-POST /api/network/flight-mode/enable
-POST /api/network/flight-mode/disable
-GET  /api/network/flight-mode/status
-GET  /api/network/flight-mode/metrics
-```
+**Activación**: la decide el **perfil de enlace** (`LinkProfileManager`): activa en `modem`/`vpn`, revierte en `lan`. Preferencia: `network.auto_network_optimization` (default ON). API: `GET /api/network/link-profile`.
 
 **Configuración**:
 
 ```python
-FlightModeConfig(
+NetworkOptimizationConfig(
     mtu=1420,
+    vpn_mtu=1280,
     video_ports=[5600, 5601, 8554],
-    qos_enabled=True,
-    dscp_value=46,  # EF - Expedited Forwarding
-    tcp_congestion="bbr",
-    buffer_size_kb=25600,  # 25 MB
-    power_saving=False
+    enable_qos=True,
+    dscp_class="EF",  # Expedited Forwarding (46)
+    tcp_congestion_control="bbr",
+    net_core_rmem_max=26214400,  # 25 MB
+    net_core_wmem_max=26214400,
+    disable_power_save=True,
+    enable_cake=True,
+    cake_diffserv=True,
+    cake_overhead_bytes=80,
 )
 ```
 
@@ -2123,10 +2120,10 @@ El endpoint `/api/network/dashboard` unifica todos los datos de red en una sola 
     "traffic": {...}
   },
   "wifi_networks": [...],
-  "flight_mode": {
+  "network_optimization": {
     "active": false,
-    "network_optimizer_active": false,
-    "modem_video_mode_active": false
+    "interface": "eth1",
+    "config": {...}
   }
 }
 ```
@@ -2159,7 +2156,7 @@ const loadDashboard = async (forceRefresh = false) => {
   setNetworkStatus(data.network);
   setModemStatus(data.modem);
   setWifiNetworks(data.wifi_networks);
-  setFlightMode(data.flight_mode);
+  setNetworkOptimization(data.network_optimization);
 };
 ```
 
@@ -2182,14 +2179,14 @@ Los servicios de red se integran en el flujo normal de la aplicación:
 # El usuario los activa via API según necesidad
 ```
 
-**Flight Mode** (combinación de servicios):
+**Optimización de red (4G/VPN)** — la aplica el perfil de enlace:
 
 ```python
-# 1. NetworkOptimizer: optimizaciones sistema
+# 1. NetworkOptimizer: optimizaciones sistema (MTU, CAKE, DSCP, TCP, power save)
 optimizer = get_network_optimizer()
-await optimizer.enable_flight_mode(interface=modem_interface)
+optimizer.apply_network_optimizations()   # o vía LinkProfileManager al aplicar perfil modem/vpn
 
-# 2. Modem Provider: configuración modem
+# 2. Modem Provider: configuración modem (opcional)
 modem = get_modem_provider("huawei_e3372h")
 await modem.enable_video_mode()  # 4G Only, B3+B7 bands
 ```
@@ -2392,13 +2389,12 @@ POST /api/network/modem/video-mode/enable   # Activar modo video
 POST /api/network/modem/video-mode/disable  # Desactivar modo video
 ```
 
-**Flight Mode**:
+**Link Profile / Optimización de red** (adaptación automática al tipo de enlace):
 
 ```
-GET  /api/network/flight-mode/status  # Estado Flight Mode
-POST /api/network/flight-mode/enable  # Activar (optimizer + modem)
-POST /api/network/flight-mode/disable # Desactivar
-GET  /api/network/flight-mode/metrics # Métricas de red actuales
+GET  /api/network/link-profile            # Perfil detectado/activo + optimización de red
+POST /api/network/link-profile/override   # Forzar perfil (lan|modem|vpn)
+POST /api/network/link-profile/settings   # mode/auto_apply/telemetry_apply
 ```
 
 **Latency Monitoring**:

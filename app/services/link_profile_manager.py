@@ -45,6 +45,7 @@ class LinkProfileManager:
         self._last_apply_time: float = 0.0
         self._last_actions: list = []
         self._res_cache: Dict[str, set] = {}
+        self._net_optim_active: bool = False
 
         # Read from preferences each cycle; defaults are safe.
         self._telemetry_apply = False
@@ -84,14 +85,24 @@ class LinkProfileManager:
         return self._detected_link
 
     def get_status(self) -> Dict[str, Any]:
+        settings: Dict[str, Any] = {"mode": "auto", "forced": "", "auto_apply": True}
+        profiles: Dict[str, Any] = {}
         try:
             from app.services.preferences import get_preferences
 
-            settings = get_preferences().get_link_profile_settings()
-            profiles = get_preferences().get_link_profiles()
+            raw_settings = get_preferences().get_link_profile_settings()
+            if isinstance(raw_settings, dict):
+                settings = {
+                    "mode": str(raw_settings.get("mode", "auto")),
+                    "forced": str(raw_settings.get("forced", "")),
+                    "auto_apply": bool(raw_settings.get("auto_apply", True)),
+                }
+
+            raw_profiles = get_preferences().get_link_profiles()
+            if isinstance(raw_profiles, dict):
+                profiles = raw_profiles
         except Exception:
-            settings = {"mode": "auto", "forced": "", "auto_apply": True}
-            profiles = {}
+            pass
 
         desired = self._desired_profile(settings)
         return {
@@ -206,6 +217,19 @@ class LinkProfileManager:
                 if applied:
                     actions.append(f"udp_buffer:{buffer_size}")
 
+            # Network-level optimization (MTU/CAKE/DSCP/TCP/power save) for
+            # 4G/VPN links, owned by the profile (replaces the old "Flight Mode").
+            auto_net = False
+            try:
+                auto_net = bool(
+                    get_preferences().get_all_preferences().get("network", {}).get("auto_network_optimization", True)
+                )
+            except Exception:
+                auto_net = True
+
+            if auto_net:
+                actions.extend(await self._apply_network_optimization(profile_name))
+
             self._active_profile = profile_name
             self._last_apply_time = time.time()
             self._last_actions = actions
@@ -217,6 +241,37 @@ class LinkProfileManager:
 
         await self._broadcast_status()
         return {"success": True, "profile": profile_name, "reason": reason, "actions": actions}
+
+    async def _apply_network_optimization(self, profile_name: str) -> list:
+        """Apply/revert OS-level network optimization (MTU/CAKE/DSCP/TCP) per profile.
+
+        Replaces the old manual "Flight Mode": for 4G/VPN links the optimizations
+        are applied; for LAN they are reverted. Executed in a worker thread.
+        """
+        wants = profile_name in ("modem", "vpn")
+        try:
+            from app.services.network_optimizer import get_network_optimizer
+
+            optimizer = get_network_optimizer()
+        except Exception as e:
+            logger.debug(f"Network optimizer unavailable: {e}")
+            return []
+
+        if wants and not self._net_optim_active:
+            result = await asyncio.to_thread(optimizer.apply_network_optimizations)
+            if result.get("success"):
+                self._net_optim_active = True
+                return [f"net-opt:applied({len(result.get('optimizations', []))})"]
+            return [f"net-opt-failed:{result.get('message')}"]
+
+        if not wants and self._net_optim_active:
+            result = await asyncio.to_thread(optimizer.revert_network_optimizations)
+            if result.get("success", True):
+                self._net_optim_active = False
+                return ["net-opt:reverted"]
+            return [f"net-opt-revert-failed:{result.get('message')}"]
+
+        return []
 
     def _supported_resolutions(self, device: str) -> set:
         """Camera resolutions according to v4l2-ctl (cached). Empty = unknown."""

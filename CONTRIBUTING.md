@@ -213,7 +213,6 @@ FPVCopilotSky/
 │   │       │   ├── __init__.py  # Router principal
 │   │       │   ├── common.py    # Utilidades compartidas
 │   │       │   ├── status.py    # Estado y dashboard
-│   │       │   ├── flight_mode.py    # Optimización FPV
 │   │       │   ├── flight_session.py # Grabación de vuelo
 │   │       │   ├── latency.py   # Monitoreo de latencia
 │   │       │   ├── failover.py  # Auto-failover

@@ -126,6 +126,7 @@ class PreferencesService:
                 "forced_link_profile": "",  # "", "lan", "modem", "vpn"
                 "link_profile_auto_apply": True,  # apply detected profile automatically
                 "link_profile_telemetry_apply": False,  # opt-in: also adapt FC stream rates
+                "auto_network_optimization": True,  # MTU/CAKE/DSCP/TCP on 4G/VPN (was "Flight Mode")
                 "link_profiles": default_link_profiles(),
             },
             "flight_session": {
