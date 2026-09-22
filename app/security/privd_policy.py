@@ -38,6 +38,7 @@ _RULES: Dict[str, List[str]] = {
         r"route (add|del|change|replace|show)( .*)?",
         r"link show( .*)?",
         r"link set \S+ (mtu \d+|txqueuelen \d+|up|down)",
+        r"link add \S+ type ifb",
         r"addr show( .*)?",
         r"(-o|-o -4|-4) addr show( .*)?",
         r"rule show( .*)?",

@@ -39,6 +39,8 @@ def test_cake_uses_per_interface_ifb_not_shared():
 
     assert any("ifbwwan0" in c for c in cmds)
     assert not any("ifb0" in c for c in cmds)
+    # The per-interface IFB must be created (it is not ifb0..N from modprobe).
+    assert ["sudo", "ip", "link", "add", "ifbwwan0", "type", "ifb"] in cmds
 
 
 def test_cake_disable_uses_per_interface_ifb():
