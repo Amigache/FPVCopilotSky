@@ -483,6 +483,8 @@ def test_broadcast_router_status_uses_threadsafe_call(monkeypatch):
     main_module.router_service = types.SimpleNamespace(get_outputs_list=MagicMock(return_value=[{"ok": True}]))
     broadcast = MagicMock(return_value=object())
     monkeypatch.setattr(main_module.websocket_manager, "broadcast", broadcast)
+    # Simulate a connected client so the broadcast path is exercised.
+    monkeypatch.setattr(type(main_module.websocket_manager), "has_clients", property(lambda self: True))
 
     submit = MagicMock()
     monkeypatch.setattr(main_module.asyncio, "run_coroutine_threadsafe", submit)
@@ -490,6 +492,18 @@ def test_broadcast_router_status_uses_threadsafe_call(monkeypatch):
     main_module._broadcast_router_status(loop=object())
 
     submit.assert_called_once()
+
+
+def test_broadcast_router_status_skips_without_clients(monkeypatch):
+    main_module.router_service = types.SimpleNamespace(get_outputs_list=MagicMock(return_value=[{"ok": True}]))
+    monkeypatch.setattr(type(main_module.websocket_manager), "has_clients", property(lambda self: False))
+
+    submit = MagicMock()
+    monkeypatch.setattr(main_module.asyncio, "run_coroutine_threadsafe", submit)
+
+    main_module._broadcast_router_status(loop=object())
+
+    submit.assert_not_called()
 
 
 def test_auto_start_video_success(monkeypatch):

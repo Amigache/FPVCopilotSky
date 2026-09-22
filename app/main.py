@@ -224,6 +224,8 @@ async def _startup_init_auto_failover(preferences_service):
 
 def _broadcast_router_status(loop):
     """Broadcast router status changes via WebSocket."""
+    if not websocket_manager.has_clients:
+        return
     try:
         outputs = router_service.get_outputs_list()
         asyncio.run_coroutine_threadsafe(websocket_manager.broadcast("router_status", outputs), loop)
