@@ -219,7 +219,7 @@ FPVCopilotSky/
 │   │       │   ├── failover.py  # Auto-failover
 │   │       │   ├── dns.py       # Caché DNS
 │   │       │   ├── bridge.py    # Network-video bridge
-│   │       │   └── mptcp.py     # Multi-Path TCP
+│   │       │   └── link_profile.py # Perfiles de enlace LAN/4G/VPN
 │   │       ├── modem.py         # Modems 4G/LTE
 │   │       ├── vpn.py           # VPN (Tailscale)
 │   │       ├── status.py        # Estado del sistema
@@ -232,6 +232,11 @@ FPVCopilotSky/
 │   │   ├── preferences.py       # Persistencia de config
 │   │   ├── serial_detector.py   # Auto-detección serial
 │   │   ├── system_service.py    # Operaciones de sistema
+│   │   ├── network_event_bridge.py # Bridge red↔vídeo
+│   │   ├── link_profile_manager.py # Perfiles de enlace LAN/4G/VPN
+│   │   ├── link_profiles.py     # Modelo de perfiles
+│   │   ├── route_manager.py     # Rutas default (dueño único)
+│   │   ├── network_optimizer.py # CAKE/DSCP/sysctl/vuelo
 │   │   └── websocket_manager.py # Push WebSocket
 │   ├── providers/               # Sistema modular de providers
 │   │   ├── registry.py          # Registro central

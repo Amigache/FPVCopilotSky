@@ -11,6 +11,8 @@ Procedimientos paso a paso para diagnosticar y recuperarse de incidentes crític
 1. [MAVLink Desconectado](#1-mavlink-desconectado)
 2. [Modem Inestable](#2-modem-inestable)
 3. [Stream de Video Caído](#3-stream-de-video-caído)
+4. [Video con flashes/pausas grises](#4-video-con-flashespausas-grises)
+5. [Rutas por defecto duplicadas](#5-rutas-por-defecto-duplicadas)
 
 ---
 
@@ -592,6 +594,72 @@ chmod +x fpv-emergency-diagnostics.sh
    ```
 
 4. **Drills simulados** — Probar recuperación 1x/mes (desconectar USB, etc.)
+
+---
+
+## 4. Video con flashes/pausas grises
+
+### 4.1 Detección rápida (30 segundos)
+
+```bash
+# Estado del stream (modo, resolución, bitrate, errores)
+curl -s -H "Authorization: Bearer $FPV_API_TOKEN" http://localhost:8000/api/video/status | jq '.config, .stats'
+```
+
+Indicador: frames grises/pausas **intermitentes** en el GCS (Mission Planner) durante un stream por UDP.
+
+### 4.2 Diagnóstico (1-2 minutos)
+
+```bash
+# 1) ¿El enlace pierde/varía? (ejecutar desde la placa hacia el GCS)
+ping -I wlan0 -c 30 <IP_GCS>          # mira avg/max/mdev y pérdida
+iw dev wlan0 link                      # señal, canal, bitrate
+iw dev wlan0 info                      # ¿2.4 GHz congestionado?
+
+# 2) ¿CAKE está limitando de más?
+tc qdisc show | grep cake
+
+# 3) ¿Se activó el contador de stats inline? (añade jitter a la ruta RTP)
+systemctl show fpvcopilot-sky -p Environment | grep FPV_VIDEO_STATS_COUNTER
+```
+
+### 4.3 Recuperación
+
+- **Congestión WiFi (causa más común)**: pasar a **5 GHz**, o bajar bitrate/resolución (`/api/video/live-update`). En enlaces con pérdidas, usar **RTSP/TCP o WebRTC** en lugar de UDP crudo.
+- **Contador inline activo**: `FPV_VIDEO_STATS_COUNTER` **debe estar en 0/**desactivado\*\* (por defecto). Si se activó para depurar, quitarlo del drop-in de systemd y reiniciar.
+- Verificar después: `/api/video/stats` (fps/bitrate reales) y ausencia de `Pipeline stats poll error`.
+
+> Contexto: el `identity` de stats inline en la ruta RTP añadía jitter y, con las ráfagas de keyframes, provocaba pérdidas puntuales. Desde 1.2.0 va **desactivado por defecto** en UDP/WebRTC.
+
+---
+
+## 5. Rutas por defecto duplicadas
+
+### 5.1 Detección rápida (10 segundos)
+
+```bash
+ip route show default
+# Problema: dos entradas para la misma interfaz/puerta de enlace (p.ej. wlan0 metric 100 y 200)
+```
+
+### 5.2 Causa
+
+`install.sh` (hasta 1.2.0) añadía siempre un **WiFi "backup" a metric 200** (diseñado para "4G primario, WiFi backup"), aunque no hubiera módem; la lógica de prioridad de la app ponía WiFi a metric 100. Resultado: ruta 200 **huérfana**.
+
+### 5.3 Recuperación
+
+```bash
+# Opción A (recomendada): forzar prioridad → RouteManager deduplica
+curl -X POST -H "Authorization: Bearer $FPV_API_TOKEN" -H "Content-Type: application/json" \
+  -d '{"mode":"wifi"}' http://localhost:8000/api/network/priority
+
+# Opción B (manual)
+sudo ip route del default via <GW> dev wlan0 metric 200
+```
+
+### 5.4 Prevención
+
+Desde **1.2.1**, `install.sh` pone **WiFi primaria (metric 100)** si no hay módem, usa `ip route replace` y elimina métricas obsoletas; `RouteManager` deduplica rutas redundantes al aplicar prioridad.
 
 ---
 

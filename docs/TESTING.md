@@ -29,7 +29,7 @@ El job principal de CI ejecuta `pytest tests/ -m "not slow"` con el **gate de co
 
 ## Cobertura
 
-- **Backend**: `fail_under = 50` (`pyproject.toml`). Actual ≈ 51.6 %.
+- **Backend**: `fail_under = 50` (`pyproject.toml`). Actual ≈ 52 %.
 - **Frontend**: umbrales en `frontend/client/vitest.config.js` (40/70/49/40). Actual ≈ 41.3/74.4/51.7/41.3.
 
 ### Alcance medido y módulos excluidos

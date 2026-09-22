@@ -312,18 +312,6 @@ else
     echo -e "${YELLOW}⚠️${NC}  iptables not found (VPN policy routing unavailable)"
 fi
 
-# Check MPTCP
-if sysctl net.mptcp.enabled &>/dev/null 2>&1; then
-    MPTCP_ENABLED=$(sysctl -n net.mptcp.enabled 2>/dev/null)
-    if [ "$MPTCP_ENABLED" = "1" ]; then
-        echo -e "${GREEN}✅${NC} MPTCP enabled (multi-path TCP for WiFi+4G bonding)"
-    else
-        echo -e "${YELLOW}⚠️${NC}  MPTCP available but disabled (enable via API or sysctl)"
-    fi
-else
-    echo -e "${BLUE}ℹ️${NC}  MPTCP not supported by kernel (requires 5.6+)"
-fi
-
 # Network Event Bridge status via API
 if [ $BACKEND_RUNNING -eq 0 ]; then
     BRIDGE_STATUS=$(curl -s --max-time 3 http://localhost:8000/api/network/bridge/status 2>/dev/null)

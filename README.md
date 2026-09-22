@@ -5,7 +5,7 @@
 FPV Copilot Sky convierte un SBC Linux (Radxa Zero, Raspberry Pi, Orange Pi…) en un hub inteligente que gestiona telemetría MAVLink, streaming de video en baja latencia y conectividad 4G/VPN — todo controlable desde una interfaz web moderna.
 
 ![CI Status](https://github.com/Amigache/FPVCopilotSky/workflows/CI%20-%20Lint%20&%20Test/badge.svg)
-![Version](https://img.shields.io/badge/version-1.2.1-blue)
+![Version](https://img.shields.io/badge/version-1.2.2-blue)
 ![Platform](https://img.shields.io/badge/platform-Linux_ARM/x86-green)
 ![License](https://img.shields.io/badge/license-MIT-yellow)
 ![Python](https://img.shields.io/badge/python-3.12+-blue)
@@ -71,7 +71,7 @@ FPV Copilot Sky convierte un SBC Linux (Radxa Zero, Raspberry Pi, Orange Pi…) 
 - **Auto-ajuste de bitrate** — Reduce o aumenta automáticamente el bitrate del video según SINR y latencia medidos cada 2 segundos
 - **CAKE Qdisc anti-bufferbloat** — Reduce la latencia de video hasta un 40% en enlaces 4G congestionados controlando colas activas
 - **Failover predictivo** — Anticipa degradación de red analizando tendencias de SINR y jitter; cambia de ruta antes del corte total
-- **MPTCP bonding** — Combina WiFi + 4G en una sola conexión multi-ruta para redundancia real (requiere kernel 5.6+)
+- **Perfiles de enlace (LAN/4G/VPN)** — Adaptan automáticamente modo de vídeo, resolución y bitrate al tipo de conexión, con reducción de telemetría opcional y override manual
 - **VPN policy routing** — Separa tráfico de video (fwmark 0x200) y control VPN (fwmark 0x100) en tablas de enrutamiento distintas
 - **Self-healing de streaming** — Fuerza keyframes, reinicia GStreamer, ajusta resolución automáticamente según eventos de red
 - **Registro de eventos** — Historial de cambios de celda, bandas, SINR drops, reconnections con timestamps
@@ -187,6 +187,8 @@ Toda la documentación extendida está en la **[Wiki del proyecto](docs/INDEX.md
 | [📥 Guía de Instalación](docs/INSTALLATION.md)   | Requisitos, instalación paso a paso, verificación         |
 | [📖 Guía de Usuario](docs/USER_GUIDE.md)         | Uso de cada pestaña, configuración, solución de problemas |
 | [🛠️ Guía de Desarrollo](docs/DEVELOPER_GUIDE.md) | Arquitectura, stack, cómo contribuir y extender           |
+| [🚨 Runbooks Operativos](docs/RUNBOOKS.md)       | Diagnóstico y recuperación de incidencias críticas        |
+| [🧪 Testing y Cobertura](docs/TESTING.md)        | Tests, gate de cobertura, módulos excluidos y CI          |
 
 ## 🏗️ Tecnologías
 
@@ -194,7 +196,7 @@ Toda la documentación extendida está en la **[Wiki del proyecto](docs/INDEX.md
 | ------------ | ------------------------------------------------------------------- |
 | **Backend**  | Python 3.12, FastAPI, Uvicorn, PyMAVLink, GStreamer, huawei-lte-api |
 | **Frontend** | React 18, Vite, i18next, WebSocket                                  |
-| **Infra**    | Nginx, systemd, NetworkManager, Tailscale, tc/CAKE, MPTCP, iptables |
+| **Infra**    | Nginx, systemd, NetworkManager, Tailscale, tc/CAKE, iptables        |
 
 ## 📄 Licencia
 
