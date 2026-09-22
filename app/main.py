@@ -72,6 +72,8 @@ router_service = None
 preferences_service = None
 video_service = None
 detected_board = None  # Board provider detection
+flight_logger_service = None  # FlightDataLogger (for clean shutdown)
+_background_tasks: list = []  # Tracked fire-and-forget asyncio tasks
 
 
 async def _startup_init_network_bridge(modem_provider, video_service, webrtc_service, wsm):
@@ -372,6 +374,8 @@ def _startup_init_core_services(provider_registry, preferences_service, loop):
 
     Returns (router_service, mavlink_service, video_service, streaming_config).
     """
+    global flight_logger_service
+
     # ── Routing & telemetry ───────────────────────────────────────────────────
     router_svc = get_router()
     mav_svc = MAVLinkBridge(websocket_manager, loop)
@@ -380,6 +384,7 @@ def _startup_init_core_services(provider_registry, preferences_service, loop):
     flight_prefs = preferences_service.get_all_preferences().get("flight_session", {})
     log_directory = flight_prefs.get("log_directory", "")
     flight_logger = FlightDataLogger(mav_svc, log_directory)
+    flight_logger_service = flight_logger
 
     modem_provider = provider_registry.get_modem_provider("huawei_e3372h")
     if modem_provider:
@@ -436,24 +441,21 @@ def _startup_init_core_services(provider_registry, preferences_service, loop):
 async def _lifespan_shutdown():
     """Clean shutdown of all application services."""
     _log_banner("🛑  FPV COPILOT SKY  —  SHUTTING DOWN")
-    try:
-        from app.services.modem_pool import get_modem_pool
 
-        await get_modem_pool().stop()
-    except Exception as e:
-        logger.debug("Shutdown: modem pool stop failed", exc_info=e)
+    # 1. Stop tracked background tasks first so they don't touch services
+    #    that are being torn down.
+    for task in _background_tasks:
+        task.cancel()
+    if _background_tasks:
+        await asyncio.gather(*_background_tasks, return_exceptions=True)
+        _background_tasks.clear()
+
+    # 2. Stop the autonomous monitors that consume modem/latency state
+    #    BEFORE stopping their producers.
     try:
         await stop_auto_failover()
     except Exception as e:
         logger.debug("Shutdown: auto-failover stop failed", exc_info=e)
-    try:
-        from app.services.policy_routing_manager import get_policy_routing_manager
-
-        policy_manager = get_policy_routing_manager()
-        if policy_manager._initialized:
-            await policy_manager.cleanup()
-    except Exception as e:
-        logger.debug("Shutdown: policy routing cleanup failed", exc_info=e)
     try:
         await get_network_event_bridge().stop()
     except Exception as e:
@@ -468,6 +470,29 @@ async def _lifespan_shutdown():
         await get_latency_monitor().stop()
     except Exception as e:
         logger.debug("Shutdown: latency monitor stop failed", exc_info=e)
+
+    # 3. Finalize any in-progress flight recording.
+    if flight_logger_service is not None:
+        try:
+            flight_logger_service.stop_session()
+        except Exception as e:
+            logger.debug("Shutdown: flight logger stop failed", exc_info=e)
+
+    # 4. Stop producers / lower layers.
+    try:
+        from app.services.modem_pool import get_modem_pool
+
+        await get_modem_pool().stop()
+    except Exception as e:
+        logger.debug("Shutdown: modem pool stop failed", exc_info=e)
+    try:
+        from app.services.policy_routing_manager import get_policy_routing_manager
+
+        policy_manager = get_policy_routing_manager()
+        if policy_manager._initialized:
+            await policy_manager.cleanup()
+    except Exception as e:
+        logger.debug("Shutdown: policy routing cleanup failed", exc_info=e)
     try:
         ws = get_webrtc_service()
         if ws:
@@ -532,7 +557,7 @@ async def lifespan(app: FastAPI):
 
     # ── Background tasks ──────────────────────────────────────────────────────
     router_service.set_status_callback(lambda: _broadcast_router_status(loop))
-    asyncio.create_task(periodic_stats_broadcast())
+    _background_tasks.append(asyncio.create_task(periodic_stats_broadcast()))
 
     # Probe encoder availability — gst-inspect-1.0 / v4l2-ctl chains must not
     # block the event loop so they run in the thread-pool executor.
@@ -545,7 +570,7 @@ async def lifespan(app: FastAPI):
         except Exception as _e:
             logger.warning(f"  Encoder probe error (non-fatal): {_e}")
 
-    asyncio.create_task(_probe_encoders_background())
+    _background_tasks.append(asyncio.create_task(_probe_encoders_background()))
 
     # Warm up video device inventory in background to reduce first-open latency.
     async def _warm_video_devices_background():
@@ -559,7 +584,7 @@ async def lifespan(app: FastAPI):
         except Exception as _e:
             logger.warning(f"  Video device warmup error (non-fatal): {_e}")
 
-    asyncio.create_task(_warm_video_devices_background())
+    _background_tasks.append(asyncio.create_task(_warm_video_devices_background()))
 
     if streaming_config and streaming_config.get("auto_start", False):
         logger.info("📹 Video auto-start enabled in preferences")

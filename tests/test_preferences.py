@@ -232,3 +232,38 @@ class TestPreferencesIntegration:
 
         assert len(errors) == 0
         assert operations == 100  # 5 threads * 20 operations
+
+
+class TestPreferencesAtomicSave:
+    """P6: preferences are written atomically and are not world-readable."""
+
+    def test_save_is_atomic_private_and_leaves_no_temp(self, tmp_path):
+        path = tmp_path / "preferences.json"
+        prefs = PreferencesService(config_path=str(path))
+
+        prefs.set_video_config({"width": 1234})
+
+        assert path.exists()
+        data = json.loads(path.read_text())
+        assert data["video"]["width"] == 1234
+        # 0600 (may hold secrets such as VPN provider settings)
+        assert (path.stat().st_mode & 0o777) == 0o600
+        # No leftover temp files from the atomic write
+        assert list(tmp_path.glob(".preferences.*")) == []
+
+    def test_concurrent_saves_keep_valid_json(self, tmp_path):
+        path = tmp_path / "preferences.json"
+        prefs = PreferencesService(config_path=str(path))
+
+        def worker(i):
+            for j in range(10):
+                prefs.set_video_config({"bitrate": 1000 + i * 100 + j})
+
+        threads = [threading.Thread(target=worker, args=(i,)) for i in range(4)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # File must always be valid JSON after concurrent atomic writes
+        json.loads(path.read_text())
