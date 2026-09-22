@@ -63,6 +63,7 @@ from app.security.auth import (  # noqa: E402
     is_auth_enabled,
     verify_token,
     extract_bearer_token,
+    extract_subprotocol_token,
     require_auth,
 )
 
@@ -705,13 +706,21 @@ app.include_router(experimental_routes.router)
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket, token: str | None = None):
     """Global WebSocket endpoint for real-time updates"""
+    chosen_subprotocol = None
     if is_auth_enabled():
-        candidate = token or extract_bearer_token(websocket.headers.get("authorization"))
+        subprotocols = websocket.scope.get("subprotocols") or []
+        candidate = (
+            token
+            or extract_bearer_token(websocket.headers.get("authorization"))
+            or extract_subprotocol_token(subprotocols)
+        )
         if not verify_token(candidate):
             await websocket.close(code=4401)
             return
+        # Echo the token subprotocol so the browser accepts the connection.
+        chosen_subprotocol = next((sp for sp in subprotocols if isinstance(sp, str) and sp.startswith("token.")), None)
 
-    await websocket_manager.connect(websocket)
+    await websocket_manager.connect(websocket, subprotocol=chosen_subprotocol)
 
     try:
         # Send initial status and telemetry

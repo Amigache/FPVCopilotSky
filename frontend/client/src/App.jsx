@@ -4,6 +4,7 @@ import Header from './components/Header/Header'
 import TabBar from './components/TabBar/TabBar'
 import ArmedBanner from './components/ArmedBanner/ArmedBanner'
 import Content from './components/Content/Content'
+import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary'
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { WebSocketProvider } from './contexts/WebSocketContext'
@@ -40,8 +41,8 @@ function App() {
     const handleExperimentalToggle = (event) => {
       setExperimentalTabEnabled(event.detail.enabled)
       // If disabling and currently on experimental tab, switch to dashboard
-      if (!event.detail.enabled && activeTab === 'experimental') {
-        setActiveTab('dashboard')
+      if (!event.detail.enabled) {
+        setActiveTab((prev) => (prev === 'experimental' ? 'dashboard' : prev))
       }
     }
 
@@ -49,7 +50,7 @@ function App() {
     return () => {
       window.removeEventListener('experimentalTabToggled', handleExperimentalToggle)
     }
-  }, [activeTab])
+  }, [])
 
   const allTabs = [
     { id: 'dashboard', label: t('tabs.dashboard') },
@@ -79,7 +80,9 @@ function App() {
                   <Header />
                   <TabBar tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
                   <ArmedBanner />
-                  <Content activeTab={activeTab} />
+                  <ErrorBoundary>
+                    <Content activeTab={activeTab} />
+                  </ErrorBoundary>
                 </div>
               </ParamCacheProvider>
             </WebSocketProvider>

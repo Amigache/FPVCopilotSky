@@ -60,3 +60,24 @@ class TestAuthEnabled:
         with pytest.raises(Exception):
             with client.websocket_connect("/ws"):
                 pytest.fail("WebSocket connection should have been rejected")
+
+    def test_websocket_accepts_token_via_subprotocol(self, client, monkeypatch):
+        monkeypatch.setenv("FPV_API_TOKEN", "s3cret")
+        with client.websocket_connect("/ws", subprotocols=["token.s3cret"]) as ws:
+            # The server echoes the token subprotocol so the browser accepts it.
+            assert getattr(ws, "accepted_subprotocol", None) == "token.s3cret"
+
+
+class TestSubprotocolToken:
+    def test_extracts_token(self):
+        from app.security.auth import extract_subprotocol_token
+
+        assert extract_subprotocol_token(["token.abc123"]) == "abc123"
+        assert extract_subprotocol_token(["other", "token.xyz", "token.second"]) == "xyz"
+
+    def test_returns_none_when_absent(self):
+        from app.security.auth import extract_subprotocol_token
+
+        assert extract_subprotocol_token([]) is None
+        assert extract_subprotocol_token(None) is None
+        assert extract_subprotocol_token(["chat", "v1"]) is None

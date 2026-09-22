@@ -72,6 +72,18 @@ def _is_public_path(path: str) -> bool:
     return path in PUBLIC_PATHS
 
 
+def extract_subprotocol_token(subprotocols) -> Optional[str]:
+    """Extract the API token from WebSocket subprotocols (``token.<value>``).
+
+    Browsers cannot set custom headers on a WebSocket, so the token can be sent
+    as a subprotocol instead of a query string (which leaks into logs/history).
+    """
+    for subprotocol in subprotocols or []:
+        if isinstance(subprotocol, str) and subprotocol.startswith("token."):
+            return subprotocol[len("token.") :]
+    return None
+
+
 async def require_auth(request: Request, call_next):
     """HTTP middleware enforcing the token on ``/api/*`` when enabled."""
     global _warned_disabled
