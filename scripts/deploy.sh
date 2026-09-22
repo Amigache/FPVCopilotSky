@@ -140,6 +140,11 @@ fi
 
 # Step 4: Enable and start services
 echo -e "\n${BLUE}🚀 Starting service...${NC}"
+
+# Pre-load the `ifb` module (used by CAKE ingress shaping). The privileged
+# helper cannot load modules (seccomp), so do it here as root. Best-effort.
+sudo modprobe ifb numifbs=4 2>/dev/null || true
+
 # Privileged helper first: the main service no longer uses sudo and relies on
 # /run/fpvcopilot-priv.sock for every privileged operation.
 sudo systemctl enable fpvcopilot-privd.service

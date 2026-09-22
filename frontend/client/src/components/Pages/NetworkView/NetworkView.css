@@ -84,8 +84,8 @@
   cursor: not-allowed;
 }
 
-/* Flight Mode Status Badge - informational only (auto-managed) */
-.flight-mode-badge {
+/* Network Optimization Status Badge - informational only (auto-managed) */
+.network-optimization-badge {
   display: inline-flex;
   align-items: center;
   padding: 5px 10px;
@@ -100,14 +100,14 @@
   cursor: default;
 }
 
-.flight-mode-badge.active {
+.network-optimization-badge.active {
   background: rgba(76, 175, 80, 0.15);
   border-color: rgba(76, 175, 80, 0.4);
   color: #81c784;
-  animation: pulse-flight 2s ease-in-out infinite;
+  animation: pulse-network-opt 2s ease-in-out infinite;
 }
 
-@keyframes pulse-flight {
+@keyframes pulse-network-opt {
   0%,
   100% {
     box-shadow: 0 0 4px rgba(76, 175, 80, 0.2);

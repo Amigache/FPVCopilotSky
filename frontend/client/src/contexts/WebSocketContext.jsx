@@ -129,12 +129,23 @@ export const WebSocketProvider = ({ children }) => {
 
     const baseUrl = getWebSocketUrl()
     const token = getAuthToken()
-    const wsUrl = token
-      ? `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`
-      : baseUrl
 
     try {
-      const ws = new WebSocket(wsUrl)
+      let ws
+      if (token) {
+        // Preferred: pass the token as a WebSocket subprotocol so it does not
+        // end up in the URL/query (nginx/access logs, history).
+        try {
+          ws = new WebSocket(baseUrl, [`token.${token}`])
+        } catch (_e) {
+          // Token not valid as a subprotocol → fall back to the query string.
+          ws = new WebSocket(
+            `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`
+          )
+        }
+      } else {
+        ws = new WebSocket(baseUrl)
+      }
 
       ws.onopen = () => {
         if (!isMountedRef.current) {

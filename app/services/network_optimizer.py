@@ -3,7 +3,7 @@ Network Optimizer Service
 Optimizes network configuration for FPV video streaming over 4G/LTE
 
 Features:
-- Flight Mode: Optimizes all network parameters for low-latency streaming
+- Network optimization: applies all network parameters for low-latency streaming on 4G/VPN
 - QoS management: DSCP marking for video traffic priority
 - MTU optimization: Sets optimal MTU for LTE (1420 bytes)
 - TCP tuning: Optimizes kernel parameters for streaming
@@ -20,12 +20,8 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class FlightModeConfig:
-    """Configuration for Flight Mode optimization"""
-
-    # Network Mode
-    force_4g_only: bool = True
-    lte_band_preset: str = "urban"  # B3+B7 for lowest latency
+class NetworkOptimizationConfig:
+    """Configuration for connection-driven network optimization (4G/VPN)."""
 
     # Interface optimization
     mtu: int = 1420  # Optimal for LTE (1500 - 80 bytes overhead)
@@ -70,9 +66,9 @@ class NetworkOptimizer:
     """Service for optimizing network for FPV video streaming"""
 
     def __init__(self):
-        self.flight_mode_active = False
+        self.optimizations_active = False
         self.original_settings = {}
-        self.config = FlightModeConfig()
+        self.config = NetworkOptimizationConfig()
 
     def _run_command(self, cmd: List[str], check: bool = True) -> tuple[str, str, int]:
         """Execute command via unified cmd layer (timeout=10s)."""
@@ -427,33 +423,29 @@ class NetworkOptimizer:
                     logger.warning(f"CAKE setup failed: {stderr}")
                     return False
 
-                # Apply CAKE on ingress via a per-interface IFB (download control)
-                self._run_command(
-                    ["sudo", "modprobe", "ifb", "numifbs=4"],
-                    check=False,
-                )
-                self._run_command(
-                    ["sudo", "ip", "link", "set", ifb, "up"],
-                    check=False,
-                )
+                # Apply CAKE on ingress via a per-interface IFB (download control).
+                # `ip link add <ifb> type ifb` autoloads the `ifb` module via the
+                # kernel if needed; we do NOT use `modprobe` because the
+                # privileged helper is not allowed to load kernel modules.
+                _, _, add_rc = self._run_command(["sudo", "ip", "link", "add", ifb, "type", "ifb"], check=False)
+                if add_rc != 0:
+                    # Usually "File exists"; verify the link really exists.
+                    _, _, show_rc = self._run_command(["ip", "link", "show", ifb], check=False)
+                    if show_rc != 0:
+                        logger.warning(
+                            "CAKE ingress unavailable: could not create IFB "
+                            "(preload the 'ifb' module at deploy time)",
+                            extra={"ifb": ifb},
+                        )
+                        return True  # egress CAKE is still applied
+                self._run_command(["sudo", "ip", "link", "set", ifb, "up"], check=False)
 
-                # Redirect ingress to IFB
-                self._run_command(
-                    ["sudo", "tc", "qdisc", "del", "dev", interface, "ingress"],
-                    check=False,
+                # Redirect ingress to IFB (log if it fails — no silent ingress loss)
+                self._run_command(["sudo", "tc", "qdisc", "del", "dev", interface, "ingress"], check=False)
+                _, ingress_err, ingress_rc = self._run_command(
+                    ["sudo", "tc", "qdisc", "add", "dev", interface, "ingress"]
                 )
-                self._run_command(
-                    [
-                        "sudo",
-                        "tc",
-                        "qdisc",
-                        "add",
-                        "dev",
-                        interface,
-                        "ingress",
-                    ]
-                )
-                self._run_command(
+                _, filter_err, filter_rc = self._run_command(
                     [
                         "sudo",
                         "tc",
@@ -479,6 +471,15 @@ class NetworkOptimizer:
                     ],
                     check=False,
                 )
+                if ingress_rc != 0 or filter_rc != 0:
+                    logger.warning(
+                        "CAKE ingress redirect failed",
+                        extra={
+                            "interface": interface,
+                            "ifb": ifb,
+                            "stderr": (ingress_err or filter_err or "")[:200],
+                        },
+                    )
 
                 # Apply CAKE on IFB (download direction)
                 self._run_command(
@@ -750,15 +751,15 @@ class NetworkOptimizer:
             logger.error(f"Error configuring VPN policy routing: {e}")
             return False
 
-    def enable_flight_mode(self) -> Dict:
+    def apply_network_optimizations(self) -> Dict:
         """
-        Enable Flight Mode - Full network optimization for FPV streaming
+        Apply full network optimization for FPV streaming on 4G/VPN links.
 
         Returns:
             Dict with success status and details of optimizations applied
         """
-        if self.flight_mode_active:
-            return {"success": True, "message": "Flight Mode already active", "active": True}
+        if self.optimizations_active:
+            return {"success": True, "message": "Network optimizations already active", "active": True}
 
         try:
             # Detect modem interface
@@ -766,7 +767,7 @@ class NetworkOptimizer:
             if not modem_interface:
                 return {"success": False, "message": "No modem interface detected (192.168.8.x)", "active": False}
 
-            logger.info(f"Enabling Flight Mode on interface {modem_interface}")
+            logger.info(f"Applying network optimizations on interface {modem_interface}")
 
             # Save current settings
             self._save_current_settings(modem_interface)
@@ -825,13 +826,13 @@ class NetworkOptimizer:
             ):
                 optimizations.append("VPN policy routing enabled (tunnel isolation)")
 
-            self.flight_mode_active = True
+            self.optimizations_active = True
 
-            logger.info(f"Flight Mode enabled: {', '.join(optimizations)}")
+            logger.info(f"Network optimizations applied: {', '.join(optimizations)}")
 
             return {
                 "success": True,
-                "message": "Flight Mode enabled",
+                "message": "Network optimizations applied",
                 "active": True,
                 "interface": modem_interface,
                 "optimizations": optimizations,
@@ -844,26 +845,26 @@ class NetworkOptimizer:
             }
 
         except Exception as e:
-            logger.error(f"Error enabling Flight Mode: {e}")
+            logger.error(f"Error applying network optimizations: {e}")
             return {"success": False, "message": f"Error: {str(e)}", "active": False}
 
-    def disable_flight_mode(self) -> Dict:
+    def revert_network_optimizations(self) -> Dict:
         """
-        Disable Flight Mode and restore original network settings
+        Revert network optimizations and restore original network settings
 
         Returns:
             Dict with success status
         """
-        if not self.flight_mode_active:
-            return {"success": True, "message": "Flight Mode not active", "active": False}
+        if not self.optimizations_active:
+            return {"success": True, "message": "Network optimizations not active", "active": False}
 
         try:
             modem_interface = self._get_modem_interface()
             if not modem_interface:
-                logger.warning("Modem interface not found during disable")
+                logger.warning("Modem interface not found during revert")
                 # Still try to clean up
 
-            logger.info(f"Disabling Flight Mode on interface {modem_interface}")
+            logger.info(f"Reverting network optimizations on interface {modem_interface}")
 
             # Restore original MTU
             if modem_interface and "mtu" in self.original_settings:
@@ -891,23 +892,23 @@ class NetworkOptimizer:
             if modem_interface and self.config.enable_vpn_policy_routing and not self._policy_routing_managed():
                 self._configure_vpn_policy_routing(modem_interface, enable=False)
 
-            self.flight_mode_active = False
+            self.optimizations_active = False
             self.original_settings = {}
 
-            logger.info("Flight Mode disabled: settings restored")
+            logger.info("Network optimizations reverted: settings restored")
 
-            return {"success": True, "message": "Flight Mode disabled, settings restored", "active": False}
+            return {"success": True, "message": "Network optimizations reverted, settings restored", "active": False}
 
         except Exception as e:
-            logger.error(f"Error disabling Flight Mode: {e}")
-            return {"success": False, "message": f"Error: {str(e)}", "active": self.flight_mode_active}
+            logger.error(f"Error reverting network optimizations: {e}")
+            return {"success": False, "message": f"Error: {str(e)}", "active": self.optimizations_active}
 
     def get_status(self) -> Dict:
-        """Get current Flight Mode status"""
+        """Get current network optimization status"""
         modem_interface = self._get_modem_interface()
 
         return {
-            "active": self.flight_mode_active,
+            "active": self.optimizations_active,
             "interface": modem_interface,
             "config": {
                 "mtu": self.config.mtu,
@@ -920,7 +921,7 @@ class NetworkOptimizer:
                 "cake_bandwidth_down": self.config.cake_bandwidth_down_mbit,
                 "vpn_policy_routing": self.config.enable_vpn_policy_routing,
             },
-            "original_settings": self.original_settings if self.flight_mode_active else {},
+            "original_settings": self.original_settings if self.optimizations_active else {},
         }
 
     def get_network_metrics(self) -> Dict:

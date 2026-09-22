@@ -16,12 +16,12 @@ from app.utils.cmd import run_cmd, run_cmd_async
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Detect at module-load time whether the ping binary has cap_net_raw / setuid.
-# On some boards (e.g. Radxa) ping ships without either, so we must prefix
-# the command with "sudo" as a fallback (sudoers entry: NOPASSWD: /usr/bin/ping).
-# The result is cached in _PING_PREFIX so the check runs only once.
+# Detect whether the ping binary has cap_net_raw / setuid. On some boards
+# (e.g. Radxa) ping ships without either, so we must prefix the command with
+# "sudo" as a fallback (sudoers entry: NOPASSWD: /usr/bin/ping). Detection is
+# lazy (first use) so importing this module never runs a subprocess at startup.
 # ---------------------------------------------------------------------------
-_PING_PREFIX: List[str] = []  # [] → plain "ping"; ["sudo"] → "sudo ping"
+_PING_PREFIX: Optional[List[str]] = None  # None → not detected yet
 
 
 def _detect_ping_prefix() -> List[str]:
@@ -42,7 +42,12 @@ def _detect_ping_prefix() -> List[str]:
     return []
 
 
-_PING_PREFIX = _detect_ping_prefix()
+def _get_ping_prefix() -> List[str]:
+    """Lazily detect (and cache) the ping prefix on first use."""
+    global _PING_PREFIX
+    if _PING_PREFIX is None:
+        _PING_PREFIX = _detect_ping_prefix()
+    return _PING_PREFIX
 
 
 @dataclass
@@ -197,7 +202,7 @@ class LatencyMonitor:
                 interface=interface,
             )
 
-        cmd = _PING_PREFIX + ["ping", "-c", "1", "-W", str(int(self.timeout))]
+        cmd = _get_ping_prefix() + ["ping", "-c", "1", "-W", str(int(self.timeout))]
 
         # Bind to specific interface if provided
         if interface:

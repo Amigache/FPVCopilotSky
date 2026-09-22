@@ -35,7 +35,7 @@ async def get_flight_session_status():
         Flight session statistics and status (active/stopped/no_session)
     """
     try:
-        # Get default modem provider automatically (like flight-mode does)
+        # Get default modem provider automatically (like the link-profile manager does)
         registry = get_provider_registry()
         provider = registry.get_modem_provider("huawei_e3372h")
 

@@ -213,7 +213,6 @@ FPVCopilotSky/
 │   │       │   ├── __init__.py  # Router principal
 │   │       │   ├── common.py    # Utilidades compartidas
 │   │       │   ├── status.py    # Estado y dashboard
-│   │       │   ├── flight_mode.py    # Optimización FPV
 │   │       │   ├── flight_session.py # Grabación de vuelo
 │   │       │   ├── latency.py   # Monitoreo de latencia
 │   │       │   ├── failover.py  # Auto-failover
@@ -795,8 +794,8 @@ test("renders header title", () => {
 
 ### Objetivos de coverage
 
-- **Backend**: ≥ 20 % (configurado en `pyproject.toml` → `fail_under`)
-- **Frontend**: ≥ 60 %
+- **Backend**: ≥ 50 % (`pyproject.toml` → `fail_under`; actual ≈ 52 %)
+- **Frontend**: umbrales en `vitest.config.js` (statements 40 / branches 70 / functions 49 / lines 40)
 
 ### Tests de Red Avanzada (FASE 1-3)
 

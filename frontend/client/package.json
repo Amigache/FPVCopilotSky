@@ -1,7 +1,7 @@
 {
   "name": "fpv-copilot-sky-webui",
   "private": true,
-  "version": "1.2.2",
+  "version": "1.3.0",
   "description": "FPV Copilot Sky WebUI - Ground Station Interface",
   "type": "module",
   "scripts": {
@@ -11,9 +11,9 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write \"src/**/*.{js,jsx,css,json}\"",
     "format:check": "prettier --check \"src/**/*.{js,jsx,css,json}\"",
-    "test": "vitest",
+    "test": "vitest run",
     "test:ui": "vitest --ui",
-    "test:coverage": "vitest --coverage",
+    "test:coverage": "vitest run --coverage",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -5,7 +5,7 @@
 FPV Copilot Sky convierte un SBC Linux (Radxa Zero, Raspberry Pi, Orange Pi…) en un hub inteligente que gestiona telemetría MAVLink, streaming de video en baja latencia y conectividad 4G/VPN — todo controlable desde una interfaz web moderna.
 
 ![CI Status](https://github.com/Amigache/FPVCopilotSky/workflows/CI%20-%20Lint%20&%20Test/badge.svg)
-![Version](https://img.shields.io/badge/version-1.2.2-blue)
+![Version](https://img.shields.io/badge/version-1.3.0-blue)
 ![Platform](https://img.shields.io/badge/platform-Linux_ARM/x86-green)
 ![License](https://img.shields.io/badge/license-MIT-yellow)
 ![Python](https://img.shields.io/badge/python-3.12+-blue)
@@ -58,7 +58,7 @@ FPV Copilot Sky convierte un SBC Linux (Radxa Zero, Raspberry Pi, Orange Pi…) 
 ### 🌐 **Red inteligente - Auto-failover WiFi ⇄ 4G**
 
 - **Priorización dinámica** — Cambia entre WiFi y 4G como ruta principal con un toggle; actualiza métricas automáticamente
-- **Flight Mode** — Activa optimizaciones de red completas para vuelo (tc qdisc, sysctls, prioridades de ruta)
+- **Optimización de red automática** — En enlaces 4G/VPN aplica MTU, CAKE, DSCP y tuning TCP automáticamente según el **perfil de enlace** (sin modo manual)
 - **Calidad de Red en tiempo real** — Score compuesto (0-100) basado en SINR, RSRQ, RTT, jitter y packet loss
 - **Bridge de eventos** — Conecta la calidad de red con el pipeline de video para adaptar parámetros automáticamente
 - **Recomendaciones adaptativas** — El sistema sugiere bitrate, resolución y FPS óptimos según la calidad detectada

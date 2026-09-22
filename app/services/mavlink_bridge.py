@@ -130,6 +130,7 @@ class MAVLinkBridge:
         self._param_list_last_activity: float = 0.0
         self._param_list_expected_count: int = 0
         self._param_list_indexes: set[int] = set()
+        self._param_list_lock = threading.Lock()  # guards the bulk-collector state
 
         # Full-parameter cache (loaded via PARAM_REQUEST_LIST)
         self._param_cache: Dict[str, Dict[str, Any]] = {}
@@ -706,20 +707,21 @@ class MAVLinkBridge:
 
                 # Signal bulk-list collector
                 if self._param_list_active:
-                    self._param_list_params[param_id] = entry
-                    self._param_list_last_activity = time.time()
-                    if isinstance(msg.param_index, int) and msg.param_index >= 0:
-                        self._param_list_indexes.add(int(msg.param_index))
-                    if msg.param_count > 0:
-                        self._param_list_expected_count = max(self._param_list_expected_count, int(msg.param_count))
-                    # Some FCs can occasionally report non-usable indexes for a few params.
-                    # Consider the transfer complete when either unique indexes OR unique params
-                    # reaches the expected total.
-                    if self._param_list_expected_count > 0 and (
-                        len(self._param_list_indexes) >= self._param_list_expected_count
-                        or len(self._param_list_params) >= self._param_list_expected_count
-                    ):
-                        self._param_list_done.set()
+                    with self._param_list_lock:
+                        self._param_list_params[param_id] = entry
+                        self._param_list_last_activity = time.time()
+                        if isinstance(msg.param_index, int) and msg.param_index >= 0:
+                            self._param_list_indexes.add(int(msg.param_index))
+                        if msg.param_count > 0:
+                            self._param_list_expected_count = max(self._param_list_expected_count, int(msg.param_count))
+                        # Some FCs can occasionally report non-usable indexes for a few params.
+                        # Consider the transfer complete when either unique indexes OR unique params
+                        # reaches the expected total.
+                        if self._param_list_expected_count > 0 and (
+                            len(self._param_list_indexes) >= self._param_list_expected_count
+                            or len(self._param_list_params) >= self._param_list_expected_count
+                        ):
+                            self._param_list_done.set()
             except Exception as e:
                 logger.warning("Error processing PARAM_VALUE", extra={"error": str(e)})
 
@@ -941,12 +943,13 @@ class MAVLinkBridge:
         if not self.connected or not self.serial_port:
             return {"success": False, "error": "Not connected"}
 
-        self._param_list_active = True
-        self._param_list_params = {}
-        self._param_list_done.clear()
-        self._param_list_last_activity = time.time()
-        self._param_list_expected_count = 0
-        self._param_list_indexes = set()
+        with self._param_list_lock:
+            self._param_list_active = True
+            self._param_list_params = {}
+            self._param_list_done.clear()
+            self._param_list_last_activity = time.time()
+            self._param_list_expected_count = 0
+            self._param_list_indexes = set()
 
         try:
             # Send PARAM_REQUEST_LIST
@@ -966,10 +969,12 @@ class MAVLinkBridge:
             retries = 0
             max_retries = 2
             while time.time() - start < timeout:
-                expected = self._param_list_expected_count
-                received = len(self._param_list_indexes)
-                got = len(self._param_list_params)
-                idle_s = time.time() - self._param_list_last_activity
+                with self._param_list_lock:
+                    expected = self._param_list_expected_count
+                    received = len(self._param_list_indexes)
+                    got = len(self._param_list_params)
+                    idle_s = time.time() - self._param_list_last_activity
+                    params_snapshot = dict(self._param_list_params)
 
                 if expected > 0 and max(received, got) >= expected:
                     logger.info(
@@ -978,7 +983,7 @@ class MAVLinkBridge:
                     )
                     return {
                         "success": True,
-                        "params": dict(self._param_list_params),
+                        "params": params_snapshot,
                         "expected_count": expected,
                         "received_indexes": received,
                         "received_params": got,
@@ -998,7 +1003,7 @@ class MAVLinkBridge:
                     )
                     return {
                         "success": True,
-                        "params": dict(self._param_list_params),
+                        "params": params_snapshot,
                         "expected_count": expected,
                         "received_indexes": received,
                         "received_params": got,
@@ -1023,13 +1028,16 @@ class MAVLinkBridge:
                     )
                     with self.serial_lock:
                         self.serial_port.write(retry_req.pack(self.mav_sender))
-                    self._param_list_last_activity = time.time()
+                    with self._param_list_lock:
+                        self._param_list_last_activity = time.time()
 
                 time.sleep(0.05)
 
-            expected = self._param_list_expected_count
-            received = len(self._param_list_indexes)
-            got = len(self._param_list_params)
+            with self._param_list_lock:
+                expected = self._param_list_expected_count
+                received = len(self._param_list_indexes)
+                got = len(self._param_list_params)
+                params_snapshot = dict(self._param_list_params)
             partial = expected > 0 and max(received, got) < expected
             logger.warning(
                 "PARAM_REQUEST_LIST timeout",
@@ -1037,14 +1045,15 @@ class MAVLinkBridge:
             )
             return {
                 "success": got > 0,
-                "params": dict(self._param_list_params),
+                "params": params_snapshot,
                 "expected_count": expected,
                 "received_indexes": received,
                 "received_params": got,
                 "partial": partial,
             }
         finally:
-            self._param_list_active = False
+            with self._param_list_lock:
+                self._param_list_active = False
 
     def get_parameters_batch(
         self,
@@ -1193,11 +1202,19 @@ class MAVLinkBridge:
         the dirty event. This thread performs the deepcopy + JSON broadcast.
         """
         while self.running:
-            # Wait up to interval for a change — naturally rate-limits to
-            # 1 / telemetry_broadcast_interval Hz.
-            if not self._telemetry_dirty.wait(timeout=self.telemetry_broadcast_interval):
+            # When nobody is listening, slow the idle wakeups down (10 Hz -> 1 Hz)
+            # and just drain the dirty flag; the WebSocket endpoint pushes the
+            # current snapshot when a client connects.
+            has_clients = bool(self.websocket_manager and self.websocket_manager.has_clients)
+            timeout = self.telemetry_broadcast_interval if has_clients else 1.0
+
+            if not self._telemetry_dirty.wait(timeout=timeout):
                 continue
             self._telemetry_dirty.clear()
+
+            if not has_clients:
+                continue
+
             try:
                 self._broadcast_telemetry()
             except Exception as e:

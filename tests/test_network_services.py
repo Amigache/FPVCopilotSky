@@ -147,12 +147,12 @@ class TestNetworkOptimizer:
         optimizer = NetworkOptimizer()
 
         assert optimizer is not None
-        assert hasattr(optimizer, "enable_flight_mode")
-        assert hasattr(optimizer, "disable_flight_mode")
+        assert hasattr(optimizer, "apply_network_optimizations")
+        assert hasattr(optimizer, "revert_network_optimizations")
 
     @patch("app.services.network_optimizer.NetworkOptimizer._run_command")
-    def test_enable_flight_mode(self, mock_run_command):
-        """Test enabling Flight Mode"""
+    def test_apply_network_optimizations(self, mock_run_command):
+        """Test applying network optimizations"""
         from app.services.network_optimizer import NetworkOptimizer
 
         # Mock _run_command to return success
@@ -160,7 +160,7 @@ class TestNetworkOptimizer:
         mock_run_command.return_value = ("192.168.8.1", "", 0)
 
         optimizer = NetworkOptimizer()
-        result = optimizer.enable_flight_mode()
+        result = optimizer.apply_network_optimizations()
 
         # Should return result dict
         assert isinstance(result, dict)
@@ -168,8 +168,8 @@ class TestNetworkOptimizer:
         assert "active" in result
 
     @patch("app.services.network_optimizer.NetworkOptimizer._run_command")
-    def test_disable_flight_mode(self, mock_run_command):
-        """Test disabling Flight Mode"""
+    def test_revert_network_optimizations(self, mock_run_command):
+        """Test reverting network optimizations"""
         from app.services.network_optimizer import NetworkOptimizer
 
         # Mock _run_command to return success
@@ -178,17 +178,17 @@ class TestNetworkOptimizer:
 
         optimizer = NetworkOptimizer()
 
-        # Enable first
-        optimizer.flight_mode_active = True
+        # Apply first
+        optimizer.optimizations_active = True
         optimizer.original_settings = {"mtu": 1500}
 
-        # Then disable
-        result = optimizer.disable_flight_mode()
+        # Then revert
+        result = optimizer.revert_network_optimizations()
 
         assert isinstance(result, dict)
         assert "success" in result
         if result.get("success"):
-            assert optimizer.flight_mode_active is False
+            assert optimizer.optimizations_active is False
 
     def test_get_status(self):
         """Test getting optimizer status"""
@@ -297,22 +297,22 @@ class TestNetworkAPIEndpoints:
                 response = client.post(route)
             assert response.status_code != 404, f"Route {route} should exist"
 
-    def test_flight_mode_endpoints_exist(self):
-        """Test that Flight Mode endpoints are defined"""
+    def test_link_profile_endpoints_exist(self):
+        """Test that Link Profile endpoints (connection adaptation) are defined"""
         from fastapi.testclient import TestClient
         from app.main import app
 
         client = TestClient(app)
 
         routes = [
-            "/api/network/flight-mode/status",
-            "/api/network/flight-mode/enable",
-            "/api/network/flight-mode/disable",
-            "/api/network/flight-mode/metrics",
+            "/api/network/link-profile",
+            "/api/network/link-profile/override",
+            "/api/network/link-profile/settings",
+            "/api/network/link-profile/apply",
         ]
 
         for route in routes:
-            if "status" in route or "metrics" in route:
+            if route.endswith("link-profile"):
                 response = client.get(route)
             else:
                 response = client.post(route)

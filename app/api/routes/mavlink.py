@@ -218,11 +218,16 @@ def get_params_cache_status(req: Request):
         cache_count = len(mavlink_service._param_cache)
         loaded = mavlink_service._param_cache_loaded
 
-    expected = mavlink_service._param_list_expected_count
+    with mavlink_service._param_list_lock:
+        expected = mavlink_service._param_list_expected_count
+        bulk_active = mavlink_service._param_list_active
+        bulk_indexes = len(mavlink_service._param_list_indexes)
+        bulk_params = len(mavlink_service._param_list_params)
+
     # Keep progress consistent with completion logic in bridge:
     # during active fetch, count whichever is more complete.
-    if mavlink_service._param_list_active:
-        loaded_count = max(len(mavlink_service._param_list_indexes), len(mavlink_service._param_list_params))
+    if bulk_active:
+        loaded_count = max(bulk_indexes, bulk_params)
     else:
         loaded_count = cache_count
 

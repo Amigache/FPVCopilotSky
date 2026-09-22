@@ -30,9 +30,13 @@ class WebSocketManager:
         """Get the number of connected clients"""
         return len(self.active_connections)
 
-    async def connect(self, websocket: WebSocket):
-        """Accept and register a new WebSocket connection"""
-        await websocket.accept()
+    async def connect(self, websocket: WebSocket, subprotocol: str = None):
+        """Accept and register a new WebSocket connection.
+
+        ``subprotocol`` is echoed back when the client offered one (used to pass
+        the API token without putting it in the URL query string).
+        """
+        await websocket.accept(subprotocol=subprotocol)
         self.active_connections.append(websocket)
         # Clear dedup cache so the new client receives a complete state refresh
         # on the very next broadcast tick.

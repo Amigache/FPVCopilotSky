@@ -126,6 +126,7 @@ class PreferencesService:
                 "forced_link_profile": "",  # "", "lan", "modem", "vpn"
                 "link_profile_auto_apply": True,  # apply detected profile automatically
                 "link_profile_telemetry_apply": False,  # opt-in: also adapt FC stream rates
+                "auto_network_optimization": True,  # MTU/CAKE/DSCP/TCP on 4G/VPN (was "Flight Mode")
                 "link_profiles": default_link_profiles(),
             },
             "flight_session": {
@@ -133,7 +134,7 @@ class PreferencesService:
                 "log_directory": os.path.expanduser("~/flight-records"),  # Default log directory
             },
             "ui": {"language": "es", "theme": "dark"},
-            "system": {"version": "1.2.2", "first_run": True},
+            "system": {"version": "1.3.0", "first_run": True},
             "extras": {
                 "experimental_tab_enabled": False,  # Hidden by default
             },
@@ -171,16 +172,43 @@ class PreferencesService:
                 base[key] = value
 
     def _save(self):
-        """Save preferences to file with synchronization."""
+        """Atomically save preferences to file with synchronization.
+
+        Writes to a temp file in the same directory, fsyncs it, then
+        ``os.replace()`` — so a crash mid-write can never corrupt the existing
+        config. The file is created with 0600 (it may hold secrets such as VPN
+        provider settings).
+        """
         try:
             with self._lock:
-                with open(self._config_path, "w") as f:
-                    json.dump(self._preferences, f, indent=2)
-                    # Force OS to write to disk while file is still open
-                    f.flush()
-                    import os
+                import os
+                import tempfile
 
-                    os.fsync(f.fileno())
+                directory = os.path.dirname(self._config_path) or "."
+                fd, tmp_path = tempfile.mkstemp(prefix=".preferences.", suffix=".tmp", dir=directory)
+                try:
+                    with os.fdopen(fd, "w") as f:
+                        json.dump(self._preferences, f, indent=2)
+                        f.flush()
+                        os.fsync(f.fileno())
+                    os.chmod(tmp_path, 0o600)
+                    os.replace(tmp_path, self._config_path)
+                finally:
+                    if os.path.exists(tmp_path):
+                        try:
+                            os.remove(tmp_path)
+                        except OSError:
+                            pass
+
+                # Best-effort directory fsync so the rename is durable.
+                try:
+                    dir_fd = os.open(directory, os.O_RDONLY)
+                    try:
+                        os.fsync(dir_fd)
+                    finally:
+                        os.close(dir_fd)
+                except OSError:
+                    pass
         except Exception as e:
             logger.error("Failed to save preferences", extra={"error": str(e)})
 

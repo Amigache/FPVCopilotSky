@@ -8,6 +8,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 from typing import Literal, Optional
+import asyncio
 import re
 import uuid
 import logging
@@ -201,7 +202,7 @@ async def add_output(request: AddOutputRequest, req: Request) -> JSONResponse:
         )
 
         # Add the output (auto_start=True will also start it)
-        success, message = _router_service.add_output(config)
+        success, message = await asyncio.to_thread(_router_service.add_output, config)
 
         if not success:
             logger.error(f"Failed to add output: {message}")
@@ -273,7 +274,7 @@ async def update_output(output_id: str, request: UpdateOutputRequest, req: Reque
                     )
 
         # Update output
-        success, message = _router_service.update_output(output_id, updated_data)
+        success, message = await asyncio.to_thread(_router_service.update_output, output_id, updated_data)
 
         if not success:
             logger.error(f"Failed to update output {output_id}: {message}")
@@ -314,7 +315,7 @@ async def remove_output(output_id: str, request: Request) -> JSONResponse:
                 content={"success": False, "error": translate("router.output_not_found", lang, output_id=output_id)},
             )
 
-        success, message = _router_service.remove_output(output_id)
+        success, message = await asyncio.to_thread(_router_service.remove_output, output_id)
 
         if not success:
             logger.error(f"Failed to remove output {output_id}: {message}")
@@ -362,7 +363,7 @@ async def restart_router(request: Request) -> JSONResponse:
                 status_code=500, content={"success": False, "error": translate("router.service_not_initialized", lang)}
             )
 
-        success, message = _router_service.restart()
+        success, message = await asyncio.to_thread(_router_service.restart)
 
         if not success:
             logger.error(f"Failed to restart router: {message}")
@@ -399,7 +400,7 @@ async def restart_output(output_id: str, request: Request) -> JSONResponse:
                 content={"success": False, "error": translate("router.output_not_found", lang, output_id=output_id)},
             )
 
-        success, message = _router_service.restart_output(output_id)
+        success, message = await asyncio.to_thread(_router_service.restart_output, output_id)
 
         if not success:
             logger.error(f"Failed to restart output {output_id}: {message}")

@@ -649,17 +649,17 @@ class NetworkEventBridge:
         a common situation in FPV setups where wlan0 connects to a local AP with
         no internet.  Pings are bound to the interface via '-I'.
         """
-        gateway = self._get_gateway_for_interface(interface)
+        gateway = await asyncio.to_thread(self._get_gateway_for_interface, interface)
         if not gateway:
             return None
 
-        from app.services.latency_monitor import _PING_PREFIX
+        from app.services.latency_monitor import _get_ping_prefix
 
         latencies = []
         attempts = 3
         for _ in range(attempts):
             try:
-                ping_cmd = _PING_PREFIX + ["ping", "-c", "1", "-W", "2", "-I", interface, gateway]
+                ping_cmd = _get_ping_prefix() + ["ping", "-c", "1", "-W", "2", "-I", interface, gateway]
                 proc = await asyncio.create_subprocess_exec(
                     *ping_cmd,
                     stdout=asyncio.subprocess.PIPE,

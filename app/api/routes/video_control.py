@@ -1,5 +1,6 @@
 """Video streaming control routes"""
 
+import asyncio
 import logging
 
 from fastapi import APIRouter, HTTPException, Request
@@ -31,7 +32,7 @@ async def start_streaming(request: Request):
         )
 
     try:
-        result = _video_service.start()
+        result = await asyncio.to_thread(_video_service.start)
     except (AttributeError, TypeError, RuntimeError, ValueError, KeyError) as e:
         logger.error(
             f"Video service error in start_streaming: {type(e).__name__}: {e}",
@@ -56,7 +57,7 @@ async def stop_streaming(request: Request):
         )
 
     try:
-        result = _video_service.stop()
+        result = await asyncio.to_thread(_video_service.stop)
     except (AttributeError, TypeError, RuntimeError, ValueError, KeyError) as e:
         logger.error(
             f"Video service error in stop_streaming: {type(e).__name__}: {e}",
@@ -81,7 +82,7 @@ async def restart_streaming(request: Request):
         )
 
     try:
-        result = _video_service.restart()
+        result = await asyncio.to_thread(_video_service.restart)
     except (AttributeError, TypeError, RuntimeError, ValueError, KeyError) as e:
         logger.error(
             f"Video service error in restart_streaming: {type(e).__name__}: {e}",

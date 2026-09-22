@@ -1,0 +1,40 @@
+.error-boundary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  min-height: 60vh;
+  padding: 2rem;
+  text-align: center;
+  color: #e6e9ef;
+}
+
+.error-boundary h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: #ffb3b8;
+}
+
+.error-boundary-message {
+  max-width: 60ch;
+  margin: 0;
+  font-family: monospace;
+  font-size: 0.85rem;
+  color: #9aa3b2;
+  word-break: break-word;
+}
+
+.error-boundary-reload {
+  padding: 0.6rem 1.2rem;
+  border: 1px solid rgba(79, 195, 247, 0.5);
+  border-radius: 8px;
+  background: rgba(79, 195, 247, 0.12);
+  color: #4fc3f7;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.error-boundary-reload:hover {
+  background: rgba(79, 195, 247, 0.22);
+}
