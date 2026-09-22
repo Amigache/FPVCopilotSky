@@ -301,26 +301,26 @@ async def get_dashboard():
             except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
                 logger.debug(f"Could not get HiLink modem data: {e}")
 
-        # Get flight mode status
-        flight_mode_status = {"active": False}
+        # Network optimization status (connection-driven, replaces "Flight Mode")
+        network_optimization = {"active": False}
         try:
             from app.services.network_optimizer import get_network_optimizer
 
-            optimizer = get_network_optimizer()
-            optimizer_status = optimizer.get_status()
+            optimizer_status = get_network_optimizer().get_status()
 
-            flight_mode_status = {
+            network_optimization = {
                 "active": optimizer_status["active"],
-                "network_optimizer": optimizer_status["active"],
+                "interface": optimizer_status.get("interface"),
+                "config": optimizer_status.get("config", {}),
             }
         except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
-            logger.debug(f"Could not get flight mode status: {e}")
+            logger.debug(f"Could not get network optimization status: {e}")
 
         return {
             "success": True,
             "network": network_status,
             "hilink": hilink_status,
-            "flight_mode": flight_mode_status,
+            "network_optimization": network_optimization,
         }
 
     except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:

@@ -269,35 +269,22 @@ El sistema gestiona automáticamente la prioridad de las interfaces:
 - **Modem forzado**: prioriza 4G siempre
 - **WiFi forzado**: prioriza WiFi siempre
 
-### Flight Mode (Modo Vuelo) 🛩️
+### Optimización de red automática (4G/VPN) ⚙️
 
-**Flight Mode** es una optimización integral del sistema para maximizar la calidad del streaming por 4G. Combina configuraciones del modem con ajustes del sistema operativo.
+Cuando el **perfil de enlace** detecta 4G/LTE o VPN, aplica automáticamente optimizaciones de red a nivel de sistema para maximizar la calidad del streaming. Al volver a LAN, se revierten. No hay modo manual.
 
-**Activación**: Botón **Flight Mode** en el banner de la pestaña Red (aparece con fondo naranja cuando está activo).
+**Qué aplica**:
 
-**Optimizaciones aplicadas**:
+| Componente | Ajuste                                 | Beneficio                       |
+| ---------- | -------------------------------------- | ------------------------------- |
+| Red        | MTU 1420 (módem) / 1280 (VPN)          | Evita fragmentación             |
+| Red        | QoS DSCP EF (46) en puertos de vídeo   | Prioridad máxima para el stream |
+| TCP        | TCP BBR congestion control             | Mejor throughput en pérdidas    |
+| TCP        | Buffers 25 MB (send/recv)              | Manejo de ráfagas               |
+| Power      | Power saving OFF                       | Latencia consistente            |
+| CAKE       | Cola anti-bufferbloat (auto-calibrada) | Menos latencia bajo carga       |
 
-| Componente | Ajuste                            | Beneficio                       |
-| ---------- | --------------------------------- | ------------------------------- |
-| Modem      | 4G Only Mode (evita caídas a 3G)  | Latencia estable                |
-| Modem      | Bandas optimizadas (B3+B7 España) | Máxima velocidad en ciudad      |
-| Red        | MTU 1420 (evita fragmentación)    | -15% latencia                   |
-| Red        | QoS DSCP EF (46) en puertos video | Prioridad máxima para el stream |
-| TCP        | TCP BBR congestion control        | Mejor throughput en pérdidas    |
-| TCP        | Buffers 25MB (send/recv)          | Manejo de ráfagas               |
-| Power      | Ethernet power saving OFF         | Latencia consistente            |
-
-**Cuándo usar Flight Mode**:
-
-- ✅ Vuelos FPV por 4G donde la latencia es crítica
-- ✅ Streaming en áreas urbanas con bandas B3+B7 disponibles
-- ✅ Cuando detectes micro-cortes o jitter en el video
-
-**Cuándo NO usar Flight Mode**:
-
-- ❌ En zonas rurales con solo banda B20 (desactiva B20)
-- ❌ Si tu operadora no usa B3+B7
-- ❌ Streaming por WiFi (las optimizaciones son específicas para 4G)
+**Se activa sola** al estar en 4G/VPN (badge “⚙️ Red” en la pestaña Red). Solo requiere que el **perfil** de enlace sea `modem` o `vpn`; la preferencia `network.auto_network_optimization` (ON por defecto) la controla.
 
 **Métricas**: El botón muestra métricas en tiempo real cuando está activo (buffer sizes, TCP algorithm, MTU actual).
 
@@ -469,7 +456,7 @@ curl -X POST http://IP_PLACA:8000/api/network/bridge/stop
 
 CAKE (Common Applications Kept Enhanced) es un algoritmo de control de colas que **reduce drásticamente el bufferbloat** en enlaces 4G, mejorando la latencia del video hasta un 40%.
 
-**Activación**: Se configura automáticamente con Flight Mode cuando `enable_cake: true`.
+**Activación**: Se configura automáticamente con la optimización de red 4G/VPN cuando `enable_cake: true`.
 
 **Qué hace**:
 

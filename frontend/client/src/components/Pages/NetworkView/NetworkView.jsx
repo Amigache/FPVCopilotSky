@@ -31,8 +31,8 @@ const NetworkView = () => {
   const [wifiScanning, setWifiScanning] = useState(false)
   const [changingMode, setChangingMode] = useState(false)
 
-  // Flight Mode
-  const [flightMode, setFlightMode] = useState(null)
+  // Network optimization (connection-driven; was "Flight Mode")
+  const [networkOptimization, setNetworkOptimization] = useState(null)
 
   // Network Quality Bridge (Self-healing streaming)
   const [bridgeStatus, setBridgeStatus] = useState({
@@ -56,7 +56,7 @@ const NetworkView = () => {
   // Mode Change Confirmation Modal
   const [modeChangeModal, setModeChangeModal] = useState({ open: false, targetMode: '' })
 
-  // Load unified dashboard data (combines network, modem, wifi, flight mode)
+  // Load unified dashboard data (combines network, modem, wifi, optimization)
   const loadDashboard = useCallback(async (forceRefresh = false) => {
     try {
       const url = forceRefresh
@@ -77,8 +77,8 @@ const NetworkView = () => {
         if (data.wifi_networks) {
           setWifiNetworks(data.wifi_networks)
         }
-        if (data.flight_mode) {
-          setFlightMode(data.flight_mode)
+        if (data.network_optimization) {
+          setNetworkOptimization(data.network_optimization)
         }
 
         return data
@@ -110,7 +110,7 @@ const NetworkView = () => {
     const loadAll = async () => {
       setLoading(true)
       setWifiScanning(true)
-      // Load dashboard (network status, modem, flight mode - NO WiFi scan)
+      // Load dashboard (network status, modem, network optimization - NO WiFi scan)
       await loadDashboard(true)
       setLoading(false)
       // Scan WiFi networks separately (only real scan trigger)
@@ -360,14 +360,14 @@ const NetworkView = () => {
             📶 4G
           </button>
           <span
-            className={`flight-mode-badge ${flightMode?.flight_mode_active ? 'active' : ''}`}
+            className={`network-optimization-badge ${networkOptimization?.active ? 'active' : ''}`}
             title={
-              flightMode?.flight_mode_active
-                ? 'Flight Mode activo (automático)'
-                : 'Flight Mode inactivo'
+              networkOptimization?.active
+                ? 'Optimización de red 4G/VPN activa (automática)'
+                : 'Optimización de red inactiva'
             }
           >
-            🚀 Flight {flightMode?.flight_mode_active ? '✓' : '–'}
+            ⚙️ Red {networkOptimization?.active ? '✓' : '–'}
           </span>
         </div>
       </div>
