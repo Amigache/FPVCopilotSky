@@ -123,7 +123,7 @@ stream rates de telemetría + tuning de red según el enlace detectado.
 - [x] **P3b-1** Quitar probes muertos (`_install_encoder_probes`, `_remove_encoder_probes`, `_install_passthrough_probes`, `_setup_stats_probes`) y su estado sin uso
 - [x] **P3b-2** Dedupe de rutas default (`RouteManager`) + `install.sh` pone WiFi primaria (metric 100) si no hay módem y usa `replace`
 - [x] **P3b-3** MPTCP eliminado · marcado DSCP en INPUT (ineficaz) fuera · `tcp_rto_min` fuera del modo vuelo
-- [ ] **P3b-4** TCP server embebido del bridge (opcional; los tests dependen de él)
+- [x] **P3b-4** TCP server embebido del bridge eliminado (telemetría TCP sigue por el Router)
 
 ---
 
