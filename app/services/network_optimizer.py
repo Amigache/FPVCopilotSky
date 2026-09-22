@@ -423,33 +423,29 @@ class NetworkOptimizer:
                     logger.warning(f"CAKE setup failed: {stderr}")
                     return False
 
-                # Apply CAKE on ingress via a per-interface IFB (download control)
-                self._run_command(
-                    ["sudo", "modprobe", "ifb", "numifbs=4"],
-                    check=False,
-                )
-                self._run_command(
-                    ["sudo", "ip", "link", "set", ifb, "up"],
-                    check=False,
-                )
+                # Apply CAKE on ingress via a per-interface IFB (download control).
+                # `ip link add <ifb> type ifb` autoloads the `ifb` module via the
+                # kernel if needed; we do NOT use `modprobe` because the
+                # privileged helper is not allowed to load kernel modules.
+                _, _, add_rc = self._run_command(["sudo", "ip", "link", "add", ifb, "type", "ifb"], check=False)
+                if add_rc != 0:
+                    # Usually "File exists"; verify the link really exists.
+                    _, _, show_rc = self._run_command(["ip", "link", "show", ifb], check=False)
+                    if show_rc != 0:
+                        logger.warning(
+                            "CAKE ingress unavailable: could not create IFB "
+                            "(preload the 'ifb' module at deploy time)",
+                            extra={"ifb": ifb},
+                        )
+                        return True  # egress CAKE is still applied
+                self._run_command(["sudo", "ip", "link", "set", ifb, "up"], check=False)
 
-                # Redirect ingress to IFB
-                self._run_command(
-                    ["sudo", "tc", "qdisc", "del", "dev", interface, "ingress"],
-                    check=False,
+                # Redirect ingress to IFB (log if it fails — no silent ingress loss)
+                self._run_command(["sudo", "tc", "qdisc", "del", "dev", interface, "ingress"], check=False)
+                _, ingress_err, ingress_rc = self._run_command(
+                    ["sudo", "tc", "qdisc", "add", "dev", interface, "ingress"]
                 )
-                self._run_command(
-                    [
-                        "sudo",
-                        "tc",
-                        "qdisc",
-                        "add",
-                        "dev",
-                        interface,
-                        "ingress",
-                    ]
-                )
-                self._run_command(
+                _, filter_err, filter_rc = self._run_command(
                     [
                         "sudo",
                         "tc",
@@ -475,6 +471,15 @@ class NetworkOptimizer:
                     ],
                     check=False,
                 )
+                if ingress_rc != 0 or filter_rc != 0:
+                    logger.warning(
+                        "CAKE ingress redirect failed",
+                        extra={
+                            "interface": interface,
+                            "ifb": ifb,
+                            "stderr": (ingress_err or filter_err or "")[:200],
+                        },
+                    )
 
                 # Apply CAKE on IFB (download direction)
                 self._run_command(
