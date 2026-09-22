@@ -769,6 +769,11 @@ echo ""
 echo "🚀 Deploying to production..."
 if [ -f "scripts/deploy.sh" ]; then
     chmod +x scripts/deploy.sh
+    # Enable API authentication by default (opt-out: FPV_SKIP_AUTH=1 ./install.sh).
+    if [ "${FPV_SKIP_AUTH:-0}" != "1" ] && [ -f "scripts/setup-auth.sh" ]; then
+        chmod +x scripts/setup-auth.sh
+        sudo bash scripts/setup-auth.sh || true
+    fi
     sudo bash scripts/deploy.sh
 else
     echo "  ⚠ Deploy script not found (scripts/deploy.sh)"

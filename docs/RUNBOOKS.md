@@ -663,4 +663,39 @@ Desde **1.2.1**, `install.sh` pone **WiFi primaria (metric 100)** si no hay mód
 
 ---
 
+## 6. Token de API (activar / rotar / recuperar)
+
+### 6.1 Detección rápida
+
+```bash
+# ¿El servicio tiene auth activa?
+systemctl show fpvcopilot-sky -p EnvironmentFiles        # debe incluir /etc/fpvcopilot-sky/env
+sudo cat /etc/fpvcopilot-sky/env                         # FPV_API_TOKEN=...
+curl -s http://localhost:8000/api/auth/status            # {"auth_required": true, "authenticated": ...}
+```
+
+### 6.2 Rotar el token
+
+```bash
+sudo bash scripts/setup-auth.sh --rotate
+# La WebUI pedirá el nuevo token en la siguiente carga.
+```
+
+### 6.3 Recuperar / activar manualmente
+
+```bash
+sudo bash scripts/setup-auth.sh          # crea el token si no existe (no rota)
+```
+
+### 6.4 Desactivar (solo desarrollo)
+
+```bash
+sudo rm -f /etc/fpvcopilot-sky/env /etc/systemd/system/fpvcopilot-sky.service.d/auth.conf
+sudo systemctl daemon-reload && sudo systemctl restart fpvcopilot-sky
+```
+
+> Sin `FPV_API_TOKEN`, el servicio queda **abierto en LAN** — úsalo solo en desarrollo.
+
+---
+
 [← Índice Completo](INDEX.md) · [Guía de Usuario](USER_GUIDE.md) · [Guía de Desarrollo](DEVELOPER_GUIDE.md)
