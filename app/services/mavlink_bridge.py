@@ -9,7 +9,6 @@ import os
 os.environ["MAVLINK20"] = "1"
 
 import logging  # noqa: E402
-import socket  # noqa: E402
 import serial  # noqa: E402
 import threading  # noqa: E402
 import time  # noqa: E402
@@ -38,11 +37,6 @@ class MAVLinkBridge:
         self.port: str = ""
         self.baudrate: int = 115200
 
-        # TCP Server (built-in) - DISABLED by default, use router instead
-        self.tcp_server: Optional[socket.socket] = None
-        self.tcp_port: int = 0  # 0 = disabled, all outputs via router
-        self.tcp_clients: List[socket.socket] = []
-        self.tcp_clients_lock = threading.Lock()
         # Protects telemetry_data (written by reader/heartbeat threads, read by API)
         self._telemetry_lock = threading.RLock()
 
@@ -56,8 +50,6 @@ class MAVLinkBridge:
 
         # Threads
         self.serial_reader_thread: Optional[threading.Thread] = None
-        self.tcp_accept_thread: Optional[threading.Thread] = None
-        self.tcp_reader_threads: List[threading.Thread] = []
 
         # MAVLink parser (for telemetry only)
         self.mav_parser = mavlink2.MAVLink(None)
@@ -94,8 +86,6 @@ class MAVLinkBridge:
         self.stats = {
             "serial_rx": 0,
             "serial_tx": 0,
-            "tcp_rx": 0,
-            "tcp_tx": 0,
         }
 
         # Telemetry data
@@ -243,13 +233,13 @@ class MAVLinkBridge:
         logger.info("Telemetry profile applied", extra={"profile": profile, "messages": applied})
         return {"success": bool(applied), "profile": profile, "applied": applied}
 
-    def connect(self, port: str, baudrate: int = 115200, tcp_port: int = 0) -> Dict[str, Any]:
-        """Connect to serial port. TCP server disabled by default (tcp_port=0), use router instead."""
+    def connect(self, port: str, baudrate: int = 115200) -> Dict[str, Any]:
+        """Connect to serial port. All telemetry outputs go through the MAVLink router."""
         if self.connected:
             return {"success": False, "message": "Already connected"}
 
         try:
-            logger.info("Connecting MAVLink bridge", extra={"port": port, "baudrate": baudrate, "tcp_port": tcp_port})
+            logger.info("Connecting MAVLink bridge", extra={"port": port, "baudrate": baudrate})
 
             # Open serial port
             self.serial_port = serial.Serial(port=port, baudrate=baudrate, timeout=0.1, write_timeout=1)
@@ -288,11 +278,6 @@ class MAVLinkBridge:
 
             self._connect_time = time.time()
 
-            # Start TCP server only if port > 0 (disabled by default)
-            self.tcp_port = tcp_port
-            if tcp_port > 0:
-                self._start_tcp_server()
-
             self.connected = True
             self.running = True
 
@@ -317,15 +302,7 @@ class MAVLinkBridge:
             )
             self._telemetry_broadcast_thread.start()
 
-            # Start TCP accept thread only if TCP server is enabled
-            if self.tcp_server:
-                self.tcp_accept_thread = threading.Thread(target=self._tcp_accept_loop, daemon=True, name="TCPAccept")
-                self.tcp_accept_thread.start()
-
-            if tcp_port > 0:
-                logger.info("MAVLink bridge started with TCP server", extra={"port": port, "tcp_port": tcp_port})
-            else:
-                logger.info("MAVLink bridge started with router outputs", extra={"port": port})
+            logger.info("MAVLink bridge started with router outputs", extra={"port": port})
 
             self._broadcast_status()
 
@@ -364,23 +341,6 @@ class MAVLinkBridge:
                 self._telemetry_broadcast_thread.join(timeout=1)
             self._telemetry_broadcast_thread = None
 
-            # Close TCP clients
-            with self.tcp_clients_lock:
-                for client in self.tcp_clients:
-                    try:
-                        client.close()
-                    except Exception:
-                        pass
-                self.tcp_clients.clear()
-
-            # Close TCP server
-            if self.tcp_server:
-                try:
-                    self.tcp_server.close()
-                except Exception:
-                    pass
-                self.tcp_server = None
-
             # Close serial
             if self.serial_port:
                 try:
@@ -402,8 +362,6 @@ class MAVLinkBridge:
                 extra={
                     "serial_rx": self.stats["serial_rx"],
                     "serial_tx": self.stats["serial_tx"],
-                    "tcp_rx": self.stats["tcp_rx"],
-                    "tcp_tx": self.stats["tcp_tx"],
                     "parsed": getattr(self, "_parsed_msg_count", 0),
                     "unparsed": getattr(self, "_unparsed_msg_count", 0),
                     "heartbeats": getattr(self, "_serial_heartbeat_count", 0),
@@ -412,7 +370,7 @@ class MAVLinkBridge:
             logger.info("MAVLink bridge disconnected")
 
             # Reset stats for next connection
-            self.stats = {"serial_rx": 0, "serial_tx": 0, "tcp_rx": 0, "tcp_tx": 0}
+            self.stats = {"serial_rx": 0, "serial_tx": 0}
 
             self._broadcast_status()
 
@@ -468,96 +426,6 @@ class MAVLinkBridge:
             time.sleep(0.01)
 
         return False
-
-    def _start_tcp_server(self):
-        """Start TCP server for GCS connections."""
-        self.tcp_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.tcp_server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.tcp_server.settimeout(1.0)
-        self.tcp_server.bind(("0.0.0.0", self.tcp_port))
-        self.tcp_server.listen(5)
-        logger.info("TCP server listening", extra={"host": "0.0.0.0", "port": self.tcp_port})
-
-    def _tcp_accept_loop(self):
-        """Accept incoming TCP connections."""
-        logger.info("TCP accept thread started")
-
-        while self.running:
-            try:
-                client, addr = self.tcp_server.accept()
-                logger.info("TCP client connected", extra={"addr": str(addr)})
-
-                # Keep socket in blocking mode with timeout for reads
-                client.settimeout(0.1)
-                # But send should be non-blocking to not block serial
-                client.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-
-                with self.tcp_clients_lock:
-                    self.tcp_clients.append(client)
-                    logger.info("TCP client registered", extra={"total_clients": len(self.tcp_clients)})
-
-                # Start reader thread for this client
-                reader = threading.Thread(
-                    target=self._tcp_client_reader,
-                    args=(client, addr),
-                    daemon=True,
-                    name=f"TCPReader-{addr[1]}",
-                )
-                reader.start()
-                self.tcp_reader_threads.append(reader)
-
-            except socket.timeout:
-                continue
-            except Exception as e:
-                if self.running:
-                    logger.warning("TCP accept error", extra={"error": str(e)})
-
-        logger.info("TCP accept thread stopped")
-
-    def _tcp_client_reader(self, client: socket.socket, addr):
-        """Read data from TCP client and forward to serial."""
-        logger.info("TCP reader started", extra={"addr": str(addr)})
-        first_data = True
-
-        while self.running:
-            try:
-                data = client.recv(4096)
-                if not data:
-                    logger.info("TCP client disconnected (EOF)", extra={"addr": str(addr)})
-                    break
-
-                if first_data:
-                    logger.info("First TCP data received", extra={"addr": str(addr), "bytes": len(data)})
-                    first_data = False
-
-                # Forward to serial using thread-safe method
-                if self.write_to_serial(data):
-                    self.stats["tcp_rx"] += 1
-
-                    if self.stats["tcp_rx"] == 1:
-                        logger.info("First TCP message forwarded to serial", extra={"bytes": len(data)})
-                    elif self.stats["tcp_rx"] % 50 == 0:
-                        logger.debug("TCP to serial progress", extra={"messages": self.stats["tcp_rx"]})
-
-            except socket.timeout:
-                continue
-            except Exception as e:
-                if self.running:
-                    logger.warning("TCP reader error", extra={"addr": str(addr), "error": str(e)})
-                break
-
-        # Cleanup
-        with self.tcp_clients_lock:
-            if client in self.tcp_clients:
-                self.tcp_clients.remove(client)
-                logger.info("TCP client removed", extra={"remaining_clients": len(self.tcp_clients)})
-
-        try:
-            client.close()
-        except Exception:
-            pass
-
-        logger.info("TCP reader stopped", extra={"addr": str(addr)})
 
     def _heartbeat_sender(self):
         """Send HEARTBEAT messages periodically to identify as companion computer/camera."""
@@ -655,8 +523,8 @@ class MAVLinkBridge:
                     data = self.serial_port.read(256)
 
                 if data:
-                    # Forward ALL raw bytes immediately to TCP clients and router
-                    self._forward_to_tcp_clients(data)
+                    # Forward ALL raw bytes immediately to the router outputs
+                    self._forward_to_outputs(data)
 
                     # Feed bytes to parser one at a time for telemetry processing
                     for byte_val in data:
@@ -702,40 +570,8 @@ class MAVLinkBridge:
 
         logger.info("Serial reader stopped")
 
-    def _forward_to_tcp_clients(self, data: bytes):
-        """Forward data to all connected TCP clients and router outputs."""
-        # Forward to built-in TCP server clients
-        with self.tcp_clients_lock:
-            if self.tcp_clients:
-                dead_clients = []
-
-                for client in self.tcp_clients:
-                    try:
-                        client.sendall(data)
-                        self.stats["tcp_tx"] += 1
-
-                        # Log first successful send
-                        if self.stats["tcp_tx"] == 1:
-                            logger.info("First message sent to TCP client", extra={"bytes": len(data)})
-
-                    except (BrokenPipeError, ConnectionResetError, OSError) as e:
-                        logger.warning("TCP send error", extra={"error": str(e)})
-                        dead_clients.append(client)
-
-                # Remove dead clients
-                for dead in dead_clients:
-                    if dead in self.tcp_clients:
-                        self.tcp_clients.remove(dead)
-                        try:
-                            dead.close()
-                        except Exception:
-                            pass
-                        logger.warning(
-                            "TCP client disconnected after send error",
-                            extra={"remaining_clients": len(self.tcp_clients)},
-                        )
-
-        # Forward to router outputs (UDP, additional TCP servers/clients)
+    def _forward_to_outputs(self, data: bytes):
+        """Forward raw serial data to the MAVLink router outputs."""
         if self.router:
             self.router.forward_to_outputs(data)
 
@@ -896,15 +732,10 @@ class MAVLinkBridge:
 
     def get_status(self) -> Dict[str, Any]:
         """Get current status."""
-        with self.tcp_clients_lock:
-            num_clients = len(self.tcp_clients)
-
         return {
             "connected": self.connected,
             "port": self.port,
             "baudrate": self.baudrate,
-            "tcp_port": self.tcp_port,
-            "tcp_clients": num_clients,
             "last_heartbeat": self.last_heartbeat,
             "stats": self.stats,
         }
