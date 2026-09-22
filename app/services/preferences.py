@@ -134,7 +134,7 @@ class PreferencesService:
                 "log_directory": os.path.expanduser("~/flight-records"),  # Default log directory
             },
             "ui": {"language": "es", "theme": "dark"},
-            "system": {"version": "1.2.2", "first_run": True},
+            "system": {"version": "1.3.0", "first_run": True},
             "extras": {
                 "experimental_tab_enabled": False,  # Hidden by default
             },
