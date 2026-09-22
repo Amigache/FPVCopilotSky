@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useWsMessage } from './WebSocketContext'
 import { useToast } from './ToastContext'
@@ -183,10 +183,12 @@ export const ParamCacheProvider = ({ children }) => {
   )
 
   // Start background download once MAVLink is connected and telemetry is present.
-  useEffect(() => {
-    const connected = Boolean(mavlinkStatus?.connected)
-    const hasTelemetryFrame = Boolean(telemetryMessage)
+  // Depend on primitives (not the telemetry object, which changes every frame)
+  // so this effect runs on connection transitions, not on every telemetry tick.
+  const connected = Boolean(mavlinkStatus?.connected)
+  const hasTelemetryFrame = Boolean(telemetryMessage)
 
+  useEffect(() => {
     if (!connected) {
       clearCache()
       return
@@ -202,17 +204,21 @@ export const ParamCacheProvider = ({ children }) => {
 
     startedThisConnectionRef.current = true
     refreshParamsCache({ force: true, showCompletionToast: true, resetCacheBeforeLoad: true })
-  }, [mavlinkStatus, telemetryMessage, clearCache, refreshParamsCache])
+  }, [connected, hasTelemetryFrame, clearCache, refreshParamsCache])
 
-  const value = {
-    params,
-    isDownloading,
-    isLoaded: Object.keys(params).length > 0,
-    status,
-    refreshParamsCache,
-    clearCache,
-    mergeParams,
-  }
+  // Stable context value: consumers must not re-render on every telemetry frame.
+  const value = useMemo(
+    () => ({
+      params,
+      isDownloading,
+      isLoaded: Object.keys(params).length > 0,
+      status,
+      refreshParamsCache,
+      clearCache,
+      mergeParams,
+    }),
+    [params, isDownloading, status, refreshParamsCache, clearCache, mergeParams]
+  )
 
   return <ParamCacheContext.Provider value={value}>{children}</ParamCacheContext.Provider>
 }

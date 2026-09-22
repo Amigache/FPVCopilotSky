@@ -6,13 +6,14 @@ Bienvenido a la documentación de **FPV Copilot Sky**. Aquí encontrarás todo l
 
 ## Guías
 
-| #   | Documento                                   | Descripción                                                                                                 | Audiencia            |
-| --- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | -------------------- |
-| 1   | [📥 Guía de Instalación](INSTALLATION.md)   | Requisitos, instalación paso a paso, configuración de producción, verificación                              | Todos                |
-| 2   | [📖 Guía de Usuario](USER_GUIDE.md)         | Uso de la WebUI, cada pestaña explicada, configuración de video/telemetría/VPN/modem, solución de problemas | Pilotos / Usuarios   |
-| 3   | [🛠️ Guía de Desarrollo](DEVELOPER_GUIDE.md) | Arquitectura, stack tecnológico, estructura del proyecto, cómo añadir proveedores, convenciones de código   | Desarrolladores      |
-| 4   | [🚨 Runbooks Operativos](RUNBOOKS.md)       | Procedimientos de diagnóstico y recuperación para incidencias críticas (MAVLink, modem, stream)             | Operadores / Pilotos |
-| 5   | [🧪 Testing y Cobertura](TESTING.md)        | Cómo ejecutar tests, gate de cobertura, módulos hardware excluidos y CI                                     | Desarrolladores      |
+| #   | Documento                                     | Descripción                                                                                                 | Audiencia            |
+| --- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | -------------------- |
+| 1   | [📥 Guía de Instalación](INSTALLATION.md)     | Requisitos, instalación paso a paso, configuración de producción, verificación                              | Todos                |
+| 2   | [📖 Guía de Usuario](USER_GUIDE.md)           | Uso de la WebUI, cada pestaña explicada, configuración de video/telemetría/VPN/modem, solución de problemas | Pilotos / Usuarios   |
+| 3   | [🛠️ Guía de Desarrollo](DEVELOPER_GUIDE.md)   | Arquitectura, stack tecnológico, estructura del proyecto, cómo añadir proveedores, convenciones de código   | Desarrolladores      |
+| 4   | [🚨 Runbooks Operativos](RUNBOOKS.md)         | Procedimientos de diagnóstico y recuperación para incidencias críticas (MAVLink, modem, stream)             | Operadores / Pilotos |
+| 5   | [🧪 Testing y Cobertura](TESTING.md)          | Cómo ejecutar tests, gate de cobertura, módulos hardware excluidos y CI                                     | Desarrolladores      |
+| 6   | [🔬 Revisión Funcional](FUNCTIONAL_REVIEW.md) | Video, Network y Telemetría: mejoras, cambios y limpieza por tipo de conexión                               | Desarrolladores      |
 
 ---
 

@@ -475,32 +475,37 @@ else
     echo "  ℹ️ No WiFi interface detected"
 fi
 
-# Set initial network priority: 4G primary (metric 100), WiFi backup (metric 200)
+# Initial network priority.
+#   4G present  -> 4G primary (metric 100), WiFi backup (metric 200)
+#   no 4G       -> WiFi primary (metric 100)
+# Use `replace` (and remove stale metrics) so we never leave duplicate
+# default routes for the same gateway.
+MODEM_PRESENT=""
 if [ -n "$MODEM_IFACE" ]; then
     MODEM_GW=$(ip route show default dev "$MODEM_IFACE" 2>/dev/null | awk '/via/{print $3}' | head -1)
     if [ -n "$MODEM_GW" ]; then
-        CURRENT_METRIC=$(ip route show default dev "$MODEM_IFACE" 2>/dev/null | grep -oP 'metric \K\d+')
-        if [ "$CURRENT_METRIC" != "100" ]; then
-            sudo ip route del default via "$MODEM_GW" dev "$MODEM_IFACE" 2>/dev/null || true
-            sudo ip route add default via "$MODEM_GW" dev "$MODEM_IFACE" metric 100 2>/dev/null || true
-            echo "  ✓ 4G modem set as primary (metric 100)"
-        else
-            echo "  ✓ 4G modem already primary (metric 100)"
-        fi
+        MODEM_PRESENT="yes"
+        sudo ip route replace default via "$MODEM_GW" dev "$MODEM_IFACE" metric 100 2>/dev/null || true
+        echo "  ✓ 4G modem set as primary (metric 100)"
     fi
 fi
 
 if [ -n "$WIFI_IFACE" ]; then
     WIFI_GW=$(ip route show default dev "$WIFI_IFACE" 2>/dev/null | awk '/via/{print $3}' | head -1)
     if [ -n "$WIFI_GW" ]; then
-        CURRENT_METRIC=$(ip route show default dev "$WIFI_IFACE" 2>/dev/null | grep -oP 'metric \K\d+')
-        if [ "$CURRENT_METRIC" != "200" ]; then
-            sudo ip route del default via "$WIFI_GW" dev "$WIFI_IFACE" 2>/dev/null || true
-            sudo ip route add default via "$WIFI_GW" dev "$WIFI_IFACE" metric 200 2>/dev/null || true
-            echo "  ✓ WiFi set as backup (metric 200)"
+        if [ -n "$MODEM_PRESENT" ]; then
+            WIFI_METRIC=200
         else
-            echo "  ✓ WiFi already backup (metric 200)"
+            WIFI_METRIC=100
         fi
+        sudo ip route replace default via "$WIFI_GW" dev "$WIFI_IFACE" metric "$WIFI_METRIC" 2>/dev/null || true
+        # Remove any other default on this interface to avoid duplicates.
+        for m in 100 200 600; do
+            if [ "$m" != "$WIFI_METRIC" ]; then
+                sudo ip route del default via "$WIFI_GW" dev "$WIFI_IFACE" metric "$m" 2>/dev/null || true
+            fi
+        done
+        echo "  ✓ WiFi default metric set to $WIFI_METRIC"
     fi
 fi
 
@@ -516,13 +521,17 @@ fi
 if [ -n "$WIFI_IFACE" ]; then
     NM_CONN=$(nmcli -t -f NAME,DEVICE connection show --active 2>/dev/null | grep ":${WIFI_IFACE}$" | cut -d: -f1)
     if [ -n "$NM_CONN" ]; then
-        nmcli connection modify "$NM_CONN" ipv4.route-metric 200 2>/dev/null || true
-        echo "  ✓ NetworkManager metric persisted for WiFi"
+        nmcli connection modify "$NM_CONN" ipv4.route-metric "${WIFI_METRIC:-100}" 2>/dev/null || true
+        echo "  ✓ NetworkManager metric persisted for WiFi (${WIFI_METRIC:-100})"
     fi
 fi
 
 echo "  ✓ Network priority management configured"
-echo "    Priority: 4G (metric 100) > WiFi (metric 200)"
+if [ -n "$MODEM_PRESENT" ]; then
+    echo "    Priority: 4G (metric 100) > WiFi (metric 200)"
+else
+    echo "    Priority: WiFi (metric 100)"
+fi
 echo "    Auto-adjust: Enabled (every 30s via backend)"
 echo "    VPN-aware: Smooth transitions when Tailscale active"
 

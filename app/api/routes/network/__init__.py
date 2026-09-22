@@ -10,7 +10,6 @@ This package contains all network-related API endpoints, organized by functional
 - failover: Automatic network switching
 - dns: DNS caching management
 - bridge: Network-video event bridge (self-healing streaming)
-- mptcp: Multi-Path TCP configuration
 - common: Shared utilities and models
 """
 
@@ -24,10 +23,10 @@ from .latency import router as latency_router
 from .failover import router as failover_router
 from .dns import router as dns_router
 from .bridge import router as bridge_router
-from .mptcp import router as mptcp_router
 from .modem_pool import router as modem_pool_router
 from .policy_routing import router as policy_routing_router
 from .vpn_health import router as vpn_health_router
+from .link_profile import router as link_profile_router
 
 # Create main router that includes all sub-routers
 router = APIRouter(tags=["network"])
@@ -40,10 +39,10 @@ router.include_router(latency_router, tags=["network-latency"])
 router.include_router(failover_router, tags=["network-failover"])
 router.include_router(dns_router, tags=["network-dns"])
 router.include_router(bridge_router, tags=["network-bridge"])
-router.include_router(mptcp_router, tags=["network-mptcp"])
 router.include_router(modem_pool_router, tags=["network-modem-pool"])
 router.include_router(policy_routing_router, tags=["network-policy-routing"])
 router.include_router(vpn_health_router, tags=["network-vpn-health"])
+router.include_router(link_profile_router, tags=["network-link-profile"])
 
 # Export for backward compatibility
 __all__ = ["router", "get_network_status"]

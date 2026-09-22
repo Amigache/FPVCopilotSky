@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback } from 'react'
+import { createContext, useContext, useState, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 const ModalContext = createContext(null)
@@ -56,8 +56,10 @@ export const ModalProvider = ({ children }) => {
     closeModal()
   }, [modal, closeModal])
 
+  const contextValue = useMemo(() => ({ showModal, closeModal }), [showModal, closeModal])
+
   return (
-    <ModalContext.Provider value={{ showModal, closeModal }}>
+    <ModalContext.Provider value={contextValue}>
       {children}
 
       {modal && (

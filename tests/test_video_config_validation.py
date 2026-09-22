@@ -107,6 +107,7 @@ class TestVideoConfigCodecValidation:
             "h264_openh264",
             "h264_hardware",
             "h264_v4l2",
+            "h264_passthrough",
         ],
     )
     def test_valid_codecs_accepted(self, codec):

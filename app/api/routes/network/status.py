@@ -359,74 +359,35 @@ async def set_priority_mode(request: PriorityModeRequest):
         if mode == "modem" and not modem_interface:
             return {"success": False, "message": "Modem interface not detected"}
 
-        routes_changed = []
+        # Determine the primary interface by mode. "auto" prefers WiFi when
+        # available, otherwise the modem.
+        if mode == "auto":
+            primary = "wifi" if wifi_interface else "modem"
+        else:
+            primary = mode
 
-        # Set WiFi metric
-        if wifi_interface:
-            wifi_gateway = await get_gateway_for_interface(wifi_interface)
-            if wifi_gateway:
-                wifi_metric = 100 if mode == "wifi" else 200
+        primary_interface = wifi_interface if primary == "wifi" else modem_interface
+        if not primary_interface:
+            return {"success": False, "message": f"{primary} interface not detected"}
 
-                # Delete old route
-                await run_command(["sudo", "ip", "route", "del", "default", "via", wifi_gateway, "dev", wifi_interface])
+        # Single owner of main-table default-route metrics.
+        from app.services.route_manager import get_route_manager
 
-                # Add route with new metric
-                result = await run_command(
-                    [
-                        "sudo",
-                        "ip",
-                        "route",
-                        "add",
-                        "default",
-                        "via",
-                        wifi_gateway,
-                        "dev",
-                        wifi_interface,
-                        "metric",
-                        str(wifi_metric),
-                    ]
-                )
+        result = await get_route_manager().set_priority(primary_interface)
 
-                if result[2] == 0:
-                    routes_changed.append(f"WiFi metric set to {wifi_metric}")
-
-        # Set Modem metric
-        if modem_interface:
-            modem_gateway = await get_gateway_for_interface(modem_interface)
-            if modem_gateway:
-                modem_metric = 100 if mode == "modem" else 200
-
-                # Delete old route
-                await run_command(
-                    ["sudo", "ip", "route", "del", "default", "via", modem_gateway, "dev", modem_interface]
-                )
-
-                # Add route with new metric
-                result = await run_command(
-                    [
-                        "sudo",
-                        "ip",
-                        "route",
-                        "add",
-                        "default",
-                        "via",
-                        modem_gateway,
-                        "dev",
-                        modem_interface,
-                        "metric",
-                        str(modem_metric),
-                    ]
-                )
-
-                if result[2] == 0:
-                    routes_changed.append(f"Modem metric set to {modem_metric}")
-
-        if routes_changed:
+        if result.get("changes"):
             # Invalidate network_status cache to force recalculation of mode
             _cache.invalidate("network_status")
-            return {"success": True, "mode": mode, "changes": routes_changed, "message": f"Priority set to {mode} mode"}
-        else:
-            return {"success": False, "message": "No routes could be modified"}
+
+        if result.get("success"):
+            return {
+                "success": True,
+                "mode": mode,
+                "primary": primary_interface,
+                "changes": result.get("changes", []),
+                "message": f"Priority set to {mode} mode",
+            }
+        return {"success": False, "message": result.get("message", "No routes could be modified")}
 
     except (AttributeError, KeyError, RuntimeError, TypeError, ValueError, OSError) as e:
         logger.error("Error setting network priority", extra={"mode": mode, "error": str(e)}, exc_info=True)

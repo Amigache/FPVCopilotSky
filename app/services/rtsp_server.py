@@ -7,7 +7,7 @@ import gi
 
 gi.require_version("Gst", "1.0")
 gi.require_version("GstRtspServer", "1.0")
-from gi.repository import GstRtspServer, GLib  # noqa: E402
+from gi.repository import Gst, GstRtspServer, GLib  # noqa: E402
 import threading  # noqa: E402
 import logging  # noqa: E402
 
@@ -44,6 +44,7 @@ class RTSPServer:
         self.running = False
         self._encoder_display_name = None  # Track which encoder was used
         self._opencv_service = None  # OpenCV service for video processing
+        self._media_element = None  # Latest shared pipeline (for real stats)
 
         # Statistics tracking
         self.stats = {"frames_sent": 0, "bytes_sent": 0, "clients_connected": 0}
@@ -285,6 +286,9 @@ class RTSPServer:
         factory.set_launch(f"( {pipeline_str} )")
         factory.set_shared(True)  # Share pipeline with multiple clients
 
+        # Capture the shared media pipeline so we can read real stats counters
+        factory.connect("media-configure", self._on_media_configure)
+
         logger.info("RTSP pipeline created", extra={"pipeline": pipeline_str})
 
         # Mount factory
@@ -388,6 +392,112 @@ class RTSPServer:
     def is_running(self):
         """Check if server is running"""
         return self.running
+
+    def _on_media_configure(self, factory, media):
+        """Remember the latest shared pipeline element (runs in the RTSP loop)."""
+        try:
+            element = media.get_element()
+        except Exception as e:
+            logger.debug(f"Could not get RTSP media element: {e}")
+            element = None
+        with self.stats_lock:
+            self._media_element = element
+
+    def get_counter_stats(self):
+        """Return real (frames, bytes) from the pipeline's ``stats_counter``.
+
+        The RTSP pipeline includes ``identity name=stats_counter``; reading its
+        ``stats`` property is a cheap C-level query. Returns ``None`` when the
+        media is not configured yet or the element is missing.
+        """
+        with self.stats_lock:
+            element = self._media_element
+        if not element:
+            return None
+        try:
+            counter = element.get_by_name("stats_counter")
+            if not counter:
+                return None
+            stats = counter.get_property("stats")
+            if stats is None:
+                return None
+            ok_frames, frames = stats.get_uint64("num-buffers")
+            ok_bytes, nbytes = stats.get_uint64("num-bytes")
+            if not (ok_frames and ok_bytes):
+                return None
+            return int(frames), int(nbytes)
+        except Exception as e:
+            logger.debug(f"Could not read RTSP stats counter: {e}")
+            return None
+
+    def _find_encoder_element(self, pipeline, encoder_property):
+        """Find the encoder element in the shared RTSP pipeline.
+
+        RTSP builds its pipeline from a launch string, so element names are
+        auto-generated; we locate the encoder by the property it exposes.
+        """
+        try:
+            it = pipeline.iterate_elements()
+            while True:
+                result, element = it.next()
+                if result != Gst.IteratorResult.OK or element is None:
+                    return None
+                if element.find_property(encoder_property) is None:
+                    continue
+                factory = element.get_factory()
+                fname = factory.get_name() if factory else ""
+                if "enc" in fname or "264" in fname:
+                    return element
+        except Exception as e:
+            logger.debug(f"Encoder element scan failed: {e}")
+        return None
+
+    def update_live_property(self, property_name: str, value, codec_id=None):
+        """Apply a provider-defined live property change to the RTSP pipeline."""
+        try:
+            from app.providers.registry import get_provider_registry
+
+            registry = get_provider_registry()
+            provider = registry.get_video_encoder(codec_id or "")
+            if not provider:
+                return {"success": False, "message": f"No encoder provider for '{codec_id}'"}
+
+            adjustable = provider.get_live_adjustable_properties()
+            if property_name not in adjustable:
+                allowed = ", ".join(adjustable.keys()) if adjustable else "none"
+                return {
+                    "success": False,
+                    "message": f"Cannot change '{property_name}' live with {codec_id}. Allowed: {allowed}",
+                }
+
+            prop_info = adjustable[property_name]
+            encoder_property = prop_info["property"]
+            value = max(prop_info["min"], min(prop_info["max"], int(value)))
+            actual_value = value * prop_info.get("multiplier", 1)
+
+            with self.stats_lock:
+                element = self._media_element
+            if not element:
+                return {"success": False, "message": "RTSP pipeline not active"}
+
+            encoder = self._find_encoder_element(element, encoder_property)
+            if not encoder:
+                return {"success": False, "message": f"Encoder with '{encoder_property}' not found in RTSP pipeline"}
+
+            encoder.set_property(encoder_property, actual_value)
+            logger.info(
+                "Applied RTSP live update",
+                extra={"property": encoder_property, "value": value, "provider": provider.display_name},
+            )
+            return {
+                "success": True,
+                "message": f"{prop_info['description']}: {value}",
+                "property": property_name,
+                "value": value,
+            }
+        except Exception as e:
+            logger.error(f"Failed to update RTSP property: {e}")
+            return {"success": False, "message": f"Failed to update RTSP property: {e}"}
 
     def get_stats(self):
         """Get streaming statistics with real-time client count"""

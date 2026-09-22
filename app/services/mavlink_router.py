@@ -88,40 +88,54 @@ class MAVLinkRouter:
         return config_type.value if hasattr(config_type, "value") else config_type
 
     def forward_to_outputs(self, data: bytes):
-        """Forward data from serial to all active outputs."""
-        with self.lock:
-            for output_id, state in list(self.outputs.items()):
-                if not state.running:
-                    continue
+        """Forward data from serial to all active outputs.
 
-                try:
-                    output_type = self._get_type_value(state.config.type)
-                    if output_type == "tcp_server":
-                        self._send_to_tcp_clients(state, data)
-                    elif output_type == "tcp_client":
-                        self._send_to_tcp_client(state, data)
-                    elif output_type == "udp":
-                        self._send_to_udp(state, data)
-                except Exception:
-                    state.stats["errors"] += 1
+        Outputs are snapshotted under the lock and sent OUTSIDE it, so a slow
+        TCP client (sendall can block up to its socket timeout) cannot stall
+        management operations or other threads contending for ``self.lock``.
+        """
+        with self.lock:
+            targets = [
+                (self._get_type_value(state.config.type), state) for state in self.outputs.values() if state.running
+            ]
+
+        for output_type, state in targets:
+            try:
+                if output_type == "tcp_server":
+                    self._send_to_tcp_clients(state, data)
+                elif output_type == "tcp_client":
+                    self._send_to_tcp_client(state, data)
+                elif output_type == "udp":
+                    self._send_to_udp(state, data)
+            except Exception:
+                state.stats["errors"] += 1
 
     def _send_to_tcp_clients(self, state: OutputState, data: bytes):
-        """Send to all connected TCP server clients."""
+        """Send to all connected TCP server clients.
+
+        Sends happen without holding ``self.lock`` (the caller already released
+        it); only the client-list mutation is serialised against the readers.
+        """
+        with self.lock:
+            clients = list(state.clients)
+
         dead_clients = []
-        for client in state.clients:
+        for client in clients:
             try:
                 client.sendall(data)
                 state.stats["tx"] += 1
             except (BrokenPipeError, ConnectionResetError, OSError):
                 dead_clients.append(client)
 
-        for dead in dead_clients:
-            if dead in state.clients:
-                state.clients.remove(dead)
-                try:
-                    dead.close()
-                except Exception:
-                    pass
+        if dead_clients:
+            with self.lock:
+                for dead in dead_clients:
+                    if dead in state.clients:
+                        state.clients.remove(dead)
+                    try:
+                        dead.close()
+                    except Exception:
+                        pass
 
     def _send_to_tcp_client(self, state: OutputState, data: bytes):
         """Send to TCP client connection."""
@@ -309,6 +323,21 @@ class MAVLinkRouter:
 
             except Exception as e:
                 return False, str(e)
+
+    def restart(self) -> tuple[bool, str]:
+        """Restart every currently running output (used by the API)."""
+        with self.lock:
+            running_ids = [output_id for output_id, state in self.outputs.items() if state.running]
+
+        if not running_ids:
+            return True, "No running outputs"
+
+        succeeded = 0
+        for output_id in running_ids:
+            ok, _ = self.restart_output(output_id)
+            if ok:
+                succeeded += 1
+        return succeeded == len(running_ids), f"Restarted {succeeded}/{len(running_ids)} outputs"
 
     def _stop_output_internal(self, state: OutputState):
         """Internal method to stop an output."""

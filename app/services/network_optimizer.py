@@ -29,6 +29,7 @@ class FlightModeConfig:
 
     # Interface optimization
     mtu: int = 1420  # Optimal for LTE (1500 - 80 bytes overhead)
+    vpn_mtu: int = 1280  # Safe MTU inside Tailscale/WireGuard tunnels
     disable_power_save: bool = True
 
     # QoS settings
@@ -55,6 +56,8 @@ class FlightModeConfig:
     cake_auto_calibrate: bool = True  # Run burst test to measure real BW
     cake_calibrate_packets: int = 50  # Number of 1400-byte UDP packets for burst
     cake_calibrate_margin: float = 0.80  # Use 80 % of measured throughput
+    cake_overhead_bytes: int = 80  # Per-packet link overhead (LTE: 1500 - 80)
+    cake_diffserv: bool = True  # Honor DSCP marks (diffserv4) instead of washing egress
 
     # VPN policy routing (Mejora Nº5)
     enable_vpn_policy_routing: bool = True
@@ -124,6 +127,35 @@ class NetworkOptimizer:
             return True
         return False
 
+    def _get_vpn_interface(self) -> Optional[str]:
+        """Find an active VPN/tunnel interface (Tailscale, WireGuard, OpenVPN)."""
+        stdout, _, rc = self._run_command(["ip", "-o", "link", "show"], check=False)
+        if rc != 0:
+            return None
+        for line in stdout.splitlines():
+            parts = line.split(":")
+            if len(parts) >= 2:
+                name = parts[1].strip().split("@")[0]
+                if name.startswith(("tailscale", "tun", "wg", "zt")):
+                    return name
+        return None
+
+    def _set_vpn_mtu(self, mtu: int) -> bool:
+        """Apply a fragmentation-safe MTU to the VPN/tunnel interface."""
+        vpn_interface = self._get_vpn_interface()
+        if not vpn_interface:
+            return False
+        return self._set_mtu(vpn_interface, mtu)
+
+    def _policy_routing_managed(self) -> bool:
+        """True when PolicyRoutingManager owns the policy-routing tables."""
+        try:
+            from app.services.policy_routing_manager import get_policy_routing_manager
+
+            return bool(get_policy_routing_manager()._initialized)
+        except Exception:
+            return False
+
     def _configure_qos(self, enable: bool = True) -> bool:
         """Configure QoS with iptables DSCP marking"""
         try:
@@ -151,27 +183,6 @@ class NetworkOptimizer:
                         check=False,
                     )
 
-                    # Mark incoming UDP traffic on video ports
-                    self._run_command(
-                        [
-                            "sudo",
-                            "iptables",
-                            "-t",
-                            "mangle",
-                            "-A",
-                            "INPUT",
-                            "-p",
-                            "udp",
-                            "--sport",
-                            str(port),
-                            "-j",
-                            "DSCP",
-                            "--set-dscp",
-                            "46",
-                        ],
-                        check=False,
-                    )
-
                 logger.info(f"QoS enabled: DSCP marking on ports {self.config.video_ports}")
                 return True
             else:
@@ -188,26 +199,6 @@ class NetworkOptimizer:
                             "-p",
                             "udp",
                             "--dport",
-                            str(port),
-                            "-j",
-                            "DSCP",
-                            "--set-dscp",
-                            "46",
-                        ],
-                        check=False,
-                    )
-
-                    self._run_command(
-                        [
-                            "sudo",
-                            "iptables",
-                            "-t",
-                            "mangle",
-                            "-D",
-                            "INPUT",
-                            "-p",
-                            "udp",
-                            "--sport",
                             str(port),
                             "-j",
                             "DSCP",
@@ -243,9 +234,6 @@ class NetworkOptimizer:
 
                 # Enable TCP timestamps for better RTT estimation
                 self._run_command(["sudo", "sysctl", "-w", "net.ipv4.tcp_timestamps=1"])
-
-                # Reduce TCP retransmission timeout min (faster recovery)
-                self._run_command(["sudo", "sysctl", "-w", "net.ipv4.tcp_rto_min=200"])
 
                 logger.info("TCP optimizations enabled")
                 return True
@@ -378,6 +366,15 @@ class NetworkOptimizer:
             logger.debug(f"Burst test failed: {e}")
             return None
 
+    def _ifb_for_interface(self, interface: str) -> str:
+        """Deterministic, per-interface IFB name (Linux iface names are <= 15 chars).
+
+        A shared ``ifb0`` collides when more than one interface (e.g. two modems)
+        configures CAKE ingress at the same time.
+        """
+        safe = interface.replace(".", "_").replace("-", "_")
+        return ("ifb" + safe)[:15]
+
     def _configure_cake(self, interface: str, enable: bool = True) -> bool:
         """
         Configure CAKE qdisc for bufferbloat mitigation.
@@ -389,6 +386,10 @@ class NetworkOptimizer:
 
         This is arguably the single most impactful optimization for 4G streaming.
         """
+        ifb = self._ifb_for_interface(interface)
+        overhead = int(self.config.cake_overhead_bytes)
+        up_mbit = self.config.cake_bandwidth_up_mbit
+        down_mbit = self.config.cake_bandwidth_down_mbit
         try:
             if enable:
                 # Remove any existing qdisc first
@@ -397,38 +398,42 @@ class NetworkOptimizer:
                     check=False,
                 )
 
-                # Apply CAKE on egress (upload - most critical for video streaming)
-                _, stderr, rc = self._run_command(
-                    [
-                        "sudo",
-                        "tc",
-                        "qdisc",
-                        "replace",
-                        "dev",
-                        interface,
-                        "root",
-                        "cake",
-                        "bandwidth",
-                        f"{self.config.cake_bandwidth_up_mbit}mbit",
-                        "besteffort",  # Single-tier (simpler, lower overhead)
-                        "wash",  # Clear DSCP on ingress to prevent priority inversion
-                        "nat",  # Perform NAT-aware flow isolation
-                        "ack-filter",  # Filter redundant ACKs (saves uplink bandwidth)
-                    ]
-                )
+                # Apply CAKE on egress (upload - most critical for video streaming).
+                # When DSCP marking is enabled we honor it with diffserv4 and MUST
+                # NOT wash, otherwise the iptables EF(46) mark is erased.
+                egress_mode = "diffserv4" if self.config.cake_diffserv else "besteffort"
+                egress_cmd = [
+                    "sudo",
+                    "tc",
+                    "qdisc",
+                    "replace",
+                    "dev",
+                    interface,
+                    "root",
+                    "cake",
+                    "bandwidth",
+                    f"{up_mbit}mbit",
+                    egress_mode,
+                    "overhead",
+                    str(overhead),
+                    "nat",  # Perform NAT-aware flow isolation
+                    "ack-filter",  # Filter redundant ACKs (saves uplink bandwidth)
+                ]
+                if not self.config.cake_diffserv:
+                    egress_cmd.append("wash")
+                _, stderr, rc = self._run_command(egress_cmd)
 
                 if rc != 0:
                     logger.warning(f"CAKE setup failed: {stderr}")
                     return False
 
-                # Apply CAKE on ingress via IFB (download bufferbloat control)
-                # Create IFB interface if not exists
+                # Apply CAKE on ingress via a per-interface IFB (download control)
                 self._run_command(
-                    ["sudo", "modprobe", "ifb", "numifbs=1"],
+                    ["sudo", "modprobe", "ifb", "numifbs=4"],
                     check=False,
                 )
                 self._run_command(
-                    ["sudo", "ip", "link", "set", "ifb0", "up"],
+                    ["sudo", "ip", "link", "set", ifb, "up"],
                     check=False,
                 )
 
@@ -470,14 +475,14 @@ class NetworkOptimizer:
                         "egress",
                         "redirect",
                         "dev",
-                        "ifb0",
+                        ifb,
                     ],
                     check=False,
                 )
 
                 # Apply CAKE on IFB (download direction)
                 self._run_command(
-                    ["sudo", "tc", "qdisc", "del", "dev", "ifb0", "root"],
+                    ["sudo", "tc", "qdisc", "del", "dev", ifb, "root"],
                     check=False,
                 )
                 self._run_command(
@@ -487,22 +492,23 @@ class NetworkOptimizer:
                         "qdisc",
                         "replace",
                         "dev",
-                        "ifb0",
+                        ifb,
                         "root",
                         "cake",
                         "bandwidth",
-                        f"{self.config.cake_bandwidth_down_mbit}mbit",
+                        f"{down_mbit}mbit",
                         "besteffort",
-                        "wash",
+                        "overhead",
+                        str(overhead),
+                        "wash",  # Download DSCP is untrusted → wash
                         "ingress",
                     ],
                     check=False,
                 )
 
                 logger.info(
-                    f"CAKE enabled on {interface}: "
-                    f"up={self.config.cake_bandwidth_up_mbit}mbit, "
-                    f"down={self.config.cake_bandwidth_down_mbit}mbit"
+                    f"CAKE enabled on {interface} (ifb={ifb}): "
+                    f"up={up_mbit}mbit/{egress_mode}, down={down_mbit}mbit, overhead={overhead}B"
                 )
                 return True
             else:
@@ -516,10 +522,10 @@ class NetworkOptimizer:
                     check=False,
                 )
                 self._run_command(
-                    ["sudo", "tc", "qdisc", "del", "dev", "ifb0", "root"],
+                    ["sudo", "tc", "qdisc", "del", "dev", ifb, "root"],
                     check=False,
                 )
-                logger.info(f"CAKE removed from {interface}")
+                logger.info(f"CAKE removed from {interface} (ifb={ifb})")
                 return True
 
         except Exception as e:
@@ -771,6 +777,10 @@ class NetworkOptimizer:
             if self._set_mtu(modem_interface, self.config.mtu):
                 optimizations.append(f"MTU set to {self.config.mtu}")
 
+            # 1b. Fragmentation-safe MTU for the VPN/tunnel, if active
+            if self._set_vpn_mtu(self.config.vpn_mtu):
+                optimizations.append(f"VPN MTU set to {self.config.vpn_mtu}")
+
             # 2. Configure QoS (DSCP marking)
             if self.config.enable_qos and self._configure_qos(enable=True):
                 optimizations.append(f"QoS enabled on ports {self.config.video_ports}")
@@ -806,9 +816,12 @@ class NetworkOptimizer:
                         f"down={self.config.cake_bandwidth_down_mbit}mbit)"
                     )
 
-            # 6. Configure VPN policy routing
-            if self.config.enable_vpn_policy_routing and self._configure_vpn_policy_routing(
-                modem_interface, enable=True
+            # 6. Configure VPN policy routing (skipped when PolicyRoutingManager
+            # owns the policy-routing tables, to avoid two writers on table 100)
+            if (
+                self.config.enable_vpn_policy_routing
+                and not self._policy_routing_managed()
+                and self._configure_vpn_policy_routing(modem_interface, enable=True)
             ):
                 optimizations.append("VPN policy routing enabled (tunnel isolation)")
 
@@ -856,6 +869,9 @@ class NetworkOptimizer:
             if modem_interface and "mtu" in self.original_settings:
                 self._set_mtu(modem_interface, self.original_settings["mtu"])
 
+            # Restore VPN MTU if we changed it
+            self._set_vpn_mtu(1500)
+
             # Remove QoS rules
             if self.config.enable_qos:
                 self._configure_qos(enable=False)
@@ -871,8 +887,8 @@ class NetworkOptimizer:
             if modem_interface and self.config.enable_cake:
                 self._configure_cake(modem_interface, enable=False)
 
-            # Remove VPN policy routing
-            if modem_interface and self.config.enable_vpn_policy_routing:
+            # Remove VPN policy routing (only if this optimizer owns it)
+            if modem_interface and self.config.enable_vpn_policy_routing and not self._policy_routing_managed():
                 self._configure_vpn_policy_routing(modem_interface, enable=False)
 
             self.flight_mode_active = False
@@ -939,10 +955,6 @@ class NetworkOptimizer:
             if modem_interface:
                 cake_stats = self.get_cake_stats(modem_interface)
                 metrics["cake"] = cake_stats
-
-            # Get MPTCP status
-            mptcp_stdout, _, mptcp_rc = self._run_command(["sysctl", "-n", "net.mptcp.enabled"], check=False)
-            metrics["mptcp_enabled"] = mptcp_stdout.strip() == "1" if mptcp_rc == 0 else False
 
             return {"success": True, "metrics": metrics}
 

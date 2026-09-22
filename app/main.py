@@ -457,6 +457,12 @@ async def _lifespan_shutdown():
     except Exception as e:
         logger.debug("Shutdown: network event bridge stop failed", exc_info=e)
     try:
+        from app.services.link_profile_manager import get_link_profile_manager
+
+        await get_link_profile_manager().stop()
+    except Exception as e:
+        logger.debug("Shutdown: link profile manager stop failed", exc_info=e)
+    try:
         await get_latency_monitor().stop()
     except Exception as e:
         logger.debug("Shutdown: latency monitor stop failed", exc_info=e)
@@ -505,6 +511,22 @@ async def lifespan(app: FastAPI):
     )
     await _startup_init_optional_services(preferences_service, modem_provider, latency_monitor)
     await _startup_init_auto_failover(preferences_service)
+
+    # Link Profile Manager — adapt video + telemetry to the connection type
+    try:
+        from app.services.link_profile_manager import get_link_profile_manager
+
+        link_manager = get_link_profile_manager()
+        link_manager.set_services(
+            gstreamer_service=video_service,
+            mavlink_service=mavlink_service,
+            websocket_manager=websocket_manager,
+        )
+        await link_manager.start()
+        logger.info(" Link Profile Manager started (LAN/4G/VPN adaptation)")
+    except Exception as e:
+        logger.error(f"Link Profile Manager init error: {e}")
+        logger.warning(f"  Link Profile Manager init error: {e}")
 
     # ── Background tasks ──────────────────────────────────────────────────────
     router_service.set_status_callback(lambda: _broadcast_router_status(loop))
@@ -601,7 +623,7 @@ _docs_enabled = _is_env_true(os.getenv("FPV_ENABLE_DOCS", _docs_default))
 
 app = FastAPI(
     title="FPV Copilot Sky",
-    version="1.1.1",
+    version="1.2.0",
     lifespan=lifespan,
     docs_url="/docs" if _docs_enabled else None,
     redoc_url="/redoc" if _docs_enabled else None,
@@ -723,7 +745,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str | None = None):
 
 @app.get("/")
 async def root():
-    return {"name": "FPV Copilot Sky", "version": "1.1.1", "status": "running"}
+    return {"name": "FPV Copilot Sky", "version": "1.2.0", "status": "running"}
 
 
 async def _broadcast_status_health():

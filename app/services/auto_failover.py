@@ -228,6 +228,7 @@ class AutoFailover:
         )
 
         if avg_latency > effective_threshold or predictive_urgency >= 0.8:
+            should_switch = False
             async with self._lock:
                 self.state.consecutive_bad_samples += 1
 
@@ -241,9 +242,12 @@ class AutoFailover:
                     f"samples={self.state.consecutive_bad_samples}/{effective_window}"
                 )
 
-                # Check if we should switch
-                if self.state.consecutive_bad_samples >= effective_window:
-                    await self._perform_switch_if_needed(avg_latency)
+                should_switch = self.state.consecutive_bad_samples >= effective_window
+
+            # Perform the switch OUTSIDE the lock: _switch_network re-acquires it
+            # (asyncio.Lock is not reentrant) and would otherwise deadlock.
+            if should_switch:
+                await self._perform_switch_if_needed(avg_latency)
         else:
             # Conditions are good
             async with self._lock:

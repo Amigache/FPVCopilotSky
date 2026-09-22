@@ -148,7 +148,7 @@ class VideoConfig:
         self.quality = max(1, min(100, int(self.quality)))
         self.h264_bitrate = max(100, min(50000, int(self.h264_bitrate)))
         self.gop_size = max(1, min(300, int(self.gop_size)))
-        if self.codec not in ("mjpeg", "h264", "h264_openh264", "h264_hardware", "h264_v4l2"):
+        if self.codec not in ("mjpeg", "h264", "h264_openh264", "h264_hardware", "h264_v4l2", "h264_passthrough"):
             self.codec = "mjpeg"
 
 

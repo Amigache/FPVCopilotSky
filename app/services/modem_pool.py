@@ -599,32 +599,12 @@ class ModemPool:
                 return False
             gateway = modem.gateway
 
-        from app.api.routes.network.common import run_command
-
         try:
-            # Remove all existing default routes
-            stdout, _, _ = await run_command(["ip", "route", "show", "default"])
-            for line in stdout.splitlines():
-                if "default" in line:
-                    parts = line.split()
-                    await run_command(["sudo", "ip", "route", "del"] + parts)
+            # Main-table default-route metrics are owned by RouteManager so this
+            # pool and the /priority API cannot clobber each other.
+            from app.services.route_manager import get_route_manager
 
-            # Add new default route via selected modem
-            _, _, rc = await run_command(
-                [
-                    "sudo",
-                    "ip",
-                    "route",
-                    "add",
-                    "default",
-                    "via",
-                    gateway,
-                    "dev",
-                    interface,
-                    "metric",
-                    "100",
-                ]
-            )
+            await get_route_manager().set_priority(interface)
 
             # ── FASE 2: update policy routing tables (VPN + Video) ────────
             try:
@@ -640,7 +620,7 @@ class ModemPool:
                 logger.warning(f"ModemPool: policy routing error (non-fatal): {pe}")
             # ─────────────────────────────────────────────────────────────
 
-            return rc == 0
+            return True
         except Exception as e:
             logger.error(f"ModemPool: routing error: {e}")
             return False
