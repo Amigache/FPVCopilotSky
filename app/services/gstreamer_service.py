@@ -2653,6 +2653,9 @@ class GStreamerService:
         """Broadcast status via WebSocket"""
         if not self.websocket_manager or not self.event_loop:
             return
+        # Nothing to do (and avoid building the status dict) with no clients.
+        if not getattr(self.websocket_manager, "has_clients", False):
+            return
 
         try:
             asyncio.run_coroutine_threadsafe(
@@ -2670,6 +2673,8 @@ class GStreamerService:
         ``video_status`` message at 1 Hz for compatibility.
         """
         if not self.websocket_manager or not self.event_loop:
+            return
+        if not getattr(self.websocket_manager, "has_clients", False):
             return
 
         try:

@@ -1193,11 +1193,19 @@ class MAVLinkBridge:
         the dirty event. This thread performs the deepcopy + JSON broadcast.
         """
         while self.running:
-            # Wait up to interval for a change — naturally rate-limits to
-            # 1 / telemetry_broadcast_interval Hz.
-            if not self._telemetry_dirty.wait(timeout=self.telemetry_broadcast_interval):
+            # When nobody is listening, slow the idle wakeups down (10 Hz -> 1 Hz)
+            # and just drain the dirty flag; the WebSocket endpoint pushes the
+            # current snapshot when a client connects.
+            has_clients = bool(self.websocket_manager and self.websocket_manager.has_clients)
+            timeout = self.telemetry_broadcast_interval if has_clients else 1.0
+
+            if not self._telemetry_dirty.wait(timeout=timeout):
                 continue
             self._telemetry_dirty.clear()
+
+            if not has_clients:
+                continue
+
             try:
                 self._broadcast_telemetry()
             except Exception as e:
