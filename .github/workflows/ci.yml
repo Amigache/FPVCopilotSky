@@ -49,9 +49,21 @@ jobs:
       - name: Check formatting with black
         run: black --check app/ tests/
 
-      - name: Type check with mypy
-        run: mypy app/ --ignore-missing-imports --no-strict-optional
-        continue-on-error: true  # Don't fail initially, just warn
+      - name: Type check with mypy (ratchet)
+        # Non-blocking historically (~205 pre-existing errors). This gate fails
+        # only if the error count RISES above the baseline, so new type errors
+        # cannot be introduced while the existing debt is paid down.
+        run: |
+          set -e
+          OUT="$(mypy app/ --ignore-missing-imports --no-strict-optional 2>&1 || true)"
+          COUNT="$(printf '%s\n' "$OUT" | grep -c ': error:' || true)"
+          BASE="$(tr -d '[:space:]' < mypy_baseline.txt)"
+          echo "mypy errors: $COUNT (baseline $BASE)"
+          if [ "$COUNT" -gt "$BASE" ]; then
+            echo "::error::mypy regressed: $COUNT > $BASE. Fix the new errors or lower the baseline."
+            printf '%s\n' "$OUT" | grep ': error:' | tail -40
+            exit 1
+          fi
 
   lint-frontend:
     name: 🎨 Lint JavaScript Frontend

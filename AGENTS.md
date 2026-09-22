@@ -60,9 +60,9 @@ Pre-commit runs: trailing-whitespace, end-of-file-fixer, black, flake8, prettier
 - **Preferences** persisted as `preferences.json` (gitignored). Test with `temp_preferences` fixture
 - **Serial auto-connect** runs in background thread. Exponential backoff (1-30s) on reconnect
 - **Coverage gate**: `fail_under = 50` in `pyproject.toml`. CI enforces this hard gate
-- **Frontend coverage threshold**: ≥ 60%
-- **Flake8** has extensive ignores: `E203,W503,E501,F401,F841,E402,...` — see `.flake8`
-- **mypy** is `continue-on-error: true` in CI — non-blocking. It currently runs and reports ~190 pre-existing errors; fix them incrementally before making it a hard gate. `explicit_package_bases = true` + `mypy_path = "."` in `pyproject.toml` are required for it to resolve the `app` package.
+- **Frontend coverage thresholds**: statements 40 / branches 70 / functions 49 / lines 40 (`vitest.config.js`)
+- **Flake8** has extensive ignores: `E203,W503,E501,F401,E402,...` — see `.flake8`
+- **mypy** is a **ratchet** in CI: fails if errors rise above `mypy_baseline.txt` (~205 pre-existing). Pay the debt down and lower the baseline. `explicit_package_bases = true` + `mypy_path = "."` in `pyproject.toml` are required for it to resolve the `app` package.
 - **Vite proxy** forwards `/api` and `/ws` to backend at `127.0.0.1:8000`
 
 ## Providers system
