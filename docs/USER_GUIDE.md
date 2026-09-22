@@ -474,13 +474,15 @@ CAKE (Common Applications Kept Enhanced) es un algoritmo de control de colas que
 **Qué hace**:
 
 - Limita las colas de transmisión/recepción eliminando paquetes encolados en exceso
-- Aplica AQM (Active Queue Management) para minimizar la latencia bajo carga
-- Configurado con ancho de banda up/down optimizado para 4G (10/30 Mbps por defecto)
+- Subida en modo **`diffserv4`** (respeta la marca DSCP **EF(46)** que se aplica al vídeo) y **recepción con `wash`** (el DSCP de bajada no es fiable)
+- **`overhead` por paquete** (80 B por defecto, típico de LTE) para una calibración real
+- **IFB por interfaz** (`ifb<iface>`), así varios módems no colisionan
+- Ancho de banda up/down configurable (10/30 Mbps por defecto); la subida se puede **auto-calibrar** con un burst test
 
 **Verificar**:
 
 ```bash
-# Ver si CAKE está activo
+# Ver si CAKE está activo y con qué modo
 tc qdisc show | grep cake
 
 # Estado detallado del sistema
@@ -489,30 +491,37 @@ tc qdisc show | grep cake
 bash scripts/status.sh   # Busca la sección "Network Quality & Self-Healing"
 ```
 
-### MPTCP (Multi-Path TCP) 🔗
+### Perfiles de enlace (LAN/4G/VPN) 🔀
 
-MPTCP permite usar **WiFi y 4G simultáneamente** para redundancia y mayor ancho de banda combinado.
+Adaptan **automáticamente** el modo de vídeo, la resolución y el bitrate al tipo de conexión detectado, con **override manual**.
 
-**Requisitos**: Kernel 5.6+ con soporte MPTCP (verificado automáticamente en la instalación).
+| Perfil            | Modo   | Resolución                         | Bitrate   | Telemetría        |
+| ----------------- | ------ | ---------------------------------- | --------- | ----------------- |
+| **LAN/WiFi**      | udp    | 1080p30                            | ~6 Mbps   | completa          |
+| **4G/LTE**        | webrtc | resolución soportada por la cámara | ~2.5 Mbps | reducida (opt-in) |
+| **VPN/Tailscale** | udp    | 1080p30                            | ~4 Mbps   | completa          |
+
+**Comportamiento**:
+
+- Detección automática con antirrebote; solo **reinicia** el pipeline si cambia modo/resolución/FPS, si no ajusta el **bitrate en vivo**.
+- Si el perfil pide una resolución que la cámara **no soporta**, mantiene la actual (acción `resolution-kept`).
+- La **reducción de telemetría** (`MAV_CMD_SET_MESSAGE_INTERVAL`) es **opt-in** porque afecta a todo el enlace (incluida una GCS conectada).
+- Ajusta también el **buffer UDP** para suavizar ráfagas de keyframes.
 
 **Estado y control**:
 
 ```bash
-# Ver estado MPTCP
-curl http://IP_PLACA:8000/api/network/mptcp/status
+# Ver perfil detectado/activo
+curl http://IP_PLACA:8000/api/network/link-profile
 
-# Habilitar MPTCP
-curl -X POST http://IP_PLACA:8000/api/network/mptcp/enable
+# Forzar un perfil
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"profile":"modem"}' http://IP_PLACA:8000/api/network/link-profile/override
 
-# Deshabilitar MPTCP
-curl -X POST http://IP_PLACA:8000/api/network/mptcp/disable
+# Volver a automático
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"profile":""}' http://IP_PLACA:8000/api/network/link-profile/override
 ```
-
-**Beneficios**:
-
-- Si una ruta cae, el tráfico continúa por la otra sin desconexión
-- Combina ancho de banda WiFi + 4G
-- Especialmente útil en vuelos BVLOS con conectividad intermitente
 
 ---
 
