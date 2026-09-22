@@ -37,13 +37,17 @@ else
 fi
 sudo chmod 755 "$DATA_DIR"
 
-# Initialize version file if it doesn't exist
+# Version file: initialize if missing, and keep it in sync on manual deploys
+# from a tagged commit (the privileged updater writes it too; deploy.sh may be
+# run by hand, e.g. `git checkout main && sudo bash scripts/deploy.sh`).
+TAGGED_VERSION="$(git -c safe.directory="$PROJECT_DIR" describe --tags --exact-match HEAD 2>/dev/null | sed 's/^v//' || true)"
+
 if [ ! -f "$DATA_DIR/version" ]; then
     # Get version from git tag on current HEAD
-    if INITIAL_VERSION=$(git describe --tags --exact-match HEAD 2>/dev/null | sed 's/^v//'); then
+    INITIAL_VERSION="${TAGGED_VERSION:-unknown}"
+    if [ -n "$TAGGED_VERSION" ]; then
         echo -e "${GREEN}✅ Version detected from git tag: $INITIAL_VERSION${NC}"
     else
-        INITIAL_VERSION="unknown"
         echo -e "${YELLOW}⚠️  No git tag on HEAD, version set to 'unknown'${NC}"
     fi
     echo "$INITIAL_VERSION" > "$DATA_DIR/version.tmp"
@@ -59,9 +63,23 @@ if [ ! -f "$DATA_DIR/version" ]; then
             sudo chown www-data:www-data "$DATA_DIR/version"
         fi
     fi
+    sudo chmod 644 "$DATA_DIR/version"
     echo -e "${GREEN}✅ Version file initialized: $INITIAL_VERSION${NC}"
 else
-    echo -e "${GREEN}✅ Version file already exists${NC}"
+    CURRENT_VERSION="$(cat "$DATA_DIR/version" 2>/dev/null || true)"
+    if [ -n "$TAGGED_VERSION" ] && [ "$CURRENT_VERSION" != "$TAGGED_VERSION" ]; then
+        if [ -n "$CURRENT_VERSION" ]; then
+            printf '%s\n' "$CURRENT_VERSION" | sudo tee "$DATA_DIR/previous_version" >/dev/null
+            sudo chmod 644 "$DATA_DIR/previous_version" 2>/dev/null || true
+        fi
+        printf '%s\n' "$TAGGED_VERSION" | sudo tee "$DATA_DIR/version" >/dev/null
+        sudo chmod 644 "$DATA_DIR/version"
+        echo -e "${GREEN}✅ Version file synced: ${CURRENT_VERSION:-none} → $TAGGED_VERSION${NC}"
+    elif [ -z "$TAGGED_VERSION" ]; then
+        echo -e "${YELLOW}⚠️  HEAD is not on a tag; keeping version file ($CURRENT_VERSION)${NC}"
+    else
+        echo -e "${GREEN}✅ Version file already up to date: $CURRENT_VERSION${NC}"
+    fi
 fi
 
 # Step 1: Build Frontend
