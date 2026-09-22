@@ -204,14 +204,6 @@ else
     echo "  ⚠️  tc not found"
 fi
 
-# Check MPTCP kernel support
-echo "🔀 Checking MPTCP (Multi-Path TCP) support..."
-if sysctl net.mptcp.enabled &>/dev/null 2>&1; then
-    echo "  ✓ MPTCP supported by kernel"
-else
-    echo "  ℹ️  MPTCP not supported by this kernel (requires 5.6+)"
-fi
-
 # Enable and start network services
 echo "🔧 Configuring network services..."
 
@@ -676,11 +668,6 @@ net.core.somaxconn=4096
 # ===== IPv6 Disable (reduce overhead for embedded) =====
 net.ipv6.conf.all.disable_ipv6=1
 net.ipv6.conf.default.disable_ipv6=1
-
-# ===== MPTCP (Multi-Path TCP for WiFi+4G bonding) =====
-net.mptcp.enabled=1
-net.mptcp.allow_join_initial_addr_port=1
-net.mptcp.checksum_enabled=0
 
 # ===== Memory Management =====
 vm.swappiness=10

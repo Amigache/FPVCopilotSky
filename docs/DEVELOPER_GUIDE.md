@@ -200,7 +200,7 @@ FPVCopilotSky/
 │   │   │   ├── failover.py      # Auto-failover (174 líneas)
 │   │   │   ├── dns.py           # Caché DNS (122 líneas)
 │   │   │   ├── bridge.py        # Network-video bridge (105 líneas)
-│   │   │   └── mptcp.py         # Multi-Path TCP (125 líneas)
+│   │   │   └── link_profile.py  # Perfiles de enlace LAN/4G/VPN
 │   │   ├── vpn.py               # VPN Tailscale (~7 endpoints)
 │   │   ├── system.py            # CPU, RAM, servicios
 │   │   ├── status.py            # Health check
@@ -1620,6 +1620,7 @@ FPV Copilot Sky incluye servicios especializados para optimización de red, moni
 - Intervalo configurable (default: 2 segundos)
 - Histórico con ventana deslizante (default: 30 samples = 1 minuto)
 - Cálculo de métricas: avg, min, max, packet loss, **jitter, variance, p95 latency**
+- **Latencia por interfaz**: `get_interface_latency(iface)` mide con **`ping -I <iface>`** en paralelo (RTT/jitter/pérdida reales de ese enlace, no un agregado global)
 - Thread-safe con asyncio
 
 **Uso**:
@@ -1796,20 +1797,20 @@ POST /api/network/failover/force-switch
    - Desactiva power saving en interfaz Ethernet
    - Latencia más consistente
 
-6. **CAKE Bufferbloat Control** (nuevo):
+6. **CAKE Bufferbloat Control**:
 
-   - `tc qdisc replace dev <iface> root cake bandwidth <bw>mbit`
-   - AQM (Active Queue Management) que elimina bufferbloat en 4G
-   - Configurable: `enable_cake`, `cake_bandwidth_up_mbit` (10), `cake_bandwidth_down_mbit` (30)
-   - Reduce latencia de video hasta un 40% bajo carga
-   - `get_cake_stats()` → estadísticas de cola en tiempo real
+   - Egress: `tc qdisc replace dev <iface> root cake bandwidth <bw>mbit diffserv4 overhead 80 nat ack-filter` (respeta la marca DSCP EF de subida)
+   - Ingress: IFB **por interfaz** (`ifb<iface>`) con `cake bandwidth <bw>mbit besteffort overhead 80 wash ingress`
+   - Configurable: `enable_cake`, `cake_bandwidth_up_mbit` (10), `cake_bandwidth_down_mbit` (30), `cake_overhead_bytes` (80), `cake_diffserv` (true)
+   - Subida **auto-calibrable** con un burst test; `get_cake_stats()` → estadísticas de cola en tiempo real
 
-7. **VPN Policy Routing** (nuevo):
+7. **VPN Policy Routing**:
+
    - Separa tráfico video del tráfico de control VPN
    - `iptables -t mangle` para marcar paquetes con `fwmark`
    - `ip rule` para enrutar por tablas diferentes
    - Configurable: `enable_vpn_policy_routing`, `vpn_fwmark`, `vpn_table`, `video_table`
-   - Evita que Tailscale encapsule tráfico de video innecesariamente
+   - **Se omite si `PolicyRoutingManager` está activo** (evita dos escritores sobre la tabla 100)
 
 **Uso**:
 
@@ -2065,31 +2066,29 @@ events = bridge.get_recent_events(limit=20)
 
 ---
 
-### MPTCP (Multi-Path TCP)
+### Link Profiles (LAN/4G/VPN)
 
-**Propósito**: Usar WiFi + 4G simultáneamente para redundancia y mayor ancho de banda combinado.
+**Propósito**: Adaptar modo de vídeo, resolución, bitrate y (opt-in) tasas de telemetría al tipo de conexión detectado.
 
-**Requisitos**: Kernel 5.6+ con soporte MPTCP. El instalador verifica y configura automáticamente:
-
-```
-net.mptcp.enabled = 1
-net.mptcp.allow_join_initial_addr_port = 1
-net.mptcp.checksum_enabled = 0
-```
+- `app/services/link_profiles.py`: modelo `LinkProfile`, defaults y clasificador `classify_link_type(interface, type)`.
+- `app/services/link_profile_manager.py`: detección con **debounce** + **cooldown**; **reinicia** el pipeline solo si cambia modo/resolución/FPS, si no ajusta el **bitrate en vivo**; valida la resolución contra la cámara (`resolution-kept`); ajusta `udpsink buffer-size`; emite evento WS `link_profile`.
+- Telemetría: `MAVLinkBridge.apply_telemetry_profile()` vía `MAV_CMD_SET_MESSAGE_INTERVAL` (**opt-in**, `network.link_profile_telemetry_apply`).
+- Preferencias: `network.link_profile_mode|forced|auto_apply|telemetry_apply|link_profiles`.
 
 **API Endpoints**:
 
 ```
-GET  /api/network/mptcp/status         # Estado MPTCP
-POST /api/network/mptcp/enable         # Habilitar (sysctl + ip mptcp)
-POST /api/network/mptcp/disable        # Deshabilitar
+GET  /api/network/link-profile            # Estado (detectado/activo/deseado)
+POST /api/network/link-profile/override   # Forzar perfil ({profile:"lan|modem|vpn|"})
+POST /api/network/link-profile/settings   # mode/auto_apply/telemetry_apply
+POST /api/network/link-profile/apply      # Aplicar ya
 ```
 
-**Flujo de habilitación**:
+---
 
-1. `sysctl -w net.mptcp.enabled=1`
-2. `ip mptcp endpoint add <iface_ip> dev <iface> subflow` para cada interfaz
-3. Verifica endpoints creados
+### RouteManager (rutas por defecto)
+
+`app/services/route_manager.py` es el **dueño único** de las métricas de la ruta default (tabla main). Aplica `ip route replace` idempotente (primaria `metric 100`, resto `200`), elimina duplicados del mismo `dev`+gateway y aplica un **cooldown** antirrebote. `set_priority_mode` y `ModemPool` delegan en él; las tablas de policy routing siguen en `PolicyRoutingManager`.
 
 ---
 
@@ -2444,12 +2443,13 @@ GET  /api/network/bridge/quality-score # Quality score actual
 GET  /api/network/bridge/events       # Últimos eventos de red
 ```
 
-**MPTCP** (multi-path TCP):
+**Link Profiles** (adaptación al tipo de conexión):
 
 ```
-GET  /api/network/mptcp/status        # Estado MPTCP
-POST /api/network/mptcp/enable        # Habilitar bonding WiFi+4G
-POST /api/network/mptcp/disable       # Deshabilitar
+GET  /api/network/link-profile            # Estado del perfil
+POST /api/network/link-profile/override   # Forzar perfil
+POST /api/network/link-profile/settings   # mode/auto_apply/telemetry_apply
+POST /api/network/link-profile/apply      # Aplicar ya
 ```
 
 **Flight Session** (logging vuelo):
