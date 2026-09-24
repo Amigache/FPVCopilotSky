@@ -43,6 +43,7 @@ def test_apply_same_mode_updates_bitrate_live():
     manager = LinkProfileManager()
     gst = make_gstreamer(mode="udp", width=1920, height=1080, framerate=30)
     manager.set_services(gstreamer_service=gst)
+    manager._auto_apply_video = True  # streaming config is opt-in
 
     with patch("app.services.preferences.get_preferences", return_value=make_prefs()):
         result = asyncio.run(manager.apply_profile("lan"))
@@ -58,6 +59,7 @@ def test_apply_different_mode_restarts_pipeline(monkeypatch):
     manager = LinkProfileManager()
     gst = make_gstreamer(mode="udp", width=1920, height=1080, framerate=30)
     manager.set_services(gstreamer_service=gst)
+    manager._auto_apply_video = True
 
     with patch("app.services.preferences.get_preferences", return_value=make_prefs()):
         result = asyncio.run(manager.apply_profile("modem"))
@@ -129,6 +131,7 @@ def test_restart_failure_is_reported_and_retried(monkeypatch):
     gst = make_gstreamer(mode="udp")
     gst.start.return_value = {"success": False, "message": "boom"}
     manager.set_services(gstreamer_service=gst)
+    manager._auto_apply_video = True
 
     with patch("app.services.preferences.get_preferences", return_value=make_prefs()):
         result = asyncio.run(manager.apply_profile("modem"))
@@ -143,6 +146,7 @@ def test_profile_when_not_streaming_only_configures():
     gst.is_streaming = False
     gst.set_udp_buffer_size.return_value = False  # no live pipeline
     manager.set_services(gstreamer_service=gst)
+    manager._auto_apply_video = True
 
     with patch("app.services.preferences.get_preferences", return_value=make_prefs()):
         result = asyncio.run(manager.apply_profile("modem"))
@@ -158,6 +162,7 @@ def test_unsupported_resolution_keeps_current(monkeypatch):
     manager = LinkProfileManager()
     gst = make_gstreamer(mode="udp", width=1920, height=1080, framerate=30)
     manager.set_services(gstreamer_service=gst)
+    manager._auto_apply_video = True
     monkeypatch.setattr(manager, "_supported_resolutions", lambda device: {"3840x2160", "1920x1080"})
 
     with patch("app.services.preferences.get_preferences", return_value=make_prefs()):
@@ -167,3 +172,19 @@ def test_unsupported_resolution_keeps_current(monkeypatch):
     # It still switches mode (udp -> webrtc) but keeps 1080p capture
     assert gst.configure.call_args.kwargs["video_config"]["width"] == 1920
     assert gst.configure.call_args.kwargs["video_config"]["height"] == 1080
+
+
+def test_video_is_user_managed_by_default():
+    """By default the profile must NOT touch the user's streaming config."""
+    manager = LinkProfileManager()
+    gst = make_gstreamer(mode="udp", width=1920, height=1080, framerate=30)
+    manager.set_services(gstreamer_service=gst)
+
+    with patch("app.services.preferences.get_preferences", return_value=make_prefs()):
+        result = asyncio.run(manager.apply_profile("modem"))
+
+    assert "video:user-managed" in result["actions"]
+    gst.update_live_property.assert_not_called()
+    gst.configure.assert_not_called()
+    gst.stop.assert_not_called()
+    gst.start.assert_not_called()

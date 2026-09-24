@@ -49,9 +49,10 @@ class NetworkOptimizationConfig:
     enable_cake: bool = True
     cake_bandwidth_up_mbit: int = 10  # Upload bandwidth limit (conservative for LTE)
     cake_bandwidth_down_mbit: int = 30  # Download bandwidth limit
-    cake_auto_calibrate: bool = True  # Run burst test to measure real BW
+    cake_auto_calibrate: bool = False  # Burst-to-gateway measures the last hop, not the WAN: off by default
     cake_calibrate_packets: int = 50  # Number of 1400-byte UDP packets for burst
     cake_calibrate_margin: float = 0.80  # Use 80 % of measured throughput
+    cake_calibrate_max_mbit: int = 50  # Upper bound for a calibrated uplink
     cake_overhead_bytes: int = 80  # Per-packet link overhead (LTE: 1500 - 80)
     cake_diffserv: bool = True  # Honor DSCP marks (diffserv4) instead of washing egress
 
@@ -794,22 +795,35 @@ class NetworkOptimizer:
             if self.config.disable_power_save and self._disable_power_save(modem_interface, disable=True):
                 optimizations.append("Power saving disabled")
 
-            # 5. Enable CAKE bufferbloat mitigation
-            #    Auto-calibrate: measure real uplink BW with a quick burst test
+            # 5. Enable CAKE bufferbloat mitigation.
+            # Auto-calibration is OFF by default: a UDP burst to the local gateway
+            # only measures the last hop (e.g. USB to a HiLink modem ~126 Mbit),
+            # NOT the cellular uplink, so it would disable shaping. When enabled,
+            # it is skipped for tethered/USB modems and capped.
             if self.config.enable_cake:
                 if self.config.cake_auto_calibrate:
-                    measured = self._measure_uplink_bandwidth(modem_interface)
-                    if measured and measured > 1.0:
-                        calibrated = max(1, int(measured * self.config.cake_calibrate_margin))
-                        self.config.cake_bandwidth_up_mbit = calibrated
+                    tethered = modem_interface.startswith(("enx", "usb", "wwan"))
+                    if tethered:
                         optimizations.append(
-                            f"CAKE auto-calibrated: measured {measured} Mbit/s → "
-                            f"shaping at {calibrated} Mbit/s ({int(self.config.cake_calibrate_margin*100)}%)"
+                            f"CAKE calibration skipped on tethered modem ({modem_interface}); "
+                            f"using static {self.config.cake_bandwidth_up_mbit} Mbit/s"
                         )
                     else:
-                        optimizations.append(
-                            f"CAKE burst test inconclusive, using static {self.config.cake_bandwidth_up_mbit} Mbit/s"
-                        )
+                        measured = self._measure_uplink_bandwidth(modem_interface)
+                        if measured and measured > 1.0:
+                            calibrated = max(1, int(measured * self.config.cake_calibrate_margin))
+                            capped = min(calibrated, self.config.cake_calibrate_max_mbit)
+                            self.config.cake_bandwidth_up_mbit = capped
+                            extra = f" (capped from {calibrated})" if capped < calibrated else ""
+                            optimizations.append(
+                                f"CAKE auto-calibrated: measured {measured} Mbit/s → "
+                                f"shaping at {capped} Mbit/s{extra}"
+                            )
+                        else:
+                            optimizations.append(
+                                f"CAKE burst test inconclusive, using static "
+                                f"{self.config.cake_bandwidth_up_mbit} Mbit/s"
+                            )
 
                 if self._configure_cake(modem_interface, enable=True):
                     optimizations.append(

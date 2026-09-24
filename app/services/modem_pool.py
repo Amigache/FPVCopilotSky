@@ -260,12 +260,22 @@ class ModemPool:
 
         healthy = False
 
-        # 1. Ping check via modem gateway
+        # 1. Ping check via modem gateway (needs the ping prefix: on some boards
+        # `ping` runs unprivileged without cap_net_raw and would always fail).
         if modem.gateway:
-            _, _, rc = await run_command(
-                ["ping", "-c", "1", "-W", "2", "-I", modem.interface, modem.gateway],
-                timeout=5,
-            )
+            from app.services.latency_monitor import _get_ping_prefix
+
+            ping_cmd = _get_ping_prefix() + [
+                "ping",
+                "-c",
+                "1",
+                "-W",
+                "2",
+                "-I",
+                modem.interface,
+                modem.gateway,
+            ]
+            _, _, rc = await run_command(ping_cmd, timeout=5)
             healthy = rc == 0
 
         # 2. SINR sanity check
