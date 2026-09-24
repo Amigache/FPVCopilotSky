@@ -81,6 +81,33 @@ class TestDetectSinr:
             events = bridge._detect_sinr_events({"sinr": value})
         assert any(event[0] == NetworkEvent.SINR_RECOVERY for event in events)
 
+    def test_negative_sinr_drop_percent_is_clamped(self, bridge):
+        """1 → -3 dB must not report a nonsensical 400% drop."""
+        events = []
+        for value in (1.0, 0.0, -1.0, -3.0):
+            events = bridge._detect_sinr_events({"sinr": value})
+        drop = [e for e in events if e[0] == NetworkEvent.SINR_DROP]
+        assert drop
+        details = drop[-1][1]
+        assert 0.0 <= details["drop_percent"] <= 100.0
+        assert details["drop_db"] >= bridge.config.sinr_drop_min_db
+
+    def test_small_sinr_drop_is_ignored(self, bridge):
+        """Noise around 1 dB must not trigger a SINR drop event."""
+        events = []
+        for value in (1.0, 0.5, 0.0):
+            events = bridge._detect_sinr_events({"sinr": value})
+        assert not any(e[0] == NetworkEvent.SINR_DROP for e in events)
+
+    def test_sinr_drop_event_is_rate_limited(self, bridge):
+        for value in (25.0, 24.0, 23.0):
+            bridge._detect_sinr_events({"sinr": value})
+        first = bridge._detect_sinr_events({"sinr": 10.0})
+        assert any(e[0] == NetworkEvent.SINR_DROP for e in first)
+        # Immediately after, a similar drop must be suppressed by the cooldown.
+        second = bridge._detect_sinr_events({"sinr": 10.0})
+        assert not any(e[0] == NetworkEvent.SINR_DROP for e in second)
+
 
 class TestQualityScore:
     def test_modem_with_good_cell_and_latency(self, bridge):
@@ -129,3 +156,35 @@ class TestStatusAndEvents:
         assert bridge.get_event_history() == []
         bridge.clear_events()
         assert bridge.get_event_history() == []
+
+
+class TestAdaptiveVideoOptIn:
+    async def test_adaptive_bitrate_does_nothing_when_disabled(self, bridge):
+        """Streaming is user-managed: no live bitrate change unless opted in."""
+        from unittest.mock import MagicMock, patch
+
+        gst = MagicMock()
+        gst.is_streaming = True
+        bridge._gstreamer_service = gst
+        prefs = MagicMock()
+        prefs.get_auto_adaptive_bitrate.return_value = False
+
+        with patch("app.services.network_event_bridge.get_preferences", return_value=prefs):
+            await bridge._apply_adaptive_bitrate()
+
+        gst.update_live_property.assert_not_called()
+
+    async def test_adaptive_resolution_does_nothing_when_disabled(self, bridge):
+        from unittest.mock import MagicMock, patch
+
+        gst = MagicMock()
+        gst.is_streaming = True
+        bridge._gstreamer_service = gst
+        prefs = MagicMock()
+        prefs.get_auto_adaptive_resolution.return_value = False
+
+        with patch("app.services.network_event_bridge.get_preferences", return_value=prefs):
+            await bridge._apply_adaptive_resolution()
+
+        gst.stop.assert_not_called()
+        gst.configure.assert_not_called()
