@@ -136,6 +136,46 @@ class TestAutoFailover:
         assert result is True
         assert switch_called is True
 
+    @pytest.mark.asyncio
+    async def test_force_switch_resets_bad_samples(self):
+        """A manual switch must not be undone by the next monitor tick."""
+        from app.services.auto_failover import AutoFailover, NetworkMode
+
+        async def mock_switch_callback(target_mode):
+            return True
+
+        failover = AutoFailover(switch_callback=mock_switch_callback)
+        failover.state.consecutive_bad_samples = 15
+
+        await failover.force_switch(NetworkMode.WIFI, reason="Test")
+
+        assert failover.state.consecutive_bad_samples == 0
+        assert failover.state.last_switch > 0
+
+    @pytest.mark.asyncio
+    async def test_predictive_switch_reason_is_reported(self):
+        """Switching due to predictive degradation must say so, not 'High latency'."""
+        from app.services.auto_failover import AutoFailover, NetworkMode
+
+        failover = AutoFailover()
+        failover.state.current_mode = NetworkMode.MODEM
+        captured = {}
+
+        async def fake_switch(target_mode, reason):
+            captured["reason"] = reason
+            return True
+
+        failover._switch_network = fake_switch
+        await failover._perform_switch_if_needed(30.0, "Predictive degradation (urgency 1.00)")
+
+        assert "Predictive" in captured["reason"]
+
+    def test_default_sinr_critical_threshold_is_sane(self):
+        """1-2 dB SINR is a normal LTE link, not critical (must not cause flapping)."""
+        from app.services.auto_failover import FailoverConfig
+
+        assert FailoverConfig().sinr_critical_threshold <= 0.0
+
 
 class TestNetworkOptimizer:
     """Test NetworkOptimizer service"""
