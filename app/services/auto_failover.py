@@ -95,6 +95,7 @@ class AutoFailover:
         self._monitoring = False
         self._monitor_task: Optional[asyncio.Task] = None
         self._lock = asyncio.Lock()
+        self._last_sinr_drop_log_ts: float = 0.0
 
         logger.info(f"AutoFailover initialized with config: {self.config}")
 
@@ -212,7 +213,10 @@ class AutoFailover:
                             # does not force a switch on its own (only critical SINR
                             # does, with urgency 1.0). Avoids flapping on LTE noise.
                             predictive_urgency = max(predictive_urgency, 0.6)
-                            logger.warning(f"Predictive: rapid SINR drop ({drop_pct:.0f}%)")
+                            newest = max(e.get("timestamp", 0) for e in sinr_drops)
+                            if newest > self._last_sinr_drop_log_ts:
+                                self._last_sinr_drop_log_ts = newest
+                                logger.warning(f"Predictive: rapid SINR drop ({drop_pct:.0f}%)")
 
             except Exception as e:
                 logger.debug(f"Predictive check error: {e}")
