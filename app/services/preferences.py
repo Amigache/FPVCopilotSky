@@ -101,8 +101,8 @@ class PreferencesService:
                 "codec": "mjpeg",
                 "quality": 85,
                 "h264_bitrate": 2000,
-                "auto_adaptive_bitrate": True,  # Enable automatic bitrate adaptation via Network Event Bridge
-                "auto_adaptive_resolution": True,  # Enable automatic resolution downscaling when network quality drops
+                "auto_adaptive_bitrate": False,  # Opt-in: streaming config is user-managed
+                "auto_adaptive_resolution": False,  # Opt-in: streaming config is user-managed
             },
             "streaming": {
                 "udp_host": "",  # No default IP, user must configure
@@ -124,7 +124,8 @@ class PreferencesService:
                 # Link profiles (adapt video+telemetry to the connection type)
                 "link_profile_mode": "auto",  # auto|manual
                 "forced_link_profile": "",  # "", "lan", "modem", "vpn"
-                "link_profile_auto_apply": True,  # apply detected profile automatically
+                "link_profile_auto_apply": True,  # apply detected profile automatically (network part)
+                "link_profile_auto_apply_video": False,  # stream mode/res/bitrate are user-managed
                 "link_profile_telemetry_apply": False,  # opt-in: also adapt FC stream rates
                 "auto_network_optimization": True,  # MTU/CAKE/DSCP/TCP on 4G/VPN (was "Flight Mode")
                 "link_profiles": default_link_profiles(),
@@ -134,7 +135,7 @@ class PreferencesService:
                 "log_directory": os.path.expanduser("~/flight-records"),  # Default log directory
             },
             "ui": {"language": "es", "theme": "dark"},
-            "system": {"version": "1.3.1", "first_run": True},
+            "system": {"version": "1.4.0", "first_run": True},
             "extras": {
                 "experimental_tab_enabled": False,  # Hidden by default
             },
@@ -413,7 +414,7 @@ class PreferencesService:
     def get_auto_adaptive_bitrate(self) -> bool:
         """Get auto-adaptive bitrate setting."""
         with self._lock:
-            return self._preferences.get("video", {}).get("auto_adaptive_bitrate", True)
+            return self._preferences.get("video", {}).get("auto_adaptive_bitrate", False)
 
     def set_auto_adaptive_resolution(self, enabled: bool):
         """Enable/disable automatic adaptive resolution via Network Event Bridge."""
@@ -427,7 +428,7 @@ class PreferencesService:
     def get_auto_adaptive_resolution(self) -> bool:
         """Get auto-adaptive resolution setting."""
         with self._lock:
-            return self._preferences.get("video", {}).get("auto_adaptive_resolution", True)
+            return self._preferences.get("video", {}).get("auto_adaptive_resolution", False)
 
     # ==================== Link Profiles ====================
 

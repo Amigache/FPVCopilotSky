@@ -440,3 +440,79 @@ class TestSelectionMode:
         pool = ModemPool()
         result = pool.set_selection_mode("nonexistent_mode")
         assert result is False
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# _ensure_default_route (P13)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestEnsureDefaultRoute:
+    @pytest.mark.asyncio
+    async def test_restores_missing_default_route_with_active_metric(self):
+        pool = _make_pool_with_modems("wwan0", active="wwan0")
+        modem = pool._modems["wwan0"]
+        calls = []
+
+        async def fake_run_command(cmd, **kwargs):
+            calls.append(cmd)
+            if cmd[:3] == ["ip", "route", "show"]:
+                return ("default via 192.168.1.1 dev wlan0 metric 600\n", "", 0)
+            return ("", "", 0)
+
+        with patch("app.api.routes.network.common.run_command", side_effect=fake_run_command):
+            restored = await pool._ensure_default_route(modem)
+
+        assert restored is True
+        replace = [c for c in calls if "replace" in c][0]
+        assert replace[:2] == ["sudo", "ip"]
+        assert replace[-1] == "100"
+        assert "wwan0" in replace
+
+    @pytest.mark.asyncio
+    async def test_restores_with_backup_metric_when_not_active(self):
+        pool = _make_pool_with_modems("wwan0")
+        modem = pool._modems["wwan0"]
+        calls = []
+
+        async def fake_run_command(cmd, **kwargs):
+            calls.append(cmd)
+            if cmd[:3] == ["ip", "route", "show"]:
+                return ("default via 192.168.1.1 dev wlan0 metric 600\n", "", 0)
+            return ("", "", 0)
+
+        with patch("app.api.routes.network.common.run_command", side_effect=fake_run_command):
+            restored = await pool._ensure_default_route(modem)
+
+        assert restored is True
+        replace = [c for c in calls if "replace" in c][0]
+        assert replace[-1] == "200"
+
+    @pytest.mark.asyncio
+    async def test_leaves_healthy_route_untouched(self):
+        pool = _make_pool_with_modems("wwan0", active="wwan0")
+        modem = pool._modems["wwan0"]
+        calls = []
+
+        async def fake_run_command(cmd, **kwargs):
+            calls.append(cmd)
+            if cmd[:3] == ["ip", "route", "show"]:
+                return ("default via 192.168.8.1 dev wwan0 metric 100\n", "", 0)
+            return ("", "", 0)
+
+        with patch("app.api.routes.network.common.run_command", side_effect=fake_run_command):
+            restored = await pool._ensure_default_route(modem)
+
+        assert restored is False
+        assert not any("replace" in c for c in calls)
+
+    @pytest.mark.asyncio
+    async def test_no_gateway_does_nothing(self):
+        pool = _make_pool_with_modems("wwan0", active="wwan0")
+        pool._modems["wwan0"].gateway = ""
+
+        with patch("app.api.routes.network.common.run_command", new=AsyncMock()) as mock_cmd:
+            restored = await pool._ensure_default_route(pool._modems["wwan0"])
+
+        assert restored is False
+        mock_cmd.assert_not_called()

@@ -45,7 +45,7 @@ class FailoverConfig:
 
     # Predictive failover (Mejora Nº2)
     enable_predictive: bool = True  # Use SINR trend for early switching
-    sinr_critical_threshold: float = 2.0  # dB - immediately switch below this
+    sinr_critical_threshold: float = -5.0  # dB - immediately switch below this (LTE: >0 is usable)
     sinr_drop_rate_threshold: float = 30.0  # % drop triggers pre-switch
     sinr_drop_window_samples: int = 5  # Samples to measure drop rate
     jitter_threshold_ms: float = 60.0  # High jitter also triggers concern
@@ -95,6 +95,7 @@ class AutoFailover:
         self._monitoring = False
         self._monitor_task: Optional[asyncio.Task] = None
         self._lock = asyncio.Lock()
+        self._last_sinr_drop_log_ts: float = 0.0
 
         logger.info(f"AutoFailover initialized with config: {self.config}")
 
@@ -208,8 +209,14 @@ class AutoFailover:
                     if sinr_drops:
                         drop_pct = max(e.get("details", {}).get("drop_percent", 0) for e in sinr_drops)
                         if drop_pct >= self.config.sinr_drop_rate_threshold:
-                            predictive_urgency = max(predictive_urgency, 0.8)
-                            logger.warning(f"Predictive: rapid SINR drop ({drop_pct:.0f}%)")
+                            # Soft signal: lowers the effective threshold/window but
+                            # does not force a switch on its own (only critical SINR
+                            # does, with urgency 1.0). Avoids flapping on LTE noise.
+                            predictive_urgency = max(predictive_urgency, 0.6)
+                            newest = max(e.get("timestamp", 0) for e in sinr_drops)
+                            if newest > self._last_sinr_drop_log_ts:
+                                self._last_sinr_drop_log_ts = newest
+                                logger.warning(f"Predictive: rapid SINR drop ({drop_pct:.0f}%)")
 
             except Exception as e:
                 logger.debug(f"Predictive check error: {e}")
@@ -247,7 +254,11 @@ class AutoFailover:
             # Perform the switch OUTSIDE the lock: _switch_network re-acquires it
             # (asyncio.Lock is not reentrant) and would otherwise deadlock.
             if should_switch:
-                await self._perform_switch_if_needed(avg_latency)
+                if predictive_urgency >= 0.8 and avg_latency <= self.config.latency_threshold_ms:
+                    reason = f"Predictive degradation (urgency {predictive_urgency:.2f}, " f"jitter {avg_jitter:.1f}ms)"
+                else:
+                    reason = f"High latency: {avg_latency:.1f}ms > {effective_threshold:.0f}ms"
+                await self._perform_switch_if_needed(avg_latency, reason)
         else:
             # Conditions are good
             async with self._lock:
@@ -256,12 +267,13 @@ class AutoFailover:
             # Check if we should return to preferred mode
             await self._check_restore_preferred()
 
-    async def _perform_switch_if_needed(self, current_latency: float):
+    async def _perform_switch_if_needed(self, current_latency: float, reason: Optional[str] = None):
         """
         Perform network switch if conditions are met.
 
         Args:
             current_latency: Current average latency
+            reason: Human-readable trigger for the switch
         """
         # Check cooldown period
         time_since_last_switch = time.time() - self.state.last_switch
@@ -275,9 +287,9 @@ class AutoFailover:
         target_mode = NetworkMode.WIFI if self.state.current_mode == NetworkMode.MODEM else NetworkMode.MODEM
 
         # Attempt switch
-        success = await self._switch_network(
-            target_mode, reason=f"High latency: {current_latency:.1f}ms > {self.config.latency_threshold_ms}ms"
-        )
+        if reason is None:
+            reason = f"High latency: {current_latency:.1f}ms > {self.config.latency_threshold_ms}ms"
+        success = await self._switch_network(target_mode, reason=reason)
 
         if success:
             self.state.last_switch = time.time()
@@ -411,7 +423,14 @@ class AutoFailover:
         Returns:
             True if successful
         """
-        return await self._switch_network(target_mode, reason)
+        success = await self._switch_network(target_mode, reason)
+        if success:
+            # A manual switch must not be undone by the next monitor tick: reset
+            # the bad-sample counter and start the cooldown window now.
+            async with self._lock:
+                self.state.last_switch = time.time()
+                self.state.consecutive_bad_samples = 0
+        return success
 
     async def update_config(self, **kwargs):
         """
