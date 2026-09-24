@@ -227,6 +227,54 @@ class ModemPool:
                         modem.is_active = False
                         self._active_modem = None
 
+            # Ensure every connected modem with a gateway still has a default
+            # route. NetworkManager/dhcp or a USB flap can drop it, leaving the
+            # modem unusable as a path (and the link detected as LAN).
+            for modem in self._modems.values():
+                if modem.is_connected and modem.gateway:
+                    await self._ensure_default_route(modem)
+
+    async def _ensure_default_route(self, modem: ModemInfo) -> bool:
+        """Recreate the modem's default route if it is missing.
+
+        Only adds the route when there is none for that interface, so it never
+        fights NetworkManager on healthy links.
+        """
+        from app.api.routes.network.common import run_command
+
+        if not modem.gateway:
+            return False
+
+        try:
+            stdout, _, rc = await run_command(["ip", "route", "show", "default"])
+            if rc != 0:
+                return False
+            if any(f"dev {modem.interface}" in line for line in stdout.splitlines()):
+                return False
+
+            metric = 100 if modem.is_active else 200
+            _, _, rc2 = await run_command(
+                [
+                    "sudo",
+                    "ip",
+                    "route",
+                    "replace",
+                    "default",
+                    "via",
+                    modem.gateway,
+                    "dev",
+                    modem.interface,
+                    "metric",
+                    str(metric),
+                ]
+            )
+            if rc2 == 0:
+                logger.warning(f"ModemPool: restored missing default route via {modem.interface} (metric {metric})")
+                return True
+        except Exception as e:
+            logger.debug(f"ModemPool: ensure default route error: {e}")
+        return False
+
     async def _get_interface_ip(self, interface: str) -> Optional[str]:
         """Get IP address for interface"""
         import re
