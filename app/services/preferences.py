@@ -101,8 +101,8 @@ class PreferencesService:
                 "codec": "mjpeg",
                 "quality": 85,
                 "h264_bitrate": 2000,
-                "auto_adaptive_bitrate": True,  # Enable automatic bitrate adaptation via Network Event Bridge
-                "auto_adaptive_resolution": True,  # Enable automatic resolution downscaling when network quality drops
+                "auto_adaptive_bitrate": False,  # Opt-in: streaming config is user-managed
+                "auto_adaptive_resolution": False,  # Opt-in: streaming config is user-managed
             },
             "streaming": {
                 "udp_host": "",  # No default IP, user must configure
@@ -414,7 +414,7 @@ class PreferencesService:
     def get_auto_adaptive_bitrate(self) -> bool:
         """Get auto-adaptive bitrate setting."""
         with self._lock:
-            return self._preferences.get("video", {}).get("auto_adaptive_bitrate", True)
+            return self._preferences.get("video", {}).get("auto_adaptive_bitrate", False)
 
     def set_auto_adaptive_resolution(self, enabled: bool):
         """Enable/disable automatic adaptive resolution via Network Event Bridge."""
@@ -428,7 +428,7 @@ class PreferencesService:
     def get_auto_adaptive_resolution(self) -> bool:
         """Get auto-adaptive resolution setting."""
         with self._lock:
-            return self._preferences.get("video", {}).get("auto_adaptive_resolution", True)
+            return self._preferences.get("video", {}).get("auto_adaptive_resolution", False)
 
     # ==================== Link Profiles ====================
 

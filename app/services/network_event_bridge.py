@@ -116,6 +116,8 @@ class EventBridgeConfig:
     # SINR degradation detection (Mejora Nº2 predictive)
     sinr_drop_threshold_percent: float = 30.0  # 30% drop in 10s = pre-switch
     sinr_drop_window_s: float = 10.0
+    sinr_drop_min_db: float = 3.0  # Ignore drops smaller than this (SINR noise)
+    sinr_drop_event_cooldown_s: float = 30.0  # Min time between SINR drop events
     sinr_critical: float = 0.0  # dB
     sinr_poor: float = 5.0
     sinr_moderate: float = 10.0
@@ -272,6 +274,7 @@ class NetworkEventBridge:
         # Cooldowns to avoid flapping
         self._last_cell_change_time: float = 0
         self._last_bitrate_change_time: float = 0
+        self._last_sinr_drop_event_time: float = 0
         self._last_keyframe_time: float = 0
 
         # Adaptive resolution state (4.8)
@@ -821,20 +824,32 @@ class NetworkEventBridge:
             peak = max(recent)
             current = recent[-1]
 
-            if peak > 0 and current < peak * (1 - self.config.sinr_drop_threshold_percent / 100):
-                events.append(
-                    (
-                        NetworkEvent.SINR_DROP,
-                        {
-                            "peak_sinr": round(peak, 1),
-                            "current_sinr": round(current, 1),
-                            "drop_percent": round((1 - current / peak) * 100, 1),
-                        },
+            drop_db = peak - current
+            if (
+                peak > 0
+                and current < peak * (1 - self.config.sinr_drop_threshold_percent / 100)
+                and drop_db >= self.config.sinr_drop_min_db
+            ):
+                # Percentage is only meaningful for positive SINR; a negative
+                # value would otherwise give >100% (e.g. 1 → -3 dB = 400%).
+                drop_percent = round((1 - current / peak) * 100, 1) if current > 0 else 100.0
+                drop_percent = min(max(drop_percent, 0.0), 100.0)
+
+                now = time.time()
+                if now - self._last_sinr_drop_event_time >= self.config.sinr_drop_event_cooldown_s:
+                    self._last_sinr_drop_event_time = now
+                    events.append(
+                        (
+                            NetworkEvent.SINR_DROP,
+                            {
+                                "peak_sinr": round(peak, 1),
+                                "current_sinr": round(current, 1),
+                                "drop_db": round(drop_db, 1),
+                                "drop_percent": drop_percent,
+                            },
+                        )
                     )
-                )
-                logger.warning(
-                    f"SINR degradation: {peak:.1f} → {current:.1f} dB " f"({(1 - current / peak) * 100:.0f}% drop)"
-                )
+                    logger.warning(f"SINR degradation: {peak:.1f} → {current:.1f} dB ({drop_db:.1f} dB drop)")
 
         # Check for SINR recovery
         if len(history) >= 5:
@@ -1227,7 +1242,7 @@ class NetworkEventBridge:
             if not prefs.get_auto_adaptive_bitrate():
                 return  # User disabled auto-adaptation
         except Exception:
-            pass  # If can't get preferences, continue with adaptation
+            return  # Fail-safe: never touch the user's stream if prefs are unavailable
 
         if not self._gstreamer_service or not self._gstreamer_service.is_streaming:
             return
@@ -1339,6 +1354,7 @@ class NetworkEventBridge:
                 return
         except Exception as e:
             logger.debug("Suppressed exception", exc_info=e)
+            return  # Fail-safe: never touch the user's stream if prefs are unavailable
 
         if not self._gstreamer_service or not self._gstreamer_service.is_streaming:
             return

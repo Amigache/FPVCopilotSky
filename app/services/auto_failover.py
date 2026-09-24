@@ -208,7 +208,10 @@ class AutoFailover:
                     if sinr_drops:
                         drop_pct = max(e.get("details", {}).get("drop_percent", 0) for e in sinr_drops)
                         if drop_pct >= self.config.sinr_drop_rate_threshold:
-                            predictive_urgency = max(predictive_urgency, 0.8)
+                            # Soft signal: lowers the effective threshold/window but
+                            # does not force a switch on its own (only critical SINR
+                            # does, with urgency 1.0). Avoids flapping on LTE noise.
+                            predictive_urgency = max(predictive_urgency, 0.6)
                             logger.warning(f"Predictive: rapid SINR drop ({drop_pct:.0f}%)")
 
             except Exception as e:
