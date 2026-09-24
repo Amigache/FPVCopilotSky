@@ -49,7 +49,7 @@ class LinkProfileManager:
 
         # Read from preferences each cycle; defaults are safe.
         self._telemetry_apply = False
-        self._auto_apply_video = True
+        self._auto_apply_video = False  # streaming config is user-managed by default
 
     # ── Wiring ──────────────────────────────────────────────────────────────
 
@@ -168,10 +168,11 @@ class LinkProfileManager:
 
         prefs = get_preferences()
         settings = prefs.get_link_profile_settings()
-        self._telemetry_apply = bool(
-            prefs.get_all_preferences().get("network", {}).get("link_profile_telemetry_apply", False)
-        )
-        self._auto_apply_video = settings.get("auto_apply", True)
+        network_prefs = prefs.get_all_preferences().get("network", {})
+        self._telemetry_apply = bool(network_prefs.get("link_profile_telemetry_apply", False))
+        # Streaming config (mode/resolution/bitrate) is user-managed by default;
+        # the profile only touches it when explicitly opted in.
+        self._auto_apply_video = bool(network_prefs.get("link_profile_auto_apply_video", False))
 
         desired = self._desired_profile(settings)
         if desired == self._active_profile or desired in ("", "unknown"):
@@ -204,6 +205,10 @@ class LinkProfileManager:
                     # next start uses it, without forcing the stream on.
                     await asyncio.to_thread(self._configure_video_only, profile)
                     actions.append("video-config-only")
+            else:
+                # Streaming (mode/resolution/bitrate) is user-managed; the profile
+                # only adapts the network/telemetry below.
+                actions.append("video:user-managed")
 
             if self._telemetry_apply and self._mavlink_service:
                 result = await asyncio.to_thread(
