@@ -1488,9 +1488,18 @@ class NetworkEventBridge:
             return int(self.config.max_bitrate_kbps * 0.80)
         return self.config.max_bitrate_kbps
 
+    def _auto_bitrate_allowed(self) -> bool:
+        """Event-driven bitrate changes follow the same opt-in as smooth adaptation."""
+        try:
+            return bool(get_preferences().get_auto_adaptive_bitrate())
+        except Exception:
+            return False
+
     def _adjust_bitrate_percent(self, percent: float):
         """Adjust bitrate by percentage (negative = reduce)"""
         if not self._gstreamer_service or not self._gstreamer_service.is_streaming:
+            return
+        if not self._auto_bitrate_allowed():
             return
 
         try:

@@ -1,6 +1,11 @@
 """Tests for the pure GStreamer helpers."""
 
-from app.services.gstreamer_helpers import calculate_health, format_uptime
+from app.services.gstreamer_helpers import (
+    calculate_health,
+    format_uptime,
+    parse_route_device,
+    rtp_mtu_limit,
+)
 
 
 class TestFormatUptime:
@@ -38,3 +43,24 @@ class TestCalculateHealth:
 
     def test_zero_target_fps_is_not_a_division_error(self):
         assert calculate_health(errors=0, current_fps=0, target_fps=0, encoder_stats={}) in {"good", "fair", "poor"}
+
+
+class TestRtpMtu:
+    def test_parse_route_device_tailscale(self):
+        out = "100.127.99.44 dev tailscale0 src 100.80.37.49 uid 1000 \n"
+        assert parse_route_device(out) == "tailscale0"
+
+    def test_parse_route_device_missing(self):
+        assert parse_route_device("") is None
+        assert parse_route_device("10.0.0.1 via 10.0.0.2") is None
+
+    def test_tailscale_path_caps_rtp_packet(self):
+        # tailscale0 MTU 1280 must not get 1300-byte RTP packets (fragmentation).
+        limit = rtp_mtu_limit(1280, 1300)
+        assert limit + 28 <= 1280
+
+    def test_lan_path_keeps_configured_mtu(self):
+        assert rtp_mtu_limit(1500, 1200) == 1200
+
+    def test_floor_is_enforced(self):
+        assert rtp_mtu_limit(100, 1300) == 576

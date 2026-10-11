@@ -188,3 +188,36 @@ class TestAdaptiveVideoOptIn:
 
         gst.stop.assert_not_called()
         gst.configure.assert_not_called()
+
+
+class TestEventBitrateOptIn:
+    def test_event_bitrate_change_skipped_when_adaptive_disabled(self, bridge):
+        """An SINR event must not lower the user's bitrate unless opted in."""
+        from unittest.mock import MagicMock, patch
+
+        gst = MagicMock()
+        gst.is_streaming = True
+        gst.video_config.h264_bitrate = 2000
+        bridge._gstreamer_service = gst
+        prefs = MagicMock()
+        prefs.get_auto_adaptive_bitrate.return_value = False
+
+        with patch("app.services.network_event_bridge.get_preferences", return_value=prefs):
+            bridge._adjust_bitrate_percent(-30)
+
+        gst.update_live_property.assert_not_called()
+
+    def test_event_bitrate_change_applies_when_opted_in(self, bridge):
+        from unittest.mock import MagicMock, patch
+
+        gst = MagicMock()
+        gst.is_streaming = True
+        gst.video_config.h264_bitrate = 2000
+        bridge._gstreamer_service = gst
+        prefs = MagicMock()
+        prefs.get_auto_adaptive_bitrate.return_value = True
+
+        with patch("app.services.network_event_bridge.get_preferences", return_value=prefs):
+            bridge._adjust_bitrate_percent(-30)
+
+        gst.update_live_property.assert_called_once()

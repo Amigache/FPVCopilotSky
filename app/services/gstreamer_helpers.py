@@ -5,7 +5,25 @@ These functions have no GStreamer or hardware dependency, so they can be unit
 tested in CI (the service itself is excluded from coverage).
 """
 
-from typing import Dict
+from typing import Dict, Optional
+
+# IPv4 (20) + UDP (8) headers, plus headroom for tunnel encapsulation (Tailscale/WireGuard).
+RTP_PATH_MARGIN = 40
+
+
+def parse_route_device(route_output: str) -> Optional[str]:
+    """Return the egress device from `ip -o route get <host>` output."""
+    parts = route_output.split()
+    if "dev" in parts:
+        idx = parts.index("dev")
+        if idx + 1 < len(parts):
+            return parts[idx + 1]
+    return None
+
+
+def rtp_mtu_limit(path_mtu: int, configured: int) -> int:
+    """Largest RTP packet size that avoids IP fragmentation on the path."""
+    return max(576, min(configured, path_mtu - RTP_PATH_MARGIN))
 
 
 def format_uptime(seconds: int) -> str:
