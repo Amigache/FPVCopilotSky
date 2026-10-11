@@ -18,6 +18,11 @@ from app.services.gstreamer_helpers import calculate_health, format_uptime
 logger = logging.getLogger(__name__)
 
 
+# Client (Mission Planner / QGC) receive tuning, validated on hardware over a relayed LTE link.
+CLIENT_UDP_BUFFER_BYTES = 2097152
+CLIENT_JITTER_LATENCY_MS = 150
+
+
 def _stats_counter_enabled() -> bool:
     """Whether to insert the C-level ``identity`` stats counter element.
 
@@ -1369,7 +1374,10 @@ class GStreamerService:
                 logger.error("Failed to create RTP payloader", extra={"element": pipeline_config["rtp_payloader"]})
                 return False
 
-            for prop, value in pipeline_config["rtp_payloader_properties"].items():
+            rtp_props = dict(pipeline_config["rtp_payloader_properties"])
+            if "mtu" in rtp_props:
+                rtp_props["mtu"] = self._rtp_mtu_for_destination(rtp_props["mtu"])
+            for prop, value in rtp_props.items():
                 rtppay.set_property(prop, value)
 
             pipeline.add(rtppay)
@@ -1472,6 +1480,32 @@ class GStreamerService:
         except Exception as e:
             logger.error("Error creating sink for mode", extra={"mode": mode, "error": str(e)})
             return None
+
+    def _rtp_mtu_for_destination(self, configured: int) -> int:
+        """Cap the RTP packet size to the MTU of the route to the sink host.
+
+        Packets larger than the path MTU are IP-fragmented; losing one fragment
+        loses the whole RTP packet, which breaks H.264 references (grey frames).
+        """
+        from app.services.gstreamer_helpers import parse_route_device, rtp_mtu_limit
+
+        host = self.streaming_config.udp_host
+        try:
+            out, _, rc = run_cmd(["ip", "-o", "route", "get", host], timeout=2, check=False)
+            dev = parse_route_device(out) if rc == 0 else None
+            if dev:
+                with open(f"/sys/class/net/{dev}/mtu") as f:
+                    path_mtu = int(f.read().strip())
+                limit = rtp_mtu_limit(path_mtu, configured)
+                if limit < configured:
+                    logger.info(
+                        "RTP MTU reduced to avoid fragmentation",
+                        extra={"dev": dev, "path_mtu": path_mtu, "rtp_mtu": limit},
+                    )
+                return limit
+        except Exception as e:
+            logger.debug(f"RTP path MTU lookup failed: {e}")
+        return configured
 
     def _create_fallback_udp_sink(self):
         """Create fallback UDP sink when preferred sink is not available"""
@@ -2451,9 +2485,16 @@ class GStreamerService:
             f'clock-rate=(int)90000, encoding-name=(string){enc_name}, payload=(int){pt}"'
         )
         parse_elem = f" ! {parse}" if parse else ""
+        # Receiver-side hardening for UDP/multicast: a larger socket buffer absorbs
+        # keyframe bursts, and rtpjitterbuffer restores packet order (relayed
+        # paths can reorder), which removes grey frames from broken H.264 references.
+        jitter = f"rtpjitterbuffer latency={CLIENT_JITTER_LATENCY_MS}"
         result["pipelines"]["udp"] = {
             "description": f"UDP unicast on port {udp_port}",
-            "pipeline": f"udpsrc port={udp_port} caps={caps} ! {depay}{parse_elem} ! {dec} ! {sink}",
+            "pipeline": (
+                f"udpsrc port={udp_port} buffer-size={CLIENT_UDP_BUFFER_BYTES} caps={caps} "
+                f"! {jitter} ! {depay}{parse_elem} ! {dec} ! {sink}"
+            ),
         }
 
         # --- Multicast ---
@@ -2461,7 +2502,8 @@ class GStreamerService:
             "description": f"Multicast {mc_group}:{mc_port}",
             "pipeline": (
                 f"udpsrc multicast-group={mc_group} port={mc_port} auto-multicast=true "
-                f"caps={caps} ! {depay}{parse_elem} ! {dec} ! {sink}"
+                f"buffer-size={CLIENT_UDP_BUFFER_BYTES} caps={caps} "
+                f"! {jitter} ! {depay}{parse_elem} ! {dec} ! {sink}"
             ),
         }
 
